@@ -40,20 +40,28 @@ export function useProfile() {
     refetchOnMount: "always",
     queryFn: async (): Promise<Profile | null> => {
       if (!user) return null;
-      const { data, error } = await supabase
-        .from("profiles")
-        .select("*")
-        .eq("id", user.id)
-        .maybeSingle();
-      if (error) throw error;
-      if (data) return data as Profile;
-
       const fullName =
         (user.user_metadata?.full_name as string | undefined) ||
         (user.user_metadata?.name as string | undefined) ||
         user.email?.split("@")[0] ||
         null;
       const avatarUrl = user.user_metadata?.avatar_url as string | undefined;
+      const fallbackProfile: Profile = {
+        id: user.id,
+        email: user.email ?? null,
+        full_name: fullName,
+        avatar_url: avatarUrl ?? null,
+        stripe_customer_id: null,
+        created_at: user.created_at,
+      };
+
+      const { data, error } = await supabase
+        .from("profiles")
+        .select("*")
+        .eq("id", user.id)
+        .maybeSingle();
+      if (error) return fallbackProfile;
+      if (data) return data as Profile;
 
       const { data: createdProfile, error: createError } = await supabase
         .from("profiles")
@@ -76,8 +84,8 @@ export function useProfile() {
         return existingProfile as Profile | null;
       }
 
-      if (createError) throw createError;
-      return createdProfile as Profile | null;
+      if (createError) return fallbackProfile;
+      return (createdProfile as Profile | null) ?? fallbackProfile;
     },
   });
 }
