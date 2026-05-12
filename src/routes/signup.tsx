@@ -12,6 +12,7 @@ import {
   CardHeader,
   CardTitle,
 } from "@/components/ui/card";
+import { GoogleButton } from "@/components/google-button";
 
 export const Route = createFileRoute("/signup")({
   component: SignupPage,
@@ -81,6 +82,12 @@ function SignupPage() {
               {loading ? "Criando..." : "Criar conta"}
             </Button>
           </form>
+          <div className="my-4 flex items-center gap-3 text-xs uppercase text-muted-foreground">
+            <span className="h-px flex-1 bg-border" />
+            ou
+            <span className="h-px flex-1 bg-border" />
+          </div>
+          <GoogleButton label="Cadastrar com Google" />
           <p className="mt-6 text-center text-sm text-muted-foreground">
             Já tem conta?{" "}
             <Link to="/login" className="font-medium text-accent hover:underline">
