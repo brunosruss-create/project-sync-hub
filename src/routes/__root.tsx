@@ -31,10 +31,10 @@ export const Route = createRootRouteWithContext<{ queryClient: QueryClient }>()(
     meta: [
       { charSet: "utf-8" },
       { name: "viewport", content: "width=device-width, initial-scale=1" },
-      { title: "SaaS Boilerplate" },
+      { title: "ZapFlow" },
       {
         name: "description",
-        content: "Production-ready SaaS boilerplate with Supabase auth.",
+        content: "ZapFlow — o sistema operacional do seu WhatsApp comercial.",
       },
     ],
     links: [{ rel: "stylesheet", href: appCss }],

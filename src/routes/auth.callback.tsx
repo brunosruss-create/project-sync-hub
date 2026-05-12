@@ -27,8 +27,11 @@ function AuthCallback() {
   }, [navigate]);
 
   return (
-    <div className="flex min-h-screen items-center justify-center bg-background">
-      <p className="text-sm text-muted-foreground">Finalizando login…</p>
+    <div
+      className="flex min-h-screen items-center justify-center"
+      style={{ background: "var(--bg-base)" }}
+    >
+      <p style={{ fontSize: 13, color: "var(--text-muted)" }}>Finalizando login…</p>
     </div>
   );
 }
