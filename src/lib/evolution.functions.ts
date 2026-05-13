@@ -46,6 +46,10 @@ async function getOrCreateRow(userId: string) {
   return data;
 }
 
+function isAuthError(msg: string): boolean {
+  return /forbidden|unauthorized|missing global api key|invalid api key|api key/i.test(msg);
+}
+
 async function configureEvolutionInstance(name: string, webhookUrl: string, webhookSecret: string) {
   let created: any = null;
   try {
@@ -64,7 +68,17 @@ async function configureEvolutionInstance(name: string, webhookUrl: string, webh
   } catch (e: any) {
     const msg = String(e?.message ?? "");
     const exists = /exist|already/i.test(msg);
-    if (!exists) console.warn("[evolution] createInstance:", msg);
+    if (exists) {
+      console.log("[evolution] createInstance: instância já existe, seguindo");
+    } else if (isAuthError(msg)) {
+      console.error("[evolution] createInstance auth error:", msg);
+      throw new Error(
+        "Evolution API recusou a autenticação (Forbidden). Verifique se o secret EVOLUTION_API_KEY no Lovable é EXATAMENTE igual ao AUTHENTICATION_API_KEY no Railway, e se EVOLUTION_API_URL aponta para o SERVER_URL correto da Evolution.",
+      );
+    } else {
+      console.warn("[evolution] createInstance:", msg);
+      throw new Error(`Falha em /instance/create: ${msg}`);
+    }
   }
 
   try {
