@@ -1,7 +1,7 @@
 import * as React from "react";
 import { useDraggable } from "@dnd-kit/core";
 import { CSS } from "@dnd-kit/utilities";
-import { AlertTriangle } from "lucide-react";
+import { AlertTriangle, MoreVertical } from "lucide-react";
 import {
   type ContactCard as Contact,
   formatRelative,
@@ -9,6 +9,12 @@ import {
   formatMessagePreview,
 } from "./data";
 import { ContactAvatar } from "./contact-avatar";
+
+// Evento global emitido ao clicar no ⋮ — escutado pelo /inbox
+export type CardMenuRequestDetail = {
+  contact: Contact;
+  anchor: { top: number; left: number };
+};
 
 type Props = {
   contact: Contact;
