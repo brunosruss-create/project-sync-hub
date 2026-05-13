@@ -20,6 +20,8 @@ import { type ContactCard as Contact, formatRelative, initials } from "./data";
 import { supabase } from "@/integrations/supabase/client";
 import { useAuth } from "@/hooks/use-auth";
 import { toast } from "sonner";
+import { useServerFn } from "@tanstack/react-start";
+import { sendWhatsAppMessage } from "@/lib/evolution.functions";
 import { ScheduleModal } from "./schedule-modal";
 import {
   SEED_SERVICES,
