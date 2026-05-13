@@ -573,7 +573,53 @@ function MessageBubble({ m }: { m: Message }) {
         wordBreak: "break-word",
       }}
     >
-      {m.content}
+      {m.media_url && m.message_type === "image" && (
+        <a href={m.media_url} target="_blank" rel="noreferrer" style={{ display: "block", marginBottom: m.content ? 6 : 0 }}>
+          <img
+            src={m.media_url}
+            alt={m.media_name ?? "imagem"}
+            style={{ display: "block", maxWidth: 260, maxHeight: 320, width: "100%", borderRadius: 8, objectFit: "cover" }}
+          />
+        </a>
+      )}
+      {m.media_url && m.message_type === "video" && (
+        <video
+          controls
+          src={m.media_url}
+          style={{ display: "block", maxWidth: 260, width: "100%", borderRadius: 8, marginBottom: m.content ? 6 : 0 }}
+        />
+      )}
+      {m.media_url && m.message_type === "audio" && (
+        <audio
+          controls
+          preload="metadata"
+          src={m.media_url}
+          style={{ display: "block", width: 240, height: 36, marginBottom: m.content ? 6 : 0 }}
+        />
+      )}
+      {m.media_url && m.message_type === "document" && (
+        <a
+          href={m.media_url}
+          target="_blank"
+          rel="noreferrer"
+          download={m.media_name ?? undefined}
+          style={{
+            display: "inline-flex", alignItems: "center", gap: 8,
+            padding: "8px 10px", borderRadius: 8,
+            background: "var(--bg-surface)",
+            border: "1px solid var(--border)",
+            color: "var(--text-primary)", textDecoration: "none",
+            marginBottom: m.content ? 6 : 0, maxWidth: 240,
+          }}
+        >
+          <FileText size={18} style={{ flexShrink: 0, color: "var(--brand-400)" }} />
+          <span style={{ flex: 1, minWidth: 0, fontSize: 13, overflow: "hidden", textOverflow: "ellipsis", whiteSpace: "nowrap" }}>
+            {m.media_name ?? "Documento"}
+          </span>
+          <Download size={14} style={{ flexShrink: 0, color: "var(--text-muted)" }} />
+        </a>
+      )}
+      {m.content && <div>{m.content}</div>}
       <div
         style={{
           marginTop: 4,
