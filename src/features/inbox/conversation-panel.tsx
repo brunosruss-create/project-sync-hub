@@ -13,6 +13,9 @@ import {
   CalendarPlus,
   FileText,
   Download,
+  Play,
+  Pause,
+  Mic,
 } from "lucide-react";
 import { Composer } from "./composer";
 import { type ContactCard as Contact, formatRelative, initials } from "./data";
@@ -483,7 +486,7 @@ export function ConversationPanel({
                 >
                   <div className="flex flex-col" style={{ gap: 8 }}>
                     {messages.map((m) => (
-                      <MessageBubble key={m.id} m={m} />
+                      <MessageBubble key={m.id} m={m} contactName={contact.name} contactAvatar={contact.avatar} />
                     ))}
                   </div>
                 </div>
@@ -529,7 +532,15 @@ export function ConversationPanel({
 
 /* ---------------- subcomponents ---------------- */
 
-function MessageBubble({ m }: { m: Message }) {
+function MessageBubble({
+  m,
+  contactName,
+  contactAvatar,
+}: {
+  m: Message;
+  contactName: string;
+  contactAvatar?: string | null;
+}) {
   if (m.message_type === "system") {
     return (
       <div
@@ -553,6 +564,56 @@ function MessageBubble({ m }: { m: Message }) {
   }
 
   const isMe = m.direction === "outbound";
+
+  // ===== Audio: WhatsApp-like player as the bubble itself =====
+  if (m.message_type === "audio" && m.media_url) {
+    return (
+      <div
+        style={{
+          alignSelf: isMe ? "flex-end" : "flex-start",
+          maxWidth: "85%",
+          background: isMe
+            ? "color-mix(in oklab, var(--brand-400) 15%, var(--bg-surface))"
+            : "var(--bg-overlay)",
+          border: isMe
+            ? "1px solid color-mix(in oklab, var(--brand-400) 30%, transparent)"
+            : "1px solid var(--border)",
+          borderRadius: isMe ? "16px 4px 16px 16px" : "4px 16px 16px 16px",
+          padding: "6px 10px 4px",
+          animation: "fadeSlideIn 200ms ease-out",
+        }}
+      >
+        <AudioPlayer
+          src={m.media_url}
+          avatarName={contactName}
+          avatarUrl={contactAvatar ?? null}
+          isMe={isMe}
+        />
+        <div
+          style={{
+            marginTop: 2,
+            fontSize: 11,
+            color: "var(--text-muted)",
+            textAlign: "right",
+            display: "inline-flex",
+            alignItems: "center",
+            gap: 4,
+            float: "right",
+          }}
+        >
+          {formatRelative(m.created_at)}
+          {isMe && (
+            <CheckCheck
+              size={13}
+              color={m.status === "read" ? "var(--brand-400)" : "var(--text-muted)"}
+            />
+          )}
+        </div>
+        <div style={{ clear: "both" }} />
+      </div>
+    );
+  }
+
   return (
     <div
       style={{
@@ -587,14 +648,6 @@ function MessageBubble({ m }: { m: Message }) {
           controls
           src={m.media_url}
           style={{ display: "block", maxWidth: 260, width: "100%", borderRadius: 8, marginBottom: m.content ? 6 : 0 }}
-        />
-      )}
-      {m.media_url && m.message_type === "audio" && (
-        <audio
-          controls
-          preload="metadata"
-          src={m.media_url}
-          style={{ display: "block", width: 240, height: 36, marginBottom: m.content ? 6 : 0 }}
         />
       )}
       {m.media_url && m.message_type === "document" && (
@@ -642,6 +695,199 @@ function MessageBubble({ m }: { m: Message }) {
         )}
       </div>
       <div style={{ clear: "both" }} />
+    </div>
+  );
+}
+
+function fmtTime(s: number): string {
+  if (!isFinite(s) || s < 0) s = 0;
+  const m = Math.floor(s / 60);
+  const ss = Math.floor(s % 60).toString().padStart(2, "0");
+  return `${m}:${ss}`;
+}
+
+function AudioPlayer({
+  src,
+  avatarName,
+  avatarUrl,
+  isMe,
+}: {
+  src: string;
+  avatarName: string;
+  avatarUrl: string | null;
+  isMe: boolean;
+}) {
+  const audioRef = React.useRef<HTMLAudioElement | null>(null);
+  const trackRef = React.useRef<HTMLDivElement | null>(null);
+  const [playing, setPlaying] = React.useState(false);
+  const [cur, setCur] = React.useState(0);
+  const [dur, setDur] = React.useState(0);
+  const [seeking, setSeeking] = React.useState(false);
+
+  React.useEffect(() => {
+    const a = audioRef.current;
+    if (!a) return;
+    const onTime = () => { if (!seeking) setCur(a.currentTime); };
+    const onMeta = () => setDur(isFinite(a.duration) ? a.duration : 0);
+    const onEnd = () => { setPlaying(false); setCur(0); a.currentTime = 0; };
+    const onPlay = () => setPlaying(true);
+    const onPause = () => setPlaying(false);
+    a.addEventListener("timeupdate", onTime);
+    a.addEventListener("loadedmetadata", onMeta);
+    a.addEventListener("durationchange", onMeta);
+    a.addEventListener("ended", onEnd);
+    a.addEventListener("play", onPlay);
+    a.addEventListener("pause", onPause);
+    return () => {
+      a.removeEventListener("timeupdate", onTime);
+      a.removeEventListener("loadedmetadata", onMeta);
+      a.removeEventListener("durationchange", onMeta);
+      a.removeEventListener("ended", onEnd);
+      a.removeEventListener("play", onPlay);
+      a.removeEventListener("pause", onPause);
+    };
+  }, [seeking]);
+
+  const toggle = () => {
+    const a = audioRef.current;
+    if (!a) return;
+    if (a.paused) a.play().catch(() => {});
+    else a.pause();
+  };
+
+  const seekFromEvent = (clientX: number) => {
+    const el = trackRef.current;
+    const a = audioRef.current;
+    if (!el || !a || !dur) return;
+    const rect = el.getBoundingClientRect();
+    const ratio = Math.min(1, Math.max(0, (clientX - rect.left) / rect.width));
+    const t = ratio * dur;
+    setCur(t);
+    a.currentTime = t;
+  };
+
+  const onTrackPointerDown = (e: React.PointerEvent) => {
+    setSeeking(true);
+    (e.currentTarget as HTMLElement).setPointerCapture?.(e.pointerId);
+    seekFromEvent(e.clientX);
+  };
+  const onTrackPointerMove = (e: React.PointerEvent) => {
+    if (!seeking) return;
+    seekFromEvent(e.clientX);
+  };
+  const onTrackPointerUp = (e: React.PointerEvent) => {
+    if (!seeking) return;
+    seekFromEvent(e.clientX);
+    setSeeking(false);
+  };
+
+  const progress = dur > 0 ? cur / dur : 0;
+  const accent = isMe ? "var(--brand-400)" : "var(--text-muted)";
+
+  return (
+    <div style={{ display: "flex", alignItems: "center", gap: 10, minWidth: 240 }}>
+      {/* Avatar with mic badge */}
+      <div style={{ position: "relative", flexShrink: 0 }}>
+        <ContactAvatar name={avatarName} avatarUrl={avatarUrl ?? undefined} size={42} />
+        <div
+          style={{
+            position: "absolute",
+            right: -2,
+            bottom: -2,
+            width: 18,
+            height: 18,
+            borderRadius: 999,
+            background: "var(--brand-400)",
+            color: "#fff",
+            display: "inline-flex",
+            alignItems: "center",
+            justifyContent: "center",
+            border: "2px solid var(--bg-surface)",
+          }}
+        >
+          <Mic size={10} />
+        </div>
+      </div>
+
+      {/* Play / Pause */}
+      <button
+        type="button"
+        onClick={toggle}
+        aria-label={playing ? "Pausar" : "Reproduzir"}
+        style={{
+          width: 32, height: 32, borderRadius: 999,
+          background: "transparent",
+          color: "var(--text-primary)",
+          display: "inline-flex", alignItems: "center", justifyContent: "center",
+          border: "none", cursor: "pointer", flexShrink: 0,
+        }}
+      >
+        {playing ? <Pause size={20} fill="currentColor" /> : <Play size={20} fill="currentColor" />}
+      </button>
+
+      {/* Track + time */}
+      <div style={{ flex: 1, minWidth: 0, display: "flex", flexDirection: "column", gap: 2 }}>
+        <div
+          ref={trackRef}
+          onPointerDown={onTrackPointerDown}
+          onPointerMove={onTrackPointerMove}
+          onPointerUp={onTrackPointerUp}
+          style={{
+            position: "relative",
+            height: 18,
+            display: "flex",
+            alignItems: "center",
+            cursor: "pointer",
+            touchAction: "none",
+          }}
+        >
+          {/* dotted line */}
+          <div
+            style={{
+              position: "absolute",
+              left: 0, right: 0, top: "50%",
+              transform: "translateY(-50%)",
+              height: 2,
+              backgroundImage: `radial-gradient(circle, var(--text-muted) 0.9px, transparent 1.1px)`,
+              backgroundSize: "6px 2px",
+              backgroundRepeat: "repeat-x",
+              opacity: 0.55,
+            }}
+          />
+          {/* progress fill */}
+          <div
+            style={{
+              position: "absolute",
+              left: 0,
+              top: "50%",
+              transform: "translateY(-50%)",
+              height: 2,
+              width: `${progress * 100}%`,
+              background: accent,
+              borderRadius: 2,
+            }}
+          />
+          {/* dot */}
+          <div
+            style={{
+              position: "absolute",
+              left: `calc(${progress * 100}% - 6px)`,
+              top: "50%",
+              transform: "translateY(-50%)",
+              width: 12,
+              height: 12,
+              borderRadius: 999,
+              background: accent,
+              boxShadow: "0 0 0 2px var(--bg-surface)",
+            }}
+          />
+        </div>
+        <div style={{ fontSize: 11, color: "var(--text-muted)", fontVariantNumeric: "tabular-nums" }}>
+          {fmtTime(playing || cur > 0 ? cur : dur)}
+        </div>
+      </div>
+
+      <audio ref={audioRef} src={src} preload="metadata" style={{ display: "none" }} />
     </div>
   );
 }
