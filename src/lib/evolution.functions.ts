@@ -47,7 +47,7 @@ async function getOrCreateRow(userId: string) {
 }
 
 function isAuthError(msg: string): boolean {
-  return /forbidden|unauthorized|missing global api key|invalid api key|api key/i.test(msg);
+  return !/already|exist|in use/i.test(msg) && /forbidden|unauthorized|missing global api key|invalid api key|api key/i.test(msg);
 }
 
 async function configureEvolutionInstance(name: string, webhookUrl: string, webhookSecret: string) {
@@ -67,7 +67,7 @@ async function configureEvolutionInstance(name: string, webhookUrl: string, webh
     });
   } catch (e: any) {
     const msg = String(e?.message ?? "");
-    const exists = /exist|already/i.test(msg);
+    const exists = /already|exist|in use/i.test(msg);
     if (exists) {
       console.log("[evolution] createInstance: instância já existe, seguindo");
     } else if (isAuthError(msg)) {
