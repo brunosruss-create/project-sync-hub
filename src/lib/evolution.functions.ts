@@ -388,6 +388,7 @@ export const sendWhatsAppMessage = createServerFn({ method: "POST" })
       message_type: "text",
       status: "sent",
       sent_by: context.userId,
+      whatsapp_message_id: externalId,
     });
 
     return { ok: true, externalId };
@@ -473,6 +474,7 @@ export const sendWhatsAppMedia = createServerFn({ method: "POST" })
       media_url: data.url,
       media_mime: data.mime,
       media_name: data.name,
+      whatsapp_message_id: externalId,
     });
 
     return { ok: true, externalId };
@@ -515,6 +517,7 @@ export const sendWhatsAppAudio = createServerFn({ method: "POST" })
       sent_by: context.userId,
       media_url: data.url,
       media_mime: "audio/webm",
+      whatsapp_message_id: externalId,
     });
 
     return { ok: true, externalId };

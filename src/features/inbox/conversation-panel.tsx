@@ -213,6 +213,32 @@ export function ConversationPanel({
           );
         },
       )
+      .on(
+        "postgres_changes",
+        {
+          event: "UPDATE",
+          schema: "public",
+          table: "messages",
+          filter: `contact_id=eq.${contact.id}`,
+        },
+        (payload: any) => {
+          const r = payload.new;
+          setMessages((prev) =>
+            prev.map((m) =>
+              m.id === r.id
+                ? {
+                    ...m,
+                    status: r.status ?? m.status,
+                    content: r.content ?? m.content,
+                    media_url: r.media_url ?? m.media_url,
+                    media_mime: r.media_mime ?? m.media_mime,
+                    media_name: r.media_name ?? m.media_name,
+                  }
+                : m,
+            ),
+          );
+        },
+      )
       .subscribe();
 
     return () => {
@@ -601,13 +627,8 @@ function MessageBubble({
             float: "right",
           }}
         >
-          {formatRelative(m.created_at)}
-          {isMe && (
-            <CheckCheck
-              size={13}
-              color={m.status === "read" ? "var(--brand-400)" : "var(--text-muted)"}
-            />
-          )}
+          {fmtClock(m.created_at)}
+          {isMe && <StatusTicks status={m.status} />}
         </div>
         <div style={{ clear: "both" }} />
       </div>
@@ -686,17 +707,24 @@ function MessageBubble({
           marginLeft: 8,
         }}
       >
-        {formatRelative(m.created_at)}
-        {isMe && (
-          <CheckCheck
-            size={13}
-            color={m.status === "read" ? "var(--brand-400)" : "var(--text-muted)"}
-          />
-        )}
+        {fmtClock(m.created_at)}
+        {isMe && <StatusTicks status={m.status} />}
       </div>
       <div style={{ clear: "both" }} />
     </div>
   );
+}
+
+function fmtClock(date: Date): string {
+  return date.toLocaleTimeString("pt-BR", { hour: "2-digit", minute: "2-digit" });
+}
+
+function StatusTicks({ status }: { status: Message["status"] }) {
+  if (status === "sent") {
+    return <Check size={13} color="var(--text-muted)" />;
+  }
+  const color = status === "read" ? "#34B7F1" : "var(--text-muted)";
+  return <CheckCheck size={13} color={color} />;
 }
 
 function fmtTime(s: number): string {
