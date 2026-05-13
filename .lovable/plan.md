@@ -1,47 +1,59 @@
-## Objetivo
+## Plano
 
-Adicionar login/cadastro com Google nas páginas `/login` e `/signup`, e preparar uma tabela `profiles` no Supabase pra guardar dados básicos do usuário (necessária pra ligar ao Stripe depois sem refazer schema).
+Criar as duas rotas que faltam, no mesmo padrão visual das demais (header com título + ações, filtros, tabela/cards, empty state, skeleton).
 
-## O que vou fazer no código
+### 1. `/contacts` — Lista de Contatos do CRM
 
-1. **Botão "Continuar com Google"** em `/login` e `/signup`
-   - Usa `supabase.auth.signInWithOAuth({ provider: 'google', options: { redirectTo: <origin>/auth/callback } })`
-   - Mesmo botão funciona pra login e signup (Google decide se cria conta nova ou loga)
+Arquivo: `src/routes/_authenticated.contacts.tsx`
 
-2. **Rota `/auth/callback`** (`src/routes/auth.callback.tsx`)
-   - Página leve que aguarda o Supabase processar o token na URL e redireciona pra `/dashboard`
-   - Mostra "Finalizando login…" enquanto isso
+- **Header**: título "Contatos" + busca (debounced 300ms) + botão "+ Novo Contato"
+- **Filtros**: pílulas por coluna do kanban (Aguardando · Em atendimento · Resolvido · Urgente · Todos) e por tag
+- **Tabela** (desktop) / cards (mobile): Avatar · Nome · Telefone · Última mensagem · Etiquetas · Atendente · Coluna · Última interação
+  - Linhas clicam para abrir o painel de conversa (`ConversationPanel` já existe no inbox — reutilizar)
+  - Scroll horizontal no mobile, primeira coluna sticky
+- **Fonte de dados**: `supabase.from("contacts").select(...)`. Fallback para `MOCK_CONTACTS` de `@/features/inbox/data` se a tabela estiver vazia (mesmo padrão do inbox)
+- **Loading**: `SkeletonCard` × 6
+- **Empty state**: "Sua lista de contatos está vazia." + CTA "Conectar WhatsApp" → `/settings/whatsapp`
+- **TanStack Query** com `staleTime: 30s` (já é o default)
 
-3. **Hook `useAuth`** já tem `onAuthStateChange` — só precisa adicionar `signInWithGoogle()` no contexto
+### 2. `/reports` — Relatórios
 
-4. **Tabela `profiles` + trigger** (script SQL pra você rodar no Supabase)
-   - Colunas: `id` (FK pra `auth.users`), `email`, `full_name`, `avatar_url`, `stripe_customer_id` (nullable, pro futuro), `created_at`
-   - Trigger `on_auth_user_created` cria a row automaticamente no signup (Google ou email)
-   - RLS: usuário só lê/edita o próprio perfil
-   - Você roda o SQL no SQL Editor do Supabase (não vou usar migrations gerenciadas)
+Arquivo: `src/routes/_authenticated.reports.tsx`
 
-5. **Dashboard mostra avatar + nome** vindos do `profiles` (em vez de só email)
+O `/dashboard` cobre KPIs gerais. `/reports` é a versão **analítica/exportável**:
 
-## O que VOCÊ precisa fazer no Supabase (1x, manual)
+- **Header**: título "Relatórios" + filtro de período (Hoje · 7 dias · 30 dias · Customizado) + botão "Exportar CSV"
+- **Abas** no topo:
+  1. **Atendimento** — volume por dia (BarChart), tempo médio de resposta, taxa de resolução, distribuição por agente (tabela ranqueada)
+  2. **Agendamentos** — agendamentos por dia, no-show rate, top serviços agendados, receita estimada
+  3. **Serviços** — receita por serviço, ticket médio, serviços mais vendidos
+  4. **Equipe** — produtividade por agente: atendimentos, tempo médio, satisfação
+- Gráficos com `recharts` (já usado no dashboard)
+- Loading com `SkeletonCard`; empty state quando filtro não retorna dados
+- Período controlado por **search params** (`?period=7d`) com `validateSearch` + `zodValidator`+`fallback` para deep-link/refresh
 
-1. **Authentication → Providers → Google** → enable
-2. Criar OAuth credentials em https://console.cloud.google.com/apis/credentials:
-   - Application type: Web application
-   - Authorized redirect URI: `https://xrezmnaspkctuidehqqi.supabase.co/auth/v1/callback`
-3. Colar **Client ID** e **Client Secret** no Supabase
-4. **Authentication → URL Configuration** → adicionar nas "Redirect URLs":
-   - `https://id-preview--e2215eb7-4cbb-4afc-8773-9f93425b90f1.lovable.app/auth/callback`
-   - `http://localhost:*/auth/callback` (pra dev local, se usar)
-   - URL final quando publicar
-5. Rodar o SQL da tabela `profiles` no SQL Editor (eu te entrego pronto)
+### 3. Sidebar
 
-## Stripe (não agora, mas preparado)
+`src/components/app-sidebar.tsx` e `src/components/mobile-sidebar.tsx`:
+Trocar os destinos placeholder:
 
-- A coluna `stripe_customer_id` em `profiles` fica pronta pra quando ligarmos
-- Quando quiser ativar: criamos server function que gera Customer no Stripe na 1ª compra, salva o ID, e cria Checkout Session com trial gratuito
+```diff
+- { label: "Contatos",   to: "/dashboard", icon: Users },
+- { label: "Relatórios", to: "/dashboard", icon: BarChart3 },
++ { label: "Contatos",   to: "/contacts", icon: Users },
++ { label: "Relatórios", to: "/reports",  icon: BarChart3 },
+```
 
-## Não-objetivos desta etapa
+### 4. Command Palette
 
-- Não conectar Stripe agora
-- Não criar páginas de billing/pricing ainda
-- Não implementar magic link (já temos email/senha + Google é suficiente)
+`src/components/command-palette.tsx`: adicionar entradas "Ir para Contatos" e "Ir para Relatórios" no grupo Navegar.
+
+### 5. SQL — sem novas tabelas necessárias
+
+Tudo lê de tabelas que já existem (`contacts`, `appointments`, `services`, `messages`). Nada de migração nesta entrega.
+
+## Fora do escopo
+
+- Edição inline na tabela de contatos (só visualização + abrir conversa)
+- Exportar PDF (só CSV)
+- Agendamento de relatórios por email
