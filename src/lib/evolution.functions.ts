@@ -5,7 +5,7 @@ import { requireSupabaseAuth } from "@/integrations/supabase/auth-middleware";
 import { supabaseAdmin } from "@/integrations/supabase/client.server";
 import { evo, extractQRCode, instanceNameForOwner, normalizeQRCodeImage, tryFetchProfilePicture } from "@/lib/evolution.server";
 
-const WEBHOOK_EVENTS = ["MESSAGES_UPSERT", "CONNECTION_UPDATE", "QRCODE_UPDATED"];
+const WEBHOOK_EVENTS = ["MESSAGES_UPSERT", "MESSAGES_UPDATE", "SEND_MESSAGE_UPDATE", "CONNECTION_UPDATE", "QRCODE_UPDATED"];
 
 function isPublicHost(host: string | null | undefined): host is string {
   if (!host) return false;
