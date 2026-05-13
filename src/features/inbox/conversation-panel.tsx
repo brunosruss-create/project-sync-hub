@@ -359,8 +359,8 @@ export function ConversationPanel({
                   <MenuItem icon={<Tag size={14} />} onClick={() => menuAction("Adicionar tag")}>
                     Adicionar tag
                   </MenuItem>
-                  <MenuItem icon={<CalendarClock size={14} />} onClick={() => menuAction("Agendar retorno")}>
-                    Agendar retorno
+                  <MenuItem icon={<CalendarPlus size={14} />} onClick={() => { setMenuOpen(false); openSchedule(); }}>
+                    Agendar atendimento
                   </MenuItem>
                   <MenuItem icon={<Ban size={14} />} onClick={() => menuAction("Bloquear contato")}>
                     Bloquear contato
