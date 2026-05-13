@@ -1,4 +1,4 @@
-export type KanbanColumnId = "waiting" | "active" | "done" | "urgent";
+export type KanbanColumnId = "waiting" | "in_progress" | "scheduled" | "urgent";
 
 export interface ContactCard {
   id: string;
@@ -21,15 +21,15 @@ export const COLUMNS: Array<{
   color: string;
 }> = [
   { id: "waiting", label: "Aguardando", emoji: "🟡", color: "#F59E0B" },
-  { id: "active", label: "Em Atendimento", emoji: "🔵", color: "#3B82F6" },
-  { id: "done", label: "Concluído", emoji: "✅", color: "#25C880" },
+  { id: "in_progress", label: "Em Atendimento", emoji: "🔵", color: "#3B82F6" },
+  { id: "scheduled", label: "Agendado", emoji: "📅", color: "#25C880" },
   { id: "urgent", label: "Urgente", emoji: "🔴", color: "#EF4444" },
 ];
 
 export const COLUMN_COLOR: Record<KanbanColumnId, string> = {
   waiting: "#F59E0B",
-  active: "#3B82F6",
-  done: "#25C880",
+  in_progress: "#3B82F6",
+  scheduled: "#25C880",
   urgent: "#EF4444",
 };
 
