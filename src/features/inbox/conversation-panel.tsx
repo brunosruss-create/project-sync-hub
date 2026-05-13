@@ -630,6 +630,16 @@ export function ConversationPanel({
                             toast.error(e?.message ?? "Falha ao apagar");
                           }
                         }}
+                        onForward={(msg) =>
+                          setForwardSource({
+                            id: msg.id,
+                            content: msg.content ?? "",
+                            message_type: msg.message_type,
+                            media_url: msg.media_url ?? null,
+                            media_mime: msg.media_mime ?? null,
+                            media_name: msg.media_name ?? null,
+                          })
+                        }
                       />
                     ))}
                   </div>
