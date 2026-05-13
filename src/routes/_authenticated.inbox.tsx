@@ -84,6 +84,8 @@ function InboxPage() {
       assignedAgent: r.assigned_agent_id ?? null,
       tags: Array.isArray(r.tags) ? r.tags : [],
       isUnread: !!r.is_unread,
+      unreadCount: typeof r.unread_count === "number" ? r.unread_count : (r.is_unread ? 1 : 0),
+      lastDirection: r.last_direction ?? null,
       priority: r.priority === "urgent" ? "urgent" : "normal",
       kanban_column: (r.kanban_column ?? "waiting") as KanbanColumnId,
     });
@@ -92,9 +94,9 @@ function InboxPage() {
       const { data, error } = await supabase
         .from("contacts")
         .select(
-          "id,name,phone,avatar_url,kanban_column,assigned_agent_id,tags,priority,is_unread,last_message,last_message_at",
+          "id,name,phone,avatar_url,kanban_column,assigned_agent_id,tags,priority,is_unread,unread_count,last_direction,last_message,last_message_at",
         )
-        .order("last_message_at", { ascending: false });
+        .order("last_message_at", { ascending: false, nullsFirst: false });
       if (cancelled) return;
       if (error) {
         console.warn("[inbox] erro ao carregar contatos:", error.message);
