@@ -13,7 +13,7 @@ import {
   AlertTriangle,
   Filter,
 } from "lucide-react";
-import { toast } from "sonner";
+import { notify } from "@/lib/notify";
 import { supabase } from "@/integrations/supabase/client";
 import {
   HOUR_END,
@@ -133,7 +133,7 @@ function SchedulePage() {
       (a) => a.id !== draft.id && a.agent_id === draft.agent_id && overlap(a, draft),
     );
     if (conflict) {
-      toast.error("Horário em conflito com outro agendamento desse agente.");
+      notify.error("Horário em conflito com outro agendamento desse agente.");
       return false;
     }
     const exists = items.some((a) => a.id === draft.id);
@@ -141,7 +141,7 @@ function SchedulePage() {
       exists ? prev.map((a) => (a.id === draft.id ? draft : a)) : [...prev, draft],
     );
     setEditing(null);
-    toast.success(exists ? "Agendamento atualizado." : "Agendamento criado.");
+    notify.success(exists ? "Agendamento atualizado." : "Agendamento criado.");
 
     const { error } = await supabase.from("appointments").upsert({
       id: draft.id,
@@ -160,14 +160,14 @@ function SchedulePage() {
 
   const setStatus = async (id: string, status: AppointmentStatus) => {
     setItems((prev) => prev.map((a) => (a.id === id ? { ...a, status } : a)));
-    toast.success(`Status: ${STATUS_LABEL[status]}`);
+    notify.success(`Status: ${STATUS_LABEL[status]}`);
     await supabase.from("appointments").update({ status }).eq("id", id);
   };
 
   const remove = async (id: string) => {
     setItems((prev) => prev.filter((a) => a.id !== id));
     setOpenId(null);
-    toast.success("Agendamento removido.");
+    notify.success("Agendamento removido.");
     await supabase.from("appointments").delete().eq("id", id);
   };
 
@@ -1580,15 +1580,15 @@ function AppointmentModal({
       cid = c.id;
     }
     if (!cid) {
-      toast.error("Selecione ou crie um contato.");
+      notify.error("Selecione ou crie um contato.");
       return;
     }
     if (!serviceId) {
-      toast.error("Selecione um serviço.");
+      notify.error("Selecione um serviço.");
       return;
     }
     if (!agentId) {
-      toast.error("Selecione um agente.");
+      notify.error("Selecione um agente.");
       return;
     }
     const draft: Appointment = {

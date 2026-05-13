@@ -1,7 +1,7 @@
 import * as React from "react";
 import { createFileRoute } from "@tanstack/react-router";
 import { Plus, Search, Pencil, Archive, X, Check } from "lucide-react";
-import { toast } from "sonner";
+import { notify } from "@/lib/notify";
 import { supabase } from "@/integrations/supabase/client";
 import {
   type Category,
@@ -107,7 +107,7 @@ function ServicesPage() {
       exists ? prev.map((s) => (s.id === draft.id ? draft : s)) : [...prev, draft],
     );
     setEditing(null);
-    toast.success(exists ? "Serviço atualizado." : "Serviço criado.");
+    notify.success(exists ? "Serviço atualizado." : "Serviço criado.");
 
     const payload = {
       id: draft.id,
@@ -128,7 +128,7 @@ function ServicesPage() {
     setServices((prev) =>
       prev.map((s) => (s.id === id ? { ...s, status: "inactive" as const } : s)),
     );
-    toast.success("Serviço arquivado.");
+    notify.success("Serviço arquivado.");
     const { error } = await supabase
       .from("services")
       .update({ status: "inactive" })
@@ -592,7 +592,7 @@ function ServiceModal({
   const submit = (e: React.FormEvent) => {
     e.preventDefault();
     if (!name.trim()) {
-      toast.error("Nome do serviço é obrigatório.");
+      notify.error("Nome do serviço é obrigatório.");
       return;
     }
     const cents = parseCurrencyToCents(priceText);
