@@ -727,21 +727,44 @@ function AudioPlayer({
   React.useEffect(() => {
     const a = audioRef.current;
     if (!a) return;
-    const onTime = () => { if (!seeking) setCur(a.currentTime); };
-    const onMeta = () => setDur(isFinite(a.duration) ? a.duration : 0);
+    let fixingDuration = false;
+    const onTime = () => {
+      if (fixingDuration) return;
+      if (!seeking) setCur(a.currentTime);
+    };
+    const onMeta = () => {
+      if (isFinite(a.duration) && a.duration > 0) {
+        setDur(a.duration);
+      } else {
+        // MediaRecorder webm blobs lack duration metadata; force calc.
+        fixingDuration = true;
+        try { a.currentTime = 1e101; } catch {}
+      }
+    };
+    const onDurChange = () => {
+      if (isFinite(a.duration) && a.duration > 0) {
+        setDur(a.duration);
+        if (fixingDuration) {
+          fixingDuration = false;
+          try { a.currentTime = 0; } catch {}
+        }
+      }
+    };
     const onEnd = () => { setPlaying(false); setCur(0); a.currentTime = 0; };
     const onPlay = () => setPlaying(true);
     const onPause = () => setPlaying(false);
     a.addEventListener("timeupdate", onTime);
     a.addEventListener("loadedmetadata", onMeta);
-    a.addEventListener("durationchange", onMeta);
+    a.addEventListener("durationchange", onDurChange);
     a.addEventListener("ended", onEnd);
     a.addEventListener("play", onPlay);
     a.addEventListener("pause", onPause);
+    // Trigger metadata load eagerly
+    try { a.load(); } catch {}
     return () => {
       a.removeEventListener("timeupdate", onTime);
       a.removeEventListener("loadedmetadata", onMeta);
-      a.removeEventListener("durationchange", onMeta);
+      a.removeEventListener("durationchange", onDurChange);
       a.removeEventListener("ended", onEnd);
       a.removeEventListener("play", onPlay);
       a.removeEventListener("pause", onPause);
