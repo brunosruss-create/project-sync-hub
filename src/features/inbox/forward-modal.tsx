@@ -4,7 +4,7 @@ import { supabase } from "@/integrations/supabase/client";
 import { useAuth } from "@/hooks/use-auth";
 import { toast } from "sonner";
 import { useServerFn } from "@tanstack/react-start";
-import { sendWhatsAppMessage, sendWhatsAppMedia } from "@/lib/evolution.functions";
+import { sendWhatsAppMessage, sendWhatsAppMedia, sendWhatsAppAudio } from "@/lib/evolution.functions";
 
 export interface ForwardSource {
   id: string;
