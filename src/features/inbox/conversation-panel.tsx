@@ -321,8 +321,10 @@ export function ConversationPanel({
               <HeaderButton onClick={() => toast.info("Transferir — em breve.")}>
                 Transferir
               </HeaderButton>
-              <HeaderButton primary onClick={() => toast.success("Atendimento concluído.")}>
-                Concluir
+              <HeaderButton primary onClick={() => openSchedule()}>
+                <span className="inline-flex items-center" style={{ gap: 4 }}>
+                  <CalendarPlus size={13} /> Agendar
+                </span>
               </HeaderButton>
               <IconBtn label="Mais ações" onClick={() => setMenuOpen((v) => !v)}>
                 <MoreVertical size={15} />
