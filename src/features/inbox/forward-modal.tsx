@@ -365,9 +365,9 @@ export function ForwardModal({ open, source, excludeContactId, onClose }: Props)
               style={{
                 padding: "8px 14px",
                 borderRadius: 8,
-                background: "var(--accent)",
+                background: "var(--brand-400)",
                 border: "none",
-                color: "white",
+                color: "#fff",
                 cursor: selected.size === 0 || sending ? "not-allowed" : "pointer",
                 opacity: selected.size === 0 || sending ? 0.5 : 1,
                 fontSize: 13,
