@@ -20,7 +20,7 @@ const items = [
   { label: "Serviços", to: "/services", icon: Wrench },
   { label: "Contatos", to: "/dashboard", icon: Users },
   { label: "Relatórios", to: "/dashboard", icon: BarChart3 },
-  { label: "Configurações", to: "/dashboard", icon: Settings },
+  { label: "Configurações", to: "/settings/profile", icon: Settings },
 ] as const;
 
 export function AppSidebar() {
