@@ -71,6 +71,24 @@ function SchedulePage() {
   >(null);
   const [openId, setOpenId] = React.useState<string | null>(null);
 
+  // Cmd+K → "Novo agendamento" + tecla "A"
+  React.useEffect(() => {
+    const onNew = () => setEditing({ mode: "create" });
+    window.addEventListener("zf:new-appointment", onNew);
+    const onKey = (e: KeyboardEvent) => {
+      if (e.key.toLowerCase() !== "a" || e.metaKey || e.ctrlKey || e.altKey) return;
+      const t = e.target as HTMLElement | null;
+      const tag = t?.tagName;
+      if (tag === "INPUT" || tag === "TEXTAREA" || t?.isContentEditable) return;
+      onNew();
+    };
+    window.addEventListener("keydown", onKey);
+    return () => {
+      window.removeEventListener("zf:new-appointment", onNew);
+      window.removeEventListener("keydown", onKey);
+    };
+  }, []);
+
   // Try hydrate from supabase
   React.useEffect(() => {
     let cancelled = false;
