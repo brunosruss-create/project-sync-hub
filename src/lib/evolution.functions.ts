@@ -474,6 +474,7 @@ export const sendWhatsAppMedia = createServerFn({ method: "POST" })
       media_url: data.url,
       media_mime: data.mime,
       media_name: data.name,
+      whatsapp_message_id: externalId,
     });
 
     return { ok: true, externalId };
