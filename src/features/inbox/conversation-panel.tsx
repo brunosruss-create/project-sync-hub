@@ -708,6 +708,7 @@ function MessageBubble({
   onCancelEdit,
   onSaveEdit,
   onDelete,
+  onForward,
 }: {
   m: Message;
   displayStatus: Message["status"];
@@ -720,6 +721,7 @@ function MessageBubble({
   onCancelEdit?: () => void;
   onSaveEdit?: (text: string) => void;
   onDelete?: () => void;
+  onForward?: (m: Message) => void;
 }) {
   if (m.message_type === "system") {
     return (
