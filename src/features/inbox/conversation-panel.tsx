@@ -560,6 +560,27 @@ export function ConversationPanel({
                           setReplyingTo(msg);
                           setTimeout(() => taRef.current?.focus(), 0);
                         }}
+                        onReact={async (msg, emoji) => {
+                          // optimistic update
+                          setMessages((prev) =>
+                            prev.map((x) =>
+                              x.id === msg.id
+                                ? {
+                                    ...x,
+                                    reactions: [
+                                      ...((x.reactions ?? []).filter((r) => r.from !== "me")),
+                                      { emoji, from: "me" },
+                                    ],
+                                  }
+                                : x,
+                            ),
+                          );
+                          try {
+                            await reactFn({ data: { messageId: msg.id, reaction: emoji } });
+                          } catch (e: any) {
+                            toast.error(e?.message ?? "Falha ao reagir");
+                          }
+                        }}
                       />
                     ))}
                   </div>
