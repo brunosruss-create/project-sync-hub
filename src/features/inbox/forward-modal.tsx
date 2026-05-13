@@ -33,6 +33,7 @@ export function ForwardModal({ open, source, excludeContactId, onClose }: Props)
   const { user } = useAuth();
   const sendText = useServerFn(sendWhatsAppMessage);
   const sendMedia = useServerFn(sendWhatsAppMedia);
+  const sendAudio = useServerFn(sendWhatsAppAudio);
 
   const [contacts, setContacts] = React.useState<ContactRow[]>([]);
   const [loading, setLoading] = React.useState(false);
