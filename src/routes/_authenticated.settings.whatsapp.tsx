@@ -33,6 +33,7 @@ function WhatsAppPage() {
   const doDisconnect = useServerFn(disconnectInstance);
 
   const [confirmDc, setConfirmDc] = React.useState(false);
+  const [now, setNow] = React.useState(Date.now());
 
   const { data, isLoading } = useQuery({
     queryKey: ["whatsapp-instance"],
@@ -42,6 +43,8 @@ function WhatsAppPage() {
 
   const instance = data?.instance ?? null;
   const status: Status = (instance?.status as Status) ?? "disconnected";
+  const expiresAt = instance?.qr_expires_at ? new Date(instance.qr_expires_at).getTime() : 0;
+  const secondsLeft = status === "pending" && expiresAt ? Math.max(0, Math.ceil((expiresAt - now) / 1000)) : null;
 
   // Polling enquanto pendente — pega QR / mudança de status
   React.useEffect(() => {
@@ -55,6 +58,19 @@ function WhatsAppPage() {
     return () => clearInterval(id);
   }, [status, doRefresh, qc]);
 
+  React.useEffect(() => {
+    if (status !== "pending") return;
+    const id = setInterval(() => setNow(Date.now()), 1000);
+    return () => clearInterval(id);
+  }, [status]);
+
+  React.useEffect(() => {
+    if (status !== "pending" || !expiresAt || secondsLeft !== 0) return;
+    void doRefresh({ data: { forceQrRefresh: true } }).then(() => {
+      qc.invalidateQueries({ queryKey: ["whatsapp-instance"] });
+    });
+  }, [status, expiresAt, secondsLeft, doRefresh, qc]);
+
   const connect = useMutation({
     mutationFn: () => doConnect({ data: undefined as never }),
     onSuccess: () => {
@@ -62,6 +78,15 @@ function WhatsAppPage() {
       qc.invalidateQueries({ queryKey: ["whatsapp-instance"] });
     },
     onError: (e: any) => toast.error(e?.message ?? "Falha ao conectar"),
+  });
+
+  const refreshQr = useMutation({
+    mutationFn: () => doRefresh({ data: { forceQrRefresh: true } }),
+    onSuccess: () => {
+      toast.success("Novo QR Code gerado");
+      qc.invalidateQueries({ queryKey: ["whatsapp-instance"] });
+    },
+    onError: (e: any) => toast.error(e?.message ?? "Falha ao gerar novo QR"),
   });
 
   const disconnect = useMutation({
