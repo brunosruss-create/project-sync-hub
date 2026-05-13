@@ -786,10 +786,12 @@ function MessageChevron({
   isMe,
   bubbleBg,
   message,
+  onReply,
 }: {
   isMe: boolean;
   bubbleBg: string;
   message: Message;
+  onReply?: (m: Message) => void;
 }) {
   return (
     <MessageActions
@@ -802,6 +804,7 @@ function MessageChevron({
         mediaName: message.media_name ?? null,
         messageType: message.message_type,
       }}
+      onReply={() => onReply?.(message)}
     />
   );
 }
