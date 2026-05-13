@@ -105,7 +105,7 @@ function InboxPage() {
             "id,name,phone,avatar_url,kanban_column,assigned_agent_id,tags,priority,is_unread,last_message,last_message_at",
           )
           .order("last_message_at", { ascending: false, nullsFirst: false });
-        data = r.data;
+        data = r.data as any;
         error = r.error;
       }
       if (cancelled) return;
