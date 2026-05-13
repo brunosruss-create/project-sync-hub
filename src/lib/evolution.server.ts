@@ -1,6 +1,10 @@
 // Helper HTTP do Evolution API. Server-only (lê process.env).
 
-const BASE = () => (process.env.EVOLUTION_API_URL ?? "").replace(/\/$/, "");
+const BASE = () => {
+  let url = (process.env.EVOLUTION_API_URL ?? "").trim().replace(/\/$/, "");
+  if (url && !/^https?:\/\//i.test(url)) url = `https://${url}`;
+  return url;
+};
 const KEY = () => process.env.EVOLUTION_API_KEY ?? "";
 
 async function call<T = any>(
