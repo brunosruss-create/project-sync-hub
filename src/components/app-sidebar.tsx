@@ -21,8 +21,8 @@ const items = [
   { label: "Agenda", to: "/schedule", icon: Calendar },
   { label: "Serviços", to: "/services", icon: Wrench },
   { label: "Agente IA", to: "/ai-agent", icon: Bot },
-  { label: "Contatos", to: "/dashboard", icon: Users },
-  { label: "Relatórios", to: "/dashboard", icon: BarChart3 },
+  { label: "Contatos", to: "/contacts", icon: Users },
+  { label: "Relatórios", to: "/reports", icon: BarChart3 },
   { label: "Configurações", to: "/settings/profile", icon: Settings },
   { label: "Super Admin", to: "/super-admin/workspaces", icon: Shield },
 ] as const;

@@ -9,6 +9,8 @@ import {
   Bot,
   Settings,
   Plus,
+  Users,
+  BarChart3,
 } from "lucide-react";
 
 type Action = {
@@ -40,6 +42,8 @@ export function CommandPalette() {
       { id: "go-schedule", group: "Navegar", label: "Ir para Agenda", icon: Calendar, perform: () => navigate({ to: "/schedule" }) },
       { id: "go-services", group: "Navegar", label: "Ir para Serviços", icon: Wrench, perform: () => navigate({ to: "/services" }) },
       { id: "go-ai", group: "Navegar", label: "Ir para Agente IA", icon: Bot, perform: () => navigate({ to: "/ai-agent" }) },
+      { id: "go-contacts", group: "Navegar", label: "Ir para Contatos", icon: Users, perform: () => navigate({ to: "/contacts" }) },
+      { id: "go-reports", group: "Navegar", label: "Ir para Relatórios", icon: BarChart3, perform: () => navigate({ to: "/reports" }) },
       { id: "go-settings", group: "Ajustes", label: "Configurações do perfil", icon: Settings, perform: () => navigate({ to: "/settings/profile" }) },
       { id: "go-whatsapp", group: "Ajustes", label: "Conectar WhatsApp", icon: Settings, perform: () => navigate({ to: "/settings/whatsapp" }) },
       { id: "new-contact", group: "Ações", label: "Novo contato", icon: Plus, keywords: "criar adicionar", perform: () => { navigate({ to: "/inbox" }); window.dispatchEvent(new CustomEvent("zf:new-contact")); } },
