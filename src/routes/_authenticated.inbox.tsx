@@ -9,18 +9,22 @@ import {
   type DragEndEvent,
   type DragStartEvent,
 } from "@dnd-kit/core";
-import { Search, Plus, Filter, MessageSquare } from "lucide-react";
+import { Search, Plus, Filter, MessageSquare, Columns3 } from "lucide-react";
 import { notify } from "@/lib/notify";
 import { EmptyState } from "@/components/empty-state";
+import { ConfirmDialog } from "@/components/confirm-dialog";
 import {
-  COLUMNS,
+  DEFAULT_COLUMNS,
   MOCK_CONTACTS,
   type ContactCard as Contact,
+  type KanbanColumnDef,
   type KanbanColumnId,
 } from "@/features/inbox/data";
-import { KanbanColumn } from "@/features/inbox/kanban-column";
+import { KanbanColumn, type ColumnMenuRequestDetail } from "@/features/inbox/kanban-column";
 import { ContactCard, type CardMenuRequestDetail } from "@/features/inbox/contact-card";
 import { CardMenu, type CardMenuAction } from "@/features/inbox/card-menu";
+import { ColumnMenu, type ColumnMenuAction } from "@/features/inbox/column-menu";
+import { ColumnEditModal } from "@/features/inbox/column-edit-modal";
 import { ConversationPanel } from "@/features/inbox/conversation-panel";
 import { NewContactModal } from "@/features/inbox/new-contact-modal";
 import { EditContactModal } from "@/features/inbox/edit-contact-modal";
@@ -49,6 +53,13 @@ function InboxPage() {
   const [menuState, setMenuState] = React.useState<CardMenuRequestDetail | null>(null);
   const [editTarget, setEditTarget] = React.useState<Contact | null>(null);
   const [scheduleTarget, setScheduleTarget] = React.useState<Contact | null>(null);
+
+  // Colunas dinâmicas
+  const [columns, setColumns] = React.useState<KanbanColumnDef[]>(DEFAULT_COLUMNS);
+  const [columnMenuState, setColumnMenuState] = React.useState<ColumnMenuRequestDetail | null>(null);
+  const [columnEditTarget, setColumnEditTarget] = React.useState<KanbanColumnDef | null>(null);
+  const [columnEditMode, setColumnEditMode] = React.useState<"create" | "edit" | null>(null);
+  const [columnDeleteTarget, setColumnDeleteTarget] = React.useState<KanbanColumnDef | null>(null);
 
   const sensors = useSensors(
     useSensor(PointerSensor, { activationConstraint: { distance: 4 } }),
