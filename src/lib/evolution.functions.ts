@@ -140,71 +140,65 @@ export const connectInstance = createServerFn({ method: "POST" })
     const row = await getOrCreateRow(context.userId);
     const name = row.instance_name as string;
     const baseUrl = publicBaseUrl();
-    if (!baseUrl) {
-      throw new Error(
-        "URL pública do app não detectada. Defina o secret PUBLIC_APP_URL (ex.: https://github-vercel-bridge.lovable.app) e tente novamente.",
-      );
-    }
-    const webhookUrl = `${baseUrl}/api/public/evolution/${row.id}`;
+    const webhookUrl = baseUrl ? `${baseUrl}/api/public/evolution/${row.id}` : null;
+    const webhookSecret = (row.webhook_secret as string | null) ?? "";
 
     let qr: string | null = null;
-    let rawConnect: any = null;
 
-    // /instance/connect é a fonte mais confiável para QR em instância já existente.
+    // 1) Tenta /instance/connect direto (funciona se a instância já existir)
     try {
-      rawConnect = await evo.connect(name);
-      qr = await normalizeQRCodeImage(extractQRCode(rawConnect));
-      await ensureWebhook(name, webhookUrl, row.webhook_secret as string);
+      const r1 = await evo.connect(name);
+      qr = await normalizeQRCodeImage(extractQRCode(r1));
     } catch (e: any) {
       const msg = String(e?.message ?? e);
       if (isAuthError(msg)) {
         throw new Error(
-          "Evolution API recusou a autenticação (Forbidden) ao tentar conectar. Verifique EVOLUTION_API_KEY (Lovable) vs AUTHENTICATION_API_KEY (Railway).",
+          "Evolution API recusou a autenticação (Forbidden). Verifique EVOLUTION_API_KEY (Lovable) vs AUTHENTICATION_API_KEY (Railway).",
         );
       }
-      console.warn("[evolution] connect before create:", msg);
+      console.warn("[evolution] connect:", msg);
     }
 
-    if (!qr) {
-      qr = await configureEvolutionInstance(name, webhookUrl, row.webhook_secret as string);
-    }
-
-    try {
-      if (!qr) {
-        rawConnect = await evo.connect(name);
-        qr = await normalizeQRCodeImage(extractQRCode(rawConnect));
-      }
-    } catch (e: any) {
-      const msg = String(e?.message ?? e);
-      if (isAuthError(msg)) {
-        throw new Error(
-          "Evolution API recusou a autenticação (Forbidden) ao tentar conectar. Verifique EVOLUTION_API_KEY (Lovable) vs AUTHENTICATION_API_KEY (Railway).",
-        );
-      }
-      throw new Error(`Falha ao conectar: ${msg}`);
-    }
-
+    // 2) Se não veio QR, cria a instância e tenta de novo
     if (!qr) {
       try {
-        const list: any = await evo.fetchInstances(name);
-        const inst = firstFetchedInstance(list);
-        console.warn("[evolution] sem QR após connect", {
-          connectKeys: payloadKeys(rawConnect),
-          instanceState: inst?.instance?.state ?? inst?.state ?? null,
-          instanceStatus: inst?.instance?.status ?? inst?.status ?? null,
+        const created = await evo.createInstance({
+          instanceName: name,
+          integration: "WHATSAPP-BAILEYS",
+          qrcode: true,
         });
+        qr = await normalizeQRCodeImage(extractQRCode(created));
       } catch (e: any) {
-        console.warn("[evolution] fetchInstances after missing QR:", e?.message ?? e);
+        const msg = String(e?.message ?? e);
+        if (!/already|exist|in use/i.test(msg)) {
+          if (isAuthError(msg)) {
+            throw new Error(
+              "Evolution API recusou a autenticação (Forbidden) ao criar a instância. Verifique EVOLUTION_API_KEY.",
+            );
+          }
+          console.warn("[evolution] createInstance:", msg);
+        }
       }
+
+      if (!qr) {
+        try {
+          const r2 = await evo.connect(name);
+          qr = await normalizeQRCodeImage(extractQRCode(r2));
+        } catch (e: any) {
+          console.warn("[evolution] connect retry:", e?.message ?? e);
+        }
+      }
+    }
+
+    if (!qr) {
       await supabaseAdmin
         .from("whatsapp_instances")
         .update({ status: "error", qr_code: null })
         .eq("id", row.id);
-      throw new Error(
-        "A Evolution API conectou, mas respondeu sem QR Code. No Railway, defina QRCODE_COLOR como #000000 (não vazio), mantenha QRCODE_LIMIT maior que 0, faça redeploy da Evolution e clique em Reconectar.",
-      );
+      throw new Error("Evolution conectou mas não devolveu QR Code. Verifique QRCODE_LIMIT no Railway.");
     }
 
+    // 3) Salva QR no DB ANTES do webhook (que pode falhar sem afetar o QR)
     const { data: updated } = await supabaseAdmin
       .from("whatsapp_instances")
       .update({
@@ -216,6 +210,15 @@ export const connectInstance = createServerFn({ method: "POST" })
       .eq("id", row.id)
       .select("*")
       .single();
+
+    // 4) Webhook é best-effort, nunca derruba o QR
+    if (webhookUrl) {
+      try {
+        await ensureWebhook(name, webhookUrl, webhookSecret);
+      } catch (e: any) {
+        console.warn("[evolution] webhook (não bloqueia QR):", e?.message ?? e);
+      }
+    }
 
     return { instance: updated, qr };
   });
