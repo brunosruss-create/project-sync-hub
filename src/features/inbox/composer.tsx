@@ -237,9 +237,22 @@ export function Composer({ draft, setDraft, taRef, onSend, onClosePanel, onSendA
     setAudioPreview(null);
   };
 
-  const sendAudio = () => {
-    toast.info("Áudio — em breve.");
-    discardAudioPreview();
+  const [sendingAudio, setSendingAudio] = React.useState(false);
+  const sendAudio = async () => {
+    if (sendingAudio || !audioPreview) return;
+    if (!onSendAudio) {
+      toast.error("Envio de áudio indisponível.");
+      return;
+    }
+    setSendingAudio(true);
+    try {
+      await onSendAudio(audioPreview.blob);
+      discardAudioPreview();
+    } catch (e: any) {
+      toast.error(e?.message ?? "Falha ao enviar áudio.");
+    } finally {
+      setSendingAudio(false);
+    }
   };
 
   // long press handlers on Mic
