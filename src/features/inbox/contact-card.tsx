@@ -2,31 +2,60 @@ import * as React from "react";
 import { useDraggable } from "@dnd-kit/core";
 import { CSS } from "@dnd-kit/utilities";
 import { AlertTriangle, User as UserIcon } from "lucide-react";
-import { type ContactCard as Contact, COLUMN_COLOR, formatRelative, initials } from "./data";
+import {
+  type ContactCard as Contact,
+  formatRelative,
+  formatPhone,
+  formatMessagePreview,
+  initials,
+} from "./data";
 
 type Props = {
   contact: Contact;
   onClick: () => void;
   isOverlay?: boolean;
+  isSelected?: boolean;
 };
 
-export function ContactCard({ contact, onClick, isOverlay }: Props) {
+// Hash determinístico → cor do avatar
+function avatarColor(name: string): string {
+  let h = 0;
+  for (let i = 0; i < name.length; i++) h = (h * 31 + name.charCodeAt(i)) >>> 0;
+  const hue = h % 360;
+  return `hsl(${hue}, 55%, 45%)`;
+}
+
+function useTick(ms = 60_000) {
+  const [, setT] = React.useState(0);
+  React.useEffect(() => {
+    const id = window.setInterval(() => setT((v) => v + 1), ms);
+    return () => window.clearInterval(id);
+  }, [ms]);
+}
+
+export function ContactCard({ contact, onClick, isOverlay, isSelected }: Props) {
+  useTick(60_000); // recalcula tempo relativo a cada 60s sem refetch
   const { attributes, listeners, setNodeRef, transform, isDragging } = useDraggable({
     id: contact.id,
     data: { contact },
   });
 
+  const unread = contact.unreadCount ?? 0;
+  const showBadge = unread > 0;
+
   const style: React.CSSProperties = {
-    width: 260,
-    background: "var(--bg-surface)",
-    border: "1px solid var(--border)",
-    borderLeft: `3px solid ${COLUMN_COLOR[contact.kanban_column]}`,
+    width: "100%",
+    background: isSelected ? "color-mix(in oklab, var(--brand-400) 6%, var(--bg-surface))" : "var(--bg-surface)",
+    border: `1px solid ${isSelected ? "var(--brand-400)" : "var(--border)"}`,
     borderRadius: 8,
     padding: 12,
+    position: "relative",
     cursor: isOverlay ? "grabbing" : "grab",
     opacity: isDragging && !isOverlay ? 0 : 1,
     transform: CSS.Translate.toString(transform),
-    transition: isOverlay ? undefined : "transform 150ms var(--ease-default), border-color 150ms",
+    transition: isOverlay
+      ? undefined
+      : "transform 150ms var(--ease-default), border-color 150ms, background 150ms, box-shadow 150ms",
     ...(isOverlay
       ? {
           opacity: 0.92,
@@ -36,6 +65,8 @@ export function ContactCard({ contact, onClick, isOverlay }: Props) {
       : {}),
   };
 
+  const ini = initials(contact.name);
+
   return (
     <div
       ref={setNodeRef}
@@ -44,46 +75,77 @@ export function ContactCard({ contact, onClick, isOverlay }: Props) {
       {...listeners}
       {...attributes}
       onClick={(e) => {
-        // dnd-kit fires click only when not dragging — guard anyway
         if (isDragging) return;
         e.stopPropagation();
         onClick();
       }}
       onMouseEnter={(e) => {
-        if (isOverlay) return;
+        if (isOverlay || isSelected) return;
         e.currentTarget.style.transform = "translateY(-1px)";
         e.currentTarget.style.borderColor = "var(--border-strong)";
+        e.currentTarget.style.background = "var(--bg-overlay)";
         e.currentTarget.style.boxShadow = "0 6px 16px rgba(0,0,0,0.18)";
       }}
       onMouseLeave={(e) => {
-        if (isOverlay) return;
+        if (isOverlay || isSelected) return;
         e.currentTarget.style.transform = "";
         e.currentTarget.style.borderColor = "var(--border)";
+        e.currentTarget.style.background = "var(--bg-surface)";
         e.currentTarget.style.boxShadow = "";
       }}
     >
-      {/* Row 1: avatar + name + unread */}
-      <div className="flex items-center gap-2">
+      {/* Badge não lidas (canto superior direito) */}
+      {showBadge && (
+        <div
+          aria-label={`${unread} não lida${unread === 1 ? "" : "s"}`}
+          style={{
+            position: "absolute",
+            top: -6,
+            right: -6,
+            minWidth: unread > 9 ? 24 : 18,
+            height: 18,
+            padding: unread > 9 ? "0 5px" : 0,
+            borderRadius: 9,
+            background: "var(--brand-400, #25D366)",
+            color: "#fff",
+            fontSize: 10,
+            fontWeight: 700,
+            display: "inline-flex",
+            alignItems: "center",
+            justifyContent: "center",
+            border: "2px solid var(--bg-surface)",
+            boxShadow: "0 2px 6px rgba(0,0,0,0.25)",
+            animation: "zfBadgeIn 200ms cubic-bezier(.34,1.56,.64,1)",
+            lineHeight: 1,
+          }}
+        >
+          {unread > 99 ? "99+" : unread}
+        </div>
+      )}
+
+      {/* Linha 1: avatar + nome */}
+      <div className="flex items-center" style={{ gap: 8 }}>
         {contact.avatar ? (
           <img
             src={contact.avatar}
             alt={contact.name}
-            style={{ width: 28, height: 28, borderRadius: 999, objectFit: "cover" }}
+            style={{ width: 32, height: 32, borderRadius: 999, objectFit: "cover", flexShrink: 0 }}
           />
         ) : (
           <div
             className="inline-flex items-center justify-center"
             style={{
-              width: 28,
-              height: 28,
+              width: 32,
+              height: 32,
               borderRadius: 999,
-              background: "var(--bg-overlay)",
-              color: "var(--text-primary)",
-              fontSize: 11,
+              background: avatarColor(contact.name),
+              color: "#fff",
+              fontSize: 12,
               fontWeight: 600,
+              flexShrink: 0,
             }}
           >
-            {initials(contact.name) || <UserIcon size={12} />}
+            {ini || <UserIcon size={14} />}
           </div>
         )}
         <div
@@ -92,29 +154,20 @@ export function ContactCard({ contact, onClick, isOverlay }: Props) {
         >
           {contact.name}
         </div>
-        {contact.isUnread && (
-          <span
-            aria-label="não lido"
-            style={{
-              width: 8,
-              height: 8,
-              borderRadius: 999,
-              background: "var(--success)",
-              boxShadow: "0 0 0 3px color-mix(in oklab, var(--success) 25%, transparent)",
-            }}
-          />
+        {!showBadge && contact.priority === "urgent" && (
+          <AlertTriangle size={13} style={{ color: "var(--danger)", flexShrink: 0 }} />
         )}
       </div>
 
-      {/* Row 2: phone */}
+      {/* Linha 2: telefone formatado */}
       <div
         className="font-mono"
-        style={{ marginTop: 4, fontSize: 11, color: "var(--text-muted)" }}
+        style={{ marginTop: 6, fontSize: 11, color: "var(--text-muted)" }}
       >
-        {contact.phone}
+        {formatPhone(contact.phone)}
       </div>
 
-      {/* Row 3: last message */}
+      {/* Linha 3: preview da última mensagem */}
       <div
         className="truncate"
         style={{
@@ -124,10 +177,10 @@ export function ContactCard({ contact, onClick, isOverlay }: Props) {
           lineHeight: 1.45,
         }}
       >
-        {contact.lastMessage}
+        {formatMessagePreview(contact.lastMessage, contact.lastDirection ?? null)}
       </div>
 
-      {/* Footer */}
+      {/* Linha 4: tempo relativo + tags */}
       <div
         className="flex items-center justify-between"
         style={{ marginTop: 10, gap: 6 }}
@@ -152,12 +205,8 @@ export function ContactCard({ contact, onClick, isOverlay }: Props) {
           ))}
         </div>
         <div
-          className="flex items-center shrink-0"
-          style={{ gap: 4, fontSize: 11, color: "var(--text-muted)" }}
+          style={{ fontSize: 11, color: "var(--text-muted)", flexShrink: 0 }}
         >
-          {contact.priority === "urgent" && (
-            <AlertTriangle size={11} style={{ color: "var(--danger)" }} />
-          )}
           {formatRelative(contact.lastMessageAt)}
         </div>
       </div>
