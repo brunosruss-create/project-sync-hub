@@ -13,6 +13,9 @@ import {
   CalendarPlus,
   FileText,
   Download,
+  Play,
+  Pause,
+  Mic,
 } from "lucide-react";
 import { Composer } from "./composer";
 import { type ContactCard as Contact, formatRelative, initials } from "./data";
