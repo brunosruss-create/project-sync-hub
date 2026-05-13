@@ -601,14 +601,16 @@ function MessageBubble({
 
   // ===== Audio: WhatsApp-like player as the bubble itself =====
   if (m.message_type === "audio" && m.media_url) {
+    const audioBg = isMe
+      ? "color-mix(in oklab, var(--brand-400) 15%, var(--bg-surface))"
+      : "var(--bg-overlay)";
     return (
       <div
+        className="group/msg relative"
         style={{
           alignSelf: isMe ? "flex-end" : "flex-start",
           maxWidth: "85%",
-          background: isMe
-            ? "color-mix(in oklab, var(--brand-400) 15%, var(--bg-surface))"
-            : "var(--bg-overlay)",
+          background: audioBg,
           border: isMe
             ? "1px solid color-mix(in oklab, var(--brand-400) 30%, transparent)"
             : "1px solid var(--border)",
@@ -617,6 +619,7 @@ function MessageBubble({
           animation: "fadeSlideIn 200ms ease-out",
         }}
       >
+        <MessageChevron isMe={isMe} bubbleBg={audioBg} />
         <AudioPlayer
           src={m.media_url}
           avatarName={contactName}
