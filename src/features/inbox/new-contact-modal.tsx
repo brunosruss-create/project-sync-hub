@@ -275,6 +275,8 @@ export function NewContactModal({ open, onClose, onCreated }: Props) {
     try {
       const insertPayload: Record<string, any> = {
         owner_user_id: user.id,
+        // Espelha em user_id caso a coluna legada ainda exista (compat).
+        user_id: user.id,
         name: finalName,
         phone: normalized,
         kanban_column: column,
@@ -285,7 +287,7 @@ export function NewContactModal({ open, onClose, onCreated }: Props) {
       };
       if (assignSelf) insertPayload.assigned_agent_id = user.id;
 
-      const { data: created, error } = await supabase
+      let { data: created, error } = await supabase
         .from("contacts")
         .insert(insertPayload)
         .select(
@@ -293,7 +295,27 @@ export function NewContactModal({ open, onClose, onCreated }: Props) {
         )
         .single();
 
+      // Se a coluna user_id não existir mais, refaz sem ela.
+      if (error && /user_id/i.test(error.message ?? "") && /column/i.test(error.message ?? "")) {
+        delete insertPayload.user_id;
+        const retry = await supabase
+          .from("contacts")
+          .insert(insertPayload)
+          .select(
+            "id,name,phone,avatar_url,kanban_column,assigned_agent_id,tags,priority,is_unread,last_message,last_message_at",
+          )
+          .single();
+        created = retry.data;
+        error = retry.error;
+      }
+
       if (error || !created) {
+        console.error("[new-contact] insert error", {
+          message: error?.message,
+          code: (error as any)?.code,
+          details: (error as any)?.details,
+          hint: (error as any)?.hint,
+        });
         notify.error(error?.message ?? "Não foi possível criar o contato.");
         setSubmitting(false);
         return;
