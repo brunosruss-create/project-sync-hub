@@ -1,6 +1,6 @@
 import * as React from "react";
 import * as DropdownMenu from "@radix-ui/react-dropdown-menu";
-import { ChevronDown, Reply, Forward, Copy, Smile, Pencil, Trash2, Download } from "lucide-react";
+import { ChevronDown, Reply, Forward, Copy, Pencil, Trash2, Download } from "lucide-react";
 import { toast } from "sonner";
 
 export type MessageActionContext = {
@@ -17,10 +17,12 @@ type Props = {
   bubbleBg: string;
   onReply?: (m: MessageActionContext) => void;
   onForward?: (m: MessageActionContext) => void;
-  onReact?: (m: MessageActionContext) => void;
+  onReact?: (m: MessageActionContext, emoji: string) => void;
   onEdit?: (m: MessageActionContext) => void;
   onDelete?: (m: MessageActionContext) => void;
 };
+
+const QUICK_REACTIONS = ["👍", "❤️", "😂", "😮", "😢", "🙏"];
 
 export function MessageActions({
   message,
@@ -107,8 +109,48 @@ export function MessageActions({
             color: "var(--text-primary)",
           }}
         >
+          {/* Quick reactions row */}
+          <div
+            style={{
+              display: "flex",
+              alignItems: "center",
+              justifyContent: "space-between",
+              gap: 2,
+              padding: "4px 4px 6px",
+              borderBottom: "1px solid var(--border)",
+              marginBottom: 4,
+            }}
+          >
+            {QUICK_REACTIONS.map((emoji) => (
+              <DropdownMenu.Item
+                key={emoji}
+                onSelect={() => onReact?.(message, emoji)}
+                style={{
+                  display: "inline-flex",
+                  alignItems: "center",
+                  justifyContent: "center",
+                  width: 28,
+                  height: 28,
+                  borderRadius: 999,
+                  cursor: "pointer",
+                  outline: "none",
+                  fontSize: 18,
+                  lineHeight: 1,
+                }}
+                onMouseEnter={(e) => {
+                  (e.currentTarget as HTMLElement).style.background = "var(--bg-overlay)";
+                  (e.currentTarget as HTMLElement).style.transform = "scale(1.2)";
+                }}
+                onMouseLeave={(e) => {
+                  (e.currentTarget as HTMLElement).style.background = "transparent";
+                  (e.currentTarget as HTMLElement).style.transform = "scale(1)";
+                }}
+              >
+                {emoji}
+              </DropdownMenu.Item>
+            ))}
+          </div>
           <Item icon={<Reply size={15} />} label="Responder" onSelect={() => onReply?.(message)} />
-          <Item icon={<Smile size={15} />} label="Reagir" onSelect={() => onReact?.(message)} />
           <Item icon={<Forward size={15} />} label="Encaminhar" onSelect={() => onForward?.(message)} />
           {hasText && <Item icon={<Copy size={15} />} label="Copiar" onSelect={handleCopy} />}
           {hasMedia && <Item icon={<Download size={15} />} label="Baixar" onSelect={handleDownload} />}

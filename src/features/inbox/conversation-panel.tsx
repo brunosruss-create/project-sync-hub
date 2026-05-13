@@ -25,7 +25,7 @@ import { supabase } from "@/integrations/supabase/client";
 import { useAuth } from "@/hooks/use-auth";
 import { toast } from "sonner";
 import { useServerFn } from "@tanstack/react-start";
-import { sendWhatsAppMessage, refreshContactAvatar, sendWhatsAppMedia, sendWhatsAppAudio } from "@/lib/evolution.functions";
+import { sendWhatsAppMessage, refreshContactAvatar, sendWhatsAppMedia, sendWhatsAppAudio, reactToMessage } from "@/lib/evolution.functions";
 import { ScheduleModal } from "./schedule-modal";
 import { MessageActions } from "./message-actions";
 import {
@@ -112,6 +112,7 @@ export function ConversationPanel({
   const sendMediaFn = useServerFn(sendWhatsAppMedia);
   const sendAudioFn = useServerFn(sendWhatsAppAudio);
   const refreshAvatar = useServerFn(refreshContactAvatar);
+  const reactFn = useServerFn(reactToMessage);
   const [tab, setTab] = React.useState<Tab>("conversation");
   const [draft, setDraft] = React.useState("");
   const [menuOpen, setMenuOpen] = React.useState(false);
@@ -559,6 +560,27 @@ export function ConversationPanel({
                           setReplyingTo(msg);
                           setTimeout(() => taRef.current?.focus(), 0);
                         }}
+                        onReact={async (msg, emoji) => {
+                          // optimistic update
+                          setMessages((prev) =>
+                            prev.map((x) =>
+                              x.id === msg.id
+                                ? {
+                                    ...x,
+                                    reactions: [
+                                      ...((x.reactions ?? []).filter((r) => r.from !== "me")),
+                                      { emoji, from: "me" },
+                                    ],
+                                  }
+                                : x,
+                            ),
+                          );
+                          try {
+                            await reactFn({ data: { messageId: msg.id, reaction: emoji } });
+                          } catch (e: any) {
+                            toast.error(e?.message ?? "Falha ao reagir");
+                          }
+                        }}
                       />
                     ))}
                   </div>
@@ -621,12 +643,14 @@ function MessageBubble({
   contactName,
   contactAvatar,
   onReply,
+  onReact,
 }: {
   m: Message;
   displayStatus: Message["status"];
   contactName: string;
   contactAvatar?: string | null;
   onReply?: (m: Message) => void;
+  onReact?: (m: Message, emoji: string) => void;
 }) {
   if (m.message_type === "system") {
     return (
@@ -672,7 +696,7 @@ function MessageBubble({
           animation: "fadeSlideIn 200ms ease-out",
         }}
       >
-        <MessageChevron isMe={isMe} bubbleBg={audioBg} message={m} onReply={onReply} />
+        <MessageChevron isMe={isMe} bubbleBg={audioBg} message={m} onReply={onReply} onReact={onReact} />
         {m.quoted_preview && <QuotedPreview preview={m.quoted_preview} isMe={isMe} />}
         <AudioPlayer
           src={m.media_url}
@@ -696,6 +720,7 @@ function MessageBubble({
           {isMe && <StatusTicks status={displayStatus} />}
         </div>
         <div style={{ clear: "both" }} />
+        <ReactionsRow reactions={m.reactions} isMe={isMe} />
       </div>
     );
   }
@@ -722,7 +747,7 @@ function MessageBubble({
         wordBreak: "break-word",
       }}
     >
-      <MessageChevron isMe={isMe} bubbleBg={bubbleBg} message={m} onReply={onReply} />
+      <MessageChevron isMe={isMe} bubbleBg={bubbleBg} message={m} onReply={onReply} onReact={onReact} />
       {m.quoted_preview && <QuotedPreview preview={m.quoted_preview} isMe={isMe} />}
       {m.media_url && m.message_type === "image" && (
         <a href={m.media_url} target="_blank" rel="noreferrer" style={{ display: "block", marginBottom: m.content ? 6 : 0 }}>
@@ -780,6 +805,7 @@ function MessageBubble({
         {isMe && <StatusTicks status={displayStatus} />}
       </div>
       <div style={{ clear: "both" }} />
+      <ReactionsRow reactions={m.reactions} isMe={isMe} />
     </div>
   );
 }
@@ -790,6 +816,57 @@ function getVisualMessageStatus(message: Message): Message["status"] {
 
 function fmtClock(date: Date): string {
   return date.toLocaleTimeString("pt-BR", { hour: "2-digit", minute: "2-digit" });
+}
+
+function ReactionsRow({
+  reactions,
+  isMe,
+}: {
+  reactions?: Array<{ emoji: string; from: string }> | null;
+  isMe: boolean;
+}) {
+  if (!reactions || reactions.length === 0) return null;
+  const counts = reactions.reduce<Record<string, number>>((acc, r) => {
+    if (!r?.emoji) return acc;
+    acc[r.emoji] = (acc[r.emoji] ?? 0) + 1;
+    return acc;
+  }, {});
+  const entries = Object.entries(counts);
+  if (entries.length === 0) return null;
+  return (
+    <div
+      style={{
+        display: "flex",
+        gap: 4,
+        marginTop: 2,
+        marginBottom: -10,
+        justifyContent: isMe ? "flex-end" : "flex-start",
+        position: "relative",
+        zIndex: 1,
+      }}
+    >
+      {entries.map(([emoji, count]) => (
+        <span
+          key={emoji}
+          style={{
+            display: "inline-flex",
+            alignItems: "center",
+            gap: 3,
+            padding: "1px 6px",
+            background: "var(--bg-surface)",
+            border: "1px solid var(--border)",
+            borderRadius: 999,
+            fontSize: 12,
+            lineHeight: 1.4,
+            boxShadow: "0 1px 2px rgba(0,0,0,0.15)",
+          }}
+        >
+          <span style={{ fontSize: 13 }}>{emoji}</span>
+          {count > 1 && <span style={{ color: "var(--text-muted)" }}>{count}</span>}
+        </span>
+      ))}
+    </div>
+  );
 }
 
 function QuotedPreview({
@@ -840,11 +917,13 @@ function MessageChevron({
   bubbleBg,
   message,
   onReply,
+  onReact,
 }: {
   isMe: boolean;
   bubbleBg: string;
   message: Message;
   onReply?: (m: Message) => void;
+  onReact?: (m: Message, emoji: string) => void;
 }) {
   return (
     <MessageActions
@@ -858,6 +937,7 @@ function MessageChevron({
         messageType: message.message_type,
       }}
       onReply={() => onReply?.(message)}
+      onReact={(_m, emoji) => onReact?.(message, emoji)}
     />
   );
 }
