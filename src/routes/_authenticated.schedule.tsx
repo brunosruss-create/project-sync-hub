@@ -13,8 +13,9 @@ import {
   AlertTriangle,
   Filter,
 } from "lucide-react";
-import { toast } from "sonner";
+import { notify as nfy } from "@/lib/notify";
 import { supabase } from "@/integrations/supabase/client";
+import { EmptyState } from "@/components/empty-state";
 import {
   HOUR_END,
   HOUR_START,
@@ -69,6 +70,24 @@ function SchedulePage() {
     { mode: "create"; preset?: Partial<Appointment> } | { mode: "edit"; appt: Appointment } | null
   >(null);
   const [openId, setOpenId] = React.useState<string | null>(null);
+
+  // Cmd+K → "Novo agendamento" + tecla "A"
+  React.useEffect(() => {
+    const onNew = () => setEditing({ mode: "create" });
+    window.addEventListener("zf:new-appointment", onNew);
+    const onKey = (e: KeyboardEvent) => {
+      if (e.key.toLowerCase() !== "a" || e.metaKey || e.ctrlKey || e.altKey) return;
+      const t = e.target as HTMLElement | null;
+      const tag = t?.tagName;
+      if (tag === "INPUT" || tag === "TEXTAREA" || t?.isContentEditable) return;
+      onNew();
+    };
+    window.addEventListener("keydown", onKey);
+    return () => {
+      window.removeEventListener("zf:new-appointment", onNew);
+      window.removeEventListener("keydown", onKey);
+    };
+  }, []);
 
   // Try hydrate from supabase
   React.useEffect(() => {
@@ -133,7 +152,7 @@ function SchedulePage() {
       (a) => a.id !== draft.id && a.agent_id === draft.agent_id && overlap(a, draft),
     );
     if (conflict) {
-      toast.error("Horário em conflito com outro agendamento desse agente.");
+      nfy.error("Horário em conflito com outro agendamento desse agente.");
       return false;
     }
     const exists = items.some((a) => a.id === draft.id);
@@ -141,7 +160,7 @@ function SchedulePage() {
       exists ? prev.map((a) => (a.id === draft.id ? draft : a)) : [...prev, draft],
     );
     setEditing(null);
-    toast.success(exists ? "Agendamento atualizado." : "Agendamento criado.");
+    nfy.success(exists ? "Agendamento atualizado." : "Agendamento criado.");
 
     const { error } = await supabase.from("appointments").upsert({
       id: draft.id,
@@ -160,14 +179,14 @@ function SchedulePage() {
 
   const setStatus = async (id: string, status: AppointmentStatus) => {
     setItems((prev) => prev.map((a) => (a.id === id ? { ...a, status } : a)));
-    toast.success(`Status: ${STATUS_LABEL[status]}`);
+    nfy.success(`Status: ${STATUS_LABEL[status]}`);
     await supabase.from("appointments").update({ status }).eq("id", id);
   };
 
   const remove = async (id: string) => {
     setItems((prev) => prev.filter((a) => a.id !== id));
     setOpenId(null);
-    toast.success("Agendamento removido.");
+    nfy.success("Agendamento removido.");
     await supabase.from("appointments").delete().eq("id", id);
   };
 
@@ -1050,16 +1069,15 @@ function ListView({
 
   if (upcoming.length === 0) {
     return (
-      <div
-        style={{
-          padding: 48,
-          textAlign: "center",
-          color: "var(--text-muted)",
-          fontSize: 13,
+      <EmptyState
+        icon={<CalendarClock size={48} style={{ color: "var(--brand-400)" }} aria-hidden="true" />}
+        title="Sem agendamentos hoje"
+        description="Que tal agendar o próximo? Crie um agendamento para organizar sua agenda."
+        action={{
+          label: "Novo agendamento",
+          onClick: () => window.dispatchEvent(new CustomEvent("zf:new-appointment")),
         }}
-      >
-        Nenhum agendamento próximo.
-      </div>
+      />
     );
   }
 
@@ -1580,15 +1598,15 @@ function AppointmentModal({
       cid = c.id;
     }
     if (!cid) {
-      toast.error("Selecione ou crie um contato.");
+      nfy.error("Selecione ou crie um contato.");
       return;
     }
     if (!serviceId) {
-      toast.error("Selecione um serviço.");
+      nfy.error("Selecione um serviço.");
       return;
     }
     if (!agentId) {
-      toast.error("Selecione um agente.");
+      nfy.error("Selecione um agente.");
       return;
     }
     const draft: Appointment = {

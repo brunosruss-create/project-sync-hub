@@ -9,8 +9,9 @@ import {
   type DragEndEvent,
   type DragStartEvent,
 } from "@dnd-kit/core";
-import { Search, Plus, Filter } from "lucide-react";
-import { toast } from "sonner";
+import { Search, Plus, Filter, MessageSquare } from "lucide-react";
+import { notify } from "@/lib/notify";
+import { EmptyState } from "@/components/empty-state";
 import {
   COLUMNS,
   MOCK_CONTACTS,
@@ -73,6 +74,24 @@ function InboxPage() {
     };
   }, []);
 
+  // Listener para Cmd+K → "Novo contato" + tecla "N"
+  React.useEffect(() => {
+    const onNew = () => notify.info("Em breve: criar contato manualmente.");
+    window.addEventListener("zf:new-contact", onNew);
+    const onKey = (e: KeyboardEvent) => {
+      if (e.key.toLowerCase() !== "n" || e.metaKey || e.ctrlKey || e.altKey) return;
+      const t = e.target as HTMLElement | null;
+      const tag = t?.tagName;
+      if (tag === "INPUT" || tag === "TEXTAREA" || t?.isContentEditable) return;
+      onNew();
+    };
+    window.addEventListener("keydown", onKey);
+    return () => {
+      window.removeEventListener("zf:new-contact", onNew);
+      window.removeEventListener("keydown", onKey);
+    };
+  }, []);
+
   const filtered = React.useMemo(() => {
     return contacts.filter((c) => {
       if (filter === "mine" && c.assignedAgent !== (user?.email?.split("@")[0] ?? ""))
@@ -124,7 +143,7 @@ function InboxPage() {
       // silent — likely table missing in dev. Don't spam.
       console.warn("[inbox] persistência ignorada:", error.message);
     } else {
-      toast.success(`Movido para ${COLUMNS.find((c) => c.id === col)?.label}`);
+      notify.success(`Movido para ${COLUMNS.find((c) => c.id === col)?.label}`);
     }
   };
 
@@ -235,7 +254,7 @@ function InboxPage() {
 
           <button
             type="button"
-            onClick={() => toast.info("Em breve: criar contato manualmente.")}
+            onClick={() => notify.info("Em breve: criar contato manualmente.")}
             className="btn-primary"
           >
             <Plus size={14} />
@@ -245,29 +264,40 @@ function InboxPage() {
       </div>
 
       {/* Kanban */}
-      <DndContext sensors={sensors} onDragStart={onDragStart} onDragEnd={onDragEnd}>
-        <div
-          className="flex-1 overflow-x-auto overflow-y-hidden"
-          style={{ display: "flex", gap: 12, paddingBottom: 8 }}
-        >
-          {COLUMNS.map((c) => (
-            <KanbanColumn
-              key={c.id}
-              id={c.id}
-              label={c.label}
-              emoji={c.emoji}
-              contacts={byColumn[c.id]}
-              onCardClick={setOpenContact}
-            />
-          ))}
+      {contacts.length === 0 ? (
+        <div style={{ flex: 1, display: "flex", alignItems: "center", justifyContent: "center" }}>
+          <EmptyState
+            icon={<MessageSquare size={48} style={{ color: "var(--brand-400)" }} aria-hidden="true" />}
+            title="Nenhum atendimento ainda"
+            description="Conecte seu WhatsApp para começar a receber conversas dos seus clientes."
+            action={{ label: "Conectar WhatsApp", onClick: () => (window.location.href = "/settings/whatsapp") }}
+          />
         </div>
+      ) : (
+        <DndContext sensors={sensors} onDragStart={onDragStart} onDragEnd={onDragEnd}>
+          <div
+            className="flex-1 overflow-x-auto overflow-y-hidden"
+            style={{ display: "flex", gap: 12, paddingBottom: 8 }}
+          >
+            {COLUMNS.map((c) => (
+              <KanbanColumn
+                key={c.id}
+                id={c.id}
+                label={c.label}
+                emoji={c.emoji}
+                contacts={byColumn[c.id]}
+                onCardClick={setOpenContact}
+              />
+            ))}
+          </div>
 
-        <DragOverlay dropAnimation={null}>
-          {activeContact && (
-            <ContactCard contact={activeContact} onClick={() => {}} isOverlay />
-          )}
-        </DragOverlay>
-      </DndContext>
+          <DragOverlay dropAnimation={null}>
+            {activeContact && (
+              <ContactCard contact={activeContact} onClick={() => {}} isOverlay />
+            )}
+          </DragOverlay>
+        </DndContext>
+      )}
 
       <ConversationPanel contact={openContact} onClose={() => setOpenContact(null)} />
     </div>
