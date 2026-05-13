@@ -29,9 +29,11 @@ type Props = {
   onClosePanel?: () => void;
   onSendAttachments?: (files: File[], caption: string) => Promise<void>;
   onSendAudio?: (blob: Blob) => Promise<void>;
+  replyingTo?: { author: string; content: string; isMe: boolean } | null;
+  onCancelReply?: () => void;
 };
 
-export function Composer({ draft, setDraft, taRef, onSend, onClosePanel, onSendAttachments, onSendAudio }: Props) {
+export function Composer({ draft, setDraft, taRef, onSend, onClosePanel, onSendAttachments, onSendAudio, replyingTo, onCancelReply }: Props) {
   const hasText = draft.trim().length > 0;
   const nearLimit = draft.length > MAX_CHARS - 200;
 
