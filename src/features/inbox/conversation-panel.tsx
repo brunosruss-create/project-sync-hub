@@ -592,6 +592,41 @@ export function ConversationPanel({
                             toast.error(e?.message ?? "Falha ao reagir");
                           }
                         }}
+                        editing={editingId === m.id}
+                        onStartEdit={() => setEditingId(m.id)}
+                        onCancelEdit={() => setEditingId(null)}
+                        onSaveEdit={async (text) => {
+                          const trimmed = text.trim();
+                          if (!trimmed) return;
+                          const prevContent = m.content;
+                          setMessages((prev) =>
+                            prev.map((x) =>
+                              x.id === m.id ? { ...x, content: trimmed, edited_at: new Date().toISOString() } : x,
+                            ),
+                          );
+                          setEditingId(null);
+                          try {
+                            await editFn({ data: { messageId: m.id, text: trimmed } });
+                          } catch (e: any) {
+                            toast.error(e?.message ?? "Falha ao editar");
+                            setMessages((prev) =>
+                              prev.map((x) => (x.id === m.id ? { ...x, content: prevContent } : x)),
+                            );
+                          }
+                        }}
+                        onDelete={async () => {
+                          if (!confirm("Apagar esta mensagem para todos?")) return;
+                          try {
+                            await deleteFn({ data: { messageId: m.id } });
+                            setMessages((prev) =>
+                              prev.map((x) =>
+                                x.id === m.id ? { ...x, deleted_at: new Date().toISOString() } : x,
+                              ),
+                            );
+                          } catch (e: any) {
+                            toast.error(e?.message ?? "Falha ao apagar");
+                          }
+                        }}
                       />
                     ))}
                   </div>
