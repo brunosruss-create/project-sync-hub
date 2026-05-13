@@ -1,6 +1,6 @@
 import { createFileRoute } from "@tanstack/react-router";
 import { supabaseAdmin } from "@/integrations/supabase/client.server";
-import { extractQRCode, instanceNameForOwner, normalizeQRCodeImage, tryFetchProfilePicture } from "@/lib/evolution.server";
+import { extractQRCode, normalizeQRCodeImage, tryFetchProfilePicture } from "@/lib/evolution.server";
 
 export const Route = createFileRoute("/api/public/evolution/$instanceId")({
   server: {
