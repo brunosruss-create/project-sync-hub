@@ -512,7 +512,13 @@ export function ConversationPanel({
                 >
                   <div className="flex flex-col" style={{ gap: 8 }}>
                     {messages.map((m) => (
-                      <MessageBubble key={m.id} m={m} contactName={contact.name} contactAvatar={contact.avatar} />
+                      <MessageBubble
+                        key={m.id}
+                        m={m}
+                        displayStatus={getVisualMessageStatus(m, messages)}
+                        contactName={contact.name}
+                        contactAvatar={contact.avatar}
+                      />
                     ))}
                   </div>
                 </div>
@@ -560,10 +566,12 @@ export function ConversationPanel({
 
 function MessageBubble({
   m,
+  displayStatus,
   contactName,
   contactAvatar,
 }: {
   m: Message;
+  displayStatus: Message["status"];
   contactName: string;
   contactAvatar?: string | null;
 }) {
@@ -628,7 +636,7 @@ function MessageBubble({
           }}
         >
           {fmtClock(m.created_at)}
-          {isMe && <StatusTicks status={m.status} />}
+          {isMe && <StatusTicks status={displayStatus} />}
         </div>
         <div style={{ clear: "both" }} />
       </div>
@@ -708,11 +716,20 @@ function MessageBubble({
         }}
       >
         {fmtClock(m.created_at)}
-        {isMe && <StatusTicks status={m.status} />}
+        {isMe && <StatusTicks status={displayStatus} />}
       </div>
       <div style={{ clear: "both" }} />
     </div>
   );
+}
+
+function getVisualMessageStatus(message: Message, messages: Message[]): Message["status"] {
+  if (message.direction !== "outbound" || message.status === "read") return message.status;
+  const messageTime = message.created_at.getTime();
+  const hasContactReplyAfter = messages.some(
+    (m) => m.direction === "inbound" && m.message_type !== "system" && m.created_at.getTime() >= messageTime,
+  );
+  return hasContactReplyAfter ? "read" : message.status;
 }
 
 function fmtClock(date: Date): string {
