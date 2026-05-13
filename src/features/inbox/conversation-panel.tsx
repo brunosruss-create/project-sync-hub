@@ -385,18 +385,24 @@ export function ConversationPanel({
             {/* Tabs */}
             <div
               className="flex"
-              style={{ borderBottom: "1px solid var(--border)", padding: "0 8px" }}
+              style={{
+                borderBottom: "1px solid var(--border)",
+                padding: "0 8px",
+                background: "var(--bg-overlay)",
+                height: 36,
+              }}
             >
               {TABS.map((t) => (
                 <button
                   key={t.id}
                   onClick={() => setTab(t.id)}
                   style={{
-                    padding: "10px 12px",
+                    padding: "0 12px",
+                    height: 36,
                     fontSize: 12,
                     fontWeight: 500,
                     background: "transparent",
-                    color: tab === t.id ? "var(--text-primary)" : "var(--text-muted)",
+                    color: tab === t.id ? "var(--brand-400)" : "var(--text-muted)",
                     borderBottom:
                       tab === t.id
                         ? "2px solid var(--brand-400)"
