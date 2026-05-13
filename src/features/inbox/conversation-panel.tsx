@@ -153,7 +153,7 @@ export function ConversationPanel({
     (async () => {
       const { data, error } = await supabase
         .from("messages")
-        .select("id,direction,content,message_type,status,created_at")
+        .select("id,direction,content,message_type,status,created_at,media_url,media_mime,media_name")
         .eq("contact_id", contact.id)
         .order("created_at", { ascending: true });
       if (cancelled) return;
@@ -168,6 +168,9 @@ export function ConversationPanel({
             message_type: r.message_type ?? "text",
             status: r.status ?? "sent",
             created_at: new Date(r.created_at),
+            media_url: r.media_url ?? null,
+            media_mime: r.media_mime ?? null,
+            media_name: r.media_name ?? null,
           })),
         );
       }
