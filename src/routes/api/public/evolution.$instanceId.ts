@@ -113,12 +113,18 @@ export const Route = createFileRoute("/api/public/evolution/$instanceId")({
 
               let contactId = existing?.id as string | undefined;
               if (!contactId) {
+                // Best-effort: tenta foto de perfil do WhatsApp
+                const avatarUrl = await tryFetchProfilePicture(
+                  row.instance_name as string,
+                  phone,
+                );
                 const { data: created, error: insErr } = await supabaseAdmin
                   .from("contacts")
                   .insert({
                     owner_user_id: row.owner_user_id,
                     phone,
                     name: pushName ?? phone,
+                    avatar_url: avatarUrl,
                     kanban_column: "waiting",
                     is_unread: true,
                     last_message: text,
