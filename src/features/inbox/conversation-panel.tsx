@@ -690,6 +690,11 @@ function MessageBubble({
   contactAvatar,
   onReply,
   onReact,
+  editing,
+  onStartEdit,
+  onCancelEdit,
+  onSaveEdit,
+  onDelete,
 }: {
   m: Message;
   displayStatus: Message["status"];
@@ -697,6 +702,11 @@ function MessageBubble({
   contactAvatar?: string | null;
   onReply?: (m: Message) => void;
   onReact?: (m: Message, emoji: string) => void;
+  editing?: boolean;
+  onStartEdit?: () => void;
+  onCancelEdit?: () => void;
+  onSaveEdit?: (text: string) => void;
+  onDelete?: () => void;
 }) {
   if (m.message_type === "system") {
     return (
