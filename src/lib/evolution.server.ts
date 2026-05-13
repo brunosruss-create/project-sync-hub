@@ -94,6 +94,31 @@ export const evo = {
       json: body,
     }),
 
+  sendMedia: (
+    name: string,
+    body: {
+      number: string;
+      mediatype: "image" | "document" | "video";
+      mimetype: string;
+      media: string; // public URL or base64
+      fileName?: string;
+      caption?: string;
+    },
+  ) =>
+    call(`/message/sendMedia/${encodeURIComponent(name)}`, {
+      method: "POST",
+      json: body,
+    }),
+
+  sendWhatsAppAudio: (
+    name: string,
+    body: { number: string; audio: string }, // public URL or base64
+  ) =>
+    call(`/message/sendWhatsAppAudio/${encodeURIComponent(name)}`, {
+      method: "POST",
+      json: body,
+    }),
+
   fetchProfilePictureUrl: (name: string, number: string) =>
     call<{ profilePictureUrl?: string | null } | any>(
       `/chat/fetchProfilePictureUrl/${encodeURIComponent(name)}`,
