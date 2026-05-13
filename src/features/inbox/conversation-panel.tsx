@@ -959,16 +959,12 @@ const CATALOG: Array<{ id: string; name: string; price: number; minutes: number 
   { id: "s5", name: "Pedicure", price: 55, minutes: 45 },
 ];
 
-function ServicesTab() {
+function ServicesTab({ onSchedule }: { onSchedule: (serviceIds: string[]) => void }) {
+  const catalog: Service[] = SEED_SERVICES.filter((s) => s.status === "active");
   const [selected, setSelected] = React.useState<Set<string>>(new Set());
-  const total = CATALOG.filter((s) => selected.has(s.id)).reduce(
-    (a, s) => a + s.price,
-    0,
-  );
-  const time = CATALOG.filter((s) => selected.has(s.id)).reduce(
-    (a, s) => a + s.minutes,
-    0,
-  );
+  const sel = catalog.filter((s) => selected.has(s.id));
+  const totalCents = sel.reduce((a, s) => a + s.price_cents, 0);
+  const totalMin = sel.reduce((a, s) => a + s.duration_minutes, 0);
   const toggle = (id: string) =>
     setSelected((prev) => {
       const next = new Set(prev);
@@ -978,8 +974,11 @@ function ServicesTab() {
     });
 
   return (
-    <div className="flex flex-col" style={{ gap: 8 }}>
-      {CATALOG.map((s) => {
+    <div className="flex flex-col" style={{ gap: 8, paddingBottom: 80 }}>
+      <p style={{ fontSize: 11, color: "var(--text-muted)", marginBottom: 4 }}>
+        Marque os serviços de interesse do cliente. Eles serão pré-selecionados ao agendar.
+      </p>
+      {catalog.map((s) => {
         const on = selected.has(s.id);
         return (
           <button
@@ -1020,90 +1019,204 @@ function ServicesTab() {
                 {s.name}
               </div>
               <div style={{ fontSize: 11, color: "var(--text-muted)" }}>
-                {s.minutes} min
+                {formatDuration(s.duration_minutes)}
               </div>
             </div>
-            <div
-              className="font-mono"
-              style={{ fontSize: 13, color: "var(--text-primary)" }}
-            >
-              R$ {s.price.toFixed(2)}
+            <div className="font-mono" style={{ fontSize: 13, color: "var(--text-primary)" }}>
+              {formatCurrencyBRL(s.price_cents)}
             </div>
           </button>
         );
       })}
 
+      {/* Sticky footer */}
       <div
-        className="flex items-center justify-between"
         style={{
+          position: "sticky",
+          bottom: -16,
           marginTop: 8,
-          padding: "12px 14px",
-          borderRadius: 8,
-          background: "var(--bg-overlay)",
-          border: "1px solid var(--border)",
+          marginInline: -16,
+          marginBottom: -16,
+          padding: 12,
+          background: "var(--bg-surface)",
+          borderTop: "1px solid var(--border)",
+          display: "flex",
+          alignItems: "center",
+          gap: 10,
         }}
       >
-        <div style={{ fontSize: 11, color: "var(--text-muted)" }}>
-          {selected.size} selecionado{selected.size === 1 ? "" : "s"} · {time} min
+        <div className="flex-1">
+          <div style={{ fontSize: 11, color: "var(--text-muted)" }}>
+            {sel.length} selecionado{sel.length === 1 ? "" : "s"} · {formatDuration(totalMin)}
+          </div>
+          <div className="font-mono" style={{ fontSize: 14, fontWeight: 600, color: "var(--text-primary)" }}>
+            {formatCurrencyBRL(totalCents)}
+          </div>
         </div>
-        <div
-          className="font-mono"
-          style={{ fontSize: 16, fontWeight: 600, color: "var(--text-primary)" }}
+        <button
+          type="button"
+          onClick={() => onSchedule(sel.map((s) => s.id))}
+          disabled={sel.length === 0}
+          className="inline-flex items-center"
+          style={{
+            gap: 6,
+            height: 34,
+            padding: "0 12px",
+            borderRadius: 6,
+            background: "var(--brand-400)",
+            color: "#fff",
+            fontSize: 13,
+            fontWeight: 600,
+            border: "none",
+            opacity: sel.length === 0 ? 0.5 : 1,
+            cursor: sel.length === 0 ? "not-allowed" : "pointer",
+          }}
         >
-          R$ {total.toFixed(2)}
-        </div>
+          <CalendarPlus size={14} /> Agendar serviços selecionados
+        </button>
       </div>
     </div>
   );
 }
 
-function HistoryTab() {
-  const items = [
-    { id: "h1", title: "Atendimento concluído", at: "12 Mai, 14:32", who: "Ana" },
-    { id: "h2", title: "Mensagem enviada", at: "12 Mai, 14:10", who: "Sistema" },
-    { id: "h3", title: "Atribuído para Ana", at: "12 Mai, 14:08", who: "Sistema" },
-    { id: "h4", title: "Conversa iniciada", at: "12 Mai, 14:05", who: "Cliente" },
-  ];
+interface HistoryItem {
+  id: string;
+  starts_at: Date;
+  status: string;
+  agent_name: string;
+  services: Array<{ name: string; price_cents: number }>;
+  total_cents: number;
+}
+
+const STATUS_PT: Record<string, { label: string; color: string }> = {
+  completed: { label: "Realizado", color: "#25C880" },
+  cancelled: { label: "Cancelado", color: "#EF4444" },
+  no_show: { label: "Faltou", color: "#F59E0B" },
+  scheduled: { label: "Agendado", color: "#3B82F6" },
+  confirmed: { label: "Confirmado", color: "#3B82F6" },
+  in_progress: { label: "Em andamento", color: "#F59E0B" },
+};
+
+function HistoryTab({ contactId }: { contactId: string }) {
+  const [items, setItems] = React.useState<HistoryItem[]>([]);
+  const [loading, setLoading] = React.useState(true);
+
+  React.useEffect(() => {
+    let cancelled = false;
+    (async () => {
+      setLoading(true);
+      const { data, error } = await supabase
+        .from("appointments")
+        .select("id,starts_at,status,agent_id,appointment_services(price_cents,duration_minutes,services(name))")
+        .eq("contact_id", contactId)
+        .order("starts_at", { ascending: false });
+      if (cancelled) return;
+      if (error || !data) {
+        setItems([]);
+      } else {
+        setItems(
+          data.map((r: any) => {
+            const svcs = (r.appointment_services ?? []).map((as: any) => ({
+              name: as.services?.name ?? "Serviço",
+              price_cents: as.price_cents ?? 0,
+            }));
+            return {
+              id: r.id,
+              starts_at: new Date(r.starts_at),
+              status: r.status ?? "scheduled",
+              agent_name: r.agent_id ?? "—",
+              services: svcs,
+              total_cents: svcs.reduce((a: number, s: any) => a + (s.price_cents ?? 0), 0),
+            };
+          }),
+        );
+      }
+      setLoading(false);
+    })();
+    return () => {
+      cancelled = true;
+    };
+  }, [contactId]);
+
+  if (loading) {
+    return <div style={{ fontSize: 12, color: "var(--text-muted)", padding: 12 }}>Carregando…</div>;
+  }
+
+  if (items.length === 0) {
+    return (
+      <div
+        style={{
+          fontSize: 12,
+          color: "var(--text-muted)",
+          padding: 16,
+          textAlign: "center",
+          border: "1px dashed var(--border)",
+          borderRadius: 8,
+        }}
+      >
+        Nenhum agendamento anterior para este contato.
+      </div>
+    );
+  }
+
   return (
-    <div className="flex flex-col" style={{ gap: 0 }}>
-      {items.map((it, i) => (
-        <div
-          key={it.id}
-          className="flex items-start"
-          style={{ gap: 10, padding: "10px 4px" }}
-        >
+    <div className="flex flex-col" style={{ gap: 10 }}>
+      {items.map((it) => {
+        const st = STATUS_PT[it.status] ?? { label: it.status, color: "var(--text-muted)" };
+        const dt = it.starts_at.toLocaleDateString("pt-BR", { day: "2-digit", month: "2-digit", year: "2-digit" });
+        const tm = it.starts_at.toLocaleTimeString("pt-BR", { hour: "2-digit", minute: "2-digit" });
+        return (
           <div
+            key={it.id}
             style={{
-              width: 8,
-              height: 8,
-              borderRadius: 999,
-              background: "var(--brand-400)",
-              marginTop: 6,
-              flexShrink: 0,
-              position: "relative",
+              padding: 10,
+              borderRadius: 8,
+              border: "1px solid var(--border)",
+              background: "var(--bg-surface)",
             }}
           >
-            {i < items.length - 1 && (
+            <div className="flex items-center justify-between" style={{ gap: 8 }}>
+              <div style={{ fontSize: 13, fontWeight: 600, color: "var(--text-primary)" }}>
+                {dt} · {tm}
+              </div>
               <span
                 style={{
-                  position: "absolute",
-                  top: 10,
-                  left: 3,
-                  width: 2,
-                  height: 28,
-                  background: "var(--border)",
+                  fontSize: 11,
+                  padding: "2px 8px",
+                  borderRadius: 999,
+                  border: `1px solid ${st.color}`,
+                  color: st.color,
                 }}
-              />
+              >
+                {st.label}
+              </span>
+            </div>
+            {it.services.length > 0 && (
+              <div className="flex flex-wrap" style={{ gap: 4, marginTop: 6 }}>
+                {it.services.map((s, i) => (
+                  <span
+                    key={i}
+                    style={{
+                      fontSize: 11,
+                      padding: "2px 6px",
+                      borderRadius: 4,
+                      background: "var(--bg-overlay)",
+                      color: "var(--text-muted)",
+                    }}
+                  >
+                    {s.name}
+                  </span>
+                ))}
+              </div>
+            )}
+            {it.total_cents > 0 && (
+              <div className="font-mono" style={{ marginTop: 6, fontSize: 12, color: "var(--text-primary)" }}>
+                {formatCurrencyBRL(it.total_cents)}
+              </div>
             )}
           </div>
-          <div className="flex-1">
-            <div style={{ fontSize: 13, color: "var(--text-primary)" }}>{it.title}</div>
-            <div style={{ fontSize: 11, color: "var(--text-muted)" }}>
-              {it.at} · {it.who}
-            </div>
-          </div>
-        </div>
-      ))}
+        );
+      })}
     </div>
   );
 }
