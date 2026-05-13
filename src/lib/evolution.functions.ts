@@ -148,7 +148,13 @@ export const connectInstance = createServerFn({ method: "POST" })
         }
       }
     } catch (e: any) {
-      throw new Error(`Falha ao conectar: ${e?.message ?? e}`);
+      const msg = String(e?.message ?? e);
+      if (isAuthError(msg)) {
+        throw new Error(
+          "Evolution API recusou a autenticação (Forbidden) ao tentar conectar. Verifique EVOLUTION_API_KEY (Lovable) vs AUTHENTICATION_API_KEY (Railway).",
+        );
+      }
+      throw new Error(`Falha ao conectar: ${msg}`);
     }
 
     if (!qr) {
