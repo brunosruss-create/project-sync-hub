@@ -10,6 +10,7 @@ import {
   Wrench,
   Calendar,
   Bot,
+  Shield,
 } from "lucide-react";
 import { useAuth } from "@/hooks/use-auth";
 import { useProfile } from "@/hooks/use-profile";
@@ -23,6 +24,7 @@ const items = [
   { label: "Contatos", to: "/dashboard", icon: Users },
   { label: "Relatórios", to: "/dashboard", icon: BarChart3 },
   { label: "Configurações", to: "/settings/profile", icon: Settings },
+  { label: "Super Admin", to: "/super-admin/workspaces", icon: Shield },
 ] as const;
 
 export function AppSidebar() {

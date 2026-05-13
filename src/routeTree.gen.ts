@@ -23,6 +23,9 @@ import { Route as AuthenticatedInboxRouteImport } from './routes/_authenticated.
 import { Route as AuthenticatedDashboardRouteImport } from './routes/_authenticated.dashboard'
 import { Route as AuthenticatedAiAgentRouteImport } from './routes/_authenticated.ai-agent'
 import { Route as AuthenticatedSuperAdminWorkspacesRouteImport } from './routes/_authenticated.super-admin.workspaces'
+import { Route as AuthenticatedSuperAdminUsersRouteImport } from './routes/_authenticated.super-admin.users'
+import { Route as AuthenticatedSuperAdminHealthRouteImport } from './routes/_authenticated.super-admin.health'
+import { Route as AuthenticatedSuperAdminBillingRouteImport } from './routes/_authenticated.super-admin.billing'
 import { Route as AuthenticatedSettingsWorkspaceRouteImport } from './routes/_authenticated.settings.workspace'
 import { Route as AuthenticatedSettingsWhatsappRouteImport } from './routes/_authenticated.settings.whatsapp'
 import { Route as AuthenticatedSettingsTeamRouteImport } from './routes/_authenticated.settings.team'
@@ -99,6 +102,24 @@ const AuthenticatedSuperAdminWorkspacesRoute =
     path: '/workspaces',
     getParentRoute: () => AuthenticatedSuperAdminRoute,
   } as any)
+const AuthenticatedSuperAdminUsersRoute =
+  AuthenticatedSuperAdminUsersRouteImport.update({
+    id: '/users',
+    path: '/users',
+    getParentRoute: () => AuthenticatedSuperAdminRoute,
+  } as any)
+const AuthenticatedSuperAdminHealthRoute =
+  AuthenticatedSuperAdminHealthRouteImport.update({
+    id: '/health',
+    path: '/health',
+    getParentRoute: () => AuthenticatedSuperAdminRoute,
+  } as any)
+const AuthenticatedSuperAdminBillingRoute =
+  AuthenticatedSuperAdminBillingRouteImport.update({
+    id: '/billing',
+    path: '/billing',
+    getParentRoute: () => AuthenticatedSuperAdminRoute,
+  } as any)
 const AuthenticatedSettingsWorkspaceRoute =
   AuthenticatedSettingsWorkspaceRouteImport.update({
     id: '/settings/workspace',
@@ -148,6 +169,9 @@ export interface FileRoutesByFullPath {
   '/settings/team': typeof AuthenticatedSettingsTeamRoute
   '/settings/whatsapp': typeof AuthenticatedSettingsWhatsappRoute
   '/settings/workspace': typeof AuthenticatedSettingsWorkspaceRoute
+  '/super-admin/billing': typeof AuthenticatedSuperAdminBillingRoute
+  '/super-admin/health': typeof AuthenticatedSuperAdminHealthRoute
+  '/super-admin/users': typeof AuthenticatedSuperAdminUsersRoute
   '/super-admin/workspaces': typeof AuthenticatedSuperAdminWorkspacesRoute
 }
 export interface FileRoutesByTo {
@@ -168,6 +192,9 @@ export interface FileRoutesByTo {
   '/settings/team': typeof AuthenticatedSettingsTeamRoute
   '/settings/whatsapp': typeof AuthenticatedSettingsWhatsappRoute
   '/settings/workspace': typeof AuthenticatedSettingsWorkspaceRoute
+  '/super-admin/billing': typeof AuthenticatedSuperAdminBillingRoute
+  '/super-admin/health': typeof AuthenticatedSuperAdminHealthRoute
+  '/super-admin/users': typeof AuthenticatedSuperAdminUsersRoute
   '/super-admin/workspaces': typeof AuthenticatedSuperAdminWorkspacesRoute
 }
 export interface FileRoutesById {
@@ -190,6 +217,9 @@ export interface FileRoutesById {
   '/_authenticated/settings/team': typeof AuthenticatedSettingsTeamRoute
   '/_authenticated/settings/whatsapp': typeof AuthenticatedSettingsWhatsappRoute
   '/_authenticated/settings/workspace': typeof AuthenticatedSettingsWorkspaceRoute
+  '/_authenticated/super-admin/billing': typeof AuthenticatedSuperAdminBillingRoute
+  '/_authenticated/super-admin/health': typeof AuthenticatedSuperAdminHealthRoute
+  '/_authenticated/super-admin/users': typeof AuthenticatedSuperAdminUsersRoute
   '/_authenticated/super-admin/workspaces': typeof AuthenticatedSuperAdminWorkspacesRoute
 }
 export interface FileRouteTypes {
@@ -212,6 +242,9 @@ export interface FileRouteTypes {
     | '/settings/team'
     | '/settings/whatsapp'
     | '/settings/workspace'
+    | '/super-admin/billing'
+    | '/super-admin/health'
+    | '/super-admin/users'
     | '/super-admin/workspaces'
   fileRoutesByTo: FileRoutesByTo
   to:
@@ -232,6 +265,9 @@ export interface FileRouteTypes {
     | '/settings/team'
     | '/settings/whatsapp'
     | '/settings/workspace'
+    | '/super-admin/billing'
+    | '/super-admin/health'
+    | '/super-admin/users'
     | '/super-admin/workspaces'
   id:
     | '__root__'
@@ -253,6 +289,9 @@ export interface FileRouteTypes {
     | '/_authenticated/settings/team'
     | '/_authenticated/settings/whatsapp'
     | '/_authenticated/settings/workspace'
+    | '/_authenticated/super-admin/billing'
+    | '/_authenticated/super-admin/health'
+    | '/_authenticated/super-admin/users'
     | '/_authenticated/super-admin/workspaces'
   fileRoutesById: FileRoutesById
 }
@@ -366,6 +405,27 @@ declare module '@tanstack/react-router' {
       preLoaderRoute: typeof AuthenticatedSuperAdminWorkspacesRouteImport
       parentRoute: typeof AuthenticatedSuperAdminRoute
     }
+    '/_authenticated/super-admin/users': {
+      id: '/_authenticated/super-admin/users'
+      path: '/users'
+      fullPath: '/super-admin/users'
+      preLoaderRoute: typeof AuthenticatedSuperAdminUsersRouteImport
+      parentRoute: typeof AuthenticatedSuperAdminRoute
+    }
+    '/_authenticated/super-admin/health': {
+      id: '/_authenticated/super-admin/health'
+      path: '/health'
+      fullPath: '/super-admin/health'
+      preLoaderRoute: typeof AuthenticatedSuperAdminHealthRouteImport
+      parentRoute: typeof AuthenticatedSuperAdminRoute
+    }
+    '/_authenticated/super-admin/billing': {
+      id: '/_authenticated/super-admin/billing'
+      path: '/billing'
+      fullPath: '/super-admin/billing'
+      preLoaderRoute: typeof AuthenticatedSuperAdminBillingRouteImport
+      parentRoute: typeof AuthenticatedSuperAdminRoute
+    }
     '/_authenticated/settings/workspace': {
       id: '/_authenticated/settings/workspace'
       path: '/settings/workspace'
@@ -405,11 +465,17 @@ declare module '@tanstack/react-router' {
 }
 
 interface AuthenticatedSuperAdminRouteChildren {
+  AuthenticatedSuperAdminBillingRoute: typeof AuthenticatedSuperAdminBillingRoute
+  AuthenticatedSuperAdminHealthRoute: typeof AuthenticatedSuperAdminHealthRoute
+  AuthenticatedSuperAdminUsersRoute: typeof AuthenticatedSuperAdminUsersRoute
   AuthenticatedSuperAdminWorkspacesRoute: typeof AuthenticatedSuperAdminWorkspacesRoute
 }
 
 const AuthenticatedSuperAdminRouteChildren: AuthenticatedSuperAdminRouteChildren =
   {
+    AuthenticatedSuperAdminBillingRoute: AuthenticatedSuperAdminBillingRoute,
+    AuthenticatedSuperAdminHealthRoute: AuthenticatedSuperAdminHealthRoute,
+    AuthenticatedSuperAdminUsersRoute: AuthenticatedSuperAdminUsersRoute,
     AuthenticatedSuperAdminWorkspacesRoute:
       AuthenticatedSuperAdminWorkspacesRoute,
   }
@@ -463,13 +529,3 @@ const rootRouteChildren: RootRouteChildren = {
 export const routeTree = rootRouteImport
   ._addFileChildren(rootRouteChildren)
   ._addFileTypes<FileRouteTypes>()
-
-import type { getRouter } from './router.tsx'
-import type { startInstance } from './start.ts'
-declare module '@tanstack/react-start' {
-  interface Register {
-    ssr: true
-    router: Awaited<ReturnType<typeof getRouter>>
-    config: Awaited<ReturnType<typeof startInstance.getOptions>>
-  }
-}
