@@ -125,29 +125,7 @@ export function ContactCard({ contact, onClick, isOverlay, isSelected }: Props) 
 
       {/* Linha 1: avatar + nome */}
       <div className="flex items-center" style={{ gap: 8 }}>
-        {contact.avatar ? (
-          <img
-            src={contact.avatar}
-            alt={contact.name}
-            style={{ width: 32, height: 32, borderRadius: 999, objectFit: "cover", flexShrink: 0 }}
-          />
-        ) : (
-          <div
-            className="inline-flex items-center justify-center"
-            style={{
-              width: 32,
-              height: 32,
-              borderRadius: 999,
-              background: avatarColor(contact.name),
-              color: "#fff",
-              fontSize: 12,
-              fontWeight: 600,
-              flexShrink: 0,
-            }}
-          >
-            {ini || <UserIcon size={14} />}
-          </div>
-        )}
+        <ContactAvatar name={contact.name} avatarUrl={contact.avatar} size={32} />
         <div
           className="flex-1 min-w-0 truncate"
           style={{ fontSize: 13, fontWeight: 500, color: "var(--text-primary)" }}
