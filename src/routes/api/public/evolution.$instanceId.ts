@@ -34,6 +34,27 @@ const KIND_LABEL: Record<MediaKind, string> = {
   image: "📷 Imagem", audio: "🎵 Áudio", video: "🎬 Vídeo", document: "📎 Documento",
 };
 
+const STATUS_RANK: Record<string, number> = { sent: 1, delivered: 2, read: 3 };
+
+function normalizeOutboundStatus(raw: unknown): "sent" | "delivered" | "read" | null {
+  if (typeof raw === "number") {
+    if (raw >= 4) return "read";
+    if (raw >= 2) return "delivered";
+    if (raw === 1) return "sent";
+    return null;
+  }
+
+  const status = String(raw ?? "")
+    .trim()
+    .toUpperCase()
+    .replace(/[\s-]+/g, "_");
+
+  if (["READ", "READ_RECEIPT", "PLAYED", "MESSAGE_READ", "ACK_READ"].includes(status)) return "read";
+  if (["DELIVERY_ACK", "DELIVERED", "SERVER_ACK", "MESSAGE_DELIVERED", "ACK_DELIVERED"].includes(status)) return "delivered";
+  if (["PENDING", "SENT", "MESSAGE_SENT", "ACK_SERVER"].includes(status)) return "sent";
+  return null;
+}
+
 export const Route = createFileRoute("/api/public/evolution/$instanceId")({
   server: {
     handlers: {
@@ -259,30 +280,19 @@ export const Route = createFileRoute("/api/public/evolution/$instanceId")({
                 console.error("[evolution upsert] no contactId after upsert", { phone });
               }
             }
-          } else if (event === "messages.update" || event === "send.message.update" || event === "messages.set") {
+          } else if (event.includes("messages.update") || event.includes("send.message.update") || event === "messages.set") {
             const updates = Array.isArray(data?.messages)
               ? data.messages
               : Array.isArray(data)
                 ? data
                 : [data];
-            const RANK: Record<string, number> = { sent: 1, delivered: 2, read: 3 };
             for (const u of updates) {
               if (!u) continue;
               const externalId: string | null =
                 u?.key?.id ?? u?.keyId ?? u?.messageId ?? u?.id ?? u?.message?.key?.id ?? null;
-              const rawStatusRaw = u?.status ?? u?.update?.status ?? u?.ack ?? u?.message?.status;
-              const rawStatus = String(rawStatusRaw ?? "").toUpperCase();
-              let next: "sent" | "delivered" | "read" | null = null;
-              // string statuses (Evolution)
-              if (rawStatus === "DELIVERY_ACK" || rawStatus === "DELIVERED" || rawStatus === "SERVER_ACK") next = "delivered";
-              else if (rawStatus === "READ" || rawStatus === "READ_RECEIPT" || rawStatus === "PLAYED") next = "read";
-              // numeric Baileys ack: 2=server, 3=delivered, 4=read, 5=played
-              else if (typeof rawStatusRaw === "number") {
-                if (rawStatusRaw >= 4) next = "read";
-                else if (rawStatusRaw === 3) next = "delivered";
-                else if (rawStatusRaw === 2) next = "delivered";
-              }
-              console.log("[evolution messages.update item]", { externalId, rawStatusRaw, rawStatus, next });
+              const rawStatusRaw = u?.status ?? u?.update?.status ?? u?.ack ?? u?.message?.status ?? u?.message?.ack;
+              const next = normalizeOutboundStatus(rawStatusRaw);
+              console.log("[evolution messages.update item]", { externalId, rawStatusRaw, next });
               if (!externalId || !next) continue;
 
               const { data: existing } = await supabaseAdmin
@@ -292,8 +302,8 @@ export const Route = createFileRoute("/api/public/evolution/$instanceId")({
                 .eq("owner_user_id", row.owner_user_id)
                 .maybeSingle();
               if (!existing) continue;
-              const curRank = RANK[String(existing.status)] ?? 0;
-              const nextRank = RANK[next];
+              const curRank = STATUS_RANK[String(existing.status)] ?? 0;
+              const nextRank = STATUS_RANK[next];
               if (nextRank <= curRank) continue;
               const { error: upErr } = await supabaseAdmin
                 .from("messages")
