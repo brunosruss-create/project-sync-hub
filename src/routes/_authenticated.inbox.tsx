@@ -33,6 +33,7 @@ type Filter = "all" | "mine" | "unassigned";
 function InboxPage() {
   const { user } = useAuth();
   const [contacts, setContacts] = React.useState<Contact[]>([]);
+  const [isLoadingContacts, setIsLoadingContacts] = React.useState(true);
   const [loadError, setLoadError] = React.useState<string | null>(null);
   const [activeId, setActiveId] = React.useState<string | null>(null);
   const [filter, setFilter] = React.useState<Filter>("all");
@@ -58,11 +59,13 @@ function InboxPage() {
         console.warn("[inbox] erro ao carregar contatos:", error.message);
         setLoadError(error.message);
         if (import.meta.env.DEV) setContacts(MOCK_CONTACTS);
+        setIsLoadingContacts(false);
         return;
       }
       setLoadError(null);
       if (!data || data.length === 0) {
         setContacts([]);
+        setIsLoadingContacts(false);
         return;
       }
       const mapped: Contact[] = data.map((r: any) => ({
@@ -79,6 +82,7 @@ function InboxPage() {
         kanban_column: (r.kanban_column ?? "waiting") as KanbanColumnId,
       }));
       setContacts(mapped);
+      setIsLoadingContacts(false);
     })();
     return () => {
       cancelled = true;
@@ -275,7 +279,11 @@ function InboxPage() {
       </div>
 
       {/* Kanban */}
-      {loadError ? (
+      {isLoadingContacts ? (
+        <div style={{ flex: 1, display: "flex", alignItems: "center", justifyContent: "center", color: "var(--text-muted)", fontSize: 13 }}>
+          Carregando atendimentos…
+        </div>
+      ) : loadError ? (
         <div style={{ flex: 1, display: "flex", alignItems: "center", justifyContent: "center" }}>
           <EmptyState
             icon={<MessageSquare size={48} style={{ color: "var(--brand-400)" }} aria-hidden="true" />}
