@@ -1,39 +1,42 @@
-## Problema
+## Plano para corrigir o QR estático do WhatsApp
 
-Os webhooks do Evolution chegam com status 200 (confirmado nos logs do worker), mas as mensagens não aparecem em **Aguardando**. O log de "logado no Windows vs Chrome" é apenas como o WhatsApp identifica a sessão Web — **não** é a causa, pode ignorar.
+O problema está claro: a tela fica em `Aguardando QR`, mas o código não muda sozinho e não existe uma ação explícita para gerar outro QR. A causa no código é que `refreshInstanceStatus` só tenta buscar novo QR quando `row.qr_code` está vazio; como o QR antigo continua salvo, o sistema apenas reapresenta a mesma imagem.
 
-A causa provável está no parser do evento em `src/routes/api/public/evolution.$instanceId.ts`:
+### O que vou mudar
 
-```ts
-const event = String(payload?.event ?? "").toLowerCase();
-...
-} else if (event === "messages.upsert") {
+1. **Renovar QR automaticamente quando expirar**
+   - Usar `qr_expires_at` para detectar QR vencido.
+   - Se estiver em `pending` e o QR estiver vencido, chamar `evo.connect(name)` e salvar um novo `qr_code` + novo `qr_expires_at`.
+   - Se a Evolution não devolver QR, marcar como `error` em vez de deixar a tela congelada.
+
+2. **Adicionar ação manual “Gerar novo QR”**
+   - Na tela de WhatsApp, quando estiver `pending`, o botão principal vira “Gerar novo QR”/“Atualizar QR”.
+   - Essa ação força buscar um QR novo, mesmo antes de expirar.
+
+3. **Adicionar contador visual de expiração**
+   - Mostrar algo como “QR expira em 42s”.
+   - Quando chegar a zero, a UI chama a renovação automaticamente.
+   - Isso evita a sensação de tela estática.
+
+4. **Manter o fluxo atual de conectar intacto**
+   - Não alterar Supabase auth.
+   - Não alterar webhook.
+   - Não alterar schema do banco.
+   - Não mexer na lógica de envio/recebimento de mensagens.
+
+### Arquivos envolvidos
+
+```text
+src/lib/evolution.functions.ts
+  - Ajustar refreshInstanceStatus para renovar QR expirado
+  - Opcionalmente aceitar forceQrRefresh para renovação manual
+
+src/routes/_authenticated.settings.whatsapp.tsx
+  - Mostrar contador regressivo
+  - Trocar botão em pending para gerar/renovar QR
+  - Acionar refresh automático ao expirar
 ```
 
-O Evolution API, dependendo da versão/configuração de `webhook_by_events`, envia o nome do evento em formatos diferentes:
-- `messages.upsert` (ponto, minúsculo) — formato "novo"
-- `MESSAGES_UPSERT` → após `toLowerCase()` vira `messages_upsert` (underscore) — formato "clássico"
+### Resultado esperado
 
-Hoje só o primeiro casa. Se sua instância manda o segundo, o handler retorna 200 sem inserir nada — exatamente o sintoma.
-
-Além disso, hoje não há log nenhum quando o evento não bate, então é "silencioso".
-
-## Plano
-
-1. **Normalizar o nome do evento** no handler do webhook: aceitar tanto `messages.upsert` quanto `messages_upsert` (e idem para `connection.update` / `connection_update`, `qrcode.updated` / `qrcode_updated`). Implementação: substituir `.` por `_` (ou vice-versa) antes do `switch`.
-
-2. **Adicionar logs de diagnóstico** (temporariamente) no início do handler:
-   - `console.log('[evolution]', event, 'keys:', Object.keys(payload ?? {}))`
-   - Quando cair em "evento ignorado", logar `event` para sabermos exatamente o que veio.
-
-3. **Tratar variações do payload de mensagem**: alguns formatos do Evolution colocam a mensagem direto em `data` (objeto único) em vez de `data.messages[]`. O código já cobre os dois, mas vou validar que campos como `key.remoteJid` existam mesmo quando vem como `data.key.remoteJid`.
-
-4. **Verificar pós-deploy**: após aplicar, você manda uma mensagem de teste e eu releio os logs do worker para confirmar qual é o `event` real e que o insert em `messages` aconteceu.
-
-## Detalhes técnicos
-
-- Arquivo único alterado: `src/routes/api/public/evolution.$instanceId.ts`.
-- Sem mudança de schema, sem mudança de RLS, sem mudança no front.
-- Logs serão removidos depois de confirmarmos o fluxo.
-
-Aprovar para eu implementar?
+A tela deixa de parecer estática: o QR passa a expirar visualmente, renova sozinho e o usuário também pode gerar um novo código manualmente.
