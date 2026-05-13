@@ -166,6 +166,17 @@ export const refreshInstanceStatus = createServerFn({ method: "POST" })
       update.qr_code = null;
       if (phone) update.phone_number = phone;
       if (profile) update.profile_name = profile;
+    } else if (status === "pending" && !row.qr_code) {
+      try {
+        const r: any = await evo.connect(name);
+        const qr = await normalizeQRCodeImage(extractQRCode(r));
+        if (qr) {
+          update.qr_code = qr;
+          update.qr_expires_at = new Date(Date.now() + 60_000).toISOString();
+        }
+      } catch (e: any) {
+        console.warn("[evolution] refresh qrcode:", e?.message);
+      }
     }
 
     const { data: updated } = await supabaseAdmin
