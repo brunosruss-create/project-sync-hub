@@ -115,6 +115,8 @@ export function ConversationPanel({
   const sendAudioFn = useServerFn(sendWhatsAppAudio);
   const refreshAvatar = useServerFn(refreshContactAvatar);
   const reactFn = useServerFn(reactToMessage);
+  const deleteFn = useServerFn(deleteMessageForEveryone);
+  const editFn = useServerFn(editMessage);
   const [tab, setTab] = React.useState<Tab>("conversation");
   const [draft, setDraft] = React.useState("");
   const [menuOpen, setMenuOpen] = React.useState(false);
