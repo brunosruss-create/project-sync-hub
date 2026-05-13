@@ -9,8 +9,9 @@ import {
   type DragEndEvent,
   type DragStartEvent,
 } from "@dnd-kit/core";
-import { Search, Plus, Filter } from "lucide-react";
-import { toast } from "sonner";
+import { Search, Plus, Filter, MessageSquare } from "lucide-react";
+import { notify } from "@/lib/notify";
+import { EmptyState } from "@/components/empty-state";
 import {
   COLUMNS,
   MOCK_CONTACTS,
@@ -124,7 +125,7 @@ function InboxPage() {
       // silent — likely table missing in dev. Don't spam.
       console.warn("[inbox] persistência ignorada:", error.message);
     } else {
-      toast.success(`Movido para ${COLUMNS.find((c) => c.id === col)?.label}`);
+      notify.success(`Movido para ${COLUMNS.find((c) => c.id === col)?.label}`);
     }
   };
 
@@ -235,7 +236,7 @@ function InboxPage() {
 
           <button
             type="button"
-            onClick={() => toast.info("Em breve: criar contato manualmente.")}
+            onClick={() => notify.info("Em breve: criar contato manualmente.")}
             className="btn-primary"
           >
             <Plus size={14} />
