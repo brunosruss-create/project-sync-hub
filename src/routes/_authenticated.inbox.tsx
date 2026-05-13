@@ -113,8 +113,8 @@ function InboxPage() {
   const byColumn = React.useMemo(() => {
     const map: Record<KanbanColumnId, Contact[]> = {
       waiting: [],
-      active: [],
-      done: [],
+      in_progress: [],
+      scheduled: [],
       urgent: [],
     };
     for (const c of filtered) map[c.kanban_column].push(c);
