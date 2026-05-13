@@ -664,7 +664,7 @@ function MessageBubble({
           animation: "fadeSlideIn 200ms ease-out",
         }}
       >
-        <MessageChevron isMe={isMe} bubbleBg={audioBg} message={m} />
+        <MessageChevron isMe={isMe} bubbleBg={audioBg} message={m} onReply={onReply} />
         <AudioPlayer
           src={m.media_url}
           avatarName={contactName}
