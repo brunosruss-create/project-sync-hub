@@ -649,16 +649,29 @@ function InboxPage() {
             className="flex-1 overflow-x-auto overflow-y-hidden"
             style={{ display: "flex", gap: 12, paddingBottom: 8 }}
           >
-            {COLUMNS.map((c) => (
+            {columns.map((c) => (
               <KanbanColumn
                 key={c.id}
-                id={c.id}
-                label={c.label}
-                emoji={c.emoji}
-                contacts={byColumn[c.id]}
+                column={c}
+                contacts={byColumn[c.slug] ?? []}
                 onCardClick={setOpenContact}
               />
             ))}
+            <button
+              type="button"
+              onClick={() => { setColumnEditTarget(null); setColumnEditMode("create"); }}
+              className="shrink-0"
+              style={{
+                width: 200, alignSelf: "flex-start",
+                padding: 12, borderRadius: 12,
+                border: "1px dashed var(--border-strong)",
+                background: "transparent", color: "var(--text-muted)",
+                cursor: "pointer", fontSize: 12, fontWeight: 600,
+                display: "inline-flex", alignItems: "center", justifyContent: "center", gap: 6,
+              }}
+            >
+              <Plus size={14} /> Nova coluna
+            </button>
           </div>
 
           <DragOverlay dropAnimation={null}>
@@ -698,11 +711,48 @@ function InboxPage() {
       {menuState && (
         <CardMenu
           contact={menuState.contact}
+          columns={columns}
           anchor={menuState.anchor}
           onClose={() => setMenuState(null)}
           onAction={handleMenuAction}
         />
       )}
+
+      {columnMenuState && (
+        <ColumnMenu
+          column={columnMenuState.column}
+          anchor={columnMenuState.anchor}
+          canMoveLeft={columns.findIndex((c) => c.id === columnMenuState.column.id) > 0}
+          canMoveRight={columns.findIndex((c) => c.id === columnMenuState.column.id) < columns.length - 1}
+          onClose={() => setColumnMenuState(null)}
+          onAction={(a) => handleColumnAction(columnMenuState.column, a)}
+        />
+      )}
+
+      <ColumnEditModal
+        open={columnEditMode !== null}
+        column={columnEditMode === "edit" ? columnEditTarget : null}
+        existingSlugs={columns.map((c) => c.slug)}
+        nextPosition={columns.length}
+        onClose={() => { setColumnEditMode(null); setColumnEditTarget(null); }}
+        onSaved={(saved) => {
+          setColumns((prev) => {
+            const exists = prev.some((c) => c.id === saved.id);
+            return exists
+              ? prev.map((c) => (c.id === saved.id ? saved : c))
+              : [...prev, saved].sort((a, b) => a.position - b.position);
+          });
+        }}
+      />
+
+      <ConfirmDialog
+        open={!!columnDeleteTarget}
+        onClose={() => setColumnDeleteTarget(null)}
+        onConfirm={confirmDeleteColumn}
+        title={`Excluir coluna "${columnDeleteTarget?.label ?? ""}"?`}
+        description={`Os cards desta coluna serão movidos para "Aguardando". Esta ação não pode ser desfeita.`}
+        confirmLabel="Excluir"
+      />
 
       <EditContactModal
         open={!!editTarget}
