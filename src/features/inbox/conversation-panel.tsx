@@ -11,6 +11,8 @@ import {
   Check,
   Plus,
   CalendarPlus,
+  FileText,
+  Download,
 } from "lucide-react";
 import { Composer } from "./composer";
 import { type ContactCard as Contact, formatRelative, initials } from "./data";
