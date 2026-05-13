@@ -257,7 +257,6 @@ export function Composer({ draft, setDraft, taRef, onSend, onClosePanel, onSendA
 
   // long press handlers on Mic
   const onMicPointerDown = (e: React.PointerEvent) => {
-    if (hasText) return; // it's send button
     e.preventDefault();
     pointerStartXRef.current = e.clientX;
     longPressTimerRef.current = window.setTimeout(() => {
