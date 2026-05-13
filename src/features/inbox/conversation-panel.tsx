@@ -19,7 +19,7 @@ import { supabase } from "@/integrations/supabase/client";
 import { useAuth } from "@/hooks/use-auth";
 import { toast } from "sonner";
 import { useServerFn } from "@tanstack/react-start";
-import { sendWhatsAppMessage, refreshContactAvatar } from "@/lib/evolution.functions";
+import { sendWhatsAppMessage, refreshContactAvatar, sendWhatsAppMedia, sendWhatsAppAudio } from "@/lib/evolution.functions";
 import { ScheduleModal } from "./schedule-modal";
 import {
   SEED_SERVICES,
