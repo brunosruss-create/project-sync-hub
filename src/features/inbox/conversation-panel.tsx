@@ -247,6 +247,8 @@ export function ConversationPanel({
                     media_mime: r.media_mime ?? m.media_mime,
                     media_name: r.media_name ?? m.media_name,
                     whatsapp_message_id: r.whatsapp_message_id ?? m.whatsapp_message_id,
+                    quoted_preview: r.quoted_preview ?? m.quoted_preview,
+                    reactions: r.reactions ?? m.reactions,
                   }
                 : m,
             ),
