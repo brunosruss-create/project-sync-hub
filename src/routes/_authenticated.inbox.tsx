@@ -246,29 +246,40 @@ function InboxPage() {
       </div>
 
       {/* Kanban */}
-      <DndContext sensors={sensors} onDragStart={onDragStart} onDragEnd={onDragEnd}>
-        <div
-          className="flex-1 overflow-x-auto overflow-y-hidden"
-          style={{ display: "flex", gap: 12, paddingBottom: 8 }}
-        >
-          {COLUMNS.map((c) => (
-            <KanbanColumn
-              key={c.id}
-              id={c.id}
-              label={c.label}
-              emoji={c.emoji}
-              contacts={byColumn[c.id]}
-              onCardClick={setOpenContact}
-            />
-          ))}
+      {contacts.length === 0 ? (
+        <div style={{ flex: 1, display: "flex", alignItems: "center", justifyContent: "center" }}>
+          <EmptyState
+            icon={<MessageSquare size={48} style={{ color: "var(--brand-400)" }} aria-hidden="true" />}
+            title="Nenhum atendimento ainda"
+            description="Conecte seu WhatsApp para começar a receber conversas dos seus clientes."
+            action={{ label: "Conectar WhatsApp", onClick: () => (window.location.href = "/settings/whatsapp") }}
+          />
         </div>
+      ) : (
+        <DndContext sensors={sensors} onDragStart={onDragStart} onDragEnd={onDragEnd}>
+          <div
+            className="flex-1 overflow-x-auto overflow-y-hidden"
+            style={{ display: "flex", gap: 12, paddingBottom: 8 }}
+          >
+            {COLUMNS.map((c) => (
+              <KanbanColumn
+                key={c.id}
+                id={c.id}
+                label={c.label}
+                emoji={c.emoji}
+                contacts={byColumn[c.id]}
+                onCardClick={setOpenContact}
+              />
+            ))}
+          </div>
 
-        <DragOverlay dropAnimation={null}>
-          {activeContact && (
-            <ContactCard contact={activeContact} onClick={() => {}} isOverlay />
-          )}
-        </DragOverlay>
-      </DndContext>
+          <DragOverlay dropAnimation={null}>
+            {activeContact && (
+              <ContactCard contact={activeContact} onClick={() => {}} isOverlay />
+            )}
+          </DragOverlay>
+        </DndContext>
+      )}
 
       <ConversationPanel contact={openContact} onClose={() => setOpenContact(null)} />
     </div>
