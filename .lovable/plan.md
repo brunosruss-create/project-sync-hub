@@ -1,45 +1,35 @@
-## Objetivo
 
-Descobrir, com 100% de certeza, por que a Inbox mostra "não é possível conectar". As variáveis `EVOLUTION_API_URL` e `EVOLUTION_API_KEY` já existem nos secrets do Lovable — então o erro está no **valor** delas ou na **disponibilidade** do Railway. Vamos provar qual é.
+## Diagnóstico (com base em logs reais do worker)
 
-## O que vou fazer
+**1. "Mensagem de teste não chega no Inbox"** — não é o webhook. Os logs do worker mostram dezenas de `POST /api/public/evolution/... → 200` com `event: messages.upsert` chegando normalmente nos últimos minutos. Os dados estão sendo gravados no Supabase. O bug é **no front**: `src/routes/_authenticated.inbox.tsx` carrega `contacts` **uma única vez no mount** (`useEffect` sem refetch nem subscription). Enquanto o usuário fica olhando a tela, novas linhas no banco nunca aparecem — daí o "Nenhuma conversa ainda" eterno.
 
-### 1. Criar rota pública de diagnóstico
-Arquivo novo: `src/routes/api/public/evo-diag.ts`
+**2. "Primeira tentativa de conectar dá erro, a segunda funciona"** — em `connectInstance` (`src/lib/evolution.functions.ts`), o fluxo é: `logout` → `deleteInstance` → `createInstance` → `connect`. Quando a instância acabou de ser deletada, a Evolution leva ~500–1500 ms até o socket Baileys subir e gerar o QR. Hoje o código tenta `connect` **uma única vez**; se voltar sem `base64`, marcamos `status=error` e mostramos "Evolution conectou mas não devolveu QR". Na segunda tentativa a instância já existe + socket pronto → `connect` devolve QR na hora.
 
-A rota faz, no servidor (onde os secrets existem):
-- Lê `EVOLUTION_API_URL` e `EVOLUTION_API_KEY` do `process.env`
-- Mostra: tamanho da key (sem expor o valor), URL final, se tem `https://`, se tem barra no fim
-- Faz `GET {URL}/instance/fetchInstances` com header `apikey: {KEY}`
-- Retorna JSON com: `status`, `latency_ms`, `body_preview` (primeiros 300 chars), `error` se der timeout
+## Correções (cirúrgicas, sem quebrar o que já funciona)
 
-Sem expor a key. Apenas leitura. Nada destrutivo.
+### A. Inbox em tempo real
+Em `src/routes/_authenticated.inbox.tsx`, dentro do `useEffect` que carrega contatos:
+- Após o load inicial, abrir uma **Supabase Realtime subscription** em `postgres_changes` para a tabela `contacts` filtrando por `owner_user_id=eq.${user.id}`, eventos `INSERT` e `UPDATE`.
+- Em `INSERT`: append no estado `contacts` (mapeando para o tipo `Contact`).
+- Em `UPDATE`: substituir a linha pelo id, preservando ordenação por `last_message_at desc`.
+- Cleanup: `supabase.removeChannel(channel)` no unmount.
+- Fallback de segurança: também refazer o fetch quando a janela ganhar foco (`window.addEventListener("focus", refetch)`).
+- Se Realtime não estiver habilitado para a tabela, criar migration adicionando `contacts` à publication `supabase_realtime` e setando `REPLICA IDENTITY FULL`.
 
-### 2. Você abre a URL
-`https://github-vercel-bridge.lovable.app/api/public/evo-diag`
+Não mexer em `kanban-column.tsx`, `conversation-panel.tsx`, nem no webhook handler — eles já gravam corretamente.
 
-### 3. Interpretar o resultado
+### B. Retry no primeiro QR
+Em `src/lib/evolution.functions.ts`, dentro de `connectInstance`, no bloco "2) Sempre chama connect":
+- Trocar a chamada única `evo.connect(name)` por um loop de até **4 tentativas**, com espera de **600 ms** entre elas, parando assim que `extractQRCode` retornar algo não-nulo.
+- Manter o `try/createInstance` anterior intacto (se já vier QR de lá, pula o loop).
+- Só marcar `status=error` e lançar a mensagem atual ("Evolution conectou mas não devolveu QR") **depois** que todas as tentativas falharem.
+- Não alterar `deleteInstance`/`logout`/`createInstance`/`ensureWebhook`/expiração de 30 s — todo o fluxo que hoje funciona na 2ª tentativa fica idêntico.
 
-| Resposta | Significado | Fix |
-|---|---|---|
-| `status: 200` + lista de instâncias | Evolution OK — o bug está em outro lugar (RLS, webhook, instanceName) | Investigo o fluxo da Inbox |
-| `status: 401/403` | Key errada (não bate com `AUTHENTICATION_API_KEY` do Railway) | Atualizar `EVOLUTION_API_KEY` no secret |
-| `status: 404` | URL aponta pra path errado | Conferir base URL do Railway |
-| `error: ENOTFOUND` ou DNS fail | Domínio do Railway mudou ou está fora | Atualizar `EVOLUTION_API_URL` |
-| `error: timeout` ou `502/503` | Container do Railway parado/dormindo | Subir no Railway |
-| `error: "não configurado"` | Secret vazio | Repreencher o secret |
+### C. Nada mais muda
+- Webhook handler `src/routes/api/public/evolution.$instanceId.ts` permanece como está (logs confirmam que processa `messages.upsert` corretamente).
+- `PUBLIC_APP_URL`, secrets, rota de QR, polling de status, registro de webhook: intactos.
 
-### 4. Aplicar o fix correspondente
-Depende do resultado. Se for valor de secret, abro o formulário pra você atualizar.
-
-### 5. Remover a rota de diagnóstico
-Após resolver, deleto `src/routes/api/public/evo-diag.ts` pra não deixar endpoint público desnecessário.
-
-## Por que rota pública
-
-Server functions normais (`createServerFn`) exigem auth e cookie de sessão, o que dificulta testar do lado de fora. `/api/public/*` não exige auth no Lovable e basta abrir no navegador. A rota é **read-only** e **não vaza a key** (só mostra comprimento e prefixo da URL).
-
-## Riscos
-
-- Nenhum. Não escreve em banco, não muda config, não expõe secrets.
-- Rota fica ativa até a remoção (passo 5) — em produção por alguns minutos só.
+## Como vamos validar
+1. Após implementar, mandar uma mensagem WhatsApp de outro número para `5511914825892` com a aba do Inbox aberta — deve aparecer **sem refresh** em 1-2 s.
+2. Desconectar a instância e clicar "Conectar" — o QR deve aparecer já na 1ª tentativa (vai estar fazendo o retry interno, transparente).
+3. Logs do worker continuam mostrando `messages.upsert → 200` (não regredimos nada).
