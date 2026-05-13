@@ -11,11 +11,11 @@ export const Route = createFileRoute("/api/public/evolution/$instanceId")({
 
         const { data: row } = await supabaseAdmin
           .from("whatsapp_instances")
-          .select("id,instance_name,webhook_secret")
+          .select("id,instance_name,webhook_secret,owner_user_id")
           .eq("id", instanceId)
           .maybeSingle();
 
-        if (!row || !secret || secret !== row.webhook_secret) {
+        if (!row || !secret || secret !== row.webhook_secret || !row.owner_user_id) {
           return new Response("forbidden", { status: 403 });
         }
 
@@ -97,6 +97,7 @@ export const Route = createFileRoute("/api/public/evolution/$instanceId")({
                 .from("contacts")
                 .select("id")
                 .eq("phone", phone)
+                .eq("owner_user_id", row.owner_user_id)
                 .maybeSingle();
 
               let contactId = existing?.id as string | undefined;
@@ -104,6 +105,7 @@ export const Route = createFileRoute("/api/public/evolution/$instanceId")({
                 const { data: created } = await supabaseAdmin
                   .from("contacts")
                   .insert({
+                    owner_user_id: row.owner_user_id,
                     phone,
                     name: pushName ?? phone,
                     kanban_column: "waiting",
@@ -118,6 +120,7 @@ export const Route = createFileRoute("/api/public/evolution/$instanceId")({
                 await supabaseAdmin
                   .from("contacts")
                   .update({
+                    owner_user_id: row.owner_user_id,
                     is_unread: true,
                     last_message: text,
                     last_message_at: new Date().toISOString(),
@@ -127,6 +130,7 @@ export const Route = createFileRoute("/api/public/evolution/$instanceId")({
 
               if (contactId) {
                 await supabaseAdmin.from("messages").insert({
+                  owner_user_id: row.owner_user_id,
                   contact_id: contactId,
                   direction: "inbound",
                   content: text,
