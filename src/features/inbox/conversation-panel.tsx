@@ -449,8 +449,8 @@ export function ConversationPanel({
                   draft={draft}
                   setDraft={setDraft}
                   taRef={taRef}
-                  onKeyDown={onKeyDown}
                   onSend={send}
+                  onClosePanel={onClose}
                 />
               </>
             ) : (
