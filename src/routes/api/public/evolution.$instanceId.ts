@@ -135,6 +135,8 @@ export const Route = createFileRoute("/api/public/evolution/$instanceId")({
                 });
               }
             }
+          } else {
+            console.log("[evolution] evento ignorado:", event);
           }
         } catch (e: any) {
           console.error("[evolution webhook]", e?.message ?? e);
