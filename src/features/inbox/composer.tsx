@@ -257,7 +257,6 @@ export function Composer({ draft, setDraft, taRef, onSend, onClosePanel, onSendA
 
   // long press handlers on Mic
   const onMicPointerDown = (e: React.PointerEvent) => {
-    if (hasText) return; // it's send button
     e.preventDefault();
     pointerStartXRef.current = e.clientX;
     longPressTimerRef.current = window.setTimeout(() => {
@@ -277,7 +276,7 @@ export function Composer({ draft, setDraft, taRef, onSend, onClosePanel, onSendA
     if (longPressTimerRef.current) {
       window.clearTimeout(longPressTimerRef.current);
       longPressTimerRef.current = null;
-      if (!hasText) toast.message("Segure para gravar.");
+      toast.message("Segure para gravar.");
       return;
     }
     if (isRecording) {
@@ -507,6 +506,18 @@ export function Composer({ draft, setDraft, taRef, onSend, onClosePanel, onSendA
           >
             <Paperclip size={20} />
           </button>
+          <button
+            type="button"
+            aria-label="Gravar áudio (segure)"
+            onPointerDown={onMicPointerDown}
+            onPointerMove={onMicPointerMove}
+            onPointerUp={onMicPointerUp}
+            style={iconBtn}
+            onMouseEnter={(e) => (e.currentTarget.style.color = "var(--text-primary)")}
+            onMouseLeave={(e) => (e.currentTarget.style.color = "var(--text-muted)")}
+          >
+            <Mic size={20} />
+          </button>
           <textarea
             ref={taRef}
             value={draft}
@@ -540,14 +551,12 @@ export function Composer({ draft, setDraft, taRef, onSend, onClosePanel, onSendA
           />
         </div>
 
-        {/* Send / Mic button */}
+        {/* Send button (always round, always Send) */}
         <button
           type="button"
-          aria-label={hasText ? "Enviar" : "Gravar áudio"}
-          onClick={() => { if (hasText) onSend(); }}
-          onPointerDown={onMicPointerDown}
-          onPointerMove={onMicPointerMove}
-          onPointerUp={onMicPointerUp}
+          aria-label="Enviar"
+          onClick={onSend}
+          disabled={!hasText}
           style={{
             width: 40, height: 40, borderRadius: 999,
             background: "var(--brand-400)",
@@ -557,11 +566,13 @@ export function Composer({ draft, setDraft, taRef, onSend, onClosePanel, onSendA
             justifyContent: "center",
             flexShrink: 0,
             alignSelf: "flex-end",
-            transition: "transform 150ms ease, background 150ms ease",
-            cursor: "pointer",
+            transition: "transform 150ms ease, background 150ms ease, opacity 150ms ease",
+            cursor: hasText ? "pointer" : "not-allowed",
+            opacity: hasText ? 1 : 0.45,
             border: "none",
           }}
           onMouseEnter={(e) => {
+            if (!hasText) return;
             e.currentTarget.style.background = "var(--brand-600)";
             e.currentTarget.style.transform = "scale(1.05)";
           }}
@@ -569,19 +580,10 @@ export function Composer({ draft, setDraft, taRef, onSend, onClosePanel, onSendA
             e.currentTarget.style.background = "var(--brand-400)";
             e.currentTarget.style.transform = "scale(1)";
           }}
-          onMouseDown={(e) => (e.currentTarget.style.transform = "scale(0.95)")}
-          onMouseUp={(e) => (e.currentTarget.style.transform = "scale(1.05)")}
+          onMouseDown={(e) => { if (hasText) e.currentTarget.style.transform = "scale(0.95)"; }}
+          onMouseUp={(e) => { if (hasText) e.currentTarget.style.transform = "scale(1.05)"; }}
         >
-          <span
-            style={{
-              display: "inline-flex",
-              transition: "transform 150ms ease, opacity 150ms ease",
-              transform: hasText ? "rotate(0deg) scale(1)" : "rotate(-90deg) scale(1)",
-            }}
-            key={hasText ? "send" : "mic"}
-          >
-            {hasText ? <Send size={18} /> : <Mic size={18} />}
-          </span>
+          <Send size={18} />
         </button>
       </div>
 
