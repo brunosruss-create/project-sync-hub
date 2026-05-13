@@ -417,6 +417,31 @@ function InboxPage() {
           setContacts((prev) => prev.map((c) => (c.id === id ? { ...c, ...patch } : c)))
         }
       />
+
+      <NewContactModal
+        open={newContactOpen}
+        onClose={() => setNewContactOpen(false)}
+        onCreated={(contact, opts) => {
+          setContacts((prev) => {
+            if (prev.some((c) => c.id === contact.id)) {
+              return prev.map((c) => (c.id === contact.id ? { ...c, ...contact } : c));
+            }
+            return [contact, ...prev];
+          });
+          if (!opts.openExisting) {
+            setHighlightId(contact.id);
+            window.setTimeout(() => setHighlightId((cur) => (cur === contact.id ? null : cur)), 2200);
+          }
+          setOpenContact(contact);
+        }}
+      />
+
+      {highlightId && (
+        <style>{`
+          @keyframes zfPulseRing { 0%,100% { box-shadow: 0 0 0 0 var(--brand-400, #25C880); } 50% { box-shadow: 0 0 0 4px color-mix(in oklab, var(--brand-400, #25C880) 35%, transparent); } }
+          [data-contact-id="${highlightId}"] { animation: zfPulseRing 1s ease-in-out 2; border-color: var(--brand-400, #25C880) !important; }
+        `}</style>
+      )}
     </div>
   );
 }
