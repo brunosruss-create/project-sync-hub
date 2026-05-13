@@ -57,6 +57,8 @@ interface Message {
   whatsapp_message_id?: string | null;
   quoted_preview?: { content?: string; author?: string; message_type?: string } | null;
   reactions?: Array<{ emoji: string; from: string }> | null;
+  deleted_at?: string | null;
+  edited_at?: string | null;
 }
 
 const MAX_CHARS = 4096;
