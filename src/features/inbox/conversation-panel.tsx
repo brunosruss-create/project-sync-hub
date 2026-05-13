@@ -669,7 +669,7 @@ function MessageBubble({
         wordBreak: "break-word",
       }}
     >
-      <MessageChevron isMe={isMe} bubbleBg={bubbleBg} />
+      <MessageChevron isMe={isMe} bubbleBg={bubbleBg} message={m} />
       {m.media_url && m.message_type === "image" && (
         <a href={m.media_url} target="_blank" rel="noreferrer" style={{ display: "block", marginBottom: m.content ? 6 : 0 }}>
           <img
