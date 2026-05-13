@@ -541,7 +541,7 @@ export function Composer({ draft, setDraft, taRef, onSend, onClosePanel, onSendA
           </button>
           <button
             type="button"
-            aria-label="Gravar áudio (segure)"
+            aria-label={isRecording ? "Parar gravação" : "Gravar áudio"}
             onPointerDown={onMicPointerDown}
             onPointerMove={onMicPointerMove}
             onPointerUp={onMicPointerUp}
