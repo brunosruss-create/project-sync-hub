@@ -646,14 +646,16 @@ function MessageBubble({
     );
   }
 
+  const bubbleBg = isMe
+    ? "color-mix(in oklab, var(--brand-400) 15%, var(--bg-surface))"
+    : "var(--bg-overlay)";
   return (
     <div
+      className="group/msg relative"
       style={{
         alignSelf: isMe ? "flex-end" : "flex-start",
         maxWidth: "75%",
-        background: isMe
-          ? "color-mix(in oklab, var(--brand-400) 15%, var(--bg-surface))"
-          : "var(--bg-overlay)",
+        background: bubbleBg,
         border: isMe
           ? "1px solid color-mix(in oklab, var(--brand-400) 30%, transparent)"
           : "1px solid var(--border)",
@@ -666,6 +668,7 @@ function MessageBubble({
         wordBreak: "break-word",
       }}
     >
+      <MessageChevron isMe={isMe} bubbleBg={bubbleBg} />
       {m.media_url && m.message_type === "image" && (
         <a href={m.media_url} target="_blank" rel="noreferrer" style={{ display: "block", marginBottom: m.content ? 6 : 0 }}>
           <img
