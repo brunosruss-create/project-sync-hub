@@ -864,11 +864,13 @@ function MessageChevron({
   bubbleBg,
   message,
   onReply,
+  onReact,
 }: {
   isMe: boolean;
   bubbleBg: string;
   message: Message;
   onReply?: (m: Message) => void;
+  onReact?: (m: Message, emoji: string) => void;
 }) {
   return (
     <MessageActions
@@ -882,6 +884,7 @@ function MessageChevron({
         messageType: message.message_type,
       }}
       onReply={() => onReply?.(message)}
+      onReact={(_m, emoji) => onReact?.(message, emoji)}
     />
   );
 }
