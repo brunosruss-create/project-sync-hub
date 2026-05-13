@@ -15,6 +15,7 @@ import {
 } from "lucide-react";
 import { notify } from "@/lib/notify";
 import { supabase } from "@/integrations/supabase/client";
+import { EmptyState } from "@/components/empty-state";
 import {
   HOUR_END,
   HOUR_START,
@@ -1050,16 +1051,12 @@ function ListView({
 
   if (upcoming.length === 0) {
     return (
-      <div
-        style={{
-          padding: 48,
-          textAlign: "center",
-          color: "var(--text-muted)",
-          fontSize: 13,
-        }}
-      >
-        Nenhum agendamento próximo.
-      </div>
+      <EmptyState
+        icon={<CalendarClock size={48} style={{ color: "var(--brand-400)" }} aria-hidden="true" />}
+        title="Sem agendamentos hoje"
+        description="Que tal agendar o próximo? Crie um agendamento para organizar sua agenda."
+        action={{ label: "Novo agendamento", onClick: () => onOpen("") }}
+      />
     );
   }
 
