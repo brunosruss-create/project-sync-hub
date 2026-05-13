@@ -88,18 +88,27 @@ function seedMessages(c: Contact): Message[] {
 export function ConversationPanel({
   contact,
   onClose,
+  onContactUpdate,
 }: {
   contact: Contact | null;
   onClose: () => void;
+  onContactUpdate?: (contactId: string, patch: Partial<Contact>) => void;
 }) {
   const { user } = useAuth();
   const [tab, setTab] = React.useState<Tab>("conversation");
   const [draft, setDraft] = React.useState("");
   const [menuOpen, setMenuOpen] = React.useState(false);
   const [messages, setMessages] = React.useState<Message[]>([]);
+  const [scheduleOpen, setScheduleOpen] = React.useState(false);
+  const [scheduleSeed, setScheduleSeed] = React.useState<string[] | undefined>(undefined);
   const open = !!contact;
   const scrollRef = React.useRef<HTMLDivElement | null>(null);
   const taRef = React.useRef<HTMLTextAreaElement | null>(null);
+
+  const openSchedule = (preselected?: string[]) => {
+    setScheduleSeed(preselected);
+    setScheduleOpen(true);
+  };
 
   // reset on contact change
   React.useEffect(() => {
