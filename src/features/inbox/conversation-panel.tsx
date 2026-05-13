@@ -124,6 +124,25 @@ export function ConversationPanel({
     setMessages(import.meta.env.DEV && contact.id.startsWith("c") ? seedMessages(contact) : []);
   }, [contact?.id]);
 
+  // Background: refresh foto do WhatsApp ao abrir o chat (silencioso)
+  React.useEffect(() => {
+    if (!contact?.id) return;
+    let cancelled = false;
+    (async () => {
+      try {
+        const r = await refreshAvatar({ data: { contactId: contact.id } });
+        if (!cancelled && r?.changed && r.url) {
+          onContactUpdate?.(contact.id, { avatar: r.url });
+        }
+      } catch {
+        // silencioso — Evolution pode não estar configurado
+      }
+    })();
+    return () => {
+      cancelled = true;
+    };
+  }, [contact?.id]);
+
   // load + subscribe to realtime messages reais do Supabase
   React.useEffect(() => {
     if (!contact) return;
