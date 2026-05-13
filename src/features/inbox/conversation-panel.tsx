@@ -27,6 +27,7 @@ import { toast } from "sonner";
 import { useServerFn } from "@tanstack/react-start";
 import { sendWhatsAppMessage, refreshContactAvatar, sendWhatsAppMedia, sendWhatsAppAudio } from "@/lib/evolution.functions";
 import { ScheduleModal } from "./schedule-modal";
+import { MessageActions } from "./message-actions";
 import {
   SEED_SERVICES,
   formatCurrencyBRL,
@@ -620,7 +621,7 @@ function MessageBubble({
           animation: "fadeSlideIn 200ms ease-out",
         }}
       >
-        <MessageChevron isMe={isMe} bubbleBg={audioBg} />
+        <MessageChevron isMe={isMe} bubbleBg={audioBg} message={m} />
         <AudioPlayer
           src={m.media_url}
           avatarName={contactName}
@@ -669,7 +670,7 @@ function MessageBubble({
         wordBreak: "break-word",
       }}
     >
-      <MessageChevron isMe={isMe} bubbleBg={bubbleBg} />
+      <MessageChevron isMe={isMe} bubbleBg={bubbleBg} message={m} />
       {m.media_url && m.message_type === "image" && (
         <a href={m.media_url} target="_blank" rel="noreferrer" style={{ display: "block", marginBottom: m.content ? 6 : 0 }}>
           <img
@@ -738,35 +739,27 @@ function fmtClock(date: Date): string {
   return date.toLocaleTimeString("pt-BR", { hour: "2-digit", minute: "2-digit" });
 }
 
-function MessageChevron({ isMe, bubbleBg }: { isMe: boolean; bubbleBg: string }) {
+function MessageChevron({
+  isMe,
+  bubbleBg,
+  message,
+}: {
+  isMe: boolean;
+  bubbleBg: string;
+  message: Message;
+}) {
   return (
-    <button
-      type="button"
-      aria-label="Opções da mensagem"
-      onClick={(e) => e.stopPropagation()}
-      className="opacity-0 group-hover/msg:opacity-100 focus:opacity-100"
-      style={{
-        position: "absolute",
-        top: 0,
-        right: isMe ? 0 : "auto",
-        left: isMe ? "auto" : 0,
-        width: 36,
-        height: 26,
-        display: "flex",
-        alignItems: "center",
-        justifyContent: "flex-end",
-        padding: "0 6px",
-        border: "none",
-        cursor: "pointer",
-        borderTopRightRadius: isMe ? 12 : 0,
-        borderTopLeftRadius: isMe ? 0 : 12,
-        background: `linear-gradient(225deg, ${bubbleBg} 45%, color-mix(in oklab, ${bubbleBg} 0%, transparent) 100%)`,
-        transition: "opacity 120ms ease-out",
-        zIndex: 2,
+    <MessageActions
+      bubbleBg={bubbleBg}
+      message={{
+        id: message.id,
+        isMe,
+        content: message.content ?? "",
+        mediaUrl: message.media_url ?? null,
+        mediaName: message.media_name ?? null,
+        messageType: message.message_type,
       }}
-    >
-      <ChevronDown size={18} color="var(--text-muted)" strokeWidth={2.25} />
-    </button>
+    />
   );
 }
 
