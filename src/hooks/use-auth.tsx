@@ -2,14 +2,22 @@ import * as React from "react";
 import type { Session, User } from "@supabase/supabase-js";
 import { supabase } from "@/integrations/supabase/client";
 
+type SignUpExtras = { fullName?: string };
+
 type AuthContextValue = {
   user: User | null;
   session: Session | null;
   loading: boolean;
   signIn: (email: string, password: string) => Promise<{ error: Error | null }>;
-  signUp: (email: string, password: string) => Promise<{ error: Error | null }>;
+  signUp: (
+    email: string,
+    password: string,
+    extras?: SignUpExtras,
+  ) => Promise<{ error: Error | null }>;
   signInWithGoogle: () => Promise<{ error: Error | null }>;
   signOut: () => Promise<void>;
+  requestPasswordReset: (email: string) => Promise<{ error: Error | null }>;
+  updatePassword: (password: string) => Promise<{ error: Error | null }>;
 };
 
 const AuthContext = React.createContext<AuthContextValue | undefined>(undefined);
@@ -20,7 +28,9 @@ export function AuthProvider({ children }: { children: React.ReactNode }) {
   const [loading, setLoading] = React.useState(true);
 
   React.useEffect(() => {
-    const { data: { subscription } } = supabase.auth.onAuthStateChange((_event, s) => {
+    const {
+      data: { subscription },
+    } = supabase.auth.onAuthStateChange((_event, s) => {
       setSession(s);
       setUser(s?.user ?? null);
       setLoading(false);
@@ -43,13 +53,16 @@ export function AuthProvider({ children }: { children: React.ReactNode }) {
       const { error } = await supabase.auth.signInWithPassword({ email, password });
       return { error };
     },
-    signUp: async (email, password) => {
+    signUp: async (email, password, extras) => {
       const redirectTo =
         typeof window !== "undefined" ? `${window.location.origin}/auth/callback` : undefined;
       const { error } = await supabase.auth.signUp({
         email,
         password,
-        options: { emailRedirectTo: redirectTo },
+        options: {
+          emailRedirectTo: redirectTo,
+          data: extras?.fullName ? { full_name: extras.fullName } : undefined,
+        },
       });
       return { error };
     },
@@ -64,6 +77,18 @@ export function AuthProvider({ children }: { children: React.ReactNode }) {
     },
     signOut: async () => {
       await supabase.auth.signOut();
+    },
+    requestPasswordReset: async (email) => {
+      const redirectTo =
+        typeof window !== "undefined"
+          ? `${window.location.origin}/auth/callback?type=recovery`
+          : undefined;
+      const { error } = await supabase.auth.resetPasswordForEmail(email, { redirectTo });
+      return { error };
+    },
+    updatePassword: async (password) => {
+      const { error } = await supabase.auth.updateUser({ password });
+      return { error };
     },
   };
 
