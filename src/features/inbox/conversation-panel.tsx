@@ -112,6 +112,7 @@ export function ConversationPanel({
   const sendMediaFn = useServerFn(sendWhatsAppMedia);
   const sendAudioFn = useServerFn(sendWhatsAppAudio);
   const refreshAvatar = useServerFn(refreshContactAvatar);
+  const reactFn = useServerFn(reactToMessage);
   const [tab, setTab] = React.useState<Tab>("conversation");
   const [draft, setDraft] = React.useState("");
   const [menuOpen, setMenuOpen] = React.useState(false);
