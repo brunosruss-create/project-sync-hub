@@ -55,6 +55,8 @@ interface Message {
   media_mime?: string | null;
   media_name?: string | null;
   whatsapp_message_id?: string | null;
+  quoted_preview?: { content?: string; author?: string; message_type?: string } | null;
+  reactions?: Array<{ emoji: string; from: string }> | null;
 }
 
 const MAX_CHARS = 4096;
@@ -163,7 +165,7 @@ export function ConversationPanel({
     (async () => {
       const { data, error } = await supabase
         .from("messages")
-        .select("id,direction,content,message_type,status,created_at,media_url,media_mime,media_name,whatsapp_message_id")
+        .select("id,direction,content,message_type,status,created_at,media_url,media_mime,media_name,whatsapp_message_id,quoted_preview,reactions")
         .eq("contact_id", contact.id)
         .order("created_at", { ascending: true });
       if (cancelled) return;
@@ -182,6 +184,8 @@ export function ConversationPanel({
             media_mime: r.media_mime ?? null,
             media_name: r.media_name ?? null,
             whatsapp_message_id: r.whatsapp_message_id ?? null,
+            quoted_preview: r.quoted_preview ?? null,
+            reactions: r.reactions ?? [],
           })),
         );
       }
@@ -215,6 +219,8 @@ export function ConversationPanel({
                     media_mime: r.media_mime ?? null,
                     media_name: r.media_name ?? null,
                     whatsapp_message_id: r.whatsapp_message_id ?? null,
+                    quoted_preview: r.quoted_preview ?? null,
+                    reactions: r.reactions ?? [],
                   },
                 ],
           );
@@ -241,6 +247,8 @@ export function ConversationPanel({
                     media_mime: r.media_mime ?? m.media_mime,
                     media_name: r.media_name ?? m.media_name,
                     whatsapp_message_id: r.whatsapp_message_id ?? m.whatsapp_message_id,
+                    quoted_preview: r.quoted_preview ?? m.quoted_preview,
+                    reactions: r.reactions ?? m.reactions,
                   }
                 : m,
             ),
@@ -665,6 +673,7 @@ function MessageBubble({
         }}
       >
         <MessageChevron isMe={isMe} bubbleBg={audioBg} message={m} onReply={onReply} />
+        {m.quoted_preview && <QuotedPreview preview={m.quoted_preview} isMe={isMe} />}
         <AudioPlayer
           src={m.media_url}
           avatarName={contactName}
@@ -714,6 +723,7 @@ function MessageBubble({
       }}
     >
       <MessageChevron isMe={isMe} bubbleBg={bubbleBg} message={m} onReply={onReply} />
+      {m.quoted_preview && <QuotedPreview preview={m.quoted_preview} isMe={isMe} />}
       {m.media_url && m.message_type === "image" && (
         <a href={m.media_url} target="_blank" rel="noreferrer" style={{ display: "block", marginBottom: m.content ? 6 : 0 }}>
           <img
@@ -780,6 +790,49 @@ function getVisualMessageStatus(message: Message): Message["status"] {
 
 function fmtClock(date: Date): string {
   return date.toLocaleTimeString("pt-BR", { hour: "2-digit", minute: "2-digit" });
+}
+
+function QuotedPreview({
+  preview,
+  isMe,
+}: {
+  preview: { content?: string; author?: string; message_type?: string };
+  isMe: boolean;
+}) {
+  const accent = isMe ? "var(--brand-400)" : "#9aa3af";
+  const typeLabel =
+    preview.message_type === "image" ? "📷 Foto"
+    : preview.message_type === "video" ? "🎥 Vídeo"
+    : preview.message_type === "audio" ? "🎤 Áudio"
+    : preview.message_type === "document" ? "📄 Documento"
+    : null;
+  return (
+    <div
+      style={{
+        display: "block",
+        padding: "6px 8px",
+        marginBottom: 6,
+        background: "color-mix(in oklab, var(--text-primary) 6%, transparent)",
+        borderRadius: 6,
+        borderLeft: `3px solid ${accent}`,
+        fontSize: 12,
+      }}
+    >
+      <div style={{ fontWeight: 600, color: accent, marginBottom: 2 }}>
+        {preview.author || (isMe ? "Você" : "")}
+      </div>
+      <div
+        style={{
+          color: "var(--text-muted)",
+          overflow: "hidden",
+          textOverflow: "ellipsis",
+          whiteSpace: "nowrap",
+        }}
+      >
+        {typeLabel || preview.content || ""}
+      </div>
+    </div>
+  );
 }
 
 function MessageChevron({
