@@ -21,6 +21,7 @@ import {
 import { KanbanColumn } from "@/features/inbox/kanban-column";
 import { ContactCard } from "@/features/inbox/contact-card";
 import { ConversationPanel } from "@/features/inbox/conversation-panel";
+import { NewContactModal } from "@/features/inbox/new-contact-modal";
 import { supabase } from "@/integrations/supabase/client";
 import { useAuth } from "@/hooks/use-auth";
 
