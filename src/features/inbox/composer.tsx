@@ -27,9 +27,11 @@ type Props = {
   taRef: React.RefObject<HTMLTextAreaElement | null>;
   onSend: () => void;
   onClosePanel?: () => void;
+  onSendAttachments?: (files: File[], caption: string) => Promise<void>;
+  onSendAudio?: (blob: Blob) => Promise<void>;
 };
 
-export function Composer({ draft, setDraft, taRef, onSend, onClosePanel }: Props) {
+export function Composer({ draft, setDraft, taRef, onSend, onClosePanel, onSendAttachments, onSendAudio }: Props) {
   const hasText = draft.trim().length > 0;
   const nearLimit = draft.length > MAX_CHARS - 200;
 
