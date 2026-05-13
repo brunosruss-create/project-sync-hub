@@ -161,7 +161,7 @@ function InboxPage() {
 
   // Listener para Cmd+K → "Novo contato" + tecla "N"
   React.useEffect(() => {
-    const onNew = () => notify.info("Em breve: criar contato manualmente.");
+    const onNew = () => setNewContactOpen(true);
     window.addEventListener("zf:new-contact", onNew);
     const onKey = (e: KeyboardEvent) => {
       if (e.key.toLowerCase() !== "n" || e.metaKey || e.ctrlKey || e.altKey) return;
