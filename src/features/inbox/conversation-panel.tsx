@@ -284,19 +284,8 @@ export function ConversationPanel({
                 position: "relative",
               }}
             >
-              <div
-                className="inline-flex items-center justify-center shrink-0"
-                style={{
-                  width: 32,
-                  height: 32,
-                  borderRadius: 999,
-                  background: "var(--bg-overlay)",
-                  fontSize: 12,
-                  fontWeight: 600,
-                  position: "relative",
-                }}
-              >
-                {initials(contact.name)}
+              <div style={{ position: "relative", width: 36, height: 36, flexShrink: 0 }}>
+                <ContactAvatar name={contact.name} avatarUrl={contact.avatar} size={36} />
                 <span
                   style={{
                     position: "absolute",
