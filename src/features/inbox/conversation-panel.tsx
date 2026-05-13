@@ -847,7 +847,7 @@ function MessageBubble({
         wordBreak: "break-word",
       }}
     >
-      <MessageChevron isMe={isMe} bubbleBg={bubbleBg} message={m} onReply={onReply} onReact={onReact} onEdit={onStartEdit} onDelete={onDelete} />
+      <MessageChevron isMe={isMe} bubbleBg={bubbleBg} message={m} onReply={onReply} onReact={onReact} onEdit={onStartEdit} onDelete={onDelete} onForward={onForward} />
       {m.quoted_preview && <QuotedPreview preview={m.quoted_preview} isMe={isMe} />}
       {m.media_url && m.message_type === "image" && (
         <a href={m.media_url} target="_blank" rel="noreferrer" style={{ display: "block", marginBottom: m.content ? 6 : 0 }}>
