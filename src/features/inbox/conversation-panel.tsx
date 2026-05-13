@@ -200,6 +200,9 @@ export function ConversationPanel({
                     message_type: r.message_type ?? "text",
                     status: r.status ?? "sent",
                     created_at: new Date(r.created_at),
+                    media_url: r.media_url ?? null,
+                    media_mime: r.media_mime ?? null,
+                    media_name: r.media_name ?? null,
                   },
                 ],
           );
