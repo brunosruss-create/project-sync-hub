@@ -1,22 +1,45 @@
-import { createFileRoute } from "@tanstack/react-router";
+import * as React from "react";
+import { createFileRoute, Link } from "@tanstack/react-router";
+import {
+  BarChart,
+  Bar,
+  XAxis,
+  YAxis,
+  Tooltip,
+  ResponsiveContainer,
+  PieChart,
+  Pie,
+  Cell,
+} from "recharts";
+import {
+  MessageSquare,
+  Clock,
+  TrendingUp,
+  Calendar,
+  AlertCircle,
+  ArrowUpRight,
+  ArrowDownRight,
+} from "lucide-react";
 import { useAuth } from "@/hooks/use-auth";
 import { useProfile } from "@/hooks/use-profile";
-import { MessageSquare, Users, TrendingUp, Clock } from "lucide-react";
 
 export const Route = createFileRoute("/_authenticated/dashboard")({
   component: Dashboard,
 });
 
-const stats = [
-  { label: "Conversas hoje", value: "0", delta: "—", icon: MessageSquare },
-  { label: "Contatos ativos", value: "0", delta: "—", icon: Users },
-  { label: "Taxa de resposta", value: "—", delta: "—", icon: TrendingUp },
-  { label: "Tempo médio", value: "—", delta: "—", icon: Clock },
-];
+type Period = "today" | "week" | "month" | "custom";
 
 function Dashboard() {
   const { user } = useAuth();
   const { data: profile } = useProfile();
+  const [period, setPeriod] = React.useState<Period>("today");
+  const [loading, setLoading] = React.useState(true);
+
+  React.useEffect(() => {
+    setLoading(true);
+    const t = setTimeout(() => setLoading(false), 600);
+    return () => clearTimeout(t);
+  }, [period]);
 
   const displayName =
     profile?.full_name ||
@@ -24,92 +47,455 @@ function Dashboard() {
     user?.email?.split("@")[0] ||
     "ali";
 
+  const kpis = [
+    { label: "Atendimentos hoje", value: "47", delta: 12, icon: MessageSquare },
+    { label: "Tempo médio de resposta", value: "2m 14s", delta: -8, icon: Clock },
+    { label: "Taxa de resolução", value: "82%", delta: 4, icon: TrendingUp },
+    { label: "Agendamentos do dia", value: "12", delta: 3, icon: Calendar },
+  ];
+
+  const hourly = Array.from({ length: 24 }, (_, h) => ({
+    hour: `${String(h).padStart(2, "0")}h`,
+    msgs: Math.round(2 + Math.sin((h / 24) * Math.PI * 2) * 8 + Math.random() * 6 + (h > 8 && h < 20 ? 10 : 0)),
+  }));
+
+  const kanban = [
+    { name: "Aguardando", value: 8, color: "#F59E0B" },
+    { name: "Em Atendimento", value: 14, color: "#3B82F6" },
+    { name: "Concluído", value: 22, color: "#10B981" },
+    { name: "Arquivado", value: 5, color: "#6B7280" },
+  ];
+
+  const upcoming = [
+    { time: "10:30", client: "João Silva", service: "Revisão de óleo" },
+    { time: "11:00", client: "Maria Costa", service: "Diagnóstico elétrico" },
+    { time: "13:30", client: "Pedro Santos", service: "Alinhamento" },
+    { time: "15:00", client: "Ana Lima", service: "Troca de pastilhas" },
+    { time: "16:30", client: "Lucas Ferreira", service: "Lavagem completa" },
+  ];
+
+  const topServices = [
+    { name: "Revisão de óleo", count: 28 },
+    { name: "Alinhamento", count: 19 },
+    { name: "Diagnóstico elétrico", count: 14 },
+    { name: "Troca de pastilhas", count: 11 },
+    { name: "Lavagem completa", count: 9 },
+  ];
+
+  const agents = [
+    { name: "Ana Souza", online: true },
+    { name: "Bruno Lima", online: true },
+    { name: "Carla Mendes", online: false },
+    { name: "Diego Alves", online: true },
+  ];
+
+  const urgent = [
+    { id: "u1", client: "Roberto Mello", waiting: 14, last: "Preciso saber o valor da revisão" },
+    { id: "u2", client: "Júlia Prado", waiting: 8, last: "Tem horário hoje à tarde?" },
+  ];
+
   return (
-    <div className="flex flex-col" style={{ gap: 24 }}>
-      <div>
-        <h1 style={{ fontSize: 22, fontWeight: 600, letterSpacing: "-0.015em" }}>
-          Olá, {displayName}
-        </h1>
-        <p style={{ marginTop: 4, fontSize: 13, color: "var(--text-muted)" }}>
-          Aqui está o resumo do seu workspace.
-        </p>
+    <div className="flex flex-col" style={{ gap: 20 }}>
+      <div className="flex items-end justify-between flex-wrap gap-4">
+        <div>
+          <h1 style={{ fontSize: 22, fontWeight: 600, letterSpacing: "-0.015em" }}>
+            Olá, {displayName}
+          </h1>
+          <p style={{ marginTop: 4, fontSize: 13, color: "var(--text-muted)" }}>
+            Aqui está o resumo do seu workspace.
+          </p>
+        </div>
+        <PeriodFilter value={period} onChange={setPeriod} />
       </div>
 
-      <div className="grid gap-3 grid-cols-2 lg:grid-cols-4">
-        {stats.map(({ label, value, delta, icon: Icon }) => (
-          <div
-            key={label}
-            style={{
-              padding: 16,
-              borderRadius: 8,
-              background: "var(--bg-surface)",
-              border: "1px solid var(--border)",
-            }}
-          >
-            <div className="flex items-center justify-between">
-              <span style={{ fontSize: 12, color: "var(--text-muted)" }}>{label}</span>
-              <Icon size={14} style={{ color: "var(--text-muted)" }} />
-            </div>
-            <div style={{ marginTop: 12, fontSize: 22, fontWeight: 600, letterSpacing: "-0.01em" }}>
-              {value}
-            </div>
-            <div style={{ marginTop: 2, fontSize: 11, color: "var(--text-muted)" }}>{delta}</div>
-          </div>
-        ))}
+      {/* LINHA 1 — KPIs */}
+      <div className="grid gap-3" style={{ gridTemplateColumns: "repeat(auto-fit, minmax(200px, 1fr))" }}>
+        {kpis.map((k) =>
+          loading ? (
+            <Skeleton key={k.label} h={104} />
+          ) : (
+            <KPI key={k.label} {...k} />
+          ),
+        )}
       </div>
 
-      <div
-        style={{
-          padding: 20,
-          borderRadius: 8,
-          background: "var(--bg-surface)",
-          border: "1px solid var(--border)",
-        }}
-      >
-        <div style={{ fontSize: 14, fontWeight: 600 }}>Próximos passos</div>
-        <p style={{ marginTop: 4, fontSize: 13, color: "var(--text-muted)" }}>
-          Conecte seu número WhatsApp e importe seus contatos para começar.
-        </p>
-        <div className="flex flex-wrap" style={{ gap: 8, marginTop: 16 }}>
-          <button className="btn-primary">Conectar WhatsApp</button>
-          <button
-            type="button"
-            style={{
-              height: 32,
-              padding: "0 12px",
-              borderRadius: 6,
-              border: "1px solid var(--border-strong)",
-              background: "transparent",
-              color: "var(--text-primary)",
-              fontSize: 13,
-              fontWeight: 500,
-            }}
-          >
-            Importar contatos
-          </button>
+      {/* LINHA 2 */}
+      <div className="grid gap-3" style={{ gridTemplateColumns: "repeat(12, 1fr)" }}>
+        <div style={{ gridColumn: "span 12 / span 12" }} className="lg:col-span-8">
+          <ChartCard title="Atendimentos por hora (últimas 24h)">
+            {loading ? (
+              <Skeleton h={240} />
+            ) : (
+              <ResponsiveContainer width="100%" height={240}>
+                <BarChart data={hourly}>
+                  <XAxis
+                    dataKey="hour"
+                    stroke="var(--text-muted)"
+                    fontSize={10}
+                    tickLine={false}
+                    axisLine={false}
+                    interval={2}
+                  />
+                  <YAxis stroke="var(--text-muted)" fontSize={10} tickLine={false} axisLine={false} />
+                  <Tooltip
+                    cursor={{ fill: "var(--bg-overlay)" }}
+                    contentStyle={{
+                      background: "var(--bg-surface)",
+                      border: "1px solid var(--border)",
+                      borderRadius: 8,
+                      fontSize: 12,
+                    }}
+                  />
+                  <Bar dataKey="msgs" fill="var(--brand-400)" radius={[4, 4, 0, 0]} />
+                </BarChart>
+              </ResponsiveContainer>
+            )}
+          </ChartCard>
+        </div>
+        <div style={{ gridColumn: "span 12 / span 12" }} className="lg:col-span-4">
+          <ChartCard title="Distribuição por coluna">
+            {loading ? (
+              <Skeleton h={240} />
+            ) : (
+              <div className="flex items-center gap-3">
+                <ResponsiveContainer width="50%" height={180}>
+                  <PieChart>
+                    <Pie
+                      data={kanban}
+                      dataKey="value"
+                      innerRadius={40}
+                      outerRadius={70}
+                      paddingAngle={2}
+                    >
+                      {kanban.map((k) => (
+                        <Cell key={k.name} fill={k.color} stroke="var(--bg-surface)" />
+                      ))}
+                    </Pie>
+                  </PieChart>
+                </ResponsiveContainer>
+                <ul className="flex flex-col flex-1" style={{ gap: 6 }}>
+                  {kanban.map((k) => (
+                    <li key={k.name} className="flex items-center justify-between" style={{ fontSize: 12 }}>
+                      <span className="flex items-center gap-2">
+                        <span style={{ width: 8, height: 8, borderRadius: 2, background: k.color }} />
+                        {k.name}
+                      </span>
+                      <span style={{ fontWeight: 600 }}>{k.value}</span>
+                    </li>
+                  ))}
+                </ul>
+              </div>
+            )}
+          </ChartCard>
         </div>
       </div>
 
+      {/* LINHA 3 */}
+      <div className="grid gap-3" style={{ gridTemplateColumns: "repeat(12, 1fr)" }}>
+        <div style={{ gridColumn: "span 12 / span 12" }} className="lg:col-span-5">
+          <ChartCard title="Próximos agendamentos">
+            {loading ? (
+              <Skeleton h={240} />
+            ) : (
+              <ul className="flex flex-col" style={{ gap: 8 }}>
+                {upcoming.map((a, i) => (
+                  <li
+                    key={i}
+                    className="flex items-center gap-3"
+                    style={{
+                      padding: "8px 4px",
+                      borderTop: i === 0 ? 0 : "1px solid var(--border)",
+                    }}
+                  >
+                    <div
+                      style={{
+                        width: 52,
+                        textAlign: "center",
+                        fontSize: 13,
+                        fontWeight: 600,
+                        color: "var(--brand-400)",
+                      }}
+                    >
+                      {a.time}
+                    </div>
+                    <div className="flex-1 min-w-0">
+                      <div style={{ fontSize: 13, fontWeight: 500 }}>{a.client}</div>
+                      <div style={{ fontSize: 12, color: "var(--text-muted)" }}>{a.service}</div>
+                    </div>
+                  </li>
+                ))}
+              </ul>
+            )}
+          </ChartCard>
+        </div>
+        <div style={{ gridColumn: "span 12 / span 12" }} className="lg:col-span-4">
+          <ChartCard title="Top 5 serviços">
+            {loading ? (
+              <Skeleton h={240} />
+            ) : (
+              <ul className="flex flex-col" style={{ gap: 8 }}>
+                {topServices.map((s, i) => (
+                  <li
+                    key={s.name}
+                    className="flex items-center justify-between"
+                    style={{
+                      padding: "8px 4px",
+                      borderTop: i === 0 ? 0 : "1px solid var(--border)",
+                      fontSize: 13,
+                    }}
+                  >
+                    <span>{s.name}</span>
+                    <span
+                      style={{
+                        padding: "2px 8px",
+                        borderRadius: 999,
+                        background: "var(--bg-overlay)",
+                        fontSize: 12,
+                        fontWeight: 600,
+                      }}
+                    >
+                      {s.count}
+                    </span>
+                  </li>
+                ))}
+              </ul>
+            )}
+          </ChartCard>
+        </div>
+        <div style={{ gridColumn: "span 12 / span 12" }} className="lg:col-span-3">
+          <ChartCard title="Agentes online">
+            {loading ? (
+              <Skeleton h={240} />
+            ) : (
+              <ul className="flex flex-col" style={{ gap: 10 }}>
+                {agents.map((a) => (
+                  <li key={a.name} className="flex items-center gap-2" style={{ fontSize: 13 }}>
+                    <div style={{ position: "relative" }}>
+                      <div
+                        style={{
+                          width: 32,
+                          height: 32,
+                          borderRadius: 999,
+                          background: "var(--bg-overlay)",
+                          display: "flex",
+                          alignItems: "center",
+                          justifyContent: "center",
+                          fontWeight: 600,
+                          fontSize: 12,
+                        }}
+                      >
+                        {a.name.charAt(0)}
+                      </div>
+                      <span
+                        style={{
+                          position: "absolute",
+                          right: -1,
+                          bottom: -1,
+                          width: 10,
+                          height: 10,
+                          borderRadius: 999,
+                          background: a.online ? "#10B981" : "#9CA3AF",
+                          border: "2px solid var(--bg-surface)",
+                        }}
+                      />
+                    </div>
+                    <div className="flex-1 min-w-0">
+                      <div style={{ fontWeight: 500 }} className="truncate">
+                        {a.name}
+                      </div>
+                      <div style={{ fontSize: 11, color: "var(--text-muted)" }}>
+                        {a.online ? "Online" : "Offline"}
+                      </div>
+                    </div>
+                  </li>
+                ))}
+              </ul>
+            )}
+          </ChartCard>
+        </div>
+      </div>
+
+      {/* LINHA 4 — URGENTES */}
+      <ChartCard title="Atendimentos sem resposta há mais de 5 min" danger>
+        {loading ? (
+          <Skeleton h={120} />
+        ) : urgent.length === 0 ? (
+          <p style={{ fontSize: 13, color: "var(--text-muted)" }}>
+            Nenhuma conversa pendente. 
+          </p>
+        ) : (
+          <ul className="flex flex-col" style={{ gap: 8 }}>
+            {urgent.map((u) => (
+              <li key={u.id}>
+                <Link
+                  to="/inbox"
+                  className="flex items-center gap-3"
+                  style={{
+                    padding: "10px 12px",
+                    borderRadius: 8,
+                    border: "1px solid color-mix(in oklab, #EF4444 35%, var(--border))",
+                    background: "color-mix(in oklab, #EF4444 6%, var(--bg-surface))",
+                    textDecoration: "none",
+                    color: "var(--text-primary)",
+                  }}
+                >
+                  <AlertCircle size={16} style={{ color: "#EF4444", flexShrink: 0 }} />
+                  <div className="flex-1 min-w-0">
+                    <div style={{ fontSize: 13, fontWeight: 500 }}>{u.client}</div>
+                    <div className="truncate" style={{ fontSize: 12, color: "var(--text-muted)" }}>
+                      {u.last}
+                    </div>
+                  </div>
+                  <span
+                    style={{
+                      fontSize: 11,
+                      fontWeight: 600,
+                      color: "#EF4444",
+                      whiteSpace: "nowrap",
+                    }}
+                  >
+                    {u.waiting} min
+                  </span>
+                </Link>
+              </li>
+            ))}
+          </ul>
+        )}
+      </ChartCard>
+    </div>
+  );
+}
+
+function PeriodFilter({ value, onChange }: { value: Period; onChange: (v: Period) => void }) {
+  const items: { v: Period; label: string }[] = [
+    { v: "today", label: "Hoje" },
+    { v: "week", label: "Semana" },
+    { v: "month", label: "Mês" },
+    { v: "custom", label: "Personalizado" },
+  ];
+  return (
+    <div
+      className="flex"
+      style={{
+        padding: 3,
+        borderRadius: 8,
+        border: "1px solid var(--border)",
+        background: "var(--bg-surface)",
+      }}
+    >
+      {items.map((i) => {
+        const active = value === i.v;
+        return (
+          <button
+            key={i.v}
+            onClick={() => onChange(i.v)}
+            style={{
+              padding: "5px 10px",
+              borderRadius: 6,
+              border: 0,
+              fontSize: 12,
+              fontWeight: 500,
+              cursor: "pointer",
+              background: active ? "var(--bg-overlay)" : "transparent",
+              color: active ? "var(--text-primary)" : "var(--text-muted)",
+            }}
+          >
+            {i.label}
+          </button>
+        );
+      })}
+    </div>
+  );
+}
+
+function KPI({
+  label,
+  value,
+  delta,
+  icon: Icon,
+}: {
+  label: string;
+  value: string;
+  delta: number;
+  icon: React.ComponentType<{ size?: number; style?: React.CSSProperties }>;
+}) {
+  const positive = delta >= 0;
+  return (
+    <div
+      style={{
+        padding: 16,
+        borderRadius: 10,
+        background: "var(--bg-surface)",
+        border: "1px solid var(--border)",
+      }}
+    >
+      <div className="flex items-center justify-between">
+        <span style={{ fontSize: 12, color: "var(--text-muted)" }}>{label}</span>
+        <Icon size={14} style={{ color: "var(--text-muted)" }} />
+      </div>
+      <div style={{ marginTop: 12, fontSize: 24, fontWeight: 600, letterSpacing: "-0.01em" }}>
+        {value}
+      </div>
       <div
+        className="inline-flex items-center gap-1"
         style={{
-          padding: 16,
-          borderRadius: 8,
-          background: "var(--bg-surface)",
-          border: "1px solid var(--border)",
-          fontSize: 12,
-          color: "var(--text-muted)",
+          marginTop: 6,
+          fontSize: 11,
+          fontWeight: 600,
+          padding: "2px 6px",
+          borderRadius: 999,
+          color: positive ? "#10B981" : "#EF4444",
+          background: positive
+            ? "color-mix(in oklab, #10B981 15%, transparent)"
+            : "color-mix(in oklab, #EF4444 15%, transparent)",
         }}
       >
-        <span style={{ fontFamily: "var(--font-mono)" }}>user_id:</span>{" "}
-        <span style={{ fontFamily: "var(--font-mono)", color: "var(--text-primary)" }}>
-          {user?.id}
-        </span>
-        {" · "}
-        <span style={{ fontFamily: "var(--font-mono)" }}>provider:</span>{" "}
-        <span style={{ fontFamily: "var(--font-mono)", color: "var(--text-primary)" }}>
-          {user?.app_metadata?.provider || "email"}
-        </span>
+        {positive ? <ArrowUpRight size={11} /> : <ArrowDownRight size={11} />}
+        {Math.abs(delta)}% vs ontem
       </div>
     </div>
+  );
+}
+
+function ChartCard({
+  title,
+  children,
+  danger,
+}: {
+  title: string;
+  children: React.ReactNode;
+  danger?: boolean;
+}) {
+  return (
+    <div
+      style={{
+        padding: 16,
+        borderRadius: 10,
+        background: "var(--bg-surface)",
+        border: danger
+          ? "1px solid color-mix(in oklab, #EF4444 30%, var(--border))"
+          : "1px solid var(--border)",
+        height: "100%",
+      }}
+    >
+      <h3 style={{ fontSize: 13, fontWeight: 600, marginBottom: 14 }}>{title}</h3>
+      {children}
+    </div>
+  );
+}
+
+function Skeleton({ h }: { h: number }) {
+  return (
+    <div
+      style={{
+        height: h,
+        borderRadius: 10,
+        background:
+          "linear-gradient(90deg, var(--bg-surface) 0%, var(--bg-overlay) 50%, var(--bg-surface) 100%)",
+        backgroundSize: "200% 100%",
+        animation: "shimmer 1.4s ease-in-out infinite",
+        border: "1px solid var(--border)",
+      }}
+    />
   );
 }

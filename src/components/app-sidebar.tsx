@@ -9,6 +9,7 @@ import {
   ChevronsUpDown,
   Wrench,
   Calendar,
+  Bot,
 } from "lucide-react";
 import { useAuth } from "@/hooks/use-auth";
 import { useProfile } from "@/hooks/use-profile";
@@ -18,6 +19,7 @@ const items = [
   { label: "Conversas", to: "/inbox", icon: MessageSquare },
   { label: "Agenda", to: "/schedule", icon: Calendar },
   { label: "Serviços", to: "/services", icon: Wrench },
+  { label: "Agente IA", to: "/ai-agent", icon: Bot },
   { label: "Contatos", to: "/dashboard", icon: Users },
   { label: "Relatórios", to: "/dashboard", icon: BarChart3 },
   { label: "Configurações", to: "/settings/profile", icon: Settings },
