@@ -12,6 +12,7 @@ import {
   type KanbanColumnId,
 } from "@/features/inbox/data";
 import { ConversationPanel } from "@/features/inbox/conversation-panel";
+import { ContactAvatar } from "@/features/inbox/contact-avatar";
 import { EmptyState } from "@/components/empty-state";
 import { SkeletonCard } from "@/components/skeleton";
 import { notify } from "@/lib/notify";
