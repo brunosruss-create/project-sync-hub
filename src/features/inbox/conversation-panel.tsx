@@ -596,6 +596,7 @@ function Composer({
           onKeyDown={onKeyDown}
           placeholder="Digite uma mensagem… (Enter envia, Shift+Enter quebra linha)"
           rows={1}
+          className="chat-input-textarea"
           onInput={(e) => {
             const el = e.currentTarget;
             el.style.height = "auto";
@@ -605,6 +606,7 @@ function Composer({
           style={{
             flex: 1,
             resize: "none",
+            overflow: "hidden",
             background: "transparent",
             outline: "none",
             border: "none",

@@ -216,3 +216,13 @@
 .zf-column-more:focus-visible {
   opacity: 1 !important;
 }
+
+.chat-input-textarea {
+  overflow: hidden !important;
+  resize: none !important;
+  scrollbar-width: none;
+  -ms-overflow-style: none;
+}
+.chat-input-textarea::-webkit-scrollbar {
+  display: none;
+}
