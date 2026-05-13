@@ -93,55 +93,28 @@ export const connectInstance = createServerFn({ method: "POST" })
     const baseUrl = publicBaseUrl();
     const webhookUrl = `${baseUrl}/api/public/evolution/${row.id}`;
 
-    // 1) tenta criar instância (idempotente: se existir, ignora)
-    try {
-      await evo.createInstance({
-        instanceName: name,
-        integration: "WHATSAPP-BAILEYS",
-        qrcode: true,
-        webhook: {
-          url: webhookUrl,
-          headers: { "x-webhook-secret": row.webhook_secret as string },
-          events: WEBHOOK_EVENTS,
-          webhookByEvents: false,
-          webhookBase64: false,
-        },
-      });
-    } catch (e: any) {
-      const msg = String(e?.message ?? "");
-      const exists = /exist|already/i.test(msg);
-      if (!exists) {
-        // se erro real, registra e segue tentando o connect
-        console.warn("[evolution] createInstance:", msg);
-      }
-    }
-
-    // 2) garante webhook atualizado (caso instância já existisse)
-    try {
-      await evo.setWebhook(name, {
-        webhook: {
-          enabled: true,
-          url: webhookUrl,
-          headers: { "x-webhook-secret": row.webhook_secret as string },
-          byEvents: false,
-          base64: false,
-          events: WEBHOOK_EVENTS,
-        },
-      });
-    } catch (e: any) {
-      console.warn("[evolution] setWebhook:", e?.message);
-    }
+    await configureEvolutionInstance(name, webhookUrl, row.webhook_secret as string);
 
     // 3) conecta — retorna { base64, code, ... }
     let qr: string | null = null;
     try {
       const r: any = await evo.connect(name);
       qr = await normalizeQRCodeImage(extractQRCode(r));
+      if (!qr) {
+        await evo.deleteInstance(name).catch((e: any) => console.warn("[evolution] delete stale instance:", e?.message));
+        await configureEvolutionInstance(name, webhookUrl, row.webhook_secret as string);
+        const retry: any = await evo.connect(name);
+        qr = await normalizeQRCodeImage(extractQRCode(retry));
+      }
     } catch (e: any) {
       throw new Error(`Falha ao conectar: ${e?.message ?? e}`);
     }
 
     if (!qr) {
+      await supabaseAdmin
+        .from("whatsapp_instances")
+        .update({ status: "error", qr_code: null })
+        .eq("id", row.id);
       throw new Error("A Evolution API não retornou um QR Code. Clique em Reconectar para tentar novamente.");
     }
 
