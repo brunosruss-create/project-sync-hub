@@ -133,7 +133,7 @@ export const getInstance = createServerFn({ method: "GET" })
       .maybeSingle();
     const baseUrl = publicBaseUrl();
     const webhookUrl = data && baseUrl ? `${baseUrl}/api/public/evolution/${data.id}` : null;
-    return { instance: data ? { ...data, webhook_url: webhookUrl } : null };
+    return { instance: data ? { ...data, webhook_url: webhookUrl } : null, serverTime: Date.now() };
   });
 
 export const connectInstance = createServerFn({ method: "POST" })
@@ -223,7 +223,7 @@ export const connectInstance = createServerFn({ method: "POST" })
       }
     }
 
-    return { instance: updated ? { ...updated, webhook_url: webhookUrl } : null, qr };
+    return { instance: updated ? { ...updated, webhook_url: webhookUrl } : null, qr, serverTime: Date.now() };
   });
 
 export const registerWebhook = createServerFn({ method: "POST" })
@@ -248,7 +248,7 @@ export const registerWebhook = createServerFn({ method: "POST" })
         events: WEBHOOK_EVENTS,
       },
     });
-    return { instance: { ...row, webhook_url: webhookUrl }, webhookUrl };
+    return { instance: { ...row, webhook_url: webhookUrl }, webhookUrl, serverTime: Date.now() };
   });
 
 const refreshInput = z.object({ forceQrRefresh: z.boolean().optional() }).optional();
@@ -263,7 +263,7 @@ export const refreshInstanceStatus = createServerFn({ method: "POST" })
       .select("*")
       .eq("instance_name", name)
       .maybeSingle();
-    if (!row) return { instance: null };
+    if (!row) return { instance: null, serverTime: Date.now() };
 
     let state: string | null = null;
     let phone: string | null = null;
@@ -310,13 +310,13 @@ export const refreshInstanceStatus = createServerFn({ method: "POST" })
           update.qr_code = qr;
           update.qr_expires_at = new Date(Date.now() + 30_000).toISOString();
         } else {
-          update.status = "error";
-          update.qr_code = null;
+          update.status = row.qr_code ? "pending" : "error";
+          if (!row.qr_code) update.qr_code = null;
         }
       } catch (e: any) {
         console.warn("[evolution] refresh qrcode:", e?.message);
-        update.status = "error";
-        update.qr_code = null;
+        update.status = row.qr_code ? "pending" : "error";
+        if (!row.qr_code) update.qr_code = null;
       }
     }
 
@@ -327,7 +327,7 @@ export const refreshInstanceStatus = createServerFn({ method: "POST" })
       .select("*")
       .single();
 
-    return { instance: updated };
+    return { instance: updated, serverTime: Date.now() };
   });
 
 export const disconnectInstance = createServerFn({ method: "POST" })
@@ -345,7 +345,7 @@ export const disconnectInstance = createServerFn({ method: "POST" })
       .eq("instance_name", name)
       .select("*")
       .maybeSingle();
-    return { instance: data ?? null };
+    return { instance: data ?? null, serverTime: Date.now() };
   });
 
 const sendInput = z.object({
