@@ -19,9 +19,12 @@ import {
   type KanbanColumnId,
 } from "@/features/inbox/data";
 import { KanbanColumn } from "@/features/inbox/kanban-column";
-import { ContactCard } from "@/features/inbox/contact-card";
+import { ContactCard, type CardMenuRequestDetail } from "@/features/inbox/contact-card";
+import { CardMenu, type CardMenuAction } from "@/features/inbox/card-menu";
 import { ConversationPanel } from "@/features/inbox/conversation-panel";
 import { NewContactModal } from "@/features/inbox/new-contact-modal";
+import { EditContactModal } from "@/features/inbox/edit-contact-modal";
+import { ScheduleModal } from "@/features/inbox/schedule-modal";
 import { supabase } from "@/integrations/supabase/client";
 import { useAuth } from "@/hooks/use-auth";
 
@@ -43,6 +46,9 @@ function InboxPage() {
   const [whatsappStatus, setWhatsappStatus] = React.useState<"connected" | "disconnected" | "loading">("loading");
   const [newContactOpen, setNewContactOpen] = React.useState(false);
   const [highlightId, setHighlightId] = React.useState<string | null>(null);
+  const [menuState, setMenuState] = React.useState<CardMenuRequestDetail | null>(null);
+  const [editTarget, setEditTarget] = React.useState<Contact | null>(null);
+  const [scheduleTarget, setScheduleTarget] = React.useState<Contact | null>(null);
 
   const sensors = useSensors(
     useSensor(PointerSensor, { activationConstraint: { distance: 4 } }),
@@ -188,6 +194,83 @@ function InboxPage() {
       window.removeEventListener("zf:new-contact", onNew);
       window.removeEventListener("keydown", onKey);
     };
+  }, []);
+
+  // Listener do menu ⋮ do card
+  React.useEffect(() => {
+    const onMenu = (e: Event) => {
+      const detail = (e as CustomEvent<CardMenuRequestDetail>).detail;
+      if (detail) setMenuState(detail);
+    };
+    window.addEventListener("zf:card-menu", onMenu as EventListener);
+    return () => window.removeEventListener("zf:card-menu", onMenu as EventListener);
+  }, []);
+
+  const handleMenuAction = React.useCallback(async (a: CardMenuAction) => {
+    const c = a.contact;
+    if (a.type === "edit" || a.type === "add-tag" || a.type === "assign") {
+      setEditTarget(c);
+      return;
+    }
+    if (a.type === "open-chat") {
+      setOpenContact(c);
+      return;
+    }
+    if (a.type === "schedule") {
+      setScheduleTarget(c);
+      return;
+    }
+    if (a.type === "toggle-urgent") {
+      const next: "normal" | "urgent" = c.priority === "urgent" ? "normal" : "urgent";
+      setContacts((prev) => prev.map((x) => (x.id === c.id ? { ...x, priority: next } : x)));
+      const { error } = await supabase
+        .from("contacts")
+        .update({ priority: next })
+        .eq("id", c.id);
+      if (error) {
+        notify.error(error.message ?? "Falha ao atualizar prioridade.");
+        setContacts((prev) => prev.map((x) => (x.id === c.id ? { ...x, priority: c.priority } : x)));
+      } else {
+        notify.success(next === "urgent" ? "Marcado como urgente" : "Urgência removida");
+      }
+      return;
+    }
+    if (a.type === "move") {
+      const col = a.column;
+      setContacts((prev) => prev.map((x) => (x.id === c.id ? { ...x, kanban_column: col } : x)));
+      const { error } = await supabase
+        .from("contacts")
+        .update({ kanban_column: col })
+        .eq("id", c.id);
+      if (error) {
+        notify.error(error.message ?? "Falha ao mover.");
+        setContacts((prev) => prev.map((x) => (x.id === c.id ? { ...x, kanban_column: c.kanban_column } : x)));
+      } else {
+        notify.success(`Movido para ${COLUMNS.find((cc) => cc.id === col)?.label}`);
+      }
+      return;
+    }
+    if (a.type === "archive") {
+      setContacts((prev) => prev.filter((x) => x.id !== c.id));
+      let { error } = await supabase
+        .from("contacts")
+        .update({ archived_at: new Date().toISOString() })
+        .eq("id", c.id);
+      if (error && /archived_at/i.test(error.message ?? "")) {
+        const retry = await supabase
+          .from("contacts")
+          .update({ kanban_column: "archived" })
+          .eq("id", c.id);
+        error = retry.error;
+      }
+      if (error) {
+        notify.error(error.message ?? "Falha ao arquivar.");
+        setContacts((prev) => [...prev, c].sort((x, y) => y.lastMessageAt.getTime() - x.lastMessageAt.getTime()));
+      } else {
+        notify.success(`"${c.name}" arquivado`);
+      }
+      return;
+    }
   }, []);
 
   // Título da aba com total de não lidas
@@ -459,6 +542,41 @@ function InboxPage() {
           setOpenContact(contact);
         }}
       />
+
+      {menuState && (
+        <CardMenu
+          contact={menuState.contact}
+          anchor={menuState.anchor}
+          onClose={() => setMenuState(null)}
+          onAction={handleMenuAction}
+        />
+      )}
+
+      <EditContactModal
+        open={!!editTarget}
+        contact={editTarget}
+        onClose={() => setEditTarget(null)}
+        onSaved={(patch) => {
+          if (!editTarget) return;
+          setContacts((prev) =>
+            prev.map((c) => (c.id === editTarget.id ? { ...c, ...patch } : c)),
+          );
+        }}
+      />
+
+      {scheduleTarget && (
+        <ScheduleModal
+          contact={scheduleTarget}
+          open={!!scheduleTarget}
+          onClose={() => setScheduleTarget(null)}
+          onScheduled={() => {
+            setContacts((prev) =>
+              prev.map((c) => (c.id === scheduleTarget.id ? { ...c, kanban_column: "scheduled" } : c)),
+            );
+            setScheduleTarget(null);
+          }}
+        />
+      )}
 
       {highlightId && (
         <style>{`

@@ -1,7 +1,7 @@
 import * as React from "react";
 import { useDraggable } from "@dnd-kit/core";
 import { CSS } from "@dnd-kit/utilities";
-import { AlertTriangle } from "lucide-react";
+import { AlertTriangle, MoreVertical } from "lucide-react";
 import {
   type ContactCard as Contact,
   formatRelative,
@@ -9,6 +9,12 @@ import {
   formatMessagePreview,
 } from "./data";
 import { ContactAvatar } from "./contact-avatar";
+
+// Evento global emitido ao clicar no ⋮ — escutado pelo /inbox
+export type CardMenuRequestDetail = {
+  contact: Contact;
+  anchor: { top: number; left: number };
+};
 
 type Props = {
   contact: Contact;
@@ -71,6 +77,7 @@ export function ContactCard({ contact, onClick, isOverlay, isSelected }: Props) 
     <div
       ref={setNodeRef}
       data-contact-id={contact.id}
+      className="zf-contact-card"
       style={style}
       {...listeners}
       {...attributes}
@@ -121,6 +128,46 @@ export function ContactCard({ contact, onClick, isOverlay, isSelected }: Props) 
         >
           {unread > 99 ? "99+" : unread}
         </div>
+      )}
+
+      {/* Ícone ⋮ — aparece no hover */}
+      {!isOverlay && (
+        <button
+          type="button"
+          aria-label="Opções do contato"
+          onPointerDown={(e) => e.stopPropagation()}
+          onMouseDown={(e) => e.stopPropagation()}
+          onClick={(e) => {
+            e.stopPropagation();
+            const r = (e.currentTarget as HTMLElement).getBoundingClientRect();
+            const detail: CardMenuRequestDetail = {
+              contact,
+              anchor: { top: r.bottom + 4, left: r.left - 180 + r.width },
+            };
+            window.dispatchEvent(new CustomEvent("zf:card-menu", { detail }));
+          }}
+          className="zf-card-more"
+          style={{
+            position: "absolute",
+            top: showBadge ? 16 : -4,
+            right: -4,
+            width: 22,
+            height: 22,
+            display: "inline-flex",
+            alignItems: "center",
+            justifyContent: "center",
+            background: "var(--bg-surface)",
+            border: "1px solid var(--border)",
+            borderRadius: 6,
+            color: "var(--text-muted)",
+            opacity: 0,
+            transition: "opacity 100ms",
+            cursor: "pointer",
+            zIndex: 2,
+          }}
+        >
+          <MoreVertical size={14} />
+        </button>
       )}
 
       {/* Linha 1: avatar + nome */}
