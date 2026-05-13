@@ -197,15 +197,8 @@ export function ConversationPanel({
   const send = async () => {
     const text = draft.trim();
     if (!text || !contact) return;
-    const optimistic: Message = {
-      id: `tmp-${Date.now()}`,
-      direction: "outbound",
-      content: text,
-      message_type: "text",
-      status: "sent",
-      created_at: new Date(),
-    };
-    setMessages((prev) => [...prev, optimistic]);
+    // Sem optimistic update: o canal realtime é a fonte da verdade.
+    // Isso evita duplicação (mensagem aparecendo 2x para o agente).
     setDraft("");
     if (taRef.current) taRef.current.style.height = "auto";
 
