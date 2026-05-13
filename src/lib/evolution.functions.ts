@@ -37,6 +37,42 @@ async function getOrCreateRow(userId: string) {
   return data;
 }
 
+async function configureEvolutionInstance(name: string, webhookUrl: string, webhookSecret: string) {
+  try {
+    await evo.createInstance({
+      instanceName: name,
+      integration: "WHATSAPP-BAILEYS",
+      qrcode: true,
+      webhook: {
+        url: webhookUrl,
+        headers: { "x-webhook-secret": webhookSecret },
+        events: WEBHOOK_EVENTS,
+        webhookByEvents: false,
+        webhookBase64: false,
+      },
+    });
+  } catch (e: any) {
+    const msg = String(e?.message ?? "");
+    const exists = /exist|already/i.test(msg);
+    if (!exists) console.warn("[evolution] createInstance:", msg);
+  }
+
+  try {
+    await evo.setWebhook(name, {
+      webhook: {
+        enabled: true,
+        url: webhookUrl,
+        headers: { "x-webhook-secret": webhookSecret },
+        byEvents: false,
+        base64: false,
+        events: WEBHOOK_EVENTS,
+      },
+    });
+  } catch (e: any) {
+    console.warn("[evolution] setWebhook:", e?.message);
+  }
+}
+
 export const getInstance = createServerFn({ method: "GET" })
   .middleware([requireSupabaseAuth])
   .handler(async ({ context }) => {
