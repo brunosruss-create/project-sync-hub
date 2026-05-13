@@ -341,7 +341,7 @@ function InboxPage() {
         notify.error(error.message ?? "Falha ao mover.");
         setContacts((prev) => prev.map((x) => (x.id === c.id ? { ...x, kanban_column: c.kanban_column } : x)));
       } else {
-        notify.success(`Movido para ${COLUMNS.find((cc) => cc.id === col)?.label}`);
+        notify.success(`Movido para ${columns.find((cc) => cc.slug === col)?.label ?? col}`);
       }
       return;
     }
@@ -398,15 +398,21 @@ function InboxPage() {
   }, [contacts, filter, query, user]);
 
   const byColumn = React.useMemo(() => {
-    const map: Record<KanbanColumnId, Contact[]> = {
-      waiting: [],
-      in_progress: [],
-      scheduled: [],
-      urgent: [],
-    };
-    for (const c of filtered) map[c.kanban_column].push(c);
+    const map: Record<string, Contact[]> = {};
+    for (const col of columns) map[col.slug] = [];
+    const fallbackSlug = columns[0]?.slug ?? "waiting";
+    for (const c of filtered) {
+      const slug = map[c.kanban_column] ? c.kanban_column : fallbackSlug;
+      (map[slug] ||= []).push(c);
+    }
     return map;
-  }, [filtered]);
+  }, [filtered, columns]);
+
+  const urgentSlug = React.useMemo(
+    () => columns.find((c) => c.slug === "urgent")?.slug ?? "urgent",
+    [columns],
+  );
+  const urgentCount = byColumn[urgentSlug]?.length ?? 0;
 
   const onDragStart = (e: DragStartEvent) => setActiveId(String(e.active.id));
 
@@ -430,9 +436,60 @@ function InboxPage() {
       // silent — likely table missing in dev. Don't spam.
       console.warn("[inbox] persistência ignorada:", error.message);
     } else {
-      notify.success(`Movido para ${COLUMNS.find((c) => c.id === col)?.label}`);
+      notify.success(`Movido para ${columns.find((c) => c.slug === col)?.label ?? col}`);
     }
   };
+
+  // Ações do menu da coluna
+  const handleColumnAction = React.useCallback(async (col: KanbanColumnDef, a: ColumnMenuAction) => {
+    if (a.type === "edit") {
+      setColumnEditTarget(col);
+      setColumnEditMode("edit");
+      return;
+    }
+    if (a.type === "delete") {
+      setColumnDeleteTarget(col);
+      return;
+    }
+    if (a.type === "move-left" || a.type === "move-right") {
+      const idx = columns.findIndex((c) => c.id === col.id);
+      const swap = a.type === "move-left" ? idx - 1 : idx + 1;
+      if (idx < 0 || swap < 0 || swap >= columns.length) return;
+      const next = [...columns];
+      [next[idx], next[swap]] = [next[swap], next[idx]];
+      const reIndexed = next.map((c, i) => ({ ...c, position: i }));
+      setColumns(reIndexed);
+      // Persiste posições (best-effort)
+      await Promise.all(
+        reIndexed.map((c) =>
+          supabase.from("kanban_columns").update({ position: c.position }).eq("id", c.id),
+        ),
+      );
+    }
+  }, [columns]);
+
+  const confirmDeleteColumn = React.useCallback(async () => {
+    const col = columnDeleteTarget;
+    if (!col || col.is_system) return;
+    const fallback = columns.find((c) => c.is_system && c.slug === "waiting") ?? columns.find((c) => c.id !== col.id);
+    const fallbackSlug = fallback?.slug ?? "waiting";
+    // 1. Move contatos da coluna pra fallback
+    await supabase
+      .from("contacts")
+      .update({ kanban_column: fallbackSlug })
+      .eq("kanban_column", col.slug);
+    setContacts((prev) =>
+      prev.map((c) => (c.kanban_column === col.slug ? { ...c, kanban_column: fallbackSlug } : c)),
+    );
+    // 2. Deleta a coluna
+    const { error } = await supabase.from("kanban_columns").delete().eq("id", col.id);
+    if (error) {
+      notify.error(error.message ?? "Falha ao excluir coluna.");
+      return;
+    }
+    setColumns((prev) => prev.filter((c) => c.id !== col.id));
+    notify.success(`Coluna "${col.label}" excluída`);
+  }, [columnDeleteTarget, columns]);
 
   const activeContact = activeId ? contacts.find((c) => c.id === activeId) : null;
 
