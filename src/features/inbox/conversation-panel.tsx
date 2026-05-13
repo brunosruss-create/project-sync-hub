@@ -54,6 +54,7 @@ interface Message {
   media_url?: string | null;
   media_mime?: string | null;
   media_name?: string | null;
+  whatsapp_message_id?: string | null;
 }
 
 const MAX_CHARS = 4096;
@@ -115,6 +116,7 @@ export function ConversationPanel({
   const [messages, setMessages] = React.useState<Message[]>([]);
   const [scheduleOpen, setScheduleOpen] = React.useState(false);
   const [scheduleSeed, setScheduleSeed] = React.useState<string[] | undefined>(undefined);
+  const [replyingTo, setReplyingTo] = React.useState<Message | null>(null);
   const open = !!contact;
   const scrollRef = React.useRef<HTMLDivElement | null>(null);
   const taRef = React.useRef<HTMLTextAreaElement | null>(null);
@@ -130,6 +132,7 @@ export function ConversationPanel({
     setTab("conversation");
     setDraft("");
     setMenuOpen(false);
+    setReplyingTo(null);
     setMessages(import.meta.env.DEV && contact.id.startsWith("c") ? seedMessages(contact) : []);
   }, [contact?.id]);
 
@@ -160,7 +163,7 @@ export function ConversationPanel({
     (async () => {
       const { data, error } = await supabase
         .from("messages")
-        .select("id,direction,content,message_type,status,created_at,media_url,media_mime,media_name")
+        .select("id,direction,content,message_type,status,created_at,media_url,media_mime,media_name,whatsapp_message_id")
         .eq("contact_id", contact.id)
         .order("created_at", { ascending: true });
       if (cancelled) return;
@@ -178,6 +181,7 @@ export function ConversationPanel({
             media_url: r.media_url ?? null,
             media_mime: r.media_mime ?? null,
             media_name: r.media_name ?? null,
+            whatsapp_message_id: r.whatsapp_message_id ?? null,
           })),
         );
       }
@@ -210,6 +214,7 @@ export function ConversationPanel({
                     media_url: r.media_url ?? null,
                     media_mime: r.media_mime ?? null,
                     media_name: r.media_name ?? null,
+                    whatsapp_message_id: r.whatsapp_message_id ?? null,
                   },
                 ],
           );
@@ -235,6 +240,7 @@ export function ConversationPanel({
                     media_url: r.media_url ?? m.media_url,
                     media_mime: r.media_mime ?? m.media_mime,
                     media_name: r.media_name ?? m.media_name,
+                    whatsapp_message_id: r.whatsapp_message_id ?? m.whatsapp_message_id,
                   }
                 : m,
             ),
@@ -256,6 +262,20 @@ export function ConversationPanel({
     el.scrollTo({ top: el.scrollHeight, behavior: "smooth" });
   }, [messages.length, tab]);
 
+  const buildQuoted = (m: Message | null) => {
+    if (!m || !contact?.phone || !m.whatsapp_message_id) return undefined;
+    const number = String(contact.phone).replace(/\D/g, "");
+    return {
+      messageId: m.whatsapp_message_id,
+      fromMe: m.direction === "outbound",
+      remoteJid: `${number}@s.whatsapp.net`,
+      preview: {
+        content: m.content || m.media_name || "",
+        message_type: m.message_type,
+      },
+    };
+  };
+
   const send = async () => {
     const text = draft.trim();
     if (!text || !contact) return;
@@ -263,10 +283,12 @@ export function ConversationPanel({
     // Isso evita duplicação (mensagem aparecendo 2x para o agente).
     setDraft("");
     if (taRef.current) taRef.current.style.height = "auto";
+    const quoted = buildQuoted(replyingTo);
+    setReplyingTo(null);
 
     try {
       // tenta enviar pelo WhatsApp via Evolution; o handler já grava em messages
-      await sendViaEvolution({ data: { contactId: contact.id, text } });
+      await sendViaEvolution({ data: { contactId: contact.id, text, quoted } });
     } catch (e: any) {
       const msg = String(e?.message ?? "");
       // se Evolution não estiver configurado/conectado, persiste só no banco
@@ -304,6 +326,8 @@ export function ConversationPanel({
 
   const handleSendAttachments = async (files: File[], caption: string) => {
     if (!contact) return;
+    const quoted = buildQuoted(replyingTo);
+    setReplyingTo(null);
     for (let i = 0; i < files.length; i++) {
       const f = files[i];
       const { url } = await uploadToStorage(f);
@@ -316,6 +340,7 @@ export function ConversationPanel({
             mime: f.type || "application/octet-stream",
             name: f.name || `file-${Date.now()}`,
             caption: cap || undefined,
+            quoted: i === 0 ? quoted : undefined,
           },
         });
       } catch (e: any) {
@@ -328,7 +353,9 @@ export function ConversationPanel({
     if (!contact) return;
     const file = new File([blob], `audio-${Date.now()}.webm`, { type: "audio/webm" });
     const { url } = await uploadToStorage(file);
-    await sendAudioFn({ data: { contactId: contact.id, url } });
+    const quoted = buildQuoted(replyingTo);
+    setReplyingTo(null);
+    await sendAudioFn({ data: { contactId: contact.id, url, quoted } });
   };
 
   const menuAction = (label: string) => {
@@ -520,6 +547,10 @@ export function ConversationPanel({
                         displayStatus={getVisualMessageStatus(m)}
                         contactName={contact.name}
                         contactAvatar={contact.avatar}
+                        onReply={(msg) => {
+                          setReplyingTo(msg);
+                          setTimeout(() => taRef.current?.focus(), 0);
+                        }}
                       />
                     ))}
                   </div>
@@ -534,6 +565,16 @@ export function ConversationPanel({
                   onClosePanel={onClose}
                   onSendAttachments={handleSendAttachments}
                   onSendAudio={handleSendAudio}
+                  replyingTo={
+                    replyingTo
+                      ? {
+                          author: replyingTo.direction === "outbound" ? "Você" : contact.name,
+                          content: replyingTo.content || replyingTo.media_name || "Mídia",
+                          isMe: replyingTo.direction === "outbound",
+                        }
+                      : null
+                  }
+                  onCancelReply={() => setReplyingTo(null)}
                 />
               </>
             ) : (
@@ -571,11 +612,13 @@ function MessageBubble({
   displayStatus,
   contactName,
   contactAvatar,
+  onReply,
 }: {
   m: Message;
   displayStatus: Message["status"];
   contactName: string;
   contactAvatar?: string | null;
+  onReply?: (m: Message) => void;
 }) {
   if (m.message_type === "system") {
     return (
@@ -621,7 +664,7 @@ function MessageBubble({
           animation: "fadeSlideIn 200ms ease-out",
         }}
       >
-        <MessageChevron isMe={isMe} bubbleBg={audioBg} message={m} />
+        <MessageChevron isMe={isMe} bubbleBg={audioBg} message={m} onReply={onReply} />
         <AudioPlayer
           src={m.media_url}
           avatarName={contactName}
@@ -670,7 +713,7 @@ function MessageBubble({
         wordBreak: "break-word",
       }}
     >
-      <MessageChevron isMe={isMe} bubbleBg={bubbleBg} message={m} />
+      <MessageChevron isMe={isMe} bubbleBg={bubbleBg} message={m} onReply={onReply} />
       {m.media_url && m.message_type === "image" && (
         <a href={m.media_url} target="_blank" rel="noreferrer" style={{ display: "block", marginBottom: m.content ? 6 : 0 }}>
           <img
@@ -743,10 +786,12 @@ function MessageChevron({
   isMe,
   bubbleBg,
   message,
+  onReply,
 }: {
   isMe: boolean;
   bubbleBg: string;
   message: Message;
+  onReply?: (m: Message) => void;
 }) {
   return (
     <MessageActions
@@ -759,6 +804,7 @@ function MessageChevron({
         mediaName: message.media_name ?? null,
         messageType: message.message_type,
       }}
+      onReply={() => onReply?.(message)}
     />
   );
 }

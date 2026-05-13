@@ -29,9 +29,11 @@ type Props = {
   onClosePanel?: () => void;
   onSendAttachments?: (files: File[], caption: string) => Promise<void>;
   onSendAudio?: (blob: Blob) => Promise<void>;
+  replyingTo?: { author: string; content: string; isMe: boolean } | null;
+  onCancelReply?: () => void;
 };
 
-export function Composer({ draft, setDraft, taRef, onSend, onClosePanel, onSendAttachments, onSendAudio }: Props) {
+export function Composer({ draft, setDraft, taRef, onSend, onClosePanel, onSendAttachments, onSendAudio, replyingTo, onCancelReply }: Props) {
   const hasText = draft.trim().length > 0;
   const nearLimit = draft.length > MAX_CHARS - 200;
 
@@ -407,6 +409,56 @@ export function Composer({ draft, setDraft, taRef, onSend, onClosePanel, onSendA
 
   return (
     <div ref={composerWrapRef} style={{ position: "relative" }}>
+      {/* Reply quote bar */}
+      {replyingTo && (
+        <div
+          style={{
+            display: "flex",
+            alignItems: "stretch",
+            gap: 8,
+            padding: "8px 10px",
+            margin: "0 12px 6px",
+            background: "var(--bg-overlay)",
+            border: "1px solid var(--border)",
+            borderRadius: 8,
+            borderLeft: `3px solid ${replyingTo.isMe ? "var(--brand-400)" : "#9aa3af"}`,
+          }}
+        >
+          <div style={{ flex: 1, minWidth: 0 }}>
+            <div style={{ fontSize: 12, fontWeight: 600, color: replyingTo.isMe ? "var(--brand-400)" : "var(--text-primary)" }}>
+              {replyingTo.author}
+            </div>
+            <div
+              style={{
+                fontSize: 13,
+                color: "var(--text-muted)",
+                overflow: "hidden",
+                textOverflow: "ellipsis",
+                whiteSpace: "nowrap",
+              }}
+            >
+              {replyingTo.content || "Mídia"}
+            </div>
+          </div>
+          <button
+            type="button"
+            aria-label="Cancelar resposta"
+            onClick={onCancelReply}
+            style={{
+              background: "transparent",
+              border: "none",
+              cursor: "pointer",
+              color: "var(--text-muted)",
+              padding: 4,
+              display: "flex",
+              alignItems: "center",
+            }}
+          >
+            <X size={16} />
+          </button>
+        </div>
+      )}
+
       {/* Attachment preview area */}
       {attachments.length > 0 && (
         <AttachmentPreviewBar
