@@ -211,3 +211,8 @@
 .zf-card-more:focus-visible {
   opacity: 1 !important;
 }
+
+.zf-kanban-column:hover .zf-column-more,
+.zf-column-more:focus-visible {
+  opacity: 1 !important;
+}

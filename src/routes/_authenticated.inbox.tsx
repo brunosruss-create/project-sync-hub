@@ -9,18 +9,22 @@ import {
   type DragEndEvent,
   type DragStartEvent,
 } from "@dnd-kit/core";
-import { Search, Plus, Filter, MessageSquare } from "lucide-react";
+import { Search, Plus, Filter, MessageSquare, Columns3 } from "lucide-react";
 import { notify } from "@/lib/notify";
 import { EmptyState } from "@/components/empty-state";
+import { ConfirmDialog } from "@/components/confirm-dialog";
 import {
-  COLUMNS,
+  DEFAULT_COLUMNS,
   MOCK_CONTACTS,
   type ContactCard as Contact,
+  type KanbanColumnDef,
   type KanbanColumnId,
 } from "@/features/inbox/data";
-import { KanbanColumn } from "@/features/inbox/kanban-column";
+import { KanbanColumn, type ColumnMenuRequestDetail } from "@/features/inbox/kanban-column";
 import { ContactCard, type CardMenuRequestDetail } from "@/features/inbox/contact-card";
 import { CardMenu, type CardMenuAction } from "@/features/inbox/card-menu";
+import { ColumnMenu, type ColumnMenuAction } from "@/features/inbox/column-menu";
+import { ColumnEditModal } from "@/features/inbox/column-edit-modal";
 import { ConversationPanel } from "@/features/inbox/conversation-panel";
 import { NewContactModal } from "@/features/inbox/new-contact-modal";
 import { EditContactModal } from "@/features/inbox/edit-contact-modal";
@@ -49,6 +53,13 @@ function InboxPage() {
   const [menuState, setMenuState] = React.useState<CardMenuRequestDetail | null>(null);
   const [editTarget, setEditTarget] = React.useState<Contact | null>(null);
   const [scheduleTarget, setScheduleTarget] = React.useState<Contact | null>(null);
+
+  // Colunas dinâmicas
+  const [columns, setColumns] = React.useState<KanbanColumnDef[]>(DEFAULT_COLUMNS);
+  const [columnMenuState, setColumnMenuState] = React.useState<ColumnMenuRequestDetail | null>(null);
+  const [columnEditTarget, setColumnEditTarget] = React.useState<KanbanColumnDef | null>(null);
+  const [columnEditMode, setColumnEditMode] = React.useState<"create" | "edit" | null>(null);
+  const [columnDeleteTarget, setColumnDeleteTarget] = React.useState<KanbanColumnDef | null>(null);
 
   const sensors = useSensors(
     useSensor(PointerSensor, { activationConstraint: { distance: 4 } }),
@@ -202,9 +213,93 @@ function InboxPage() {
       const detail = (e as CustomEvent<CardMenuRequestDetail>).detail;
       if (detail) setMenuState(detail);
     };
+    const onColMenu = (e: Event) => {
+      const detail = (e as CustomEvent<ColumnMenuRequestDetail>).detail;
+      if (detail) setColumnMenuState(detail);
+    };
     window.addEventListener("zf:card-menu", onMenu as EventListener);
-    return () => window.removeEventListener("zf:card-menu", onMenu as EventListener);
+    window.addEventListener("zf:column-menu", onColMenu as EventListener);
+    return () => {
+      window.removeEventListener("zf:card-menu", onMenu as EventListener);
+      window.removeEventListener("zf:column-menu", onColMenu as EventListener);
+    };
   }, []);
+
+  // Carrega colunas do Kanban + realtime + seed automático
+  React.useEffect(() => {
+    if (!user?.id) return;
+    let cancelled = false;
+
+    const mapCol = (r: any): KanbanColumnDef => ({
+      id: r.id,
+      slug: r.slug,
+      label: r.label,
+      emoji: r.emoji ?? "📌",
+      color: r.color ?? "#6B7280",
+      position: typeof r.position === "number" ? r.position : 0,
+      is_system: !!r.is_system,
+    });
+
+    const seedDefaults = async () => {
+      const rows = DEFAULT_COLUMNS.map((c) => ({
+        owner_user_id: user.id,
+        slug: c.slug,
+        label: c.label,
+        emoji: c.emoji,
+        color: c.color,
+        position: c.position,
+        is_system: true,
+      }));
+      const { data, error } = await supabase
+        .from("kanban_columns")
+        .insert(rows)
+        .select();
+      if (error) {
+        console.warn("[inbox] seed colunas falhou:", error.message);
+        return null;
+      }
+      return (data ?? []).map(mapCol);
+    };
+
+    const load = async () => {
+      const { data, error } = await supabase
+        .from("kanban_columns")
+        .select("id,slug,label,emoji,color,position,is_system")
+        .order("position", { ascending: true });
+      if (cancelled) return;
+      if (error) {
+        // Tabela inexistente → mantém defaults locais (read-only).
+        if (!/relation .* does not exist/i.test(error.message ?? "")) {
+          console.warn("[inbox] erro ao carregar colunas:", error.message);
+        }
+        setColumns(DEFAULT_COLUMNS);
+        return;
+      }
+      if (!data || data.length === 0) {
+        const seeded = await seedDefaults();
+        if (cancelled) return;
+        setColumns(seeded ?? DEFAULT_COLUMNS);
+        return;
+      }
+      setColumns(data.map(mapCol));
+    };
+
+    void load();
+
+    const channel = supabase
+      .channel(`inbox-columns-${user.id}`)
+      .on(
+        "postgres_changes",
+        { event: "*", schema: "public", table: "kanban_columns", filter: `owner_user_id=eq.${user.id}` },
+        () => void load(),
+      )
+      .subscribe();
+
+    return () => {
+      cancelled = true;
+      void supabase.removeChannel(channel);
+    };
+  }, [user?.id]);
 
   const handleMenuAction = React.useCallback(async (a: CardMenuAction) => {
     const c = a.contact;
@@ -246,7 +341,7 @@ function InboxPage() {
         notify.error(error.message ?? "Falha ao mover.");
         setContacts((prev) => prev.map((x) => (x.id === c.id ? { ...x, kanban_column: c.kanban_column } : x)));
       } else {
-        notify.success(`Movido para ${COLUMNS.find((cc) => cc.id === col)?.label}`);
+        notify.success(`Movido para ${columns.find((cc) => cc.slug === col)?.label ?? col}`);
       }
       return;
     }
@@ -303,15 +398,21 @@ function InboxPage() {
   }, [contacts, filter, query, user]);
 
   const byColumn = React.useMemo(() => {
-    const map: Record<KanbanColumnId, Contact[]> = {
-      waiting: [],
-      in_progress: [],
-      scheduled: [],
-      urgent: [],
-    };
-    for (const c of filtered) map[c.kanban_column].push(c);
+    const map: Record<string, Contact[]> = {};
+    for (const col of columns) map[col.slug] = [];
+    const fallbackSlug = columns[0]?.slug ?? "waiting";
+    for (const c of filtered) {
+      const slug = map[c.kanban_column] ? c.kanban_column : fallbackSlug;
+      (map[slug] ||= []).push(c);
+    }
     return map;
-  }, [filtered]);
+  }, [filtered, columns]);
+
+  const urgentSlug = React.useMemo(
+    () => columns.find((c) => c.slug === "urgent")?.slug ?? "urgent",
+    [columns],
+  );
+  const urgentCount = byColumn[urgentSlug]?.length ?? 0;
 
   const onDragStart = (e: DragStartEvent) => setActiveId(String(e.active.id));
 
@@ -335,9 +436,60 @@ function InboxPage() {
       // silent — likely table missing in dev. Don't spam.
       console.warn("[inbox] persistência ignorada:", error.message);
     } else {
-      notify.success(`Movido para ${COLUMNS.find((c) => c.id === col)?.label}`);
+      notify.success(`Movido para ${columns.find((c) => c.slug === col)?.label ?? col}`);
     }
   };
+
+  // Ações do menu da coluna
+  const handleColumnAction = React.useCallback(async (col: KanbanColumnDef, a: ColumnMenuAction) => {
+    if (a.type === "edit") {
+      setColumnEditTarget(col);
+      setColumnEditMode("edit");
+      return;
+    }
+    if (a.type === "delete") {
+      setColumnDeleteTarget(col);
+      return;
+    }
+    if (a.type === "move-left" || a.type === "move-right") {
+      const idx = columns.findIndex((c) => c.id === col.id);
+      const swap = a.type === "move-left" ? idx - 1 : idx + 1;
+      if (idx < 0 || swap < 0 || swap >= columns.length) return;
+      const next = [...columns];
+      [next[idx], next[swap]] = [next[swap], next[idx]];
+      const reIndexed = next.map((c, i) => ({ ...c, position: i }));
+      setColumns(reIndexed);
+      // Persiste posições (best-effort)
+      await Promise.all(
+        reIndexed.map((c) =>
+          supabase.from("kanban_columns").update({ position: c.position }).eq("id", c.id),
+        ),
+      );
+    }
+  }, [columns]);
+
+  const confirmDeleteColumn = React.useCallback(async () => {
+    const col = columnDeleteTarget;
+    if (!col || col.is_system) return;
+    const fallback = columns.find((c) => c.is_system && c.slug === "waiting") ?? columns.find((c) => c.id !== col.id);
+    const fallbackSlug = fallback?.slug ?? "waiting";
+    // 1. Move contatos da coluna pra fallback
+    await supabase
+      .from("contacts")
+      .update({ kanban_column: fallbackSlug })
+      .eq("kanban_column", col.slug);
+    setContacts((prev) =>
+      prev.map((c) => (c.kanban_column === col.slug ? { ...c, kanban_column: fallbackSlug } : c)),
+    );
+    // 2. Deleta a coluna
+    const { error } = await supabase.from("kanban_columns").delete().eq("id", col.id);
+    if (error) {
+      notify.error(error.message ?? "Falha ao excluir coluna.");
+      return;
+    }
+    setColumns((prev) => prev.filter((c) => c.id !== col.id));
+    notify.success(`Coluna "${col.label}" excluída`);
+  }, [columnDeleteTarget, columns]);
 
   const activeContact = activeId ? contacts.find((c) => c.id === activeId) : null;
 
@@ -351,7 +503,7 @@ function InboxPage() {
           </h1>
           <p style={{ marginTop: 2, fontSize: 12, color: "var(--text-muted)" }}>
             {filtered.length} conversa{filtered.length === 1 ? "" : "s"} ·{" "}
-            {byColumn.urgent.length} urgente{byColumn.urgent.length === 1 ? "" : "s"}
+            {urgentCount} urgente{urgentCount === 1 ? "" : "s"}
           </p>
         </div>
 
@@ -497,16 +649,29 @@ function InboxPage() {
             className="flex-1 overflow-x-auto overflow-y-hidden"
             style={{ display: "flex", gap: 12, paddingBottom: 8 }}
           >
-            {COLUMNS.map((c) => (
+            {columns.map((c) => (
               <KanbanColumn
                 key={c.id}
-                id={c.id}
-                label={c.label}
-                emoji={c.emoji}
-                contacts={byColumn[c.id]}
+                column={c}
+                contacts={byColumn[c.slug] ?? []}
                 onCardClick={setOpenContact}
               />
             ))}
+            <button
+              type="button"
+              onClick={() => { setColumnEditTarget(null); setColumnEditMode("create"); }}
+              className="shrink-0"
+              style={{
+                width: 200, alignSelf: "flex-start",
+                padding: 12, borderRadius: 12,
+                border: "1px dashed var(--border-strong)",
+                background: "transparent", color: "var(--text-muted)",
+                cursor: "pointer", fontSize: 12, fontWeight: 600,
+                display: "inline-flex", alignItems: "center", justifyContent: "center", gap: 6,
+              }}
+            >
+              <Plus size={14} /> Nova coluna
+            </button>
           </div>
 
           <DragOverlay dropAnimation={null}>
@@ -546,11 +711,48 @@ function InboxPage() {
       {menuState && (
         <CardMenu
           contact={menuState.contact}
+          columns={columns}
           anchor={menuState.anchor}
           onClose={() => setMenuState(null)}
           onAction={handleMenuAction}
         />
       )}
+
+      {columnMenuState && (
+        <ColumnMenu
+          column={columnMenuState.column}
+          anchor={columnMenuState.anchor}
+          canMoveLeft={columns.findIndex((c) => c.id === columnMenuState.column.id) > 0}
+          canMoveRight={columns.findIndex((c) => c.id === columnMenuState.column.id) < columns.length - 1}
+          onClose={() => setColumnMenuState(null)}
+          onAction={(a) => handleColumnAction(columnMenuState.column, a)}
+        />
+      )}
+
+      <ColumnEditModal
+        open={columnEditMode !== null}
+        column={columnEditMode === "edit" ? columnEditTarget : null}
+        existingSlugs={columns.map((c) => c.slug)}
+        nextPosition={columns.length}
+        onClose={() => { setColumnEditMode(null); setColumnEditTarget(null); }}
+        onSaved={(saved) => {
+          setColumns((prev) => {
+            const exists = prev.some((c) => c.id === saved.id);
+            return exists
+              ? prev.map((c) => (c.id === saved.id ? saved : c))
+              : [...prev, saved].sort((a, b) => a.position - b.position);
+          });
+        }}
+      />
+
+      <ConfirmDialog
+        open={!!columnDeleteTarget}
+        onClose={() => setColumnDeleteTarget(null)}
+        onConfirm={confirmDeleteColumn}
+        title={`Excluir coluna "${columnDeleteTarget?.label ?? ""}"?`}
+        description={`Os cards desta coluna serão movidos para "Aguardando". Esta ação não pode ser desfeita.`}
+        confirmLabel="Excluir"
+      />
 
       <EditContactModal
         open={!!editTarget}

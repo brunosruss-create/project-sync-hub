@@ -1,36 +1,77 @@
-# Ajuste do card — remover scrollbar horizontal na coluna
+# Colunas do Kanban editáveis (CRUD completo)
 
-## Causa
+Hoje as 4 colunas (`waiting`, `in_progress`, `scheduled`, `urgent`) estão hardcoded em `src/features/inbox/data.ts`. Vamos torná-las dinâmicas, persistidas no Supabase e escopadas por dono da conta (`owner_user_id`) — mesmo padrão já usado em `contacts`. Como o projeto não tem tabela `workspaces`, "por workspace" = por conta dona, compartilhado entre todos os atendentes que enxergam aquele inbox.
 
-A barrinha horizontal no rodapé de cada coluna (visível no print) é causada pelos elementos posicionados com offset negativo dentro do `ContactCard`:
+## 1. Banco de dados (migration)
 
-- Badge de não lidas: `top: -6, right: -6`
-- Botão ⋮ (hover): `top: -4 / 16, right: -4`
+Nova tabela `kanban_columns`:
 
-Como o card tem `width: 100%` dentro do container `overflow-y-auto` da coluna, esses 6px que "vazam" para fora à direita geram overflow horizontal — e o navegador mostra a scrollbar.
+```
+id                uuid PK default gen_random_uuid()
+owner_user_id     uuid not null references auth.users
+slug              text not null              -- "waiting", "vip", etc. único por owner
+label             text not null              -- "Aguardando"
+emoji             text not null default '📌'
+color             text not null default '#6B7280'  -- hex, usado na borda superior
+position          int  not null              -- ordem
+is_system         bool not null default false -- marca as 4 padrão (não pode deletar)
+created_at        timestamptz default now()
+unique (owner_user_id, slug)
+```
 
-## Mudanças (cirúrgicas, apenas visual)
+RLS: usuário só lê/edita as próprias linhas (`owner_user_id = auth.uid()`).
 
-**1. `src/features/inbox/kanban-column.tsx`** (linha 87)
-- Trocar `className="flex-1 overflow-y-auto flex flex-col"` por `className="flex-1 overflow-y-auto overflow-x-hidden flex flex-col"`.
-- Garante que nenhum overflow horizontal interno produza scrollbar, sem afetar o scroll vertical.
+**Seed automático no primeiro acesso**: quando o inbox carregar e o usuário não tiver nenhuma coluna, um `createServerFn` insere as 4 padrão (Aguardando/Em Atendimento/Agendado/Urgente) com `is_system = true`.
 
-**2. `src/features/inbox/contact-card.tsx`** (badge + botão ⋮)
-- Badge não lidas: trocar `top: -6, right: -6` por `top: 6, right: 6` (fica dentro do card, sem clipping e sem causar overflow).
-- Botão ⋮: trocar `right: -4` por `right: 6`; ajustar `top` para `6` quando não há badge e `30` quando há badge (para não sobrepor o número).
-- Recalcular `anchor.left` do menu para refletir a nova posição (`r.right - 180`).
+`contacts.kanban_column` continua `text` (já é). Não há FK pra preservar liberdade — validação acontece no app.
 
-## O que NÃO muda
+## 2. Backend (server functions)
 
-- Drag & drop, listeners, dispatch do evento `zf:card-menu`, ScheduleModal, EditContactModal.
-- Estilos de hover, animações, dark mode.
-- Layout interno do card (avatar, nome, telefone, preview, tags, tempo).
-- Scroll horizontal do Kanban (entre colunas) continua funcional.
-- Lógica de mensagens, realtime, Supabase, Evolution.
+Arquivo novo `src/lib/kanban-columns.functions.ts` com `requireSupabaseAuth`:
 
-## Teste rápido
+- `listColumns()` — retorna colunas ordenadas por `position`. Se vazio, faz seed e retorna.
+- `createColumn({ label, emoji, color })` — gera `slug` a partir do label, `position = max+1`.
+- `updateColumn({ id, label?, emoji?, color? })` — bloqueia mudar `slug` (pra não invalidar `contacts.kanban_column`).
+- `reorderColumns({ ids: string[] })` — atualiza `position` em batch.
+- `deleteColumn({ id, fallbackSlug })` — bloqueia se `is_system`. Antes de apagar, faz `update contacts set kanban_column = fallbackSlug where kanban_column = <slug deletada>`.
 
-1. Coluna com 1+ cards → não deve aparecer scrollbar horizontal no rodapé da coluna.
-2. Badge de não lidas continua visível no canto superior direito do card.
-3. Hover no card mostra o ⋮ no canto, abre o menu na posição correta.
-4. Scroll vertical da coluna e scroll horizontal do Kanban seguem funcionando.
+## 3. Frontend
+
+**`src/features/inbox/data.ts`**: manter tipos, formatadores e mocks; remover `COLUMNS` e `COLUMN_COLOR` constantes (passam a vir do estado). `KanbanColumnId` vira `string` (slug livre).
+
+**`_authenticated.inbox.tsx`**:
+- Novo estado `columns` carregado via `listColumns()` no mount + realtime na tabela `kanban_columns`.
+- `byColumn` indexa por slug dinâmico; cards com `kanban_column` desconhecido caem em "Aguardando" (fallback visual).
+- Drag & drop e o submenu "Mover para" do `CardMenu` passam a usar a lista dinâmica.
+- Header da página ganha um botão **"+ Nova coluna"** (ícone `Plus` discreto, ao lado de "Novo Contato").
+
+**`src/features/inbox/kanban-column.tsx`**:
+- Adicionar ícone ⋮ pequeno no header da coluna (aparece no hover do header), abre dropdown com:
+  - Editar (nome, emoji, cor)
+  - Mover ← / Mover →
+  - Excluir (desabilitado se `is_system`; confirma e move cards pra "Aguardando")
+- Título clicável também abre o modal de edição.
+- Cor da borda superior vem de `color` da coluna.
+
+**Componentes novos**:
+- `src/features/inbox/column-edit-modal.tsx` — campos: nome (text), emoji (input com sugestões 📌🟡🔵🟢🔴⭐📅💬🔥), cor (paleta de 8 swatches + input hex). Salvar = `createColumn` ou `updateColumn` + toast.
+- `src/features/inbox/column-menu.tsx` — dropdown semelhante ao `card-menu.tsx`.
+
+**Confirmação de delete**: usa `ConfirmDialog` existente — "Excluir 'Urgente'? Os 3 cards desta coluna voltam para Aguardando."
+
+## 4. O que NÃO muda
+
+- Lógica de mensagens, realtime de `contacts`/`messages`, Evolution, envio/recebimento.
+- Drag & drop entre colunas (continua via dnd-kit).
+- Cards (avatar, ⋮, badge), modal de novo contato, ScheduleModal, EditContactModal.
+- Filtros, busca, atalhos de teclado, dark mode, scroll horizontal do board.
+
+## 5. Ordem de implementação
+
+1. Migration `kanban_columns` + RLS.
+2. `kanban-columns.functions.ts` (list/create/update/reorder/delete + seed).
+3. Refatorar `data.ts` e `_authenticated.inbox.tsx` para colunas dinâmicas (sem regredir nada).
+4. `column-edit-modal.tsx` + botão "Nova coluna" no header.
+5. `column-menu.tsx` + ⋮ no header da `kanban-column.tsx`.
+6. Delete com fallback + `ConfirmDialog`.
+7. Teste: renomear "Aguardando", criar "VIP", arrastar card, reordenar colunas, excluir e ver fallback.

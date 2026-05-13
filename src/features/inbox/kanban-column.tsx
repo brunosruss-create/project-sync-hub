@@ -1,18 +1,23 @@
 import * as React from "react";
 import { useDroppable } from "@dnd-kit/core";
+import { MoreVertical } from "lucide-react";
 import { ContactCard } from "./contact-card";
-import { type ContactCard as Contact, type KanbanColumnId, COLUMN_COLOR } from "./data";
+import type { ContactCard as Contact, KanbanColumnDef } from "./data";
+
+export type ColumnMenuRequestDetail = {
+  column: KanbanColumnDef;
+  anchor: { top: number; left: number };
+};
 
 type Props = {
-  id: KanbanColumnId;
-  label: string;
-  emoji: string;
+  column: KanbanColumnDef;
   contacts: Contact[];
   onCardClick: (contact: Contact) => void;
 };
 
-export function KanbanColumn({ id, label, emoji, contacts, onCardClick }: Props) {
-  const { setNodeRef, isOver } = useDroppable({ id });
+export function KanbanColumn({ column, contacts, onCardClick }: Props) {
+  const { id, slug, label, emoji, color } = column;
+  const { setNodeRef, isOver } = useDroppable({ id: slug });
   const prevCount = React.useRef(contacts.length);
   const [bump, setBump] = React.useState(false);
   const [pulse, setPulse] = React.useState(false);
@@ -35,23 +40,28 @@ export function KanbanColumn({ id, label, emoji, contacts, onCardClick }: Props)
   return (
     <div
       ref={setNodeRef}
-      className="shrink-0 flex flex-col"
+      data-column-slug={slug}
+      data-column-id={id}
+      className="shrink-0 flex flex-col zf-kanban-column"
       style={{
         width: 280,
         background: "var(--bg-overlay)",
         borderRadius: 12,
         padding: 12,
-        borderTop: `3px solid ${COLUMN_COLOR[id]}`,
+        borderTop: `3px solid ${color}`,
         outline: isOver ? "2px dashed var(--brand-400)" : "none",
         outlineOffset: -2,
         boxShadow: pulse
-          ? `0 0 0 2px color-mix(in oklab, ${COLUMN_COLOR[id]} 40%, transparent), 0 0 24px color-mix(in oklab, ${COLUMN_COLOR[id]} 30%, transparent)`
+          ? `0 0 0 2px color-mix(in oklab, ${color} 40%, transparent), 0 0 24px color-mix(in oklab, ${color} 30%, transparent)`
           : undefined,
         transition: "outline 120ms var(--ease-default), box-shadow 600ms ease-out",
         maxHeight: "100%",
       }}
     >
-      <div className="flex items-center justify-between" style={{ padding: "0 4px 10px" }}>
+      <div
+        className="flex items-center justify-between zf-column-header"
+        style={{ padding: "0 4px 10px", position: "relative" }}
+      >
         <div
           className="flex items-center gap-1.5"
           style={{
@@ -65,22 +75,55 @@ export function KanbanColumn({ id, label, emoji, contacts, onCardClick }: Props)
           <span>{emoji}</span>
           {label}
         </div>
-        <span
-          style={{
-            fontSize: 11,
-            fontWeight: 600,
-            padding: "2px 8px",
-            borderRadius: 999,
-            background: "var(--bg-surface)",
-            color: "var(--text-muted)",
-            border: "1px solid var(--border)",
-            display: "inline-block",
-            transform: bump ? "scale(1.3)" : "scale(1)",
-            transition: "transform 300ms cubic-bezier(.34,1.56,.64,1)",
-          }}
-        >
-          {contacts.length}
-        </span>
+        <div className="flex items-center" style={{ gap: 6 }}>
+          <span
+            style={{
+              fontSize: 11,
+              fontWeight: 600,
+              padding: "2px 8px",
+              borderRadius: 999,
+              background: "var(--bg-surface)",
+              color: "var(--text-muted)",
+              border: "1px solid var(--border)",
+              display: "inline-block",
+              transform: bump ? "scale(1.3)" : "scale(1)",
+              transition: "transform 300ms cubic-bezier(.34,1.56,.64,1)",
+            }}
+          >
+            {contacts.length}
+          </span>
+          <button
+            type="button"
+            aria-label="Opções da coluna"
+            className="zf-column-more"
+            onPointerDown={(e) => e.stopPropagation()}
+            onMouseDown={(e) => e.stopPropagation()}
+            onClick={(e) => {
+              e.stopPropagation();
+              const r = (e.currentTarget as HTMLElement).getBoundingClientRect();
+              const detail: ColumnMenuRequestDetail = {
+                column,
+                anchor: { top: r.bottom + 4, left: r.right - 200 },
+              };
+              window.dispatchEvent(new CustomEvent("zf:column-menu", { detail }));
+            }}
+            style={{
+              width: 22, height: 22,
+              display: "inline-flex", alignItems: "center", justifyContent: "center",
+              background: "transparent",
+              border: "1px solid transparent",
+              borderRadius: 6,
+              color: "var(--text-muted)",
+              opacity: 0,
+              transition: "opacity 100ms, background 100ms",
+              cursor: "pointer",
+            }}
+            onMouseEnter={(e) => { e.currentTarget.style.background = "var(--bg-surface)"; }}
+            onMouseLeave={(e) => { e.currentTarget.style.background = "transparent"; }}
+          >
+            <MoreVertical size={14} />
+          </button>
+        </div>
       </div>
 
       <div
