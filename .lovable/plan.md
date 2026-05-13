@@ -1,46 +1,39 @@
-## Diagnóstico
+## Problema
 
-Confirmei via API:
+Os webhooks do Evolution chegam com status 200 (confirmado nos logs do worker), mas as mensagens não aparecem em **Aguardando**. O log de "logado no Windows vs Chrome" é apenas como o WhatsApp identifica a sessão Web — **não** é a causa, pode ignorar.
 
-```
-webhook url: https://localhost:8080/api/public/evolution/3b0f3e4e-...
-updatedAt:   2026-05-13T03:02:46Z   (não foi atualizado após o fix)
-state:       open                    (WhatsApp conectado normalmente)
-```
+A causa provável está no parser do evento em `src/routes/api/public/evolution.$instanceId.ts`:
 
-A instância WhatsApp está conectada, mas o webhook continua apontando para localhost. Por isso a Evolution recebe a mensagem do WhatsApp mas não consegue entregar para o ZapFlow → nada é gravado em `messages`/`contacts` → nada aparece em "Aguardando".
-
-## Correção (2 passos)
-
-### 1. Sobrescrever o webhook diretamente na Evolution agora
-
-Em vez de pedir para o usuário clicar em Reconectar, vou usar `curl` para chamar `/webhook/set/zapflow_main` na Evolution API com a URL pública correta:
-
-```
-https://github-vercel-bridge.lovable.app/api/public/evolution/3b0f3e4e-f8ec-4fcf-b593-1b74ee2bd313
+```ts
+const event = String(payload?.event ?? "").toLowerCase();
+...
+} else if (event === "messages.upsert") {
 ```
 
-Isso atualiza o webhook sem precisar reescanear QR e sem precisar do usuário fazer nada.
+O Evolution API, dependendo da versão/configuração de `webhook_by_events`, envia o nome do evento em formatos diferentes:
+- `messages.upsert` (ponto, minúsculo) — formato "novo"
+- `MESSAGES_UPSERT` → após `toLowerCase()` vira `messages_upsert` (underscore) — formato "clássico"
 
-### 2. Validar o fluxo end-to-end
+Hoje só o primeiro casa. Se sua instância manda o segundo, o handler retorna 200 sem inserir nada — exatamente o sintoma.
 
-Após setar o webhook:
+Além disso, hoje não há log nenhum quando o evento não bate, então é "silencioso".
 
-a. Confirmar via `/webhook/find/zapflow_main` que a URL agora é a pública.
+## Plano
 
-b. Simular um POST do webhook diretamente no endpoint `/api/public/evolution/{id}` com `x-webhook-secret` correto e payload de `messages.upsert`, para verificar se:
-   - O endpoint responde 200
-   - Um contato novo é criado em `contacts` com `kanban_column='waiting'`
-   - Uma mensagem é inserida em `messages`
+1. **Normalizar o nome do evento** no handler do webhook: aceitar tanto `messages.upsert` quanto `messages_upsert` (e idem para `connection.update` / `connection_update`, `qrcode.updated` / `qrcode_updated`). Implementação: substituir `.` por `_` (ou vice-versa) antes do `switch`.
 
-c. Se algum desses passos falhar, investigar (RLS no admin client não se aplica, então deve ser schema/coluna). Olhar logs com `server-function-logs`.
+2. **Adicionar logs de diagnóstico** (temporariamente) no início do handler:
+   - `console.log('[evolution]', event, 'keys:', Object.keys(payload ?? {}))`
+   - Quando cair em "evento ignorado", logar `event` para sabermos exatamente o que veio.
 
-### 3. Pedir ao usuário para enviar mensagem de teste
+3. **Tratar variações do payload de mensagem**: alguns formatos do Evolution colocam a mensagem direto em `data` (objeto único) em vez de `data.messages[]`. O código já cobre os dois, mas vou validar que campos como `key.remoteJid` existam mesmo quando vem como `data.key.remoteJid`.
 
-Após validação, o usuário envia uma mensagem WhatsApp real e verifica se aparece em "Aguardando".
+4. **Verificar pós-deploy**: após aplicar, você manda uma mensagem de teste e eu releio os logs do worker para confirmar qual é o `event` real e que o insert em `messages` aconteceu.
 
-## Por que só editar o webhook resolve
+## Detalhes técnicos
 
-- A instância no Evolution já existe e está `open`.
-- O fix em `publicBaseUrl()` (commits anteriores) garante que **futuras** chamadas a Reconectar registrem a URL correta.
-- Mas o webhook atual (registrado antes do fix) precisa ser sobrescrito uma vez. Pode ser feito via API direta sem tocar no app.
+- Arquivo único alterado: `src/routes/api/public/evolution.$instanceId.ts`.
+- Sem mudança de schema, sem mudança de RLS, sem mudança no front.
+- Logs serão removidos depois de confirmarmos o fluxo.
+
+Aprovar para eu implementar?

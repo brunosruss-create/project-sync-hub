@@ -26,8 +26,18 @@ export const Route = createFileRoute("/api/public/evolution/$instanceId")({
           return new Response("bad json", { status: 400 });
         }
 
-        const event = String(payload?.event ?? "").toLowerCase();
+        // Evolution pode mandar "messages.upsert" ou "MESSAGES_UPSERT"
+        const rawEvent = String(payload?.event ?? "").toLowerCase();
+        const event = rawEvent.replace(/_/g, ".");
         const data = payload?.data ?? payload;
+
+        console.log("[evolution]", {
+          instanceId: row.id,
+          rawEvent,
+          event,
+          payloadKeys: Object.keys(payload ?? {}),
+          dataKeys: data && typeof data === "object" ? Object.keys(data) : null,
+        });
 
         try {
           if (event === "qrcode.updated") {
