@@ -288,35 +288,35 @@ export function Composer({ draft, setDraft, taRef, onSend, onClosePanel, onSendA
     }
   };
 
-  // long press handlers on Mic
+  // Mic interactions:
+  // - Desktop (mouse): click to start, click again to stop. No long-press.
+  // - Touch: tap to start, tap again to stop. Swipe-left while pressing the
+  //   stop button cancels (whatsapp-like).
+  const isTouchPointer = (e: React.PointerEvent) =>
+    e.pointerType === "touch" || e.pointerType === "pen";
+
   const onMicPointerDown = (e: React.PointerEvent) => {
     e.preventDefault();
     pointerStartXRef.current = e.clientX;
-    longPressTimerRef.current = window.setTimeout(() => {
-      longPressTimerRef.current = null;
-      startRecording();
-    }, 300);
-    (e.currentTarget as HTMLElement).setPointerCapture?.(e.pointerId);
+    if (isRecording && isTouchPointer(e)) {
+      (e.currentTarget as HTMLElement).setPointerCapture?.(e.pointerId);
+    }
   };
 
   const onMicPointerMove = (e: React.PointerEvent) => {
-    if (!isRecording) return;
+    if (!isRecording || !isTouchPointer(e)) return;
     const dx = e.clientX - pointerStartXRef.current;
     setIsCancelingRec(dx < -80);
   };
 
   const onMicPointerUp = (e: React.PointerEvent) => {
-    if (longPressTimerRef.current) {
-      window.clearTimeout(longPressTimerRef.current);
-      longPressTimerRef.current = null;
-      toast.message("Segure para gravar.");
-      return;
-    }
-    if (isRecording) {
+    if (isRecording && isTouchPointer(e)) {
       const dx = e.clientX - pointerStartXRef.current;
-      if (dx < -80) cancelRecording();
-      else stopRecording();
+      if (dx < -80) { cancelRecording(); return; }
     }
+    // Toggle on click (covers mouse + tap)
+    if (isRecording) stopRecording();
+    else startRecording();
   };
 
   // ============ RENDER ============
