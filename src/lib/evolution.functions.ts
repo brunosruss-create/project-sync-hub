@@ -353,9 +353,33 @@ export const disconnectInstance = createServerFn({ method: "POST" })
     return { instance: data ?? null, serverTime: Date.now() };
   });
 
+const quotedInput = z
+  .object({
+    messageId: z.string().min(1).max(255),
+    fromMe: z.boolean(),
+    remoteJid: z.string().min(1).max(255),
+    preview: z
+      .object({
+        content: z.string().max(2000).optional(),
+        author: z.string().max(255).optional(),
+        message_type: z.string().max(32).optional(),
+      })
+      .optional(),
+  })
+  .optional();
+
+function buildQuotedPayload(q?: z.infer<typeof quotedInput>): any | undefined {
+  if (!q) return undefined;
+  return {
+    key: { id: q.messageId, fromMe: q.fromMe, remoteJid: q.remoteJid },
+    message: { conversation: q.preview?.content ?? "" },
+  };
+}
+
 const sendInput = z.object({
   contactId: z.string().uuid(),
   text: z.string().min(1).max(4096),
+  quoted: quotedInput,
 });
 
 export const sendWhatsAppMessage = createServerFn({ method: "POST" })
@@ -374,7 +398,11 @@ export const sendWhatsAppMessage = createServerFn({ method: "POST" })
     const number = String(contact.phone).replace(/\D/g, "");
     let externalId: string | null = null;
     try {
-      const r: any = await evo.sendText(name, { number, text: data.text });
+      const r: any = await evo.sendText(name, {
+        number,
+        text: data.text,
+        quoted: buildQuotedPayload(data.quoted),
+      });
       externalId = r?.key?.id ?? r?.id ?? null;
     } catch (e: any) {
       throw new Error(`Falha no envio: ${e?.message ?? e}`);
@@ -389,6 +417,8 @@ export const sendWhatsAppMessage = createServerFn({ method: "POST" })
       status: "sent",
       sent_by: context.userId,
       whatsapp_message_id: externalId,
+      quoted_message_id: data.quoted?.messageId ?? null,
+      quoted_preview: data.quoted?.preview ?? null,
     });
 
     return { ok: true, externalId };
