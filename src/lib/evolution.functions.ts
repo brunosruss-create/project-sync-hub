@@ -93,7 +93,14 @@ async function configureEvolutionInstance(name: string, webhookUrl: string, webh
       },
     });
   } catch (e: any) {
-    console.warn("[evolution] setWebhook:", e?.message);
+    const msg = String(e?.message ?? "");
+    if (isAuthError(msg)) {
+      console.error("[evolution] setWebhook auth error:", msg);
+      throw new Error(
+        "Evolution API recusou a autenticação ao registrar o webhook. Verifique EVOLUTION_API_KEY (Lovable) vs AUTHENTICATION_API_KEY (Railway).",
+      );
+    }
+    console.warn("[evolution] setWebhook:", msg);
   }
 
   return normalizeQRCodeImage(extractQRCode(created));
