@@ -107,8 +107,8 @@ export function ContactCard({ contact, onClick, isOverlay, isSelected }: Props) 
           aria-label={`${unread} não lida${unread === 1 ? "" : "s"}`}
           style={{
             position: "absolute",
-            top: -6,
-            right: -6,
+            top: 6,
+            right: 6,
             minWidth: unread > 9 ? 24 : 18,
             height: 18,
             padding: unread > 9 ? "0 5px" : 0,
@@ -142,15 +142,15 @@ export function ContactCard({ contact, onClick, isOverlay, isSelected }: Props) 
             const r = (e.currentTarget as HTMLElement).getBoundingClientRect();
             const detail: CardMenuRequestDetail = {
               contact,
-              anchor: { top: r.bottom + 4, left: r.left - 180 + r.width },
+              anchor: { top: r.bottom + 4, left: r.right - 180 },
             };
             window.dispatchEvent(new CustomEvent("zf:card-menu", { detail }));
           }}
           className="zf-card-more"
           style={{
             position: "absolute",
-            top: showBadge ? 16 : -4,
-            right: -4,
+            top: showBadge ? 30 : 6,
+            right: 6,
             width: 22,
             height: 22,
             display: "inline-flex",
