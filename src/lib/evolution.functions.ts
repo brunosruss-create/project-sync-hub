@@ -131,7 +131,9 @@ export const getInstance = createServerFn({ method: "GET" })
       .select("id,instance_name,status,phone_number,profile_name,qr_code,qr_expires_at,last_connected_at,updated_at")
       .eq("instance_name", name)
       .maybeSingle();
-    return { instance: data ?? null };
+    const baseUrl = publicBaseUrl();
+    const webhookUrl = data && baseUrl ? `${baseUrl}/api/public/evolution/${data.id}` : null;
+    return { instance: data ? { ...data, webhook_url: webhookUrl } : null };
   });
 
 export const connectInstance = createServerFn({ method: "POST" })
