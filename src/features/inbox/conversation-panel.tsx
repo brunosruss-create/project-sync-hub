@@ -119,10 +119,10 @@ export function ConversationPanel({
     setTab("conversation");
     setDraft("");
     setMenuOpen(false);
-    setMessages(seedMessages(contact));
+    setMessages(import.meta.env.DEV && contact.id.startsWith("c") ? seedMessages(contact) : []);
   }, [contact?.id]);
 
-  // load + subscribe to realtime messages (fallback to seed if table missing)
+  // load + subscribe to realtime messages reais do Supabase
   React.useEffect(() => {
     if (!contact) return;
     let cancelled = false;
@@ -134,7 +134,9 @@ export function ConversationPanel({
         .eq("contact_id", contact.id)
         .order("created_at", { ascending: true });
       if (cancelled) return;
-      if (!error && data && data.length > 0) {
+      if (error) {
+        console.warn("[chat] erro ao carregar mensagens:", error.message);
+      } else if (data) {
         setMessages(
           data.map((r: any) => ({
             id: r.id,
@@ -215,6 +217,7 @@ export function ConversationPanel({
       // se Evolution não estiver configurado/conectado, persiste só no banco
       if (/Evolution|conectar|conectado|configurad/i.test(msg)) {
         const { error } = await supabase.from("messages").insert({
+          owner_user_id: user?.id ?? null,
           contact_id: contact.id,
           direction: "outbound",
           content: text,

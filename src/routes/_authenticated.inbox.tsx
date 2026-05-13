@@ -32,7 +32,9 @@ type Filter = "all" | "mine" | "unassigned";
 
 function InboxPage() {
   const { user } = useAuth();
-  const [contacts, setContacts] = React.useState<Contact[]>(MOCK_CONTACTS);
+  const [contacts, setContacts] = React.useState<Contact[]>([]);
+  const [isLoadingContacts, setIsLoadingContacts] = React.useState(true);
+  const [loadError, setLoadError] = React.useState<string | null>(null);
   const [activeId, setActiveId] = React.useState<string | null>(null);
   const [filter, setFilter] = React.useState<Filter>("all");
   const [query, setQuery] = React.useState("");
@@ -42,7 +44,7 @@ function InboxPage() {
     useSensor(PointerSensor, { activationConstraint: { distance: 4 } }),
   );
 
-  // Try to load from supabase (silently fall back to mock if table missing/empty)
+  // Carrega contatos reais do Supabase; não mascara erro com mock.
   React.useEffect(() => {
     let cancelled = false;
     (async () => {
@@ -53,7 +55,19 @@ function InboxPage() {
         )
         .order("last_message_at", { ascending: false });
       if (cancelled) return;
-      if (error || !data || data.length === 0) return; // keep mock seed
+      if (error) {
+        console.warn("[inbox] erro ao carregar contatos:", error.message);
+        setLoadError(error.message);
+        if (import.meta.env.DEV) setContacts(MOCK_CONTACTS);
+        setIsLoadingContacts(false);
+        return;
+      }
+      setLoadError(null);
+      if (!data || data.length === 0) {
+        setContacts([]);
+        setIsLoadingContacts(false);
+        return;
+      }
       const mapped: Contact[] = data.map((r: any) => ({
         id: r.id,
         name: r.name,
@@ -68,6 +82,7 @@ function InboxPage() {
         kanban_column: (r.kanban_column ?? "waiting") as KanbanColumnId,
       }));
       setContacts(mapped);
+      setIsLoadingContacts(false);
     })();
     return () => {
       cancelled = true;
@@ -264,7 +279,19 @@ function InboxPage() {
       </div>
 
       {/* Kanban */}
-      {contacts.length === 0 ? (
+      {isLoadingContacts ? (
+        <div style={{ flex: 1, display: "flex", alignItems: "center", justifyContent: "center", color: "var(--text-muted)", fontSize: 13 }}>
+          Carregando atendimentos…
+        </div>
+      ) : loadError ? (
+        <div style={{ flex: 1, display: "flex", alignItems: "center", justifyContent: "center" }}>
+          <EmptyState
+            icon={<MessageSquare size={48} style={{ color: "var(--brand-400)" }} aria-hidden="true" />}
+            title="Não foi possível carregar o Inbox"
+            description={`Supabase retornou: ${loadError}`}
+          />
+        </div>
+      ) : contacts.length === 0 ? (
         <div style={{ flex: 1, display: "flex", alignItems: "center", justifyContent: "center" }}>
           <EmptyState
             icon={<MessageSquare size={48} style={{ color: "var(--brand-400)" }} aria-hidden="true" />}
