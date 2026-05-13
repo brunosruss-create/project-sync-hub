@@ -27,6 +27,7 @@ import { toast } from "sonner";
 import { useServerFn } from "@tanstack/react-start";
 import { sendWhatsAppMessage, refreshContactAvatar, sendWhatsAppMedia, sendWhatsAppAudio } from "@/lib/evolution.functions";
 import { ScheduleModal } from "./schedule-modal";
+import { MessageActions } from "./message-actions";
 import {
   SEED_SERVICES,
   formatCurrencyBRL,
