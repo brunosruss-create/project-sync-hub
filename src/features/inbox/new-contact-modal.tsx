@@ -43,10 +43,14 @@ function onlyDigits(v: string) {
 }
 
 function digitsBody(raw: string): string {
+  const trimmed = raw.trim();
   let d = onlyDigits(raw);
   if (d.startsWith("00")) d = d.slice(2);
-  // remove DDI 55 quando o usuário (ou nossa máscara) já incluiu
-  if (d.length >= 12 && d.startsWith("55")) d = d.slice(2);
+  // Remove o DDI quando ele veio explicitamente da máscara (+55...) ou de um número completo.
+  // Sem isso, ao apagar de "+55 (55) ..." o prefixo vira parte do DDD e reinserimos um "5".
+  if ((trimmed.startsWith("+") || trimmed.startsWith("0055") || d.length >= 12) && d.startsWith("55")) {
+    d = d.slice(2);
+  }
   return d.slice(0, 11);
 }
 
