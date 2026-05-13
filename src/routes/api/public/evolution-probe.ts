@@ -6,7 +6,8 @@ export const Route = createFileRoute("/api/public/evolution-probe")({
       GET: async ({ request }) => {
         const url = new URL(request.url);
         const name = url.searchParams.get("name") || "zapflow_main";
-        const base = (process.env.EVOLUTION_API_URL ?? "").replace(/\/$/, "");
+        let base = (process.env.EVOLUTION_API_URL ?? "").trim().replace(/^['"]|['"]$/g, "").replace(/\/$/, "");
+        if (base && !/^https?:\/\//i.test(base)) base = `https://${base}`;
         const key = process.env.EVOLUTION_API_KEY ?? "";
         const headers = { apikey: key, "Content-Type": "application/json" };
 
