@@ -133,10 +133,13 @@ const at = (offsetDays: number, h: number, m = 0) => {
   return d;
 };
 
+const pickContactId = (i: number) =>
+  MOCK_CONTACTS[i]?.id ?? MOCK_CONTACTS[i % Math.max(MOCK_CONTACTS.length, 1)]?.id ?? "unknown";
+
 export const MOCK_APPOINTMENTS: Appointment[] = [
   {
     id: "ap1",
-    contact_id: MOCK_CONTACTS[0].id,
+    contact_id: pickContactId(0),
     service_id: SEED_SERVICES[0].id,
     agent_id: "a1",
     starts_at: at(0, 9, 0),
@@ -147,7 +150,7 @@ export const MOCK_APPOINTMENTS: Appointment[] = [
   },
   {
     id: "ap2",
-    contact_id: MOCK_CONTACTS[1].id,
+    contact_id: pickContactId(1),
     service_id: SEED_SERVICES[1].id,
     agent_id: "a2",
     starts_at: at(0, 10, 30),
@@ -158,7 +161,7 @@ export const MOCK_APPOINTMENTS: Appointment[] = [
   },
   {
     id: "ap3",
-    contact_id: MOCK_CONTACTS[2].id,
+    contact_id: pickContactId(2),
     service_id: SEED_SERVICES[2].id,
     agent_id: "a1",
     starts_at: at(0, 14, 0),
@@ -169,7 +172,7 @@ export const MOCK_APPOINTMENTS: Appointment[] = [
   },
   {
     id: "ap4",
-    contact_id: MOCK_CONTACTS[3].id,
+    contact_id: pickContactId(3),
     service_id: SEED_SERVICES[3].id,
     agent_id: "a3",
     starts_at: at(1, 11, 0),
@@ -180,7 +183,7 @@ export const MOCK_APPOINTMENTS: Appointment[] = [
   },
   {
     id: "ap5",
-    contact_id: MOCK_CONTACTS[4].id,
+    contact_id: pickContactId(4),
     service_id: SEED_SERVICES[4].id,
     agent_id: "a4",
     starts_at: at(2, 9, 30),
@@ -191,7 +194,7 @@ export const MOCK_APPOINTMENTS: Appointment[] = [
   },
   {
     id: "ap6",
-    contact_id: MOCK_CONTACTS[5].id,
+    contact_id: pickContactId(5),
     service_id: SEED_SERVICES[0].id,
     agent_id: "a2",
     starts_at: at(3, 16, 0),
@@ -202,7 +205,7 @@ export const MOCK_APPOINTMENTS: Appointment[] = [
   },
   {
     id: "ap7",
-    contact_id: MOCK_CONTACTS[6].id,
+    contact_id: pickContactId(6),
     service_id: SEED_SERVICES[2].id,
     agent_id: "a1",
     starts_at: at(-1, 10, 0),
@@ -213,7 +216,7 @@ export const MOCK_APPOINTMENTS: Appointment[] = [
   },
   {
     id: "ap8",
-    contact_id: MOCK_CONTACTS[7].id,
+    contact_id: pickContactId(7),
     service_id: SEED_SERVICES[3].id,
     agent_id: "a3",
     starts_at: at(4, 14, 30),
