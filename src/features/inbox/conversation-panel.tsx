@@ -41,9 +41,12 @@ interface Message {
   id: string;
   direction: "inbound" | "outbound";
   content: string;
-  message_type: "text" | "image" | "audio" | "document" | "system";
+  message_type: "text" | "image" | "audio" | "video" | "document" | "system";
   status: "sent" | "delivered" | "read";
   created_at: Date;
+  media_url?: string | null;
+  media_mime?: string | null;
+  media_name?: string | null;
 }
 
 const MAX_CHARS = 4096;
