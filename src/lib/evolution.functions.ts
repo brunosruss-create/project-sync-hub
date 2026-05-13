@@ -147,10 +147,13 @@ export const connectInstance = createServerFn({ method: "POST" })
 
     let qr: string | null = null;
 
-    // 1) Tenta /instance/connect direto (funciona se a instância já existir)
+    // 0) Deleta a instância existente para garantir pairing fresco
+    // (corrige "não é possível conectar novos dispositivos" do WhatsApp)
     try {
-      const r1 = await evo.connect(name);
-      qr = await normalizeQRCodeImage(extractQRCode(r1));
+      await evo.logout(name);
+    } catch {}
+    try {
+      await evo.deleteInstance(name);
     } catch (e: any) {
       const msg = String(e?.message ?? e);
       if (isAuthError(msg)) {
@@ -158,37 +161,36 @@ export const connectInstance = createServerFn({ method: "POST" })
           "Evolution API recusou a autenticação (Forbidden). Verifique EVOLUTION_API_KEY (Lovable) vs AUTHENTICATION_API_KEY (Railway).",
         );
       }
-      console.warn("[evolution] connect:", msg);
+      // 404 / not found é esperado quando ainda não existe
     }
 
-    // 2) Se não veio QR, cria a instância e tenta de novo
+    // 1) Cria instância nova (já retorna QR na maioria das versões)
+    try {
+      const created = await evo.createInstance({
+        instanceName: name,
+        integration: "WHATSAPP-BAILEYS",
+        qrcode: true,
+      });
+      qr = await normalizeQRCodeImage(extractQRCode(created));
+    } catch (e: any) {
+      const msg = String(e?.message ?? e);
+      if (isAuthError(msg)) {
+        throw new Error(
+          "Evolution API recusou a autenticação (Forbidden) ao criar a instância. Verifique EVOLUTION_API_KEY.",
+        );
+      }
+      if (!/already|exist|in use/i.test(msg)) {
+        console.warn("[evolution] createInstance:", msg);
+      }
+    }
+
+    // 2) Sempre chama connect para garantir QR atual
     if (!qr) {
       try {
-        const created = await evo.createInstance({
-          instanceName: name,
-          integration: "WHATSAPP-BAILEYS",
-          qrcode: true,
-        });
-        qr = await normalizeQRCodeImage(extractQRCode(created));
+        const r = await evo.connect(name);
+        qr = await normalizeQRCodeImage(extractQRCode(r));
       } catch (e: any) {
-        const msg = String(e?.message ?? e);
-        if (!/already|exist|in use/i.test(msg)) {
-          if (isAuthError(msg)) {
-            throw new Error(
-              "Evolution API recusou a autenticação (Forbidden) ao criar a instância. Verifique EVOLUTION_API_KEY.",
-            );
-          }
-          console.warn("[evolution] createInstance:", msg);
-        }
-      }
-
-      if (!qr) {
-        try {
-          const r2 = await evo.connect(name);
-          qr = await normalizeQRCodeImage(extractQRCode(r2));
-        } catch (e: any) {
-          console.warn("[evolution] connect retry:", e?.message ?? e);
-        }
+        console.warn("[evolution] connect:", e?.message ?? e);
       }
     }
 
@@ -206,7 +208,7 @@ export const connectInstance = createServerFn({ method: "POST" })
       .update({
         status: "pending",
         qr_code: qr,
-        qr_expires_at: new Date(Date.now() + 60_000).toISOString(),
+        qr_expires_at: new Date(Date.now() + 30_000).toISOString(),
       })
       .eq("id", row.id)
       .select("*")
@@ -306,7 +308,7 @@ export const refreshInstanceStatus = createServerFn({ method: "POST" })
         const qr = await normalizeQRCodeImage(extractQRCode(r));
         if (qr) {
           update.qr_code = qr;
-          update.qr_expires_at = new Date(Date.now() + 60_000).toISOString();
+          update.qr_expires_at = new Date(Date.now() + 30_000).toISOString();
         } else {
           update.status = "error";
           update.qr_code = null;
