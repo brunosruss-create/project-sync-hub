@@ -70,9 +70,41 @@ export function AppTopbar() {
             </span>
           </React.Fragment>
         ))}
-      </nav>
+        </nav>
+      </div>
 
       <div className="flex items-center" style={{ gap: 4 }}>
+        <button
+          type="button"
+          onClick={openPalette}
+          aria-label="Buscar (Cmd+K)"
+          className="hidden sm:inline-flex items-center transition-colors"
+          style={{
+            height: 32,
+            padding: "0 10px",
+            gap: 8,
+            borderRadius: 6,
+            border: "1px solid var(--border)",
+            color: "var(--text-muted)",
+            background: "transparent",
+            fontSize: 12,
+          }}
+        >
+          <Search size={14} />
+          <span>Buscar</span>
+          <kbd style={{ fontSize: 10, padding: "1px 5px", border: "1px solid var(--border)", borderRadius: 3 }}>
+            ⌘K
+          </kbd>
+        </button>
+        <button
+          type="button"
+          onClick={openPalette}
+          aria-label="Buscar"
+          className="sm:hidden inline-flex items-center justify-center"
+          style={{ width: 32, height: 32, borderRadius: 6, color: "var(--text-muted)", background: "transparent" }}
+        >
+          <Search size={16} />
+        </button>
         <button
           type="button"
           onClick={toggle}
