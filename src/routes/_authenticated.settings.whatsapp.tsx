@@ -151,6 +151,20 @@ function WhatsAppPage() {
             <Loader2 className="animate-spin" />
             <p style={{ fontSize: 13, color: "var(--text-muted)" }}>Gerando QR Code…</p>
           </div>
+        ) : status === "error" ? (
+          <div className="flex flex-col items-center justify-center text-center" style={{ padding: 32, gap: 12 }}>
+            <p style={{ fontSize: 14 }}>A Evolution respondeu sem QR Code.</p>
+            <p style={{ maxWidth: 520, fontSize: 12, color: "var(--text-muted)" }}>
+              Corrija no Railway: SERVER_URL, QRCODE_LIMIT e CONFIG_SESSION_PHONE_VERSION. Depois faça redeploy da Evolution e clique em Reconectar.
+            </p>
+            <button
+              style={buttonPrimary}
+              disabled={connect.isPending}
+              onClick={() => connect.mutate()}
+            >
+              {connect.isPending ? "Reconectando…" : "Reconectar"}
+            </button>
+          </div>
         ) : status === "connected" ? (
           <div
             style={{
