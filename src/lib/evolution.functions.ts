@@ -50,6 +50,42 @@ function isAuthError(msg: string): boolean {
   return !/already|exist|in use/i.test(msg) && /forbidden|unauthorized|missing global api key|invalid api key|api key/i.test(msg);
 }
 
+function payloadKeys(payload: any): string[] {
+  if (!payload || typeof payload !== "object") return [];
+  return Object.keys(payload);
+}
+
+function firstFetchedInstance(payload: any): any | null {
+  if (Array.isArray(payload)) return payload[0] ?? null;
+  if (Array.isArray(payload?.instances)) return payload.instances[0] ?? null;
+  if (Array.isArray(payload?.data)) return payload.data[0] ?? null;
+  return payload?.instance ?? payload ?? null;
+}
+
+async function ensureWebhook(name: string, webhookUrl: string, webhookSecret: string) {
+  try {
+    await evo.setWebhook(name, {
+      webhook: {
+        enabled: true,
+        url: webhookUrl,
+        headers: { "x-webhook-secret": webhookSecret },
+        byEvents: false,
+        base64: false,
+        events: WEBHOOK_EVENTS,
+      },
+    });
+  } catch (e: any) {
+    const msg = String(e?.message ?? "");
+    if (isAuthError(msg)) {
+      console.error("[evolution] setWebhook auth error:", msg);
+      throw new Error(
+        "Evolution API recusou a autenticação ao registrar o webhook. Verifique EVOLUTION_API_KEY (Lovable) vs AUTHENTICATION_API_KEY (Railway).",
+      );
+    }
+    console.warn("[evolution] setWebhook:", msg);
+  }
+}
+
 async function configureEvolutionInstance(name: string, webhookUrl: string, webhookSecret: string) {
   let created: any = null;
   try {
@@ -81,27 +117,7 @@ async function configureEvolutionInstance(name: string, webhookUrl: string, webh
     }
   }
 
-  try {
-    await evo.setWebhook(name, {
-      webhook: {
-        enabled: true,
-        url: webhookUrl,
-        headers: { "x-webhook-secret": webhookSecret },
-        byEvents: false,
-        base64: false,
-        events: WEBHOOK_EVENTS,
-      },
-    });
-  } catch (e: any) {
-    const msg = String(e?.message ?? "");
-    if (isAuthError(msg)) {
-      console.error("[evolution] setWebhook auth error:", msg);
-      throw new Error(
-        "Evolution API recusou a autenticação ao registrar o webhook. Verifique EVOLUTION_API_KEY (Lovable) vs AUTHENTICATION_API_KEY (Railway).",
-      );
-    }
-    console.warn("[evolution] setWebhook:", msg);
-  }
+  await ensureWebhook(name, webhookUrl, webhookSecret);
 
   return normalizeQRCodeImage(extractQRCode(created));
 }
