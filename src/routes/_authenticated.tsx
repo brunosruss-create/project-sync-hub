@@ -3,6 +3,7 @@ import * as React from "react";
 import { useAuth } from "@/hooks/use-auth";
 import { AppSidebar } from "@/components/app-sidebar";
 import { AppTopbar } from "@/components/app-topbar";
+import { CommandPalette } from "@/components/command-palette";
 
 export const Route = createFileRoute("/_authenticated")({
   component: AuthenticatedLayout,
@@ -41,6 +42,7 @@ function AuthenticatedLayout() {
           </div>
         </main>
       </div>
+      <CommandPalette />
     </div>
   );
 }

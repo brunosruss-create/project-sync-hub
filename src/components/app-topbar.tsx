@@ -1,8 +1,27 @@
 import * as React from "react";
 import { useNavigate, useRouterState } from "@tanstack/react-router";
-import { Moon, Sun, LogOut } from "lucide-react";
+import { Moon, Sun, LogOut, Search } from "lucide-react";
 import { useAuth } from "@/hooks/use-auth";
 import { useTheme } from "@/hooks/use-theme";
+import { MobileSidebarTrigger } from "@/components/mobile-sidebar";
+
+const TITLES: Record<string, string> = {
+  dashboard: "Dashboard",
+  inbox: "Conversas",
+  schedule: "Agenda",
+  services: "Serviços",
+  "ai-agent": "Agente IA",
+  settings: "Configurações",
+  "super-admin": "Super Admin",
+  profile: "Perfil",
+  workspace: "Workspace",
+  team: "Equipe",
+  whatsapp: "WhatsApp",
+  billing: "Cobrança",
+  health: "Saúde",
+  users: "Usuários",
+  workspaces: "Workspaces",
+};
 
 export function AppTopbar() {
   const { theme, toggle } = useTheme();
@@ -12,17 +31,30 @@ export function AppTopbar() {
 
   const segments = path.split("/").filter(Boolean);
 
+  // Per-page <title>
+  React.useEffect(() => {
+    const last = segments[segments.length - 1] ?? "";
+    const label = TITLES[last] ?? last.charAt(0).toUpperCase() + last.slice(1);
+    document.title = label ? `${label} | ZapFlow` : "ZapFlow";
+  }, [path, segments]);
+
+  const openPalette = () =>
+    window.dispatchEvent(new KeyboardEvent("keydown", { key: "k", metaKey: true }));
+
   return (
     <header
       className="flex items-center justify-between"
       style={{
         height: 48,
-        padding: "0 16px",
+        padding: "0 12px",
         background: "var(--bg-surface)",
         borderBottom: "1px solid var(--border)",
+        gap: 8,
       }}
     >
-      <nav className="flex items-center gap-1" style={{ fontSize: 13 }}>
+      <div className="flex items-center" style={{ gap: 4, minWidth: 0 }}>
+        <MobileSidebarTrigger />
+        <nav className="flex items-center gap-1 min-w-0" style={{ fontSize: 13 }}>
         {segments.map((s, i) => (
           <React.Fragment key={i}>
             {i > 0 && (
