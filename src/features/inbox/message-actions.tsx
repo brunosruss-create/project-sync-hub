@@ -1,6 +1,6 @@
 import * as React from "react";
 import * as DropdownMenu from "@radix-ui/react-dropdown-menu";
-import { ChevronDown, Reply, Forward, Copy, Smile, Pencil, Trash2, Download } from "lucide-react";
+import { ChevronDown, Reply, Forward, Copy, Pencil, Trash2, Download } from "lucide-react";
 import { toast } from "sonner";
 
 export type MessageActionContext = {
