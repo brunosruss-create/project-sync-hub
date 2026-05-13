@@ -190,6 +190,17 @@ function InboxPage() {
     };
   }, []);
 
+  // Título da aba com total de não lidas
+  React.useEffect(() => {
+    const total = contacts.reduce((s, c) => s + (c.unreadCount ?? 0), 0);
+    const base = "Atendimento | ZapFlow";
+    const original = document.title;
+    document.title = total > 0 ? `(${total > 99 ? "99+" : total}) ${base}` : base;
+    return () => {
+      document.title = original;
+    };
+  }, [contacts]);
+
   const filtered = React.useMemo(() => {
     return contacts.filter((c) => {
       if (filter === "mine" && c.assignedAgent !== (user?.email?.split("@")[0] ?? ""))
