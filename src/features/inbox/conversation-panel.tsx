@@ -132,6 +132,7 @@ export function ConversationPanel({
     setTab("conversation");
     setDraft("");
     setMenuOpen(false);
+    setReplyingTo(null);
     setMessages(import.meta.env.DEV && contact.id.startsWith("c") ? seedMessages(contact) : []);
   }, [contact?.id]);
 
