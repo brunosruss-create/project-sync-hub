@@ -99,6 +99,7 @@ export function ConversationPanel({
 }) {
   const { user } = useAuth();
   const sendViaEvolution = useServerFn(sendWhatsAppMessage);
+  const refreshAvatar = useServerFn(refreshContactAvatar);
   const [tab, setTab] = React.useState<Tab>("conversation");
   const [draft, setDraft] = React.useState("");
   const [menuOpen, setMenuOpen] = React.useState(false);
