@@ -97,6 +97,7 @@ export function ConversationPanel({
   onContactUpdate?: (contactId: string, patch: Partial<Contact>) => void;
 }) {
   const { user } = useAuth();
+  const sendViaEvolution = useServerFn(sendWhatsAppMessage);
   const [tab, setTab] = React.useState<Tab>("conversation");
   const [draft, setDraft] = React.useState("");
   const [menuOpen, setMenuOpen] = React.useState(false);
@@ -206,17 +207,26 @@ export function ConversationPanel({
     setDraft("");
     if (taRef.current) taRef.current.style.height = "auto";
 
-    const { error } = await supabase.from("messages").insert({
-      contact_id: contact.id,
-      direction: "outbound",
-      content: text,
-      message_type: "text",
-      status: "sent",
-      sent_by: user?.id ?? null,
-    });
-    if (error) {
-      // table may not exist yet — keep optimistic, log silently
-      console.warn("[chat] persistência ignorada:", error.message);
+    try {
+      // tenta enviar pelo WhatsApp via Evolution; o handler já grava em messages
+      await sendViaEvolution({ data: { contactId: contact.id, text } });
+    } catch (e: any) {
+      const msg = String(e?.message ?? "");
+      // se Evolution não estiver configurado/conectado, persiste só no banco
+      if (/Evolution|conectar|conectado|configurad/i.test(msg)) {
+        const { error } = await supabase.from("messages").insert({
+          contact_id: contact.id,
+          direction: "outbound",
+          content: text,
+          message_type: "text",
+          status: "sent",
+          sent_by: user?.id ?? null,
+        });
+        if (error) console.warn("[chat] persistência ignorada:", error.message);
+        toast.warning("WhatsApp não conectado — mensagem salva localmente.");
+      } else {
+        toast.error(msg || "Falha ao enviar");
+      }
     }
   };
 
