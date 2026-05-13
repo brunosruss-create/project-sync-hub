@@ -503,7 +503,7 @@ function InboxPage() {
           </h1>
           <p style={{ marginTop: 2, fontSize: 12, color: "var(--text-muted)" }}>
             {filtered.length} conversa{filtered.length === 1 ? "" : "s"} ·{" "}
-            {byColumn.urgent.length} urgente{byColumn.urgent.length === 1 ? "" : "s"}
+            {urgentCount} urgente{urgentCount === 1 ? "" : "s"}
           </p>
         </div>
 
