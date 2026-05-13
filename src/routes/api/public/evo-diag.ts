@@ -28,33 +28,31 @@ export const Route = createFileRoute("/api/public/evo-diag")({
           return Response.json(diag, { status: 500 });
         }
 
-        const target = `${url}/instance/fetchInstances`;
-        const started = Date.now();
-        try {
-          const ctrl = new AbortController();
-          const t = setTimeout(() => ctrl.abort(), 10000);
-          const res = await fetch(target, {
-            method: "GET",
-            headers: { apikey: rawKey, "Content-Type": "application/json" },
-            signal: ctrl.signal,
-          });
-          clearTimeout(t);
-          const body = await res.text();
-          diag.request = {
-            target,
-            status: res.status,
-            ok: res.ok,
-            latency_ms: Date.now() - started,
-            body_preview: body.slice(0, 400),
-          };
-        } catch (e: any) {
-          diag.request = {
-            target,
-            error: e?.name === "AbortError" ? "timeout (10s)" : (e?.message ?? String(e)),
-            cause: e?.cause?.code ?? e?.cause?.message ?? null,
-            latency_ms: Date.now() - started,
-          };
-        }
+        const checks: Array<{ name: string; target: string; status?: number; body?: string; error?: string }> = [];
+        const hit = async (name: string, path: string) => {
+          const target = `${url}${path}`;
+          try {
+            const ctrl = new AbortController();
+            const t = setTimeout(() => ctrl.abort(), 10000);
+            const res = await fetch(target, {
+              method: "GET",
+              headers: { apikey: rawKey, "Content-Type": "application/json" },
+              signal: ctrl.signal,
+            });
+            clearTimeout(t);
+            const body = await res.text();
+            checks.push({ name, target, status: res.status, body: body.slice(0, 800) });
+          } catch (e: any) {
+            checks.push({ name, target, error: e?.message ?? String(e) });
+          }
+        };
+
+        await hit("fetchInstances", "/instance/fetchInstances");
+        await hit("findWebhook", "/webhook/find/zapflow_main");
+        await hit("connectionState", "/instance/connectionState/zapflow_main");
+
+        diag.checks = checks;
+        diag.public_app_url = process.env.PUBLIC_APP_URL ?? null;
 
         return Response.json(diag);
       },
