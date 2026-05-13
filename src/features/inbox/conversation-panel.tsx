@@ -612,11 +612,13 @@ function MessageBubble({
   displayStatus,
   contactName,
   contactAvatar,
+  onReply,
 }: {
   m: Message;
   displayStatus: Message["status"];
   contactName: string;
   contactAvatar?: string | null;
+  onReply?: (m: Message) => void;
 }) {
   if (m.message_type === "system") {
     return (
