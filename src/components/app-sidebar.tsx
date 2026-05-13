@@ -7,6 +7,7 @@ import {
   BarChart3,
   Settings,
   ChevronsUpDown,
+  Wrench,
 } from "lucide-react";
 import { useAuth } from "@/hooks/use-auth";
 import { useProfile } from "@/hooks/use-profile";
@@ -14,6 +15,7 @@ import { useProfile } from "@/hooks/use-profile";
 const items = [
   { label: "Dashboard", to: "/dashboard", icon: LayoutDashboard },
   { label: "Conversas", to: "/inbox", icon: MessageSquare },
+  { label: "Serviços", to: "/services", icon: Wrench },
   { label: "Contatos", to: "/dashboard", icon: Users },
   { label: "Relatórios", to: "/dashboard", icon: BarChart3 },
   { label: "Configurações", to: "/dashboard", icon: Settings },
