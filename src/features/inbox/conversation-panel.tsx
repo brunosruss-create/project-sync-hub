@@ -689,6 +689,18 @@ function MessageBubble({
   );
 }
 
+function fmtClock(date: Date): string {
+  return date.toLocaleTimeString("pt-BR", { hour: "2-digit", minute: "2-digit" });
+}
+
+function StatusTicks({ status }: { status: Message["status"] }) {
+  if (status === "sent") {
+    return <Check size={13} color="var(--text-muted)" />;
+  }
+  const color = status === "read" ? "#34B7F1" : "var(--text-muted)";
+  return <CheckCheck size={13} color={color} />;
+}
+
 function fmtTime(s: number): string {
   if (!isFinite(s) || s < 0) s = 0;
   const m = Math.floor(s / 60);
