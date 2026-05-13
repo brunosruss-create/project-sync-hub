@@ -27,9 +27,11 @@ type Props = {
   taRef: React.RefObject<HTMLTextAreaElement | null>;
   onSend: () => void;
   onClosePanel?: () => void;
+  onSendAttachments?: (files: File[], caption: string) => Promise<void>;
+  onSendAudio?: (blob: Blob) => Promise<void>;
 };
 
-export function Composer({ draft, setDraft, taRef, onSend, onClosePanel }: Props) {
+export function Composer({ draft, setDraft, taRef, onSend, onClosePanel, onSendAttachments, onSendAudio }: Props) {
   const hasText = draft.trim().length > 0;
   const nearLimit = draft.length > MAX_CHARS - 200;
 
@@ -138,9 +140,22 @@ export function Composer({ draft, setDraft, taRef, onSend, onClosePanel }: Props
     setCaption("");
   };
 
-  const sendAttachments = () => {
-    toast.info(`Anexo (${attachments.length}) — em breve.`);
-    clearAttachments();
+  const [sendingAttach, setSendingAttach] = React.useState(false);
+  const sendAttachments = async () => {
+    if (sendingAttach) return;
+    if (!onSendAttachments) {
+      toast.error("Envio de anexo indisponível.");
+      return;
+    }
+    setSendingAttach(true);
+    try {
+      await onSendAttachments(attachments.map((a) => a.file), caption);
+      clearAttachments();
+    } catch (e: any) {
+      toast.error(e?.message ?? "Falha ao enviar anexo.");
+    } finally {
+      setSendingAttach(false);
+    }
   };
 
   // --- paste image
@@ -222,9 +237,22 @@ export function Composer({ draft, setDraft, taRef, onSend, onClosePanel }: Props
     setAudioPreview(null);
   };
 
-  const sendAudio = () => {
-    toast.info("Áudio — em breve.");
-    discardAudioPreview();
+  const [sendingAudio, setSendingAudio] = React.useState(false);
+  const sendAudio = async () => {
+    if (sendingAudio || !audioPreview) return;
+    if (!onSendAudio) {
+      toast.error("Envio de áudio indisponível.");
+      return;
+    }
+    setSendingAudio(true);
+    try {
+      await onSendAudio(audioPreview.blob);
+      discardAudioPreview();
+    } catch (e: any) {
+      toast.error(e?.message ?? "Falha ao enviar áudio.");
+    } finally {
+      setSendingAudio(false);
+    }
   };
 
   // long press handlers on Mic

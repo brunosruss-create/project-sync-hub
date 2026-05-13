@@ -19,7 +19,7 @@ import { supabase } from "@/integrations/supabase/client";
 import { useAuth } from "@/hooks/use-auth";
 import { toast } from "sonner";
 import { useServerFn } from "@tanstack/react-start";
-import { sendWhatsAppMessage, refreshContactAvatar } from "@/lib/evolution.functions";
+import { sendWhatsAppMessage, refreshContactAvatar, sendWhatsAppMedia, sendWhatsAppAudio } from "@/lib/evolution.functions";
 import { ScheduleModal } from "./schedule-modal";
 import {
   SEED_SERVICES,
@@ -96,6 +96,8 @@ export function ConversationPanel({
 }) {
   const { user } = useAuth();
   const sendViaEvolution = useServerFn(sendWhatsAppMessage);
+  const sendMediaFn = useServerFn(sendWhatsAppMedia);
+  const sendAudioFn = useServerFn(sendWhatsAppAudio);
   const refreshAvatar = useServerFn(refreshContactAvatar);
   const [tab, setTab] = React.useState<Tab>("conversation");
   const [draft, setDraft] = React.useState("");
@@ -244,7 +246,48 @@ export function ConversationPanel({
     }
   };
 
+  // Upload arquivo no Storage e devolve URL pública
+  const uploadToStorage = async (file: File, ext?: string): Promise<{ url: string; path: string }> => {
+    if (!user?.id) throw new Error("Sessão expirada.");
+    const safeName = file.name.replace(/[^\w.\-]/g, "_").slice(-80);
+    const finalExt = ext ?? (safeName.includes(".") ? "" : "bin");
+    const path = `${user.id}/${Date.now()}-${crypto.randomUUID()}-${safeName}${finalExt ? "." + finalExt : ""}`;
+    const { error } = await supabase.storage
+      .from("chat-media")
+      .upload(path, file, { contentType: file.type, upsert: false });
+    if (error) throw new Error(`Upload falhou: ${error.message}`);
+    const { data } = supabase.storage.from("chat-media").getPublicUrl(path);
+    return { url: data.publicUrl, path };
+  };
 
+  const handleSendAttachments = async (files: File[], caption: string) => {
+    if (!contact) return;
+    for (let i = 0; i < files.length; i++) {
+      const f = files[i];
+      const { url } = await uploadToStorage(f);
+      const cap = i === 0 ? caption : "";
+      try {
+        await sendMediaFn({
+          data: {
+            contactId: contact.id,
+            url,
+            mime: f.type || "application/octet-stream",
+            name: f.name || `file-${Date.now()}`,
+            caption: cap || undefined,
+          },
+        });
+      } catch (e: any) {
+        toast.error(e?.message ?? "Falha no envio.");
+      }
+    }
+  };
+
+  const handleSendAudio = async (blob: Blob) => {
+    if (!contact) return;
+    const file = new File([blob], `audio-${Date.now()}.webm`, { type: "audio/webm" });
+    const { url } = await uploadToStorage(file);
+    await sendAudioFn({ data: { contactId: contact.id, url } });
+  };
 
   const menuAction = (label: string) => {
     setMenuOpen(false);
@@ -441,6 +484,8 @@ export function ConversationPanel({
                   taRef={taRef}
                   onSend={send}
                   onClosePanel={onClose}
+                  onSendAttachments={handleSendAttachments}
+                  onSendAudio={handleSendAudio}
                 />
               </>
             ) : (
