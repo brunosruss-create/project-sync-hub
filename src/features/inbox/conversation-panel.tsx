@@ -127,6 +127,7 @@ export function ConversationPanel({
   const [scheduleSeed, setScheduleSeed] = React.useState<string[] | undefined>(undefined);
   const [replyingTo, setReplyingTo] = React.useState<Message | null>(null);
   const [editingId, setEditingId] = React.useState<string | null>(null);
+  const [forwardSource, setForwardSource] = React.useState<ForwardSource | null>(null);
   const open = !!contact;
   const scrollRef = React.useRef<HTMLDivElement | null>(null);
   const taRef = React.useRef<HTMLTextAreaElement | null>(null);
