@@ -165,7 +165,7 @@ export function ConversationPanel({
     (async () => {
       const { data, error } = await supabase
         .from("messages")
-        .select("id,direction,content,message_type,status,created_at,media_url,media_mime,media_name,whatsapp_message_id")
+        .select("id,direction,content,message_type,status,created_at,media_url,media_mime,media_name,whatsapp_message_id,quoted_preview,reactions")
         .eq("contact_id", contact.id)
         .order("created_at", { ascending: true });
       if (cancelled) return;
