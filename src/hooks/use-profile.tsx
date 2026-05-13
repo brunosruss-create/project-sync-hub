@@ -18,15 +18,14 @@ export function useProfile() {
 
   React.useEffect(() => {
     if (!user?.id) return;
-
-    const channel = supabase
-      .channel(`profile-${user.id}`)
-      .on(
-        "postgres_changes",
-        { event: "*", schema: "public", table: "profiles", filter: `id=eq.${user.id}` },
-        () => queryClient.invalidateQueries({ queryKey: ["profile", user.id] }),
-      )
-      .subscribe();
+    const channelName = `profile-${user.id}-${Math.random().toString(36).slice(2, 8)}`;
+    const channel = supabase.channel(channelName);
+    channel.on(
+      "postgres_changes",
+      { event: "*", schema: "public", table: "profiles", filter: `id=eq.${user.id}` },
+      () => queryClient.invalidateQueries({ queryKey: ["profile", user.id] }),
+    );
+    channel.subscribe();
 
     return () => {
       void supabase.removeChannel(channel);
