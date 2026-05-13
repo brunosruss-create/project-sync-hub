@@ -124,6 +124,7 @@ export function ScheduleModal({
 
     // 4. System message in chat
     await supabase.from("messages").insert({
+      owner_user_id: user?.id ?? null,
       contact_id: contact.id,
       direction: "system",
       content: sysContent,
@@ -135,6 +136,7 @@ export function ScheduleModal({
     // 5. Outbound confirmation message (intent)
     if (notifyWa) {
       await supabase.from("messages").insert({
+        owner_user_id: user?.id ?? null,
         contact_id: contact.id,
         direction: "outbound",
         content: previewMessage,
