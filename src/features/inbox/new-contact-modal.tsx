@@ -66,8 +66,8 @@ function formatBR(raw: string): string {
   const ddd = body.slice(0, 2);
   const part1 = body.slice(2, 7);
   const part2 = body.slice(7, 11);
-  let out = "+55";
-  if (ddd) out += ` (${ddd}`;
+  let out = "";
+  if (ddd) out += `(${ddd}`;
   if (ddd.length === 2) out += `)`;
   if (part1) out += ` ${part1}`;
   if (part2) out += `-${part2}`;
