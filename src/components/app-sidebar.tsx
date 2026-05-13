@@ -8,6 +8,7 @@ import {
   Settings,
   ChevronsUpDown,
   Wrench,
+  Calendar,
 } from "lucide-react";
 import { useAuth } from "@/hooks/use-auth";
 import { useProfile } from "@/hooks/use-profile";
