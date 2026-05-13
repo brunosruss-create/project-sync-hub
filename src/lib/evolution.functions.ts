@@ -50,6 +50,42 @@ function isAuthError(msg: string): boolean {
   return !/already|exist|in use/i.test(msg) && /forbidden|unauthorized|missing global api key|invalid api key|api key/i.test(msg);
 }
 
+function payloadKeys(payload: any): string[] {
+  if (!payload || typeof payload !== "object") return [];
+  return Object.keys(payload);
+}
+
+function firstFetchedInstance(payload: any): any | null {
+  if (Array.isArray(payload)) return payload[0] ?? null;
+  if (Array.isArray(payload?.instances)) return payload.instances[0] ?? null;
+  if (Array.isArray(payload?.data)) return payload.data[0] ?? null;
+  return payload?.instance ?? payload ?? null;
+}
+
+async function ensureWebhook(name: string, webhookUrl: string, webhookSecret: string) {
+  try {
+    await evo.setWebhook(name, {
+      webhook: {
+        enabled: true,
+        url: webhookUrl,
+        headers: { "x-webhook-secret": webhookSecret },
+        byEvents: false,
+        base64: false,
+        events: WEBHOOK_EVENTS,
+      },
+    });
+  } catch (e: any) {
+    const msg = String(e?.message ?? "");
+    if (isAuthError(msg)) {
+      console.error("[evolution] setWebhook auth error:", msg);
+      throw new Error(
+        "Evolution API recusou a autenticação ao registrar o webhook. Verifique EVOLUTION_API_KEY (Lovable) vs AUTHENTICATION_API_KEY (Railway).",
+      );
+    }
+    console.warn("[evolution] setWebhook:", msg);
+  }
+}
+
 async function configureEvolutionInstance(name: string, webhookUrl: string, webhookSecret: string) {
   let created: any = null;
   try {
@@ -81,27 +117,7 @@ async function configureEvolutionInstance(name: string, webhookUrl: string, webh
     }
   }
 
-  try {
-    await evo.setWebhook(name, {
-      webhook: {
-        enabled: true,
-        url: webhookUrl,
-        headers: { "x-webhook-secret": webhookSecret },
-        byEvents: false,
-        base64: false,
-        events: WEBHOOK_EVENTS,
-      },
-    });
-  } catch (e: any) {
-    const msg = String(e?.message ?? "");
-    if (isAuthError(msg)) {
-      console.error("[evolution] setWebhook auth error:", msg);
-      throw new Error(
-        "Evolution API recusou a autenticação ao registrar o webhook. Verifique EVOLUTION_API_KEY (Lovable) vs AUTHENTICATION_API_KEY (Railway).",
-      );
-    }
-    console.warn("[evolution] setWebhook:", msg);
-  }
+  await ensureWebhook(name, webhookUrl, webhookSecret);
 
   return normalizeQRCodeImage(extractQRCode(created));
 }
@@ -131,21 +147,32 @@ export const connectInstance = createServerFn({ method: "POST" })
     }
     const webhookUrl = `${baseUrl}/api/public/evolution/${row.id}`;
 
-    let qr = await configureEvolutionInstance(name, webhookUrl, row.webhook_secret as string);
+    let qr: string | null = null;
+    let rawConnect: any = null;
 
-    // 3) conecta — retorna { base64, code, ... }
+    // /instance/connect é a fonte mais confiável para QR em instância já existente.
+    try {
+      rawConnect = await evo.connect(name);
+      qr = await normalizeQRCodeImage(extractQRCode(rawConnect));
+      await ensureWebhook(name, webhookUrl, row.webhook_secret as string);
+    } catch (e: any) {
+      const msg = String(e?.message ?? e);
+      if (isAuthError(msg)) {
+        throw new Error(
+          "Evolution API recusou a autenticação (Forbidden) ao tentar conectar. Verifique EVOLUTION_API_KEY (Lovable) vs AUTHENTICATION_API_KEY (Railway).",
+        );
+      }
+      console.warn("[evolution] connect before create:", msg);
+    }
+
+    if (!qr) {
+      qr = await configureEvolutionInstance(name, webhookUrl, row.webhook_secret as string);
+    }
+
     try {
       if (!qr) {
-        const r: any = await evo.connect(name);
-        qr = await normalizeQRCodeImage(extractQRCode(r));
-      }
-      if (!qr) {
-        await evo.deleteInstance(name).catch((e: any) => console.warn("[evolution] delete stale instance:", e?.message));
-        qr = await configureEvolutionInstance(name, webhookUrl, row.webhook_secret as string);
-        if (!qr) {
-          const retry: any = await evo.connect(name);
-          qr = await normalizeQRCodeImage(extractQRCode(retry));
-        }
+        rawConnect = await evo.connect(name);
+        qr = await normalizeQRCodeImage(extractQRCode(rawConnect));
       }
     } catch (e: any) {
       const msg = String(e?.message ?? e);
@@ -158,12 +185,23 @@ export const connectInstance = createServerFn({ method: "POST" })
     }
 
     if (!qr) {
+      try {
+        const list: any = await evo.fetchInstances(name);
+        const inst = firstFetchedInstance(list);
+        console.warn("[evolution] sem QR após connect", {
+          connectKeys: payloadKeys(rawConnect),
+          instanceState: inst?.instance?.state ?? inst?.state ?? null,
+          instanceStatus: inst?.instance?.status ?? inst?.status ?? null,
+        });
+      } catch (e: any) {
+        console.warn("[evolution] fetchInstances after missing QR:", e?.message ?? e);
+      }
       await supabaseAdmin
         .from("whatsapp_instances")
         .update({ status: "error", qr_code: null })
         .eq("id", row.id);
       throw new Error(
-        "A Evolution API respondeu sem QR Code (count:0). No Railway da Evolution, confira SERVER_URL, QRCODE_LIMIT e CONFIG_SESSION_PHONE_VERSION; depois redeploy e clique em Reconectar.",
+        "A Evolution API conectou, mas respondeu sem QR Code. No Railway, defina QRCODE_COLOR como #000000 (não vazio), mantenha QRCODE_LIMIT maior que 0, faça redeploy da Evolution e clique em Reconectar.",
       );
     }
 
