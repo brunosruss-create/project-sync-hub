@@ -42,30 +42,27 @@ function onlyDigits(v: string) {
   return v.replace(/\D+/g, "");
 }
 
-export function normalizePhone(raw: string, defaultDDI = "55"): string {
+function digitsBody(raw: string): string {
   let d = onlyDigits(raw);
-  if (!d) return "";
-  // se começa com 0, remove
   if (d.startsWith("00")) d = d.slice(2);
-  // se não tem DDI plausível (>= 12 dígitos = DDI+DDD+numero), assume default
-  if (d.length <= 11) d = defaultDDI + d;
-  return "+" + d;
+  // remove DDI 55 quando o usuário (ou nossa máscara) já incluiu
+  if (d.length >= 12 && d.startsWith("55")) d = d.slice(2);
+  return d.slice(0, 11);
+}
+
+export function normalizePhone(raw: string, defaultDDI = "55"): string {
+  const body = digitsBody(raw);
+  if (!body) return "";
+  return "+" + defaultDDI + body;
 }
 
 function formatBR(raw: string): string {
-  const d = onlyDigits(raw);
-  if (!d) return "";
-  // assume +55
-  let body = d;
-  let ddi = "55";
-  if (d.length > 11) {
-    ddi = d.slice(0, d.length - 11);
-    body = d.slice(-11);
-  }
+  const body = digitsBody(raw);
+  if (!body) return "";
   const ddd = body.slice(0, 2);
   const part1 = body.slice(2, 7);
   const part2 = body.slice(7, 11);
-  let out = `+${ddi}`;
+  let out = "+55";
   if (ddd) out += ` (${ddd}`;
   if (ddd.length === 2) out += `)`;
   if (part1) out += ` ${part1}`;
@@ -74,7 +71,7 @@ function formatBR(raw: string): string {
 }
 
 function isValidBR(normalized: string) {
-  // +55 + DDD(2) + 8 ou 9 dígitos = 13 ou 14 chars
+  // +55 + DDD(2) + 8 ou 9 dígitos
   return /^\+55\d{10,11}$/.test(normalized);
 }
 
