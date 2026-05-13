@@ -796,7 +796,7 @@ function MessageBubble({
           animation: "fadeSlideIn 200ms ease-out",
         }}
       >
-        <MessageChevron isMe={isMe} bubbleBg={audioBg} message={m} onReply={onReply} onReact={onReact} onDelete={onDelete} />
+        <MessageChevron isMe={isMe} bubbleBg={audioBg} message={m} onReply={onReply} onReact={onReact} onDelete={onDelete} onForward={onForward} />
         {m.quoted_preview && <QuotedPreview preview={m.quoted_preview} isMe={isMe} />}
         <AudioPlayer
           src={m.media_url}
