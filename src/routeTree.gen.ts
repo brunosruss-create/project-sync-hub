@@ -24,6 +24,7 @@ import { Route as AuthenticatedInboxRouteImport } from './routes/_authenticated.
 import { Route as AuthenticatedDashboardRouteImport } from './routes/_authenticated.dashboard'
 import { Route as AuthenticatedContactsRouteImport } from './routes/_authenticated.contacts'
 import { Route as AuthenticatedAiAgentRouteImport } from './routes/_authenticated.ai-agent'
+import { Route as ApiPublicEvoDiagRouteImport } from './routes/api/public/evo-diag'
 import { Route as AuthenticatedSuperAdminWorkspacesRouteImport } from './routes/_authenticated.super-admin.workspaces'
 import { Route as AuthenticatedSuperAdminUsersRouteImport } from './routes/_authenticated.super-admin.users'
 import { Route as AuthenticatedSuperAdminHealthRouteImport } from './routes/_authenticated.super-admin.health'
@@ -108,6 +109,11 @@ const AuthenticatedAiAgentRoute = AuthenticatedAiAgentRouteImport.update({
   id: '/ai-agent',
   path: '/ai-agent',
   getParentRoute: () => AuthenticatedRoute,
+} as any)
+const ApiPublicEvoDiagRoute = ApiPublicEvoDiagRouteImport.update({
+  id: '/api/public/evo-diag',
+  path: '/api/public/evo-diag',
+  getParentRoute: () => rootRouteImport,
 } as any)
 const AuthenticatedSuperAdminWorkspacesRoute =
   AuthenticatedSuperAdminWorkspacesRouteImport.update({
@@ -194,6 +200,7 @@ export interface FileRoutesByFullPath {
   '/super-admin/health': typeof AuthenticatedSuperAdminHealthRoute
   '/super-admin/users': typeof AuthenticatedSuperAdminUsersRoute
   '/super-admin/workspaces': typeof AuthenticatedSuperAdminWorkspacesRoute
+  '/api/public/evo-diag': typeof ApiPublicEvoDiagRoute
   '/api/public/evolution/$instanceId': typeof ApiPublicEvolutionInstanceIdRoute
 }
 export interface FileRoutesByTo {
@@ -220,6 +227,7 @@ export interface FileRoutesByTo {
   '/super-admin/health': typeof AuthenticatedSuperAdminHealthRoute
   '/super-admin/users': typeof AuthenticatedSuperAdminUsersRoute
   '/super-admin/workspaces': typeof AuthenticatedSuperAdminWorkspacesRoute
+  '/api/public/evo-diag': typeof ApiPublicEvoDiagRoute
   '/api/public/evolution/$instanceId': typeof ApiPublicEvolutionInstanceIdRoute
 }
 export interface FileRoutesById {
@@ -248,6 +256,7 @@ export interface FileRoutesById {
   '/_authenticated/super-admin/health': typeof AuthenticatedSuperAdminHealthRoute
   '/_authenticated/super-admin/users': typeof AuthenticatedSuperAdminUsersRoute
   '/_authenticated/super-admin/workspaces': typeof AuthenticatedSuperAdminWorkspacesRoute
+  '/api/public/evo-diag': typeof ApiPublicEvoDiagRoute
   '/api/public/evolution/$instanceId': typeof ApiPublicEvolutionInstanceIdRoute
 }
 export interface FileRouteTypes {
@@ -276,6 +285,7 @@ export interface FileRouteTypes {
     | '/super-admin/health'
     | '/super-admin/users'
     | '/super-admin/workspaces'
+    | '/api/public/evo-diag'
     | '/api/public/evolution/$instanceId'
   fileRoutesByTo: FileRoutesByTo
   to:
@@ -302,6 +312,7 @@ export interface FileRouteTypes {
     | '/super-admin/health'
     | '/super-admin/users'
     | '/super-admin/workspaces'
+    | '/api/public/evo-diag'
     | '/api/public/evolution/$instanceId'
   id:
     | '__root__'
@@ -329,6 +340,7 @@ export interface FileRouteTypes {
     | '/_authenticated/super-admin/health'
     | '/_authenticated/super-admin/users'
     | '/_authenticated/super-admin/workspaces'
+    | '/api/public/evo-diag'
     | '/api/public/evolution/$instanceId'
   fileRoutesById: FileRoutesById
 }
@@ -340,6 +352,7 @@ export interface RootRouteChildren {
   ResetPasswordRoute: typeof ResetPasswordRoute
   SignupRoute: typeof SignupRoute
   AuthCallbackRoute: typeof AuthCallbackRoute
+  ApiPublicEvoDiagRoute: typeof ApiPublicEvoDiagRoute
   ApiPublicEvolutionInstanceIdRoute: typeof ApiPublicEvolutionInstanceIdRoute
 }
 
@@ -449,6 +462,13 @@ declare module '@tanstack/react-router' {
       fullPath: '/ai-agent'
       preLoaderRoute: typeof AuthenticatedAiAgentRouteImport
       parentRoute: typeof AuthenticatedRoute
+    }
+    '/api/public/evo-diag': {
+      id: '/api/public/evo-diag'
+      path: '/api/public/evo-diag'
+      fullPath: '/api/public/evo-diag'
+      preLoaderRoute: typeof ApiPublicEvoDiagRouteImport
+      parentRoute: typeof rootRouteImport
     }
     '/_authenticated/super-admin/workspaces': {
       id: '/_authenticated/super-admin/workspaces'
@@ -588,6 +608,7 @@ const rootRouteChildren: RootRouteChildren = {
   ResetPasswordRoute: ResetPasswordRoute,
   SignupRoute: SignupRoute,
   AuthCallbackRoute: AuthCallbackRoute,
+  ApiPublicEvoDiagRoute: ApiPublicEvoDiagRoute,
   ApiPublicEvolutionInstanceIdRoute: ApiPublicEvolutionInstanceIdRoute,
 }
 export const routeTree = rootRouteImport
