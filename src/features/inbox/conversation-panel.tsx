@@ -3,7 +3,6 @@ import {
   X,
   MoreVertical,
   CheckCheck,
-  Check,
   UserPlus,
   AlertOctagon,
   Tag,
