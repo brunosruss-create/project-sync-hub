@@ -1,14 +1,14 @@
 import * as React from "react";
 import { useDraggable } from "@dnd-kit/core";
 import { CSS } from "@dnd-kit/utilities";
-import { AlertTriangle, User as UserIcon } from "lucide-react";
+import { AlertTriangle } from "lucide-react";
 import {
   type ContactCard as Contact,
   formatRelative,
   formatPhone,
   formatMessagePreview,
-  initials,
 } from "./data";
+import { ContactAvatar } from "./contact-avatar";
 
 type Props = {
   contact: Contact;
