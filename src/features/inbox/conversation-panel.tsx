@@ -720,6 +720,7 @@ function MessageBubble({
           {isMe && <StatusTicks status={displayStatus} />}
         </div>
         <div style={{ clear: "both" }} />
+        <ReactionsRow reactions={m.reactions} isMe={isMe} />
       </div>
     );
   }
