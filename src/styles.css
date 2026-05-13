@@ -226,3 +226,13 @@
 .chat-input-textarea::-webkit-scrollbar {
   display: none;
 }
+
+@keyframes recPulse {
+  0%, 100% { opacity: 1; transform: scale(1); }
+  50% { opacity: 0.5; transform: scale(1.3); }
+}
+
+@keyframes recBar {
+  0%, 100% { height: 20%; }
+  50% { height: 100%; }
+}

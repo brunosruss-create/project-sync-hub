@@ -1,10 +1,6 @@
 import * as React from "react";
 import {
   X,
-  Send,
-  Paperclip,
-  Smile,
-  Mic,
   MoreVertical,
   CheckCheck,
   UserPlus,
@@ -16,6 +12,7 @@ import {
   Plus,
   CalendarPlus,
 } from "lucide-react";
+import { Composer } from "./composer";
 import { type ContactCard as Contact, formatRelative, initials } from "./data";
 import { ContactAvatar } from "./contact-avatar";
 import { supabase } from "@/integrations/supabase/client";
@@ -247,12 +244,7 @@ export function ConversationPanel({
     }
   };
 
-  const onKeyDown = (e: React.KeyboardEvent<HTMLTextAreaElement>) => {
-    if (e.key === "Enter" && !e.shiftKey) {
-      e.preventDefault();
-      send();
-    }
-  };
+
 
   const menuAction = (label: string) => {
     setMenuOpen(false);
@@ -452,8 +444,8 @@ export function ConversationPanel({
                   draft={draft}
                   setDraft={setDraft}
                   taRef={taRef}
-                  onKeyDown={onKeyDown}
                   onSend={send}
+                  onClosePanel={onClose}
                 />
               </>
             ) : (
@@ -557,108 +549,6 @@ function MessageBubble({ m }: { m: Message }) {
   );
 }
 
-function Composer({
-  draft,
-  setDraft,
-  taRef,
-  onKeyDown,
-  onSend,
-}: {
-  draft: string;
-  setDraft: (s: string) => void;
-  taRef: React.RefObject<HTMLTextAreaElement | null>;
-  onKeyDown: (e: React.KeyboardEvent<HTMLTextAreaElement>) => void;
-  onSend: () => void;
-}) {
-  const nearLimit = draft.length > MAX_CHARS - 200;
-  return (
-    <div style={{ padding: 10, borderTop: "1px solid var(--border)" }}>
-      <div
-        className="flex items-end"
-        style={{
-          gap: 4,
-          border: "1px solid var(--border-strong)",
-          borderRadius: 10,
-          padding: 6,
-          background: "var(--bg-base)",
-        }}
-      >
-        <IconBtn label="Emoji">
-          <Smile size={15} />
-        </IconBtn>
-        <IconBtn label="Anexar">
-          <Paperclip size={15} />
-        </IconBtn>
-        <textarea
-          ref={taRef}
-          value={draft}
-          onChange={(e) => setDraft(e.target.value.slice(0, MAX_CHARS))}
-          onKeyDown={onKeyDown}
-          placeholder="Digite uma mensagem… (Enter envia, Shift+Enter quebra linha)"
-          rows={1}
-          className="chat-input-textarea"
-          onInput={(e) => {
-            const el = e.currentTarget;
-            el.style.height = "auto";
-            const lineH = 20;
-            el.style.height = Math.min(lineH * 5 + 12, el.scrollHeight) + "px";
-          }}
-          style={{
-            flex: 1,
-            resize: "none",
-            overflow: "hidden",
-            background: "transparent",
-            outline: "none",
-            border: "none",
-            color: "var(--text-primary)",
-            fontSize: 14,
-            fontFamily: "inherit",
-            lineHeight: "20px",
-            padding: "6px 4px",
-            maxHeight: 5 * 20 + 12,
-          }}
-        />
-        <IconBtn label="Áudio">
-          <Mic size={15} />
-        </IconBtn>
-        <button
-          type="button"
-          onClick={onSend}
-          aria-label="Enviar"
-          className="inline-flex items-center justify-center shrink-0"
-          disabled={!draft.trim()}
-          style={{
-            width: 32,
-            height: 32,
-            borderRadius: 8,
-            background: "var(--brand-400)",
-            color: "#fff",
-            opacity: draft.trim() ? 1 : 0.4,
-            transition: "background 150ms ease",
-          }}
-          onMouseEnter={(e) => {
-            if (draft.trim()) e.currentTarget.style.background = "var(--brand-600)";
-          }}
-          onMouseLeave={(e) => (e.currentTarget.style.background = "var(--brand-400)")}
-        >
-          <Send size={14} />
-        </button>
-      </div>
-      {nearLimit && (
-        <div
-          style={{
-            marginTop: 4,
-            fontSize: 11,
-            textAlign: "right",
-            color: draft.length >= MAX_CHARS ? "#EF4444" : "var(--text-muted)",
-          }}
-        >
-          {draft.length} / {MAX_CHARS}
-        </div>
-      )}
-    </div>
-  );
-}
 
 function HeaderButton({
   children,

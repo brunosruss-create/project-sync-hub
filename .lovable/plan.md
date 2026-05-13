@@ -1,77 +1,67 @@
-# Colunas do Kanban editáveis (CRUD completo)
+# Composer estilo WhatsApp — tarefas restantes
 
-Hoje as 4 colunas (`waiting`, `in_progress`, `scheduled`, `urgent`) estão hardcoded em `src/features/inbox/data.ts`. Vamos torná-las dinâmicas, persistidas no Supabase e escopadas por dono da conta (`owner_user_id`) — mesmo padrão já usado em `contacts`. Como o projeto não tem tabela `workspaces`, "por workspace" = por conta dona, compartilhado entre todos os atendentes que enxergam aquele inbox.
+Item 1 (scrollbar nativa) já está feito. Abaixo só o que falta.
 
-## 1. Banco de dados (migration)
+## Tarefas
 
-Nova tabela `kanban_columns`:
+1. **Redesign visual do `Composer`** (`src/features/inbox/conversation-panel.tsx`)
+   - Container externo flex `align-items: flex-end`, padding `10px 12px`, gap 8px.
+   - "Balão" interno: `bg-overlay`, `border-strong`, `border-radius: 24px`, padding `8px 14px`, min-height 40px.
+   - Textarea sem borda, transparente, `min-height: 20px`, `max-height: 120px`, placeholder simples "Mensagem".
+   - Botões `Smile` e `Paperclip` à esquerda dentro do balão (20px, `text-muted` → `text-primary` no hover).
+   - Botão circular 40px à direita (`brand-400`, hover `brand-600` + `scale(1.05)`, active `scale(0.95)`).
+   - Auto-resize já existente continua funcionando.
 
-```
-id                uuid PK default gen_random_uuid()
-owner_user_id     uuid not null references auth.users
-slug              text not null              -- "waiting", "vip", etc. único por owner
-label             text not null              -- "Aguardando"
-emoji             text not null default '📌'
-color             text not null default '#6B7280'  -- hex, usado na borda superior
-position          int  not null              -- ordem
-is_system         bool not null default false -- marca as 4 padrão (não pode deletar)
-created_at        timestamptz default now()
-unique (owner_user_id, slug)
-```
+2. **Botão dinâmico Mic ↔ Send**
+   - Estado derivado `hasText = draft.trim().length > 0`.
+   - Vazio → ícone `Mic`. Com texto → ícone `Send` com transição (rotate/scale 150ms).
+   - Click no Send dispara `send()`. Mic entra na lógica do item 5.
 
-RLS: usuário só lê/edita as próprias linhas (`owner_user_id = auth.uid()`).
+3. **Emoji picker** (nova dependência)
+   - `bun add @emoji-mart/react @emoji-mart/data`.
+   - Estado `showEmojiPicker`. Abre acima do composer (`position: absolute; bottom: 100%`).
+   - Inserir emoji na posição do cursor (`selectionStart/End`), reposicionar cursor, manter foco.
+   - Não fecha ao selecionar; fecha em Escape ou click-fora (listener no document).
+   - Tema `dark`, locale `pt`, sem preview/skin tone.
 
-**Seed automático no primeiro acesso**: quando o inbox carregar e o usuário não tiver nenhuma coluna, um `createServerFn` insere as 4 padrão (Aguardando/Em Atendimento/Agendado/Urgente) com `is_system = true`.
+4. **Menu de anexos + preview**
+   - Popover acima do composer com 3 botões circulares (Imagem roxo, Documento azul, Câmera vermelho).
+   - `<input type="file" hidden>` configurado conforme opção (accept/multiple/capture).
+   - Ao selecionar arquivo, fechar menu e abrir **AttachmentPreview** acima do composer:
+     - Imagens → thumbnail via `URL.createObjectURL`.
+     - Outros → ícone do tipo + nome + tamanho.
+     - Múltiplos → grid (máx 4 + "+N").
+     - Campo "Adicionar legenda".
+     - Botões `[✕]` cancelar e `▶` enviar.
+   - Envio: por enquanto chamar `toast.info("Anexo — em breve")` e limpar (backend de upload não está no escopo desta UI).
 
-`contacts.kanban_column` continua `text` (já é). Não há FK pra preservar liberdade — validação acontece no app.
+5. **Gravação de áudio (long-press no Mic)**
+   - Long-press ≥300ms inicia `MediaRecorder` (`audio/webm`); tap curto mostra toast "Segure para gravar".
+   - Modo gravação substitui o composer: botão lixeira, indicador `●●` pulsante vermelho, timer `m:ss`, waveform simples animado, botão "soltar para enviar".
+   - Deslizar para esquerda (`pointermove` >80px) cancela e descarta.
+   - Soltar → para gravação, abre **AudioPreview** (player com play/pause, waveform, duração, lixeira, enviar).
+   - Limite 5 min com auto-stop.
+   - Erro de permissão → `toast.error`.
+   - Envio efetivo: stub com toast "Áudio — em breve".
 
-## 2. Backend (server functions)
+6. **Atalhos extras no textarea**
+   - Manter Enter envia / Shift+Enter quebra.
+   - Escape fecha emoji picker / menu de anexos / preview se algo aberto; senão fecha o painel (`onClose`).
+   - `paste` de imagem → abrir AttachmentPreview com o blob (e `preventDefault`).
 
-Arquivo novo `src/lib/kanban-columns.functions.ts` com `requireSupabaseAuth`:
+7. **Limpeza do painel de chat**
+   - Auditar `ConversationPanel` por qualquer `<nav>` ou barra de navegação interna além de Header + Tabs + Body + Composer. Hoje o arquivo só tem esses 4 — confirmar e remover qualquer extra que apareça (placeholder "digitando", barras decorativas, etc.).
+   - Garantir tabs em 36px com estilos especificados (atualmente ~40px com padding `10px 12px` — ajustar para `height: 36px`, `bg-overlay`).
 
-- `listColumns()` — retorna colunas ordenadas por `position`. Se vazio, faz seed e retorna.
-- `createColumn({ label, emoji, color })` — gera `slug` a partir do label, `position = max+1`.
-- `updateColumn({ id, label?, emoji?, color? })` — bloqueia mudar `slug` (pra não invalidar `contacts.kanban_column`).
-- `reorderColumns({ ids: string[] })` — atualiza `position` em batch.
-- `deleteColumn({ id, fallbackSlug })` — bloqueia se `is_system`. Antes de apagar, faz `update contacts set kanban_column = fallbackSlug where kanban_column = <slug deletada>`.
+## Detalhes técnicos
 
-## 3. Frontend
+- Toda mudança fica isolada em `src/features/inbox/conversation-panel.tsx` + 2 novos arquivos:
+  - `src/features/inbox/composer.tsx` — extrai/re-escreve `Composer` com toda a lógica nova (emoji, anexos, gravação).
+  - `src/features/inbox/attachment-preview.tsx` — preview de arquivos/áudio.
+- Hook utilitário `useClickOutside` inline ou em `src/hooks/use-click-outside.ts`.
+- CSS adicional em `src/styles.css`: animação pulse vermelho do indicador de gravação e barras de waveform.
+- Não tocar em: lógica de `send`, realtime de `messages`, Evolution, tabs `contact/services/history`, ScheduleModal, drag-and-drop, kanban, badges.
 
-**`src/features/inbox/data.ts`**: manter tipos, formatadores e mocks; remover `COLUMNS` e `COLUMN_COLOR` constantes (passam a vir do estado). `KanbanColumnId` vira `string` (slug livre).
+## Não-regressão a validar ao final
 
-**`_authenticated.inbox.tsx`**:
-- Novo estado `columns` carregado via `listColumns()` no mount + realtime na tabela `kanban_columns`.
-- `byColumn` indexa por slug dinâmico; cards com `kanban_column` desconhecido caem em "Aguardando" (fallback visual).
-- Drag & drop e o submenu "Mover para" do `CardMenu` passam a usar a lista dinâmica.
-- Header da página ganha um botão **"+ Nova coluna"** (ícone `Plus` discreto, ao lado de "Novo Contato").
-
-**`src/features/inbox/kanban-column.tsx`**:
-- Adicionar ícone ⋮ pequeno no header da coluna (aparece no hover do header), abre dropdown com:
-  - Editar (nome, emoji, cor)
-  - Mover ← / Mover →
-  - Excluir (desabilitado se `is_system`; confirma e move cards pra "Aguardando")
-- Título clicável também abre o modal de edição.
-- Cor da borda superior vem de `color` da coluna.
-
-**Componentes novos**:
-- `src/features/inbox/column-edit-modal.tsx` — campos: nome (text), emoji (input com sugestões 📌🟡🔵🟢🔴⭐📅💬🔥), cor (paleta de 8 swatches + input hex). Salvar = `createColumn` ou `updateColumn` + toast.
-- `src/features/inbox/column-menu.tsx` — dropdown semelhante ao `card-menu.tsx`.
-
-**Confirmação de delete**: usa `ConfirmDialog` existente — "Excluir 'Urgente'? Os 3 cards desta coluna voltam para Aguardando."
-
-## 4. O que NÃO muda
-
-- Lógica de mensagens, realtime de `contacts`/`messages`, Evolution, envio/recebimento.
-- Drag & drop entre colunas (continua via dnd-kit).
-- Cards (avatar, ⋮, badge), modal de novo contato, ScheduleModal, EditContactModal.
-- Filtros, busca, atalhos de teclado, dark mode, scroll horizontal do board.
-
-## 5. Ordem de implementação
-
-1. Migration `kanban_columns` + RLS.
-2. `kanban-columns.functions.ts` (list/create/update/reorder/delete + seed).
-3. Refatorar `data.ts` e `_authenticated.inbox.tsx` para colunas dinâmicas (sem regredir nada).
-4. `column-edit-modal.tsx` + botão "Nova coluna" no header.
-5. `column-menu.tsx` + ⋮ no header da `kanban-column.tsx`.
-6. Delete com fallback + `ConfirmDialog`.
-7. Teste: renomear "Aguardando", criar "VIP", arrastar card, reordenar colunas, excluir e ver fallback.
+Enter envia · sem duplicação · realtime · DnD kanban · painel abre/fecha · todas as tabs · ScheduleModal · dark mode · badge não lidas · textarea sem scrollbar · botão circular verde · troca Mic↔Send · emoji no cursor · paste de imagem.
