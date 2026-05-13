@@ -113,8 +113,8 @@ function InboxPage() {
   const byColumn = React.useMemo(() => {
     const map: Record<KanbanColumnId, Contact[]> = {
       waiting: [],
-      active: [],
-      done: [],
+      in_progress: [],
+      scheduled: [],
       urgent: [],
     };
     for (const c of filtered) map[c.kanban_column].push(c);
@@ -299,7 +299,13 @@ function InboxPage() {
         </DndContext>
       )}
 
-      <ConversationPanel contact={openContact} onClose={() => setOpenContact(null)} />
+      <ConversationPanel
+        contact={openContact}
+        onClose={() => setOpenContact(null)}
+        onContactUpdate={(id, patch) =>
+          setContacts((prev) => prev.map((c) => (c.id === id ? { ...c, ...patch } : c)))
+        }
+      />
     </div>
   );
 }
