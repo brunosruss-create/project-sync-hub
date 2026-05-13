@@ -1029,6 +1029,7 @@ function MessageChevron({
   onReact,
   onEdit,
   onDelete,
+  onForward,
 }: {
   isMe: boolean;
   bubbleBg: string;
@@ -1037,6 +1038,7 @@ function MessageChevron({
   onReact?: (m: Message, emoji: string) => void;
   onEdit?: () => void;
   onDelete?: () => void;
+  onForward?: (m: Message) => void;
 }) {
   return (
     <MessageActions
@@ -1053,6 +1055,7 @@ function MessageChevron({
       onReact={(_m, emoji) => onReact?.(message, emoji)}
       onEdit={() => onEdit?.()}
       onDelete={() => onDelete?.()}
+      onForward={() => onForward?.(message)}
     />
   );
 }
