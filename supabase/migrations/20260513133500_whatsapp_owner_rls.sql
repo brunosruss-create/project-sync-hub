@@ -25,7 +25,6 @@ create index if not exists messages_owner_contact_id_idx
 alter table if exists public.contacts enable row level security;
 alter table if exists public.messages enable row level security;
 
--- Policies defensivas: usuário autenticado enxerga/mexe apenas em linhas dele.
 do $$
 begin
   if to_regclass('public.contacts') is not null then
@@ -33,6 +32,10 @@ begin
     drop policy if exists "Users can insert own contacts" on public.contacts;
     drop policy if exists "Users can update own contacts" on public.contacts;
     drop policy if exists "Users can delete own contacts" on public.contacts;
+    drop policy if exists "Contacts owner guard select" on public.contacts;
+    drop policy if exists "Contacts owner guard insert" on public.contacts;
+    drop policy if exists "Contacts owner guard update" on public.contacts;
+    drop policy if exists "Contacts owner guard delete" on public.contacts;
 
     create policy "Users can read own contacts"
       on public.contacts for select
@@ -54,12 +57,36 @@ begin
       on public.contacts for delete
       to authenticated
       using (owner_user_id = auth.uid());
+
+    create policy "Contacts owner guard select"
+      on public.contacts as restrictive for select
+      to authenticated
+      using (owner_user_id = auth.uid());
+
+    create policy "Contacts owner guard insert"
+      on public.contacts as restrictive for insert
+      to authenticated
+      with check (owner_user_id = auth.uid());
+
+    create policy "Contacts owner guard update"
+      on public.contacts as restrictive for update
+      to authenticated
+      using (owner_user_id = auth.uid())
+      with check (owner_user_id = auth.uid());
+
+    create policy "Contacts owner guard delete"
+      on public.contacts as restrictive for delete
+      to authenticated
+      using (owner_user_id = auth.uid());
   end if;
 
   if to_regclass('public.messages') is not null then
     drop policy if exists "Users can read own messages" on public.messages;
     drop policy if exists "Users can insert own messages" on public.messages;
     drop policy if exists "Users can update own messages" on public.messages;
+    drop policy if exists "Messages owner guard select" on public.messages;
+    drop policy if exists "Messages owner guard insert" on public.messages;
+    drop policy if exists "Messages owner guard update" on public.messages;
 
     create policy "Users can read own messages"
       on public.messages for select
@@ -73,6 +100,22 @@ begin
 
     create policy "Users can update own messages"
       on public.messages for update
+      to authenticated
+      using (owner_user_id = auth.uid())
+      with check (owner_user_id = auth.uid());
+
+    create policy "Messages owner guard select"
+      on public.messages as restrictive for select
+      to authenticated
+      using (owner_user_id = auth.uid());
+
+    create policy "Messages owner guard insert"
+      on public.messages as restrictive for insert
+      to authenticated
+      with check (owner_user_id = auth.uid());
+
+    create policy "Messages owner guard update"
+      on public.messages as restrictive for update
       to authenticated
       using (owner_user_id = auth.uid())
       with check (owner_user_id = auth.uid());
