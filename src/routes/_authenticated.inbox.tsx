@@ -543,6 +543,41 @@ function InboxPage() {
         }}
       />
 
+      {menuState && (
+        <CardMenu
+          contact={menuState.contact}
+          anchor={menuState.anchor}
+          onClose={() => setMenuState(null)}
+          onAction={handleMenuAction}
+        />
+      )}
+
+      <EditContactModal
+        open={!!editTarget}
+        contact={editTarget}
+        onClose={() => setEditTarget(null)}
+        onSaved={(patch) => {
+          if (!editTarget) return;
+          setContacts((prev) =>
+            prev.map((c) => (c.id === editTarget.id ? { ...c, ...patch } : c)),
+          );
+        }}
+      />
+
+      {scheduleTarget && (
+        <ScheduleModal
+          contact={scheduleTarget}
+          open={!!scheduleTarget}
+          onClose={() => setScheduleTarget(null)}
+          onScheduled={() => {
+            setContacts((prev) =>
+              prev.map((c) => (c.id === scheduleTarget.id ? { ...c, kanban_column: "scheduled" } : c)),
+            );
+            setScheduleTarget(null);
+          }}
+        />
+      )}
+
       {highlightId && (
         <style>{`
           @keyframes zfPulseRing { 0%,100% { box-shadow: 0 0 0 0 var(--brand-400, #25C880); } 50% { box-shadow: 0 0 0 4px color-mix(in oklab, var(--brand-400, #25C880) 35%, transparent); } }
