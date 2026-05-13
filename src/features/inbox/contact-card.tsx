@@ -65,7 +65,7 @@ export function ContactCard({ contact, onClick, isOverlay, isSelected }: Props) 
       : {}),
   };
 
-  const ini = initials(contact.name);
+  
 
   return (
     <div
