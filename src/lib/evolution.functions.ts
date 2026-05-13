@@ -184,13 +184,18 @@ export const connectInstance = createServerFn({ method: "POST" })
       }
     }
 
-    // 2) Sempre chama connect para garantir QR atual
+    // 2) Sempre chama connect para garantir QR atual.
+    // Em uma instância recém-criada, a Evolution leva ~500-1500ms até o socket
+    // Baileys subir; tentamos algumas vezes antes de declarar erro.
     if (!qr) {
-      try {
-        const r = await evo.connect(name);
-        qr = await normalizeQRCodeImage(extractQRCode(r));
-      } catch (e: any) {
-        console.warn("[evolution] connect:", e?.message ?? e);
+      for (let attempt = 0; attempt < 4 && !qr; attempt++) {
+        if (attempt > 0) await new Promise((r) => setTimeout(r, 600));
+        try {
+          const r = await evo.connect(name);
+          qr = await normalizeQRCodeImage(extractQRCode(r));
+        } catch (e: any) {
+          console.warn(`[evolution] connect attempt ${attempt + 1}:`, e?.message ?? e);
+        }
       }
     }
 
