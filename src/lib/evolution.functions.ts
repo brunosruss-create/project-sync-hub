@@ -38,8 +38,9 @@ async function getOrCreateRow(userId: string) {
 }
 
 async function configureEvolutionInstance(name: string, webhookUrl: string, webhookSecret: string) {
+  let created: any = null;
   try {
-    await evo.createInstance({
+    created = await evo.createInstance({
       instanceName: name,
       integration: "WHATSAPP-BAILEYS",
       qrcode: true,
@@ -71,6 +72,8 @@ async function configureEvolutionInstance(name: string, webhookUrl: string, webh
   } catch (e: any) {
     console.warn("[evolution] setWebhook:", e?.message);
   }
+
+  return normalizeQRCodeImage(extractQRCode(created));
 }
 
 export const getInstance = createServerFn({ method: "GET" })
@@ -93,18 +96,21 @@ export const connectInstance = createServerFn({ method: "POST" })
     const baseUrl = publicBaseUrl();
     const webhookUrl = `${baseUrl}/api/public/evolution/${row.id}`;
 
-    await configureEvolutionInstance(name, webhookUrl, row.webhook_secret as string);
+    let qr = await configureEvolutionInstance(name, webhookUrl, row.webhook_secret as string);
 
     // 3) conecta — retorna { base64, code, ... }
-    let qr: string | null = null;
     try {
-      const r: any = await evo.connect(name);
-      qr = await normalizeQRCodeImage(extractQRCode(r));
+      if (!qr) {
+        const r: any = await evo.connect(name);
+        qr = await normalizeQRCodeImage(extractQRCode(r));
+      }
       if (!qr) {
         await evo.deleteInstance(name).catch((e: any) => console.warn("[evolution] delete stale instance:", e?.message));
-        await configureEvolutionInstance(name, webhookUrl, row.webhook_secret as string);
-        const retry: any = await evo.connect(name);
-        qr = await normalizeQRCodeImage(extractQRCode(retry));
+        qr = await configureEvolutionInstance(name, webhookUrl, row.webhook_secret as string);
+        if (!qr) {
+          const retry: any = await evo.connect(name);
+          qr = await normalizeQRCodeImage(extractQRCode(retry));
+        }
       }
     } catch (e: any) {
       throw new Error(`Falha ao conectar: ${e?.message ?? e}`);
