@@ -873,7 +873,15 @@ function MessageBubble({
           <Download size={14} style={{ flexShrink: 0, color: "var(--text-muted)" }} />
         </a>
       )}
-      {m.content && <div>{m.content}</div>}
+      {editing ? (
+        <InlineEditor
+          initial={m.content}
+          onCancel={() => onCancelEdit?.()}
+          onSave={(t) => onSaveEdit?.(t)}
+        />
+      ) : (
+        m.content && <div>{m.content}</div>
+      )}
       <div
         style={{
           marginTop: 4,
@@ -887,6 +895,7 @@ function MessageBubble({
           marginLeft: 8,
         }}
       >
+        {m.edited_at && <span style={{ fontStyle: "italic" }}>editada</span>}
         {fmtClock(m.created_at)}
         {isMe && <StatusTicks status={displayStatus} />}
       </div>
