@@ -262,6 +262,20 @@ export function ConversationPanel({
     el.scrollTo({ top: el.scrollHeight, behavior: "smooth" });
   }, [messages.length, tab]);
 
+  const buildQuoted = (m: Message | null) => {
+    if (!m || !contact?.phone || !m.whatsapp_message_id) return undefined;
+    const number = String(contact.phone).replace(/\D/g, "");
+    return {
+      messageId: m.whatsapp_message_id,
+      fromMe: m.direction === "outbound",
+      remoteJid: `${number}@s.whatsapp.net`,
+      preview: {
+        content: m.content || m.media_name || "",
+        message_type: m.message_type,
+      },
+    };
+  };
+
   const send = async () => {
     const text = draft.trim();
     if (!text || !contact) return;
@@ -269,10 +283,12 @@ export function ConversationPanel({
     // Isso evita duplicação (mensagem aparecendo 2x para o agente).
     setDraft("");
     if (taRef.current) taRef.current.style.height = "auto";
+    const quoted = buildQuoted(replyingTo);
+    setReplyingTo(null);
 
     try {
       // tenta enviar pelo WhatsApp via Evolution; o handler já grava em messages
-      await sendViaEvolution({ data: { contactId: contact.id, text } });
+      await sendViaEvolution({ data: { contactId: contact.id, text, quoted } });
     } catch (e: any) {
       const msg = String(e?.message ?? "");
       // se Evolution não estiver configurado/conectado, persiste só no banco
