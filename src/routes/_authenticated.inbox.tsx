@@ -84,17 +84,30 @@ function InboxPage() {
       assignedAgent: r.assigned_agent_id ?? null,
       tags: Array.isArray(r.tags) ? r.tags : [],
       isUnread: !!r.is_unread,
+      unreadCount: typeof r.unread_count === "number" ? r.unread_count : (r.is_unread ? 1 : 0),
+      lastDirection: r.last_direction ?? null,
       priority: r.priority === "urgent" ? "urgent" : "normal",
       kanban_column: (r.kanban_column ?? "waiting") as KanbanColumnId,
     });
 
     const load = async () => {
-      const { data, error } = await supabase
+      let { data, error } = await supabase
         .from("contacts")
         .select(
-          "id,name,phone,avatar_url,kanban_column,assigned_agent_id,tags,priority,is_unread,last_message,last_message_at",
+          "id,name,phone,avatar_url,kanban_column,assigned_agent_id,tags,priority,is_unread,unread_count,last_direction,last_message,last_message_at",
         )
-        .order("last_message_at", { ascending: false });
+        .order("last_message_at", { ascending: false, nullsFirst: false });
+      // Fallback se as colunas novas ainda não existirem no banco
+      if (error && /unread_count|last_direction/i.test(error.message)) {
+        const r = await supabase
+          .from("contacts")
+          .select(
+            "id,name,phone,avatar_url,kanban_column,assigned_agent_id,tags,priority,is_unread,last_message,last_message_at",
+          )
+          .order("last_message_at", { ascending: false, nullsFirst: false });
+        data = r.data as any;
+        error = r.error;
+      }
       if (cancelled) return;
       if (error) {
         console.warn("[inbox] erro ao carregar contatos:", error.message);
@@ -176,6 +189,17 @@ function InboxPage() {
       window.removeEventListener("keydown", onKey);
     };
   }, []);
+
+  // Título da aba com total de não lidas
+  React.useEffect(() => {
+    const total = contacts.reduce((s, c) => s + (c.unreadCount ?? 0), 0);
+    const base = "Atendimento | ZapFlow";
+    const original = document.title;
+    document.title = total > 0 ? `(${total > 99 ? "99+" : total}) ${base}` : base;
+    return () => {
+      document.title = original;
+    };
+  }, [contacts]);
 
   const filtered = React.useMemo(() => {
     return contacts.filter((c) => {

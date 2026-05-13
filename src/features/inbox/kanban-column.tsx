@@ -13,6 +13,24 @@ type Props = {
 
 export function KanbanColumn({ id, label, emoji, contacts, onCardClick }: Props) {
   const { setNodeRef, isOver } = useDroppable({ id });
+  const prevCount = React.useRef(contacts.length);
+  const [bump, setBump] = React.useState(false);
+  const [pulse, setPulse] = React.useState(false);
+
+  React.useEffect(() => {
+    if (contacts.length > prevCount.current) {
+      setBump(true);
+      setPulse(true);
+      const t1 = window.setTimeout(() => setBump(false), 320);
+      const t2 = window.setTimeout(() => setPulse(false), 2000);
+      prevCount.current = contacts.length;
+      return () => {
+        window.clearTimeout(t1);
+        window.clearTimeout(t2);
+      };
+    }
+    prevCount.current = contacts.length;
+  }, [contacts.length]);
 
   return (
     <div
@@ -26,7 +44,10 @@ export function KanbanColumn({ id, label, emoji, contacts, onCardClick }: Props)
         borderTop: `3px solid ${COLUMN_COLOR[id]}`,
         outline: isOver ? "2px dashed var(--brand-400)" : "none",
         outlineOffset: -2,
-        transition: "outline 120ms var(--ease-default)",
+        boxShadow: pulse
+          ? `0 0 0 2px color-mix(in oklab, ${COLUMN_COLOR[id]} 40%, transparent), 0 0 24px color-mix(in oklab, ${COLUMN_COLOR[id]} 30%, transparent)`
+          : undefined,
+        transition: "outline 120ms var(--ease-default), box-shadow 600ms ease-out",
         maxHeight: "100%",
       }}
     >
@@ -53,6 +74,9 @@ export function KanbanColumn({ id, label, emoji, contacts, onCardClick }: Props)
             background: "var(--bg-surface)",
             color: "var(--text-muted)",
             border: "1px solid var(--border)",
+            display: "inline-block",
+            transform: bump ? "scale(1.3)" : "scale(1)",
+            transition: "transform 300ms cubic-bezier(.34,1.56,.64,1)",
           }}
         >
           {contacts.length}
@@ -61,7 +85,7 @@ export function KanbanColumn({ id, label, emoji, contacts, onCardClick }: Props)
 
       <div
         className="flex-1 overflow-y-auto flex flex-col"
-        style={{ gap: 8, padding: 2 }}
+        style={{ gap: 12, padding: "6px 2px" }}
       >
         {contacts.map((c) => (
           <ContactCard key={c.id} contact={c} onClick={() => onCardClick(c)} />

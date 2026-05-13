@@ -10,6 +10,8 @@ export interface ContactCard {
   assignedAgent?: string | null;
   tags: string[];
   isUnread: boolean;
+  unreadCount?: number;
+  lastDirection?: "inbound" | "outbound" | null;
   priority: "normal" | "urgent";
   kanban_column: KanbanColumnId;
 }
@@ -199,7 +201,38 @@ export function formatRelative(date: Date) {
     date.getMonth() === yesterday.getMonth() &&
     date.getFullYear() === yesterday.getFullYear();
   if (wasYesterday) return "ontem";
+  // Esta semana → dia abreviado
+  const days = (today.getTime() - date.getTime()) / 86_400_000;
+  if (days < 7) {
+    return date.toLocaleDateString("pt-BR", { weekday: "short" }).replace(".", "");
+  }
   return date.toLocaleDateString("pt-BR", { day: "2-digit", month: "2-digit" });
+}
+
+export function formatPhone(phone: string): string {
+  if (!phone) return "";
+  const digits = phone.replace(/\D/g, "");
+  const local = digits.startsWith("55") ? digits.slice(2) : digits;
+  if (local.length === 11) {
+    return `(${local.slice(0, 2)}) ${local.slice(2, 7)}-${local.slice(7)}`;
+  }
+  if (local.length === 10) {
+    return `(${local.slice(0, 2)}) ${local.slice(2, 6)}-${local.slice(6)}`;
+  }
+  return digits ? `+${digits}` : phone;
+}
+
+export function formatMessagePreview(
+  msg: string,
+  direction?: "inbound" | "outbound" | null,
+): string {
+  const text = (msg ?? "").trim();
+  // Tipos especiais por marcador simples
+  if (/^\[image\]|\.(png|jpe?g|webp|gif)$/i.test(text)) return "📷 Imagem";
+  if (/^\[audio\]|\.(ogg|mp3|m4a|wav)$/i.test(text)) return "🎙️ Mensagem de voz";
+  if (/^\[file\]|\.(pdf|docx?|xlsx?|zip)$/i.test(text)) return "📄 Documento";
+  if (direction === "outbound") return `Você: ${text}`;
+  return text;
 }
 
 export function initials(name: string) {
