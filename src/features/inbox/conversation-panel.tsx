@@ -681,13 +681,8 @@ function MessageBubble({
           marginLeft: 8,
         }}
       >
-        {formatRelative(m.created_at)}
-        {isMe && (
-          <CheckCheck
-            size={13}
-            color={m.status === "read" ? "var(--brand-400)" : "var(--text-muted)"}
-          />
-        )}
+        {fmtClock(m.created_at)}
+        {isMe && <StatusTicks status={m.status} />}
       </div>
       <div style={{ clear: "both" }} />
     </div>
