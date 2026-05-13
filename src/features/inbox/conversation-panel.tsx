@@ -431,17 +431,6 @@ export function ConversationPanel({
                     {messages.map((m) => (
                       <MessageBubble key={m.id} m={m} />
                     ))}
-                    <div
-                      style={{
-                        fontSize: 11,
-                        color: "var(--text-muted)",
-                        opacity: 0.7,
-                        marginTop: 4,
-                        height: 14,
-                      }}
-                    >
-                      {/* digitando indicator (placeholder) */}
-                    </div>
                   </div>
                 </div>
 
