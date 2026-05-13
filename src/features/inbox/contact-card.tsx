@@ -77,6 +77,7 @@ export function ContactCard({ contact, onClick, isOverlay, isSelected }: Props) 
     <div
       ref={setNodeRef}
       data-contact-id={contact.id}
+      className="zf-contact-card"
       style={style}
       {...listeners}
       {...attributes}
