@@ -1,11 +1,16 @@
 import { createServerFn } from "@tanstack/react-start";
-import { getRequestHost } from "@tanstack/react-start/server";
+import { getRequest, getRequestHost } from "@tanstack/react-start/server";
 import { z } from "zod";
 import { requireSupabaseAuth } from "@/integrations/supabase/auth-middleware";
 import { supabaseAdmin } from "@/integrations/supabase/client.server";
 import { evo, extractQRCode, instanceNameForOwner, normalizeQRCodeImage } from "@/lib/evolution.server";
 
 const WEBHOOK_EVENTS = ["MESSAGES_UPSERT", "CONNECTION_UPDATE", "QRCODE_UPDATED"];
+
+function isPublicHost(host: string | null | undefined): host is string {
+  if (!host) return false;
+  return !/^(localhost|127\.|0\.0\.0\.0|::1|10\.|192\.168\.|172\.(1[6-9]|2\d|3[01])\.)/i.test(host);
+}
 
 function publicBaseUrl(): string {
   const fromEnv =
@@ -14,8 +19,12 @@ function publicBaseUrl(): string {
     process.env.VITE_PUBLIC_APP_URL;
   if (fromEnv) return fromEnv.replace(/\/$/, "");
   try {
+    const req = getRequest();
+    const fwdHost = req.headers.get("x-forwarded-host");
+    const fwdProto = req.headers.get("x-forwarded-proto") ?? "https";
+    if (isPublicHost(fwdHost)) return `${fwdProto}://${fwdHost}`;
     const host = getRequestHost();
-    if (host) return `https://${host}`;
+    if (isPublicHost(host)) return `https://${host}`;
   } catch {}
   return "";
 }
@@ -94,6 +103,11 @@ export const connectInstance = createServerFn({ method: "POST" })
     const row = await getOrCreateRow(context.userId);
     const name = row.instance_name as string;
     const baseUrl = publicBaseUrl();
+    if (!baseUrl) {
+      throw new Error(
+        "URL pública do app não detectada. Defina o secret PUBLIC_APP_URL (ex.: https://github-vercel-bridge.lovable.app) e tente novamente.",
+      );
+    }
     const webhookUrl = `${baseUrl}/api/public/evolution/${row.id}`;
 
     let qr = await configureEvolutionInstance(name, webhookUrl, row.webhook_secret as string);
