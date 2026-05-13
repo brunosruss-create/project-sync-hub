@@ -4,7 +4,7 @@ import { supabase } from "@/integrations/supabase/client";
 import { useAuth } from "@/hooks/use-auth";
 import { toast } from "sonner";
 import { useServerFn } from "@tanstack/react-start";
-import { sendWhatsAppMessage, sendWhatsAppMedia } from "@/lib/evolution.functions";
+import { sendWhatsAppMessage, sendWhatsAppMedia, sendWhatsAppAudio } from "@/lib/evolution.functions";
 
 export interface ForwardSource {
   id: string;
@@ -33,6 +33,7 @@ export function ForwardModal({ open, source, excludeContactId, onClose }: Props)
   const { user } = useAuth();
   const sendText = useServerFn(sendWhatsAppMessage);
   const sendMedia = useServerFn(sendWhatsAppMedia);
+  const sendAudio = useServerFn(sendWhatsAppAudio);
 
   const [contacts, setContacts] = React.useState<ContactRow[]>([]);
   const [loading, setLoading] = React.useState(false);
@@ -106,6 +107,8 @@ export function ForwardModal({ open, source, excludeContactId, onClose }: Props)
             continue;
           }
           await sendText({ data: { contactId, text, quoted: undefined } });
+        } else if (source.message_type === "audio" && source.media_url) {
+          await sendAudio({ data: { contactId, url: source.media_url, quoted: undefined } });
         } else if (
           source.media_url &&
           source.media_mime &&
@@ -124,7 +127,6 @@ export function ForwardModal({ open, source, excludeContactId, onClose }: Props)
             },
           });
         } else {
-          // áudio ou tipo não suportado
           failCount++;
           continue;
         }
