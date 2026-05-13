@@ -238,6 +238,7 @@ export const Route = createFileRoute("/api/public/evolution/$instanceId")({
                   content: caption ?? "",
                   message_type: mediaType,
                   status: "delivered",
+                  whatsapp_message_id: m?.key?.id ?? null,
                 };
                 if (mediaUrl) {
                   insertPayload.media_url = mediaUrl;
@@ -257,6 +258,38 @@ export const Route = createFileRoute("/api/public/evolution/$instanceId")({
               } else {
                 console.error("[evolution upsert] no contactId after upsert", { phone });
               }
+            }
+          } else if (event === "messages.update") {
+            const updates = Array.isArray(data?.messages)
+              ? data.messages
+              : Array.isArray(data)
+                ? data
+                : [data];
+            const RANK: Record<string, number> = { sent: 1, delivered: 2, read: 3 };
+            for (const u of updates) {
+              if (!u) continue;
+              const externalId: string | null = u?.key?.id ?? u?.keyId ?? u?.id ?? null;
+              const rawStatus = String(u?.status ?? u?.update?.status ?? "").toUpperCase();
+              let next: "sent" | "delivered" | "read" | null = null;
+              if (rawStatus === "DELIVERY_ACK" || rawStatus === "DELIVERED" || rawStatus === "SERVER_ACK") next = "delivered";
+              else if (rawStatus === "READ" || rawStatus === "PLAYED") next = "read";
+              if (!externalId || !next) continue;
+
+              const { data: existing } = await supabaseAdmin
+                .from("messages")
+                .select("id,status")
+                .eq("whatsapp_message_id", externalId)
+                .eq("owner_user_id", row.owner_user_id)
+                .maybeSingle();
+              if (!existing) continue;
+              const curRank = RANK[String(existing.status)] ?? 0;
+              const nextRank = RANK[next];
+              if (nextRank <= curRank) continue;
+              const { error: upErr } = await supabaseAdmin
+                .from("messages")
+                .update({ status: next })
+                .eq("id", existing.id);
+              if (upErr) console.error("[evolution messages.update]", upErr.message);
             }
           } else {
             console.log("[evolution] evento ignorado:", event);
