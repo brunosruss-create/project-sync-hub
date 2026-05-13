@@ -353,9 +353,33 @@ export const disconnectInstance = createServerFn({ method: "POST" })
     return { instance: data ?? null, serverTime: Date.now() };
   });
 
+const quotedInput = z
+  .object({
+    messageId: z.string().min(1).max(255),
+    fromMe: z.boolean(),
+    remoteJid: z.string().min(1).max(255),
+    preview: z
+      .object({
+        content: z.string().max(2000).optional(),
+        author: z.string().max(255).optional(),
+        message_type: z.string().max(32).optional(),
+      })
+      .optional(),
+  })
+  .optional();
+
+function buildQuotedPayload(q?: z.infer<typeof quotedInput>): any | undefined {
+  if (!q) return undefined;
+  return {
+    key: { id: q.messageId, fromMe: q.fromMe, remoteJid: q.remoteJid },
+    message: { conversation: q.preview?.content ?? "" },
+  };
+}
+
 const sendInput = z.object({
   contactId: z.string().uuid(),
   text: z.string().min(1).max(4096),
+  quoted: quotedInput,
 });
 
 export const sendWhatsAppMessage = createServerFn({ method: "POST" })
@@ -374,7 +398,11 @@ export const sendWhatsAppMessage = createServerFn({ method: "POST" })
     const number = String(contact.phone).replace(/\D/g, "");
     let externalId: string | null = null;
     try {
-      const r: any = await evo.sendText(name, { number, text: data.text });
+      const r: any = await evo.sendText(name, {
+        number,
+        text: data.text,
+        quoted: buildQuotedPayload(data.quoted),
+      });
       externalId = r?.key?.id ?? r?.id ?? null;
     } catch (e: any) {
       throw new Error(`Falha no envio: ${e?.message ?? e}`);
@@ -389,6 +417,8 @@ export const sendWhatsAppMessage = createServerFn({ method: "POST" })
       status: "sent",
       sent_by: context.userId,
       whatsapp_message_id: externalId,
+      quoted_message_id: data.quoted?.messageId ?? null,
+      quoted_preview: data.quoted?.preview ?? null,
     });
 
     return { ok: true, externalId };
@@ -428,6 +458,7 @@ const sendMediaInput = z.object({
   mime: z.string().min(1).max(255),
   name: z.string().min(1).max(500),
   caption: z.string().max(1024).optional(),
+  quoted: quotedInput,
 });
 
 export const sendWhatsAppMedia = createServerFn({ method: "POST" })
@@ -457,6 +488,7 @@ export const sendWhatsAppMedia = createServerFn({ method: "POST" })
         media: data.url,
         fileName: data.name,
         caption: data.caption,
+        quoted: buildQuotedPayload(data.quoted),
       });
       externalId = r?.key?.id ?? r?.id ?? null;
     } catch (e: any) {
@@ -475,6 +507,8 @@ export const sendWhatsAppMedia = createServerFn({ method: "POST" })
       media_mime: data.mime,
       media_name: data.name,
       whatsapp_message_id: externalId,
+      quoted_message_id: data.quoted?.messageId ?? null,
+      quoted_preview: data.quoted?.preview ?? null,
     });
 
     return { ok: true, externalId };
@@ -483,6 +517,7 @@ export const sendWhatsAppMedia = createServerFn({ method: "POST" })
 const sendAudioInput = z.object({
   contactId: z.string().uuid(),
   url: z.string().url(),
+  quoted: quotedInput,
 });
 
 export const sendWhatsAppAudio = createServerFn({ method: "POST" })
@@ -501,7 +536,11 @@ export const sendWhatsAppAudio = createServerFn({ method: "POST" })
     const number = String(contact.phone).replace(/\D/g, "");
     let externalId: string | null = null;
     try {
-      const r: any = await evo.sendWhatsAppAudio(instance, { number, audio: data.url });
+      const r: any = await evo.sendWhatsAppAudio(instance, {
+        number,
+        audio: data.url,
+        quoted: buildQuotedPayload(data.quoted),
+      });
       externalId = r?.key?.id ?? r?.id ?? null;
     } catch (e: any) {
       throw new Error(`Falha no envio de áudio: ${e?.message ?? e}`);
@@ -518,8 +557,147 @@ export const sendWhatsAppAudio = createServerFn({ method: "POST" })
       media_url: data.url,
       media_mime: "audio/webm",
       whatsapp_message_id: externalId,
+      quoted_message_id: data.quoted?.messageId ?? null,
+      quoted_preview: data.quoted?.preview ?? null,
     });
 
     return { ok: true, externalId };
+  });
+
+// ===================== MESSAGE ACTIONS =====================
+
+function jidFromPhone(phone: string): string {
+  const digits = String(phone).replace(/\D/g, "");
+  return `${digits}@s.whatsapp.net`;
+}
+
+async function loadOwnedMessage(userId: string, messageId: string) {
+  const { data: msg, error } = await supabaseAdmin
+    .from("messages")
+    .select("id, contact_id, whatsapp_message_id, direction, message_type, content, reactions")
+    .eq("id", messageId)
+    .eq("owner_user_id", userId)
+    .maybeSingle();
+  if (error || !msg) throw new Error("Mensagem não encontrada.");
+  if (!msg.whatsapp_message_id) throw new Error("Mensagem sem ID externo.");
+  const { data: contact } = await supabaseAdmin
+    .from("contacts")
+    .select("id, phone")
+    .eq("id", msg.contact_id)
+    .eq("owner_user_id", userId)
+    .maybeSingle();
+  if (!contact?.phone) throw new Error("Contato sem telefone.");
+  return { msg, contact };
+}
+
+const reactionInput = z.object({
+  messageId: z.string().uuid(),
+  reaction: z.string().max(8),
+});
+
+export const reactToMessage = createServerFn({ method: "POST" })
+  .middleware([requireSupabaseAuth])
+  .inputValidator((d) => reactionInput.parse(d))
+  .handler(async ({ data, context }) => {
+    const name = instanceNameForOwner(context.userId);
+    const { msg, contact } = await loadOwnedMessage(context.userId, data.messageId);
+    const remoteJid = jidFromPhone(contact.phone);
+
+    try {
+      await evo.sendReaction(name, {
+        reactionMessage: {
+          key: {
+            id: msg.whatsapp_message_id!,
+            fromMe: msg.direction === "outbound",
+            remoteJid,
+          },
+          reaction: data.reaction,
+        },
+      });
+    } catch (e: any) {
+      throw new Error(`Falha ao reagir: ${e?.message ?? e}`);
+    }
+
+    const current: any[] = Array.isArray(msg.reactions) ? (msg.reactions as any[]) : [];
+    const filtered = current.filter((r) => r?.from !== "me");
+    const next = data.reaction
+      ? [...filtered, { from: "me", emoji: data.reaction, at: new Date().toISOString() }]
+      : filtered;
+
+    await supabaseAdmin
+      .from("messages")
+      .update({ reactions: next })
+      .eq("id", msg.id);
+
+    return { ok: true };
+  });
+
+const deleteInput = z.object({ messageId: z.string().uuid() });
+
+export const deleteMessageForEveryone = createServerFn({ method: "POST" })
+  .middleware([requireSupabaseAuth])
+  .inputValidator((d) => deleteInput.parse(d))
+  .handler(async ({ data, context }) => {
+    const name = instanceNameForOwner(context.userId);
+    const { msg, contact } = await loadOwnedMessage(context.userId, data.messageId);
+    if (msg.direction !== "outbound") {
+      throw new Error("Só é possível apagar para todos mensagens enviadas por você.");
+    }
+    const remoteJid = jidFromPhone(contact.phone);
+
+    try {
+      await evo.deleteMessageForEveryone(name, {
+        id: msg.whatsapp_message_id!,
+        fromMe: true,
+        remoteJid,
+      });
+    } catch (e: any) {
+      throw new Error(`Falha ao apagar: ${e?.message ?? e}`);
+    }
+
+    await supabaseAdmin
+      .from("messages")
+      .update({ deleted_at: new Date().toISOString() })
+      .eq("id", msg.id);
+
+    return { ok: true };
+  });
+
+const editInput = z.object({
+  messageId: z.string().uuid(),
+  text: z.string().min(1).max(4096),
+});
+
+export const editMessage = createServerFn({ method: "POST" })
+  .middleware([requireSupabaseAuth])
+  .inputValidator((d) => editInput.parse(d))
+  .handler(async ({ data, context }) => {
+    const name = instanceNameForOwner(context.userId);
+    const { msg, contact } = await loadOwnedMessage(context.userId, data.messageId);
+    if (msg.direction !== "outbound") {
+      throw new Error("Só é possível editar mensagens enviadas por você.");
+    }
+    if (msg.message_type !== "text") {
+      throw new Error("Só é possível editar mensagens de texto.");
+    }
+    const number = String(contact.phone).replace(/\D/g, "");
+    const remoteJid = jidFromPhone(contact.phone);
+
+    try {
+      await evo.updateMessage(name, {
+        number,
+        key: { id: msg.whatsapp_message_id!, fromMe: true, remoteJid },
+        text: data.text,
+      });
+    } catch (e: any) {
+      throw new Error(`Falha ao editar: ${e?.message ?? e}`);
+    }
+
+    await supabaseAdmin
+      .from("messages")
+      .update({ content: data.text, edited_at: new Date().toISOString() })
+      .eq("id", msg.id);
+
+    return { ok: true };
   });
 

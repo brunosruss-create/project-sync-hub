@@ -88,7 +88,10 @@ export const evo = {
       json: body,
     }),
 
-  sendText: (name: string, body: { number: string; text: string }) =>
+  sendText: (
+    name: string,
+    body: { number: string; text: string; quoted?: any },
+  ) =>
     call(`/message/sendText/${encodeURIComponent(name)}`, {
       method: "POST",
       json: body,
@@ -100,9 +103,10 @@ export const evo = {
       number: string;
       mediatype: "image" | "document" | "video";
       mimetype: string;
-      media: string; // public URL or base64
+      media: string;
       fileName?: string;
       caption?: string;
+      quoted?: any;
     },
   ) =>
     call(`/message/sendMedia/${encodeURIComponent(name)}`, {
@@ -112,12 +116,49 @@ export const evo = {
 
   sendWhatsAppAudio: (
     name: string,
-    body: { number: string; audio: string }, // public URL or base64
+    body: { number: string; audio: string; quoted?: any },
   ) =>
     call(`/message/sendWhatsAppAudio/${encodeURIComponent(name)}`, {
       method: "POST",
       json: body,
     }),
+
+  sendReaction: (
+    name: string,
+    body: {
+      reactionMessage: {
+        key: { id: string; fromMe: boolean; remoteJid: string };
+        reaction: string;
+      };
+    },
+  ) =>
+    call(`/message/sendReaction/${encodeURIComponent(name)}`, {
+      method: "POST",
+      json: body,
+    }),
+
+  deleteMessageForEveryone: (
+    name: string,
+    body: { id: string; fromMe: boolean; remoteJid: string; participant?: string },
+  ) =>
+    call(`/chat/deleteMessageForEveryone/${encodeURIComponent(name)}`, {
+      method: "DELETE",
+      json: body,
+    }),
+
+  updateMessage: (
+    name: string,
+    body: {
+      number: string;
+      key: { id: string; fromMe: boolean; remoteJid: string };
+      text: string;
+    },
+  ) =>
+    call(`/chat/updateMessage/${encodeURIComponent(name)}`, {
+      method: "POST",
+      json: body,
+    }),
+
 
   fetchProfilePictureUrl: (name: string, number: string) =>
     call<{ profilePictureUrl?: string | null } | any>(
