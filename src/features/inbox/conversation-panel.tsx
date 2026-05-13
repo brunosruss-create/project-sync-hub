@@ -547,6 +547,10 @@ export function ConversationPanel({
                         displayStatus={getVisualMessageStatus(m)}
                         contactName={contact.name}
                         contactAvatar={contact.avatar}
+                        onReply={(msg) => {
+                          setReplyingTo(msg);
+                          setTimeout(() => taRef.current?.focus(), 0);
+                        }}
                       />
                     ))}
                   </div>
@@ -561,6 +565,16 @@ export function ConversationPanel({
                   onClosePanel={onClose}
                   onSendAttachments={handleSendAttachments}
                   onSendAudio={handleSendAudio}
+                  replyingTo={
+                    replyingTo
+                      ? {
+                          author: replyingTo.direction === "outbound" ? "Você" : contact.name,
+                          content: replyingTo.content || replyingTo.media_name || "Mídia",
+                          isMe: replyingTo.direction === "outbound",
+                        }
+                      : null
+                  }
+                  onCancelReply={() => setReplyingTo(null)}
                 />
               </>
             ) : (
