@@ -39,10 +39,32 @@ function InboxPage() {
   const [filter, setFilter] = React.useState<Filter>("all");
   const [query, setQuery] = React.useState("");
   const [openContact, setOpenContact] = React.useState<Contact | null>(null);
+  const [whatsappStatus, setWhatsappStatus] = React.useState<"connected" | "disconnected" | "loading">("loading");
 
   const sensors = useSensors(
     useSensor(PointerSensor, { activationConstraint: { distance: 4 } }),
   );
+
+  // Verifica status do WhatsApp
+  React.useEffect(() => {
+    let cancelled = false;
+    (async () => {
+      const { data, error } = await supabase
+        .from("whatsapp_instances")
+        .select("status")
+        .eq("owner_user_id", user?.id)
+        .maybeSingle();
+      if (cancelled) return;
+      if (error || !data) {
+        setWhatsappStatus("disconnected");
+        return;
+      }
+      setWhatsappStatus(data.status === "connected" ? "connected" : "disconnected");
+    })();
+    return () => {
+      cancelled = true;
+    };
+  }, [user?.id]);
 
   // Carrega contatos reais do Supabase; não mascara erro com mock.
   React.useEffect(() => {
@@ -279,7 +301,7 @@ function InboxPage() {
       </div>
 
       {/* Kanban */}
-      {isLoadingContacts ? (
+      {isLoadingContacts || whatsappStatus === "loading" ? (
         <div style={{ flex: 1, display: "flex", alignItems: "center", justifyContent: "center", color: "var(--text-muted)", fontSize: 13 }}>
           Carregando atendimentos…
         </div>
@@ -291,13 +313,21 @@ function InboxPage() {
             description={`Supabase retornou: ${loadError}`}
           />
         </div>
+      ) : whatsappStatus === "disconnected" ? (
+        <div style={{ flex: 1, display: "flex", alignItems: "center", justifyContent: "center" }}>
+          <EmptyState
+            icon={<MessageSquare size={48} style={{ color: "var(--brand-400)" }} aria-hidden="true" />}
+            title="WhatsApp não conectado"
+            description="Conecte seu WhatsApp para começar a receber conversas dos seus clientes."
+            action={{ label: "Conectar WhatsApp", onClick: () => (window.location.href = "/settings/whatsapp") }}
+          />
+        </div>
       ) : contacts.length === 0 ? (
         <div style={{ flex: 1, display: "flex", alignItems: "center", justifyContent: "center" }}>
           <EmptyState
             icon={<MessageSquare size={48} style={{ color: "var(--brand-400)" }} aria-hidden="true" />}
-            title="Nenhum atendimento ainda"
-            description="Conecte seu WhatsApp para começar a receber conversas dos seus clientes."
-            action={{ label: "Conectar WhatsApp", onClick: () => (window.location.href = "/settings/whatsapp") }}
+            title="Nenhuma conversa ainda"
+            description="Seu WhatsApp está conectado! Aguardando mensagens dos clientes."
           />
         </div>
       ) : (
