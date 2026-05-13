@@ -176,15 +176,44 @@ export function Composer({ draft, setDraft, taRef, onSend, onClosePanel, onSendA
   };
 
   // --- recording
+  const pickMime = (): string | undefined => {
+    if (typeof MediaRecorder === "undefined") return undefined;
+    const candidates = [
+      "audio/webm;codecs=opus",
+      "audio/webm",
+      "audio/ogg;codecs=opus",
+      "audio/mp4",
+    ];
+    for (const m of candidates) {
+      try { if (MediaRecorder.isTypeSupported(m)) return m; } catch {}
+    }
+    return undefined;
+  };
+
   const startRecording = async () => {
+    if (isRecording) return;
+    if (!navigator.mediaDevices?.getUserMedia) {
+      toast.error("Microfone indisponível neste navegador.");
+      return;
+    }
+    let stream: MediaStream;
     try {
-      const stream = await navigator.mediaDevices.getUserMedia({ audio: true });
-      const rec = new MediaRecorder(stream);
+      stream = await navigator.mediaDevices.getUserMedia({ audio: true });
+    } catch (err: any) {
+      if (err?.name === "NotAllowedError") toast.error("Permissão de microfone negada.");
+      else if (err?.name === "NotFoundError") toast.error("Nenhum microfone encontrado.");
+      else if (err?.name === "NotReadableError") toast.error("Microfone em uso por outro app.");
+      else toast.error("Não foi possível acessar o microfone.");
+      return;
+    }
+    try {
+      const mimeType = pickMime();
+      const rec = new MediaRecorder(stream, mimeType ? { mimeType } : undefined);
       recorderRef.current = rec;
       chunksRef.current = [];
       cancelingRef.current = false;
       setIsCancelingRec(false);
-      rec.ondataavailable = (e) => { if (e.data.size > 0) chunksRef.current.push(e.data); };
+      rec.ondataavailable = (e) => { if (e.data && e.data.size > 0) chunksRef.current.push(e.data); };
       rec.onstop = () => {
         stream.getTracks().forEach((t) => t.stop());
         const ms = Date.now() - recStartRef.current;
@@ -192,13 +221,16 @@ export function Composer({ draft, setDraft, taRef, onSend, onClosePanel, onSendA
           chunksRef.current = [];
           return;
         }
-        const blob = new Blob(chunksRef.current, { type: "audio/webm" });
+        const blob = new Blob(chunksRef.current, { type: mimeType || "audio/webm" });
+        chunksRef.current = [];
         if (blob.size > 0) {
           setAudioPreview({ blob, url: URL.createObjectURL(blob), ms });
+        } else {
+          toast.error("Áudio vazio. Tente novamente.");
         }
-        chunksRef.current = [];
       };
-      rec.start(100);
+      rec.onerror = () => toast.error("Erro ao gravar áudio.");
+      rec.start(250);
       recStartRef.current = Date.now();
       setRecordMs(0);
       setIsRecording(true);
@@ -208,8 +240,9 @@ export function Composer({ draft, setDraft, taRef, onSend, onClosePanel, onSendA
       recAutoStopRef.current = window.setTimeout(() => {
         stopRecording();
       }, MAX_RECORD_MS);
-    } catch {
-      toast.error("Permissão de microfone negada.");
+    } catch (e: any) {
+      stream.getTracks().forEach((t) => t.stop());
+      toast.error(e?.message ?? "Falha ao iniciar gravação.");
     }
   };
 
