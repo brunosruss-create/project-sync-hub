@@ -367,16 +367,22 @@ function InboxPage() {
             action={{ label: "Conectar WhatsApp", onClick: () => (window.location.href = "/settings/whatsapp") }}
           />
         </div>
-      ) : contacts.length === 0 ? (
-        <div style={{ flex: 1, display: "flex", alignItems: "center", justifyContent: "center" }}>
-          <EmptyState
-            icon={<MessageSquare size={48} style={{ color: "var(--brand-400)" }} aria-hidden="true" />}
-            title="Nenhuma conversa ainda"
-            description="Seu WhatsApp está conectado! Aguardando mensagens dos clientes."
-          />
-        </div>
       ) : (
         <DndContext sensors={sensors} onDragStart={onDragStart} onDragEnd={onDragEnd}>
+          {contacts.length === 0 && (
+            <div
+              style={{
+                padding: "8px 12px",
+                fontSize: 12,
+                color: "var(--text-muted)",
+                background: "var(--bg-overlay)",
+                border: "1px solid var(--border)",
+                borderRadius: 6,
+              }}
+            >
+              Seu WhatsApp está conectado. Aguardando a primeira mensagem dos clientes…
+            </div>
+          )}
           <div
             className="flex-1 overflow-x-auto overflow-y-hidden"
             style={{ display: "flex", gap: 12, paddingBottom: 8 }}

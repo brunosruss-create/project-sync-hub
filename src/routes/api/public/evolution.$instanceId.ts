@@ -101,16 +101,19 @@ export const Route = createFileRoute("/api/public/evolution/$instanceId")({
               const pushName = m?.pushName ?? null;
 
               // upsert contato
-              const { data: existing } = await supabaseAdmin
+              const { data: existing, error: selErr } = await supabaseAdmin
                 .from("contacts")
                 .select("id")
                 .eq("phone", phone)
                 .eq("owner_user_id", row.owner_user_id)
                 .maybeSingle();
+              if (selErr) {
+                console.error("[evolution upsert] select contact", { phone, error: selErr.message });
+              }
 
               let contactId = existing?.id as string | undefined;
               if (!contactId) {
-                const { data: created } = await supabaseAdmin
+                const { data: created, error: insErr } = await supabaseAdmin
                   .from("contacts")
                   .insert({
                     owner_user_id: row.owner_user_id,
@@ -123,9 +126,19 @@ export const Route = createFileRoute("/api/public/evolution/$instanceId")({
                   })
                   .select("id")
                   .single();
+                if (insErr) {
+                  console.error("[evolution upsert] insert contact", {
+                    phone,
+                    owner_user_id: row.owner_user_id,
+                    error: insErr.message,
+                    details: (insErr as any).details,
+                    hint: (insErr as any).hint,
+                    code: (insErr as any).code,
+                  });
+                }
                 contactId = created?.id;
               } else {
-                await supabaseAdmin
+                const { error: updErr } = await supabaseAdmin
                   .from("contacts")
                   .update({
                     owner_user_id: row.owner_user_id,
@@ -134,10 +147,13 @@ export const Route = createFileRoute("/api/public/evolution/$instanceId")({
                     last_message_at: new Date().toISOString(),
                   })
                   .eq("id", contactId);
+                if (updErr) {
+                  console.error("[evolution upsert] update contact", { contactId, error: updErr.message });
+                }
               }
 
               if (contactId) {
-                await supabaseAdmin.from("messages").insert({
+                const { error: msgErr } = await supabaseAdmin.from("messages").insert({
                   owner_user_id: row.owner_user_id,
                   contact_id: contactId,
                   direction: "inbound",
@@ -145,6 +161,17 @@ export const Route = createFileRoute("/api/public/evolution/$instanceId")({
                   message_type: "text",
                   status: "delivered",
                 });
+                if (msgErr) {
+                  console.error("[evolution upsert] insert message", {
+                    contactId,
+                    error: msgErr.message,
+                    details: (msgErr as any).details,
+                    hint: (msgErr as any).hint,
+                    code: (msgErr as any).code,
+                  });
+                }
+              } else {
+                console.error("[evolution upsert] no contactId after upsert", { phone });
               }
             }
           } else {
