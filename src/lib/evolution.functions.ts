@@ -418,3 +418,105 @@ export const refreshContactAvatar = createServerFn({ method: "POST" })
     }
     return { url: contact.avatar_url ?? null, changed: false };
   });
+
+// ===================== MEDIA =====================
+
+const sendMediaInput = z.object({
+  contactId: z.string().uuid(),
+  url: z.string().url(),
+  mime: z.string().min(1).max(255),
+  name: z.string().min(1).max(500),
+  caption: z.string().max(1024).optional(),
+});
+
+export const sendWhatsAppMedia = createServerFn({ method: "POST" })
+  .middleware([requireSupabaseAuth])
+  .inputValidator((d) => sendMediaInput.parse(d))
+  .handler(async ({ data, context }) => {
+    const instance = instanceNameForOwner(context.userId);
+    const { data: contact, error: ce } = await supabaseAdmin
+      .from("contacts")
+      .select("id,phone")
+      .eq("id", data.contactId)
+      .eq("owner_user_id", context.userId)
+      .maybeSingle();
+    if (ce || !contact?.phone) throw new Error("Contato sem telefone.");
+
+    const number = String(contact.phone).replace(/\D/g, "");
+    const isImage = data.mime.startsWith("image/");
+    const isVideo = data.mime.startsWith("video/");
+    const mediatype: "image" | "video" | "document" = isImage ? "image" : isVideo ? "video" : "document";
+
+    let externalId: string | null = null;
+    try {
+      const r: any = await evo.sendMedia(instance, {
+        number,
+        mediatype,
+        mimetype: data.mime,
+        media: data.url,
+        fileName: data.name,
+        caption: data.caption,
+      });
+      externalId = r?.key?.id ?? r?.id ?? null;
+    } catch (e: any) {
+      throw new Error(`Falha no envio de mídia: ${e?.message ?? e}`);
+    }
+
+    await supabaseAdmin.from("messages").insert({
+      owner_user_id: context.userId,
+      contact_id: contact.id,
+      direction: "outbound",
+      content: data.caption ?? "",
+      message_type: mediatype === "image" ? "image" : mediatype === "video" ? "video" : "document",
+      status: "sent",
+      sent_by: context.userId,
+      media_url: data.url,
+      media_mime: data.mime,
+      media_name: data.name,
+    });
+
+    return { ok: true, externalId };
+  });
+
+const sendAudioInput = z.object({
+  contactId: z.string().uuid(),
+  url: z.string().url(),
+});
+
+export const sendWhatsAppAudio = createServerFn({ method: "POST" })
+  .middleware([requireSupabaseAuth])
+  .inputValidator((d) => sendAudioInput.parse(d))
+  .handler(async ({ data, context }) => {
+    const instance = instanceNameForOwner(context.userId);
+    const { data: contact, error: ce } = await supabaseAdmin
+      .from("contacts")
+      .select("id,phone")
+      .eq("id", data.contactId)
+      .eq("owner_user_id", context.userId)
+      .maybeSingle();
+    if (ce || !contact?.phone) throw new Error("Contato sem telefone.");
+
+    const number = String(contact.phone).replace(/\D/g, "");
+    let externalId: string | null = null;
+    try {
+      const r: any = await evo.sendWhatsAppAudio(instance, { number, audio: data.url });
+      externalId = r?.key?.id ?? r?.id ?? null;
+    } catch (e: any) {
+      throw new Error(`Falha no envio de áudio: ${e?.message ?? e}`);
+    }
+
+    await supabaseAdmin.from("messages").insert({
+      owner_user_id: context.userId,
+      contact_id: contact.id,
+      direction: "outbound",
+      content: "",
+      message_type: "audio",
+      status: "sent",
+      sent_by: context.userId,
+      media_url: data.url,
+      media_mime: "audio/webm",
+    });
+
+    return { ok: true, externalId };
+  });
+
