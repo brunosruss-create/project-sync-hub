@@ -13,11 +13,11 @@ import { useProfile } from "@/hooks/use-profile";
 
 const items = [
   { label: "Dashboard", to: "/dashboard", icon: LayoutDashboard },
-  { label: "Conversas", to: "/dashboard", icon: MessageSquare },
+  { label: "Conversas", to: "/inbox", icon: MessageSquare },
   { label: "Contatos", to: "/dashboard", icon: Users },
   { label: "Relatórios", to: "/dashboard", icon: BarChart3 },
   { label: "Configurações", to: "/dashboard", icon: Settings },
-];
+] as const;
 
 export function AppSidebar() {
   const path = useRouterState({ select: (s) => s.location.pathname });
