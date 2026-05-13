@@ -25,6 +25,7 @@ import { Route as AuthenticatedDashboardRouteImport } from './routes/_authentica
 import { Route as AuthenticatedContactsRouteImport } from './routes/_authenticated.contacts'
 import { Route as AuthenticatedAiAgentRouteImport } from './routes/_authenticated.ai-agent'
 import { Route as ApiPublicEvolutionProbeRouteImport } from './routes/api/public/evolution-probe'
+import { Route as ApiPublicEvolutionConnectTestRouteImport } from './routes/api/public/evolution-connect-test'
 import { Route as AuthenticatedSuperAdminWorkspacesRouteImport } from './routes/_authenticated.super-admin.workspaces'
 import { Route as AuthenticatedSuperAdminUsersRouteImport } from './routes/_authenticated.super-admin.users'
 import { Route as AuthenticatedSuperAdminHealthRouteImport } from './routes/_authenticated.super-admin.health'
@@ -115,6 +116,12 @@ const ApiPublicEvolutionProbeRoute = ApiPublicEvolutionProbeRouteImport.update({
   path: '/api/public/evolution-probe',
   getParentRoute: () => rootRouteImport,
 } as any)
+const ApiPublicEvolutionConnectTestRoute =
+  ApiPublicEvolutionConnectTestRouteImport.update({
+    id: '/api/public/evolution-connect-test',
+    path: '/api/public/evolution-connect-test',
+    getParentRoute: () => rootRouteImport,
+  } as any)
 const AuthenticatedSuperAdminWorkspacesRoute =
   AuthenticatedSuperAdminWorkspacesRouteImport.update({
     id: '/workspaces',
@@ -200,6 +207,7 @@ export interface FileRoutesByFullPath {
   '/super-admin/health': typeof AuthenticatedSuperAdminHealthRoute
   '/super-admin/users': typeof AuthenticatedSuperAdminUsersRoute
   '/super-admin/workspaces': typeof AuthenticatedSuperAdminWorkspacesRoute
+  '/api/public/evolution-connect-test': typeof ApiPublicEvolutionConnectTestRoute
   '/api/public/evolution-probe': typeof ApiPublicEvolutionProbeRoute
   '/api/public/evolution/$instanceId': typeof ApiPublicEvolutionInstanceIdRoute
 }
@@ -227,6 +235,7 @@ export interface FileRoutesByTo {
   '/super-admin/health': typeof AuthenticatedSuperAdminHealthRoute
   '/super-admin/users': typeof AuthenticatedSuperAdminUsersRoute
   '/super-admin/workspaces': typeof AuthenticatedSuperAdminWorkspacesRoute
+  '/api/public/evolution-connect-test': typeof ApiPublicEvolutionConnectTestRoute
   '/api/public/evolution-probe': typeof ApiPublicEvolutionProbeRoute
   '/api/public/evolution/$instanceId': typeof ApiPublicEvolutionInstanceIdRoute
 }
@@ -256,6 +265,7 @@ export interface FileRoutesById {
   '/_authenticated/super-admin/health': typeof AuthenticatedSuperAdminHealthRoute
   '/_authenticated/super-admin/users': typeof AuthenticatedSuperAdminUsersRoute
   '/_authenticated/super-admin/workspaces': typeof AuthenticatedSuperAdminWorkspacesRoute
+  '/api/public/evolution-connect-test': typeof ApiPublicEvolutionConnectTestRoute
   '/api/public/evolution-probe': typeof ApiPublicEvolutionProbeRoute
   '/api/public/evolution/$instanceId': typeof ApiPublicEvolutionInstanceIdRoute
 }
@@ -285,6 +295,7 @@ export interface FileRouteTypes {
     | '/super-admin/health'
     | '/super-admin/users'
     | '/super-admin/workspaces'
+    | '/api/public/evolution-connect-test'
     | '/api/public/evolution-probe'
     | '/api/public/evolution/$instanceId'
   fileRoutesByTo: FileRoutesByTo
@@ -312,6 +323,7 @@ export interface FileRouteTypes {
     | '/super-admin/health'
     | '/super-admin/users'
     | '/super-admin/workspaces'
+    | '/api/public/evolution-connect-test'
     | '/api/public/evolution-probe'
     | '/api/public/evolution/$instanceId'
   id:
@@ -340,6 +352,7 @@ export interface FileRouteTypes {
     | '/_authenticated/super-admin/health'
     | '/_authenticated/super-admin/users'
     | '/_authenticated/super-admin/workspaces'
+    | '/api/public/evolution-connect-test'
     | '/api/public/evolution-probe'
     | '/api/public/evolution/$instanceId'
   fileRoutesById: FileRoutesById
@@ -352,6 +365,7 @@ export interface RootRouteChildren {
   ResetPasswordRoute: typeof ResetPasswordRoute
   SignupRoute: typeof SignupRoute
   AuthCallbackRoute: typeof AuthCallbackRoute
+  ApiPublicEvolutionConnectTestRoute: typeof ApiPublicEvolutionConnectTestRoute
   ApiPublicEvolutionProbeRoute: typeof ApiPublicEvolutionProbeRoute
   ApiPublicEvolutionInstanceIdRoute: typeof ApiPublicEvolutionInstanceIdRoute
 }
@@ -468,6 +482,13 @@ declare module '@tanstack/react-router' {
       path: '/api/public/evolution-probe'
       fullPath: '/api/public/evolution-probe'
       preLoaderRoute: typeof ApiPublicEvolutionProbeRouteImport
+      parentRoute: typeof rootRouteImport
+    }
+    '/api/public/evolution-connect-test': {
+      id: '/api/public/evolution-connect-test'
+      path: '/api/public/evolution-connect-test'
+      fullPath: '/api/public/evolution-connect-test'
+      preLoaderRoute: typeof ApiPublicEvolutionConnectTestRouteImport
       parentRoute: typeof rootRouteImport
     }
     '/_authenticated/super-admin/workspaces': {
@@ -608,9 +629,20 @@ const rootRouteChildren: RootRouteChildren = {
   ResetPasswordRoute: ResetPasswordRoute,
   SignupRoute: SignupRoute,
   AuthCallbackRoute: AuthCallbackRoute,
+  ApiPublicEvolutionConnectTestRoute: ApiPublicEvolutionConnectTestRoute,
   ApiPublicEvolutionProbeRoute: ApiPublicEvolutionProbeRoute,
   ApiPublicEvolutionInstanceIdRoute: ApiPublicEvolutionInstanceIdRoute,
 }
 export const routeTree = rootRouteImport
   ._addFileChildren(rootRouteChildren)
   ._addFileTypes<FileRouteTypes>()
+
+import type { getRouter } from './router.tsx'
+import type { startInstance } from './start.ts'
+declare module '@tanstack/react-start' {
+  interface Register {
+    ssr: true
+    router: Awaited<ReturnType<typeof getRouter>>
+    config: Awaited<ReturnType<typeof startInstance.getOptions>>
+  }
+}
