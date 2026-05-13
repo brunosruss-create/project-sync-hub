@@ -107,6 +107,8 @@ export function ForwardModal({ open, source, excludeContactId, onClose }: Props)
             continue;
           }
           await sendText({ data: { contactId, text, quoted: undefined } });
+        } else if (source.message_type === "audio" && source.media_url) {
+          await sendAudio({ data: { contactId, url: source.media_url, quoted: undefined } });
         } else if (
           source.media_url &&
           source.media_mime &&
@@ -125,7 +127,6 @@ export function ForwardModal({ open, source, excludeContactId, onClose }: Props)
             },
           });
         } else {
-          // áudio ou tipo não suportado
           failCount++;
           continue;
         }
