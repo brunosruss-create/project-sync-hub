@@ -17,6 +17,7 @@ import {
   connectInstance,
   refreshInstanceStatus,
   disconnectInstance,
+  registerWebhook,
 } from "@/lib/evolution.functions";
 
 export const Route = createFileRoute("/_authenticated/settings/whatsapp")({
@@ -31,6 +32,7 @@ function WhatsAppPage() {
   const doConnect = useServerFn(connectInstance);
   const doRefresh = useServerFn(refreshInstanceStatus);
   const doDisconnect = useServerFn(disconnectInstance);
+  const doRegisterWebhook = useServerFn(registerWebhook);
 
   const [confirmDc, setConfirmDc] = React.useState(false);
   const [now, setNow] = React.useState(Date.now());
@@ -97,6 +99,15 @@ function WhatsAppPage() {
       qc.invalidateQueries({ queryKey: ["whatsapp-instance"] });
     },
     onError: (e: any) => toast.error(e?.message ?? "Falha"),
+  });
+
+  const register = useMutation({
+    mutationFn: () => doRegisterWebhook({ data: undefined as never }),
+    onSuccess: () => {
+      toast.success("Webhook re-registrado neste ambiente");
+      qc.invalidateQueries({ queryKey: ["whatsapp-instance"] });
+    },
+    onError: (e: any) => toast.error(e?.message ?? "Falha ao re-registrar webhook"),
   });
 
   const meta: Record<Status, { label: string; bg: string; fg: string }> = {
@@ -211,6 +222,7 @@ function WhatsAppPage() {
               }
             />
             <Info label="Instância" value={instance?.instance_name ?? "—"} />
+            <Info label="Webhook" value={instance?.webhook_url ?? "—"} />
           </div>
         ) : (
           <div className="flex flex-col items-center justify-center text-center" style={{ padding: 32, gap: 12 }}>
@@ -241,6 +253,23 @@ function WhatsAppPage() {
               Conexão via Evolution API (self-hosted no Railway). Mensagens recebidas
               caem direto no Inbox; envios feitos pelo Inbox vão pelo seu número conectado.
             </p>
+            {instance && (
+              <div className="flex flex-wrap items-center justify-between" style={{ gap: 12, marginTop: 16 }}>
+                <div style={{ minWidth: 0 }}>
+                  <div style={{ fontSize: 11, color: "var(--text-muted)", marginBottom: 4 }}>URL ativa do webhook</div>
+                  <div style={{ fontSize: 12, color: "var(--text-primary)", wordBreak: "break-all" }}>
+                    {instance.webhook_url ?? "Ainda não registrada"}
+                  </div>
+                </div>
+                <button
+                  style={buttonSecondary}
+                  disabled={register.isPending}
+                  onClick={() => register.mutate()}
+                >
+                  {register.isPending ? "Registrando…" : "Re-registrar neste ambiente"}
+                </button>
+              </div>
+            )}
           </div>
         </FieldGroup>
       </div>
