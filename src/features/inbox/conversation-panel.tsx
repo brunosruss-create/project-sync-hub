@@ -515,7 +515,7 @@ export function ConversationPanel({
                       <MessageBubble
                         key={m.id}
                         m={m}
-                        displayStatus={getVisualMessageStatus(m, messages)}
+                        displayStatus={getVisualMessageStatus(m)}
                         contactName={contact.name}
                         contactAvatar={contact.avatar}
                       />
@@ -723,14 +723,8 @@ function MessageBubble({
   );
 }
 
-function getVisualMessageStatus(message: Message, messages: Message[]): Message["status"] {
-  if (message.direction !== "outbound" || message.status === "read") return message.status;
-  // Se o contato já respondeu em qualquer momento da conversa, considera que está acompanhando
-  // e marca todas as mensagens enviadas como lidas (inclusive novas após a última resposta).
-  const contactHasReplied = messages.some(
-    (m) => m.direction === "inbound" && m.message_type !== "system",
-  );
-  return contactHasReplied ? "read" : message.status;
+function getVisualMessageStatus(message: Message): Message["status"] {
+  return message.status;
 }
 
 function fmtClock(date: Date): string {
