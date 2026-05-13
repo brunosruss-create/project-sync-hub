@@ -725,11 +725,12 @@ function MessageBubble({
 
 function getVisualMessageStatus(message: Message, messages: Message[]): Message["status"] {
   if (message.direction !== "outbound" || message.status === "read") return message.status;
-  const messageTime = message.created_at.getTime();
-  const hasContactReplyAfter = messages.some(
-    (m) => m.direction === "inbound" && m.message_type !== "system" && m.created_at.getTime() >= messageTime,
+  // Se o contato já respondeu em qualquer momento da conversa, considera que está acompanhando
+  // e marca todas as mensagens enviadas como lidas (inclusive novas após a última resposta).
+  const contactHasReplied = messages.some(
+    (m) => m.direction === "inbound" && m.message_type !== "system",
   );
-  return hasContactReplyAfter ? "read" : message.status;
+  return contactHasReplied ? "read" : message.status;
 }
 
 function fmtClock(date: Date): string {
