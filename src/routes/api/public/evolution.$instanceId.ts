@@ -1,6 +1,38 @@
 import { createFileRoute } from "@tanstack/react-router";
 import { supabaseAdmin } from "@/integrations/supabase/client.server";
-import { extractQRCode, normalizeQRCodeImage, tryFetchProfilePicture } from "@/lib/evolution.server";
+import {
+  extractQRCode,
+  normalizeQRCodeImage,
+  tryFetchProfilePicture,
+  downloadInboundMedia,
+} from "@/lib/evolution.server";
+
+type MediaKind = "image" | "audio" | "video" | "document";
+
+const MIME_EXT: Record<string, string> = {
+  "image/jpeg": "jpg", "image/jpg": "jpg", "image/png": "png", "image/webp": "webp", "image/gif": "gif",
+  "audio/ogg": "ogg", "audio/ogg; codecs=opus": "ogg", "audio/mpeg": "mp3", "audio/mp4": "m4a", "audio/webm": "webm", "audio/wav": "wav",
+  "video/mp4": "mp4", "video/webm": "webm", "video/quicktime": "mov", "video/3gpp": "3gp",
+  "application/pdf": "pdf", "application/zip": "zip",
+};
+function extFromMime(mime: string, fallback: string): string {
+  return MIME_EXT[mime.toLowerCase()] ?? (mime.split("/")[1] ?? fallback).split(";")[0].slice(0, 5);
+}
+function detectMediaNode(message: any): { kind: MediaKind; node: any } | null {
+  if (!message) return null;
+  if (message.imageMessage) return { kind: "image", node: message.imageMessage };
+  if (message.videoMessage) return { kind: "video", node: message.videoMessage };
+  if (message.audioMessage) return { kind: "audio", node: message.audioMessage };
+  if (message.pttMessage) return { kind: "audio", node: message.pttMessage };
+  if (message.documentMessage) return { kind: "document", node: message.documentMessage };
+  if (message.documentWithCaptionMessage?.message?.documentMessage)
+    return { kind: "document", node: message.documentWithCaptionMessage.message.documentMessage };
+  if (message.stickerMessage) return { kind: "image", node: message.stickerMessage };
+  return null;
+}
+const KIND_LABEL: Record<MediaKind, string> = {
+  image: "📷 Imagem", audio: "🎵 Áudio", video: "🎬 Vídeo", document: "📎 Documento",
+};
 
 export const Route = createFileRoute("/api/public/evolution/$instanceId")({
   server: {
