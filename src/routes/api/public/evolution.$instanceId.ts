@@ -65,6 +65,14 @@ export const Route = createFileRoute("/api/public/evolution/$instanceId")({
                 })
                 .eq("id", row.id);
             } else if (state === "close") {
+              const { data: current } = await supabaseAdmin
+                .from("whatsapp_instances")
+                .select("status,qr_code,qr_expires_at")
+                .eq("id", row.id)
+                .maybeSingle();
+              const qrExpiresAt = current?.qr_expires_at ? new Date(current.qr_expires_at).getTime() : 0;
+              const keepPendingQr = current?.status === "pending" && current?.qr_code && qrExpiresAt > Date.now();
+              if (keepPendingQr) return new Response("ok", { status: 200 });
               await supabaseAdmin
                 .from("whatsapp_instances")
                 .update({ status: "disconnected", qr_code: null })

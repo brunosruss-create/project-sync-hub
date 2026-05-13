@@ -75,7 +75,9 @@ function WhatsAppPage() {
 
   const connect = useMutation({
     mutationFn: () => doConnect({ data: undefined as never }),
-    onSuccess: () => {
+    onSuccess: (result) => {
+      if (result?.instance) qc.setQueryData(["whatsapp-instance"], { instance: result.instance });
+      setNow(Date.now());
       toast.success("Escaneie o QR Code");
       qc.invalidateQueries({ queryKey: ["whatsapp-instance"] });
     },
@@ -84,7 +86,9 @@ function WhatsAppPage() {
 
   const refreshQr = useMutation({
     mutationFn: () => doRefresh({ data: { forceQrRefresh: true } }),
-    onSuccess: () => {
+    onSuccess: (result) => {
+      if (result?.instance) qc.setQueryData(["whatsapp-instance"], { instance: result.instance });
+      setNow(Date.now());
       toast.success("Novo QR Code gerado");
       qc.invalidateQueries({ queryKey: ["whatsapp-instance"] });
     },

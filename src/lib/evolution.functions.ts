@@ -218,18 +218,19 @@ export const refreshInstanceStatus = createServerFn({ method: "POST" })
       profile = data?.profileName ?? data?.profilename ?? null;
     } catch {}
 
+    const qrExpiresAt = row.qr_expires_at ? new Date(row.qr_expires_at).getTime() : 0;
+    const qrExpired = !qrExpiresAt || qrExpiresAt <= Date.now();
+    const hasUsableQr = Boolean(row.qr_code) && !qrExpired;
+    const shouldRefreshQr = Boolean(data?.forceQrRefresh) || !row.qr_code || qrExpired;
+
     const status =
       state === "open"
         ? "connected"
-        : state === "connecting"
+        : state === "connecting" || row.status === "pending" || hasUsableQr
           ? "pending"
           : state === "close"
             ? "disconnected"
             : row.status;
-
-    const qrExpiresAt = row.qr_expires_at ? new Date(row.qr_expires_at).getTime() : 0;
-    const qrExpired = !qrExpiresAt || qrExpiresAt <= Date.now();
-    const shouldRefreshQr = Boolean(data?.forceQrRefresh) || !row.qr_code || qrExpired;
 
     const update: Record<string, any> = { status };
     if (status === "connected") {
