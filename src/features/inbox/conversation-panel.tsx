@@ -792,6 +792,49 @@ function fmtClock(date: Date): string {
   return date.toLocaleTimeString("pt-BR", { hour: "2-digit", minute: "2-digit" });
 }
 
+function QuotedPreview({
+  preview,
+  isMe,
+}: {
+  preview: { content?: string; author?: string; message_type?: string };
+  isMe: boolean;
+}) {
+  const accent = isMe ? "var(--brand-400)" : "#9aa3af";
+  const typeLabel =
+    preview.message_type === "image" ? "📷 Foto"
+    : preview.message_type === "video" ? "🎥 Vídeo"
+    : preview.message_type === "audio" ? "🎤 Áudio"
+    : preview.message_type === "document" ? "📄 Documento"
+    : null;
+  return (
+    <div
+      style={{
+        display: "block",
+        padding: "6px 8px",
+        marginBottom: 6,
+        background: "color-mix(in oklab, var(--text-primary) 6%, transparent)",
+        borderRadius: 6,
+        borderLeft: `3px solid ${accent}`,
+        fontSize: 12,
+      }}
+    >
+      <div style={{ fontWeight: 600, color: accent, marginBottom: 2 }}>
+        {preview.author || (isMe ? "Você" : "")}
+      </div>
+      <div
+        style={{
+          color: "var(--text-muted)",
+          overflow: "hidden",
+          textOverflow: "ellipsis",
+          whiteSpace: "nowrap",
+        }}
+      >
+        {typeLabel || preview.content || ""}
+      </div>
+    </div>
+  );
+}
+
 function MessageChevron({
   isMe,
   bubbleBg,
