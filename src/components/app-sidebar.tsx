@@ -13,11 +13,11 @@ import { useProfile } from "@/hooks/use-profile";
 
 const items = [
   { label: "Dashboard", to: "/dashboard", icon: LayoutDashboard },
-  { label: "Conversas", to: "/dashboard", icon: MessageSquare },
+  { label: "Conversas", to: "/inbox", icon: MessageSquare },
   { label: "Contatos", to: "/dashboard", icon: Users },
   { label: "Relatórios", to: "/dashboard", icon: BarChart3 },
   { label: "Configurações", to: "/dashboard", icon: Settings },
-];
+] as const;
 
 export function AppSidebar() {
   const path = useRouterState({ select: (s) => s.location.pathname });
@@ -105,8 +105,9 @@ export function AppSidebar() {
       {/* Nav */}
       <nav className="flex-1" style={{ padding: "8px" }}>
         <ul className="flex flex-col" style={{ gap: 2 }}>
-          {items.map((item, i) => {
-            const active = i === 0 && path.startsWith("/dashboard");
+          {items.map((item) => {
+            const active =
+              item.to === "/dashboard" ? path === "/dashboard" : path.startsWith(item.to);
             const Icon = item.icon;
             return (
               <li key={item.label}>
