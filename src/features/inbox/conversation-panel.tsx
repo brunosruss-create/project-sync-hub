@@ -515,7 +515,7 @@ export function ConversationPanel({
                       <MessageBubble
                         key={m.id}
                         m={m}
-                        displayStatus={getVisualMessageStatus(m, messages)}
+                        displayStatus={getVisualMessageStatus(m)}
                         contactName={contact.name}
                         contactAvatar={contact.avatar}
                       />
@@ -723,7 +723,7 @@ function MessageBubble({
   );
 }
 
-function getVisualMessageStatus(message: Message, messages: Message[]): Message["status"] {
+function getVisualMessageStatus(message: Message): Message["status"] {
   return message.status;
 }
 
