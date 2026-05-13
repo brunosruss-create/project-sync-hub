@@ -29,6 +29,7 @@ import { useServerFn } from "@tanstack/react-start";
 import { sendWhatsAppMessage, refreshContactAvatar, sendWhatsAppMedia, sendWhatsAppAudio, reactToMessage, deleteMessageForEveryone, editMessage } from "@/lib/evolution.functions";
 import { ScheduleModal } from "./schedule-modal";
 import { MessageActions } from "./message-actions";
+import { ForwardModal, type ForwardSource } from "./forward-modal";
 import {
   SEED_SERVICES,
   formatCurrencyBRL,
@@ -126,6 +127,7 @@ export function ConversationPanel({
   const [scheduleSeed, setScheduleSeed] = React.useState<string[] | undefined>(undefined);
   const [replyingTo, setReplyingTo] = React.useState<Message | null>(null);
   const [editingId, setEditingId] = React.useState<string | null>(null);
+  const [forwardSource, setForwardSource] = React.useState<ForwardSource | null>(null);
   const open = !!contact;
   const scrollRef = React.useRef<HTMLDivElement | null>(null);
   const taRef = React.useRef<HTMLTextAreaElement | null>(null);
@@ -628,6 +630,16 @@ export function ConversationPanel({
                             toast.error(e?.message ?? "Falha ao apagar");
                           }
                         }}
+                        onForward={(msg) =>
+                          setForwardSource({
+                            id: msg.id,
+                            content: msg.content ?? "",
+                            message_type: msg.message_type,
+                            media_url: msg.media_url ?? null,
+                            media_mime: msg.media_mime ?? null,
+                            media_name: msg.media_name ?? null,
+                          })
+                        }
                       />
                     ))}
                   </div>
@@ -678,6 +690,12 @@ export function ConversationPanel({
           }}
         />
       )}
+      <ForwardModal
+        open={!!forwardSource}
+        source={forwardSource}
+        excludeContactId={contact?.id}
+        onClose={() => setForwardSource(null)}
+      />
     </>
   );
 }
@@ -696,6 +714,7 @@ function MessageBubble({
   onCancelEdit,
   onSaveEdit,
   onDelete,
+  onForward,
 }: {
   m: Message;
   displayStatus: Message["status"];
@@ -708,6 +727,7 @@ function MessageBubble({
   onCancelEdit?: () => void;
   onSaveEdit?: (text: string) => void;
   onDelete?: () => void;
+  onForward?: (m: Message) => void;
 }) {
   if (m.message_type === "system") {
     return (
@@ -782,7 +802,7 @@ function MessageBubble({
           animation: "fadeSlideIn 200ms ease-out",
         }}
       >
-        <MessageChevron isMe={isMe} bubbleBg={audioBg} message={m} onReply={onReply} onReact={onReact} onDelete={onDelete} />
+        <MessageChevron isMe={isMe} bubbleBg={audioBg} message={m} onReply={onReply} onReact={onReact} onDelete={onDelete} onForward={onForward} />
         {m.quoted_preview && <QuotedPreview preview={m.quoted_preview} isMe={isMe} />}
         <AudioPlayer
           src={m.media_url}
@@ -833,7 +853,7 @@ function MessageBubble({
         wordBreak: "break-word",
       }}
     >
-      <MessageChevron isMe={isMe} bubbleBg={bubbleBg} message={m} onReply={onReply} onReact={onReact} onEdit={onStartEdit} onDelete={onDelete} />
+      <MessageChevron isMe={isMe} bubbleBg={bubbleBg} message={m} onReply={onReply} onReact={onReact} onEdit={onStartEdit} onDelete={onDelete} onForward={onForward} />
       {m.quoted_preview && <QuotedPreview preview={m.quoted_preview} isMe={isMe} />}
       {m.media_url && m.message_type === "image" && (
         <a href={m.media_url} target="_blank" rel="noreferrer" style={{ display: "block", marginBottom: m.content ? 6 : 0 }}>
@@ -1015,6 +1035,7 @@ function MessageChevron({
   onReact,
   onEdit,
   onDelete,
+  onForward,
 }: {
   isMe: boolean;
   bubbleBg: string;
@@ -1023,6 +1044,7 @@ function MessageChevron({
   onReact?: (m: Message, emoji: string) => void;
   onEdit?: () => void;
   onDelete?: () => void;
+  onForward?: (m: Message) => void;
 }) {
   return (
     <MessageActions
@@ -1039,6 +1061,7 @@ function MessageChevron({
       onReact={(_m, emoji) => onReact?.(message, emoji)}
       onEdit={() => onEdit?.()}
       onDelete={() => onDelete?.()}
+      onForward={() => onForward?.(message)}
     />
   );
 }
