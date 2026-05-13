@@ -732,6 +732,35 @@ function MessageBubble({
 
   const isMe = m.direction === "outbound";
 
+  // ===== Deleted message =====
+  if (m.deleted_at) {
+    const delBg = isMe
+      ? "color-mix(in oklab, var(--brand-400) 8%, var(--bg-surface))"
+      : "var(--bg-overlay)";
+    return (
+      <div
+        style={{
+          alignSelf: isMe ? "flex-end" : "flex-start",
+          maxWidth: "75%",
+          background: delBg,
+          border: "1px dashed var(--border)",
+          borderRadius: isMe ? "12px 2px 12px 12px" : "2px 12px 12px 12px",
+          padding: "8px 11px",
+          fontSize: 13,
+          fontStyle: "italic",
+          color: "var(--text-muted)",
+          display: "inline-flex",
+          alignItems: "center",
+          gap: 6,
+        }}
+      >
+        <Trash2 size={13} />
+        <span>Esta mensagem foi apagada</span>
+        <span style={{ marginLeft: 6, fontSize: 11 }}>{fmtClock(m.created_at)}</span>
+      </div>
+    );
+  }
+
   // ===== Audio: WhatsApp-like player as the bubble itself =====
   if (m.message_type === "audio" && m.media_url) {
     const audioBg = isMe
