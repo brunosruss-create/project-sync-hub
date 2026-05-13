@@ -126,10 +126,8 @@ export const evo = {
   sendReaction: (
     name: string,
     body: {
-      reactionMessage: {
-        key: { id: string; fromMe: boolean; remoteJid: string };
-        reaction: string;
-      };
+      key: { id: string; fromMe: boolean; remoteJid: string };
+      reaction: string;
     },
   ) =>
     call(`/message/sendReaction/${encodeURIComponent(name)}`, {
