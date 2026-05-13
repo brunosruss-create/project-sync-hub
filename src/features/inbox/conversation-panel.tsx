@@ -17,6 +17,7 @@ import {
   Pause,
   Mic,
   ChevronDown,
+  Trash2,
 } from "lucide-react";
 import { Composer } from "./composer";
 import { type ContactCard as Contact, formatRelative, initials } from "./data";
@@ -25,7 +26,7 @@ import { supabase } from "@/integrations/supabase/client";
 import { useAuth } from "@/hooks/use-auth";
 import { toast } from "sonner";
 import { useServerFn } from "@tanstack/react-start";
-import { sendWhatsAppMessage, refreshContactAvatar, sendWhatsAppMedia, sendWhatsAppAudio, reactToMessage } from "@/lib/evolution.functions";
+import { sendWhatsAppMessage, refreshContactAvatar, sendWhatsAppMedia, sendWhatsAppAudio, reactToMessage, deleteMessageForEveryone, editMessage } from "@/lib/evolution.functions";
 import { ScheduleModal } from "./schedule-modal";
 import { MessageActions } from "./message-actions";
 import {
@@ -57,6 +58,8 @@ interface Message {
   whatsapp_message_id?: string | null;
   quoted_preview?: { content?: string; author?: string; message_type?: string } | null;
   reactions?: Array<{ emoji: string; from: string }> | null;
+  deleted_at?: string | null;
+  edited_at?: string | null;
 }
 
 const MAX_CHARS = 4096;
@@ -113,6 +116,8 @@ export function ConversationPanel({
   const sendAudioFn = useServerFn(sendWhatsAppAudio);
   const refreshAvatar = useServerFn(refreshContactAvatar);
   const reactFn = useServerFn(reactToMessage);
+  const deleteFn = useServerFn(deleteMessageForEveryone);
+  const editFn = useServerFn(editMessage);
   const [tab, setTab] = React.useState<Tab>("conversation");
   const [draft, setDraft] = React.useState("");
   const [menuOpen, setMenuOpen] = React.useState(false);
@@ -120,6 +125,7 @@ export function ConversationPanel({
   const [scheduleOpen, setScheduleOpen] = React.useState(false);
   const [scheduleSeed, setScheduleSeed] = React.useState<string[] | undefined>(undefined);
   const [replyingTo, setReplyingTo] = React.useState<Message | null>(null);
+  const [editingId, setEditingId] = React.useState<string | null>(null);
   const open = !!contact;
   const scrollRef = React.useRef<HTMLDivElement | null>(null);
   const taRef = React.useRef<HTMLTextAreaElement | null>(null);
@@ -166,7 +172,7 @@ export function ConversationPanel({
     (async () => {
       const { data, error } = await supabase
         .from("messages")
-        .select("id,direction,content,message_type,status,created_at,media_url,media_mime,media_name,whatsapp_message_id,quoted_preview,reactions")
+        .select("id,direction,content,message_type,status,created_at,media_url,media_mime,media_name,whatsapp_message_id,quoted_preview,reactions,deleted_at,edited_at")
         .eq("contact_id", contact.id)
         .order("created_at", { ascending: true });
       if (cancelled) return;
@@ -187,6 +193,8 @@ export function ConversationPanel({
             whatsapp_message_id: r.whatsapp_message_id ?? null,
             quoted_preview: r.quoted_preview ?? null,
             reactions: r.reactions ?? [],
+            deleted_at: r.deleted_at ?? null,
+            edited_at: r.edited_at ?? null,
           })),
         );
       }
@@ -222,6 +230,8 @@ export function ConversationPanel({
                     whatsapp_message_id: r.whatsapp_message_id ?? null,
                     quoted_preview: r.quoted_preview ?? null,
                     reactions: r.reactions ?? [],
+                    deleted_at: r.deleted_at ?? null,
+                    edited_at: r.edited_at ?? null,
                   },
                 ],
           );
@@ -250,6 +260,8 @@ export function ConversationPanel({
                     whatsapp_message_id: r.whatsapp_message_id ?? m.whatsapp_message_id,
                     quoted_preview: r.quoted_preview ?? m.quoted_preview,
                     reactions: r.reactions ?? m.reactions,
+                    deleted_at: r.deleted_at ?? m.deleted_at,
+                    edited_at: r.edited_at ?? m.edited_at,
                   }
                 : m,
             ),
@@ -581,6 +593,41 @@ export function ConversationPanel({
                             toast.error(e?.message ?? "Falha ao reagir");
                           }
                         }}
+                        editing={editingId === m.id}
+                        onStartEdit={() => setEditingId(m.id)}
+                        onCancelEdit={() => setEditingId(null)}
+                        onSaveEdit={async (text) => {
+                          const trimmed = text.trim();
+                          if (!trimmed) return;
+                          const prevContent = m.content;
+                          setMessages((prev) =>
+                            prev.map((x) =>
+                              x.id === m.id ? { ...x, content: trimmed, edited_at: new Date().toISOString() } : x,
+                            ),
+                          );
+                          setEditingId(null);
+                          try {
+                            await editFn({ data: { messageId: m.id, text: trimmed } });
+                          } catch (e: any) {
+                            toast.error(e?.message ?? "Falha ao editar");
+                            setMessages((prev) =>
+                              prev.map((x) => (x.id === m.id ? { ...x, content: prevContent } : x)),
+                            );
+                          }
+                        }}
+                        onDelete={async () => {
+                          if (!confirm("Apagar esta mensagem para todos?")) return;
+                          try {
+                            await deleteFn({ data: { messageId: m.id } });
+                            setMessages((prev) =>
+                              prev.map((x) =>
+                                x.id === m.id ? { ...x, deleted_at: new Date().toISOString() } : x,
+                              ),
+                            );
+                          } catch (e: any) {
+                            toast.error(e?.message ?? "Falha ao apagar");
+                          }
+                        }}
                       />
                     ))}
                   </div>
@@ -644,6 +691,11 @@ function MessageBubble({
   contactAvatar,
   onReply,
   onReact,
+  editing,
+  onStartEdit,
+  onCancelEdit,
+  onSaveEdit,
+  onDelete,
 }: {
   m: Message;
   displayStatus: Message["status"];
@@ -651,6 +703,11 @@ function MessageBubble({
   contactAvatar?: string | null;
   onReply?: (m: Message) => void;
   onReact?: (m: Message, emoji: string) => void;
+  editing?: boolean;
+  onStartEdit?: () => void;
+  onCancelEdit?: () => void;
+  onSaveEdit?: (text: string) => void;
+  onDelete?: () => void;
 }) {
   if (m.message_type === "system") {
     return (
@@ -676,6 +733,35 @@ function MessageBubble({
 
   const isMe = m.direction === "outbound";
 
+  // ===== Deleted message =====
+  if (m.deleted_at) {
+    const delBg = isMe
+      ? "color-mix(in oklab, var(--brand-400) 8%, var(--bg-surface))"
+      : "var(--bg-overlay)";
+    return (
+      <div
+        style={{
+          alignSelf: isMe ? "flex-end" : "flex-start",
+          maxWidth: "75%",
+          background: delBg,
+          border: "1px dashed var(--border)",
+          borderRadius: isMe ? "12px 2px 12px 12px" : "2px 12px 12px 12px",
+          padding: "8px 11px",
+          fontSize: 13,
+          fontStyle: "italic",
+          color: "var(--text-muted)",
+          display: "inline-flex",
+          alignItems: "center",
+          gap: 6,
+        }}
+      >
+        <Trash2 size={13} />
+        <span>Esta mensagem foi apagada</span>
+        <span style={{ marginLeft: 6, fontSize: 11 }}>{fmtClock(m.created_at)}</span>
+      </div>
+    );
+  }
+
   // ===== Audio: WhatsApp-like player as the bubble itself =====
   if (m.message_type === "audio" && m.media_url) {
     const audioBg = isMe
@@ -696,7 +782,7 @@ function MessageBubble({
           animation: "fadeSlideIn 200ms ease-out",
         }}
       >
-        <MessageChevron isMe={isMe} bubbleBg={audioBg} message={m} onReply={onReply} onReact={onReact} />
+        <MessageChevron isMe={isMe} bubbleBg={audioBg} message={m} onReply={onReply} onReact={onReact} onDelete={onDelete} />
         {m.quoted_preview && <QuotedPreview preview={m.quoted_preview} isMe={isMe} />}
         <AudioPlayer
           src={m.media_url}
@@ -747,7 +833,7 @@ function MessageBubble({
         wordBreak: "break-word",
       }}
     >
-      <MessageChevron isMe={isMe} bubbleBg={bubbleBg} message={m} onReply={onReply} onReact={onReact} />
+      <MessageChevron isMe={isMe} bubbleBg={bubbleBg} message={m} onReply={onReply} onReact={onReact} onEdit={onStartEdit} onDelete={onDelete} />
       {m.quoted_preview && <QuotedPreview preview={m.quoted_preview} isMe={isMe} />}
       {m.media_url && m.message_type === "image" && (
         <a href={m.media_url} target="_blank" rel="noreferrer" style={{ display: "block", marginBottom: m.content ? 6 : 0 }}>
@@ -787,7 +873,15 @@ function MessageBubble({
           <Download size={14} style={{ flexShrink: 0, color: "var(--text-muted)" }} />
         </a>
       )}
-      {m.content && <div>{m.content}</div>}
+      {editing ? (
+        <InlineEditor
+          initial={m.content}
+          onCancel={() => onCancelEdit?.()}
+          onSave={(t) => onSaveEdit?.(t)}
+        />
+      ) : (
+        m.content && <div>{m.content}</div>
+      )}
       <div
         style={{
           marginTop: 4,
@@ -801,6 +895,7 @@ function MessageBubble({
           marginLeft: 8,
         }}
       >
+        {m.edited_at && <span style={{ fontStyle: "italic" }}>editada</span>}
         {fmtClock(m.created_at)}
         {isMe && <StatusTicks status={displayStatus} />}
       </div>
@@ -918,12 +1013,16 @@ function MessageChevron({
   message,
   onReply,
   onReact,
+  onEdit,
+  onDelete,
 }: {
   isMe: boolean;
   bubbleBg: string;
   message: Message;
   onReply?: (m: Message) => void;
   onReact?: (m: Message, emoji: string) => void;
+  onEdit?: () => void;
+  onDelete?: () => void;
 }) {
   return (
     <MessageActions
@@ -938,7 +1037,91 @@ function MessageChevron({
       }}
       onReply={() => onReply?.(message)}
       onReact={(_m, emoji) => onReact?.(message, emoji)}
+      onEdit={() => onEdit?.()}
+      onDelete={() => onDelete?.()}
     />
+  );
+}
+
+function InlineEditor({
+  initial,
+  onCancel,
+  onSave,
+}: {
+  initial: string;
+  onCancel: () => void;
+  onSave: (text: string) => void;
+}) {
+  const [val, setVal] = React.useState(initial);
+  const ref = React.useRef<HTMLTextAreaElement | null>(null);
+  React.useEffect(() => {
+    ref.current?.focus();
+    ref.current?.setSelectionRange(val.length, val.length);
+  }, []);
+  return (
+    <div style={{ display: "flex", flexDirection: "column", gap: 6 }}>
+      <textarea
+        ref={ref}
+        value={val}
+        onChange={(e) => setVal(e.target.value)}
+        onKeyDown={(e) => {
+          if (e.key === "Escape") {
+            e.preventDefault();
+            onCancel();
+          } else if (e.key === "Enter" && !e.shiftKey) {
+            e.preventDefault();
+            if (val.trim()) onSave(val);
+          }
+        }}
+        rows={Math.min(6, Math.max(1, val.split("\n").length))}
+        style={{
+          width: "100%",
+          background: "var(--bg-base)",
+          border: "1px solid var(--border)",
+          borderRadius: 6,
+          color: "var(--text-primary)",
+          padding: "6px 8px",
+          fontSize: 14,
+          fontFamily: "inherit",
+          resize: "none",
+          outline: "none",
+        }}
+      />
+      <div style={{ display: "flex", gap: 6, justifyContent: "flex-end" }}>
+        <button
+          type="button"
+          onClick={onCancel}
+          style={{
+            padding: "4px 10px",
+            background: "transparent",
+            border: "1px solid var(--border)",
+            borderRadius: 6,
+            color: "var(--text-muted)",
+            cursor: "pointer",
+            fontSize: 12,
+          }}
+        >
+          Cancelar
+        </button>
+        <button
+          type="button"
+          onClick={() => val.trim() && onSave(val)}
+          disabled={!val.trim()}
+          style={{
+            padding: "4px 10px",
+            background: "var(--brand-400)",
+            border: "1px solid var(--brand-400)",
+            borderRadius: 6,
+            color: "white",
+            cursor: val.trim() ? "pointer" : "not-allowed",
+            fontSize: 12,
+            opacity: val.trim() ? 1 : 0.6,
+          }}
+        >
+          Salvar
+        </button>
+      </div>
+    </div>
   );
 }
 
