@@ -1073,7 +1073,10 @@ function ListView({
         icon={<CalendarClock size={48} style={{ color: "var(--brand-400)" }} aria-hidden="true" />}
         title="Sem agendamentos hoje"
         description="Que tal agendar o próximo? Crie um agendamento para organizar sua agenda."
-        action={{ label: "Novo agendamento", onClick: () => onOpen("") }}
+        action={{
+          label: "Novo agendamento",
+          onClick: () => window.dispatchEvent(new CustomEvent("zf:new-appointment")),
+        }}
       />
     );
   }
