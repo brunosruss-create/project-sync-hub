@@ -105,8 +105,9 @@ export function AppSidebar() {
       {/* Nav */}
       <nav className="flex-1" style={{ padding: "8px" }}>
         <ul className="flex flex-col" style={{ gap: 2 }}>
-          {items.map((item, i) => {
-            const active = i === 0 && path.startsWith("/dashboard");
+          {items.map((item) => {
+            const active =
+              item.to === "/dashboard" ? path === "/dashboard" : path.startsWith(item.to);
             const Icon = item.icon;
             return (
               <li key={item.label}>
