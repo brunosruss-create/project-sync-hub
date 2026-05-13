@@ -1,53 +1,60 @@
-## Diagnóstico
+## Diagnóstico (causa raiz encontrada nos logs)
 
-**Logs do worker confirmam que o webhook está chegando e respondendo 200:**
-- `19:37:44` `messages.upsert` → 200
-- `19:37:01` `connection.update` → 200
-- Vários `messages.upsert` históricos também → 200
+Os logs do worker mostram **exatamente** o problema:
 
-Ou seja, a Evolution **está enviando** para `https://github-vercel-bridge.lovable.app/api/public/evolution/...` e nosso handler **está rodando**. O problema não é "a Evolution não manda" e nem CSS.
-
-**As duas hipóteses reais:**
-
-1. **O `INSERT` em `contacts` está falhando silenciosamente.**
-   No handler `src/routes/api/public/evolution.$instanceId.ts`, o bloco `messages.upsert` faz `await supabaseAdmin.from("contacts").insert({...})` **sem checar `error`**. Se uma coluna não existir, ou se houver constraint, o insert falha mas o request volta 200 e nada aparece nos logs. Hoje só logamos erro genérico no `catch` externo, então um erro do Supabase fica engolido.
-
-2. **Realtime não foi ligado nas tabelas.** Mesmo que o INSERT funcione, sem `ALTER PUBLICATION supabase_realtime ADD TABLE public.contacts` o front nunca recebe push e fica preso no estado "Nenhuma conversa ainda" até dar refresh. Como você falou "mensagem não chega", precisamos confirmar se nem com refresh aparece.
-
-**O Kanban "sumiu":** isso é comportamento atual do código, não bug de CSS. Em `src/routes/_authenticated.inbox.tsx` linha ~370, quando `contacts.length === 0` mostramos o `EmptyState` ocupando o espaço todo, no lugar das 4 colunas (Aguardando / Em andamento / Agendado / Urgente). Antes (com `MOCK_CONTACTS`) sempre tinha card de teste, então as colunas ficavam visíveis.
-
-## Correções (cirúrgicas)
-
-### A. Logar erros do webhook para enxergar o problema real
-Em `src/routes/api/public/evolution.$instanceId.ts`, no bloco `messages.upsert`:
-- Capturar `{ error }` no `select` do contato existente, no `insert` do novo contato, no `update` do existente, e no `insert` em `messages`.
-- `console.error("[evolution upsert]", { step, error: error.message })` quando houver erro.
-- Não muda o status code (continua 200 pra Evolution não reentregar).
-
-Resultado: na próxima mensagem de teste, os logs vão mostrar exatamente em qual passo o INSERT está falhando (coluna inexistente, RLS no admin, FK, etc).
-
-### B. Restaurar as colunas do Kanban quando vazio
-Em `src/routes/_authenticated.inbox.tsx`:
-- Quando `contacts.length === 0` **e** WhatsApp está `connected` **e** sem erro, em vez de renderizar o `EmptyState` ocupando tudo, renderizar o **DndContext com as 4 colunas vazias** (cada uma já tem o placeholder "Solte um card aqui") e mostrar uma faixa fina no topo das colunas: "Aguardando primeira mensagem dos clientes…"
-- Mantém a tela "WhatsApp não conectado" como está.
-
-Não mexer em `kanban-column.tsx`, `contact-card.tsx`, `conversation-panel.tsx`, nem no CSS.
-
-### C. Verificação da publication Realtime
-Pedir confirmação se a SQL abaixo já foi rodada no SQL Editor do Supabase (passo da rodada anterior):
-```sql
-ALTER TABLE public.contacts REPLICA IDENTITY FULL;
-ALTER TABLE public.messages REPLICA IDENTITY FULL;
-ALTER PUBLICATION supabase_realtime ADD TABLE public.contacts;
-ALTER PUBLICATION supabase_realtime ADD TABLE public.messages;
 ```
-Se não foi, o front não recebe push em tempo real (mas dar F5 ainda mostraria contatos se o INSERT estivesse ok — daí a importância do passo A).
+[evolution upsert] select contact: column contacts.owner_user_id does not exist
+[evolution upsert] insert contact: Could not find the 'owner_user_id' column
+                   of 'contacts' in the schema cache (PGRST204)
+```
 
-## Como vamos validar
-1. Após (A) + (B): publicar, abrir Inbox → deve ver as 4 colunas vazias com a faixa de aviso.
-2. Mandar mensagem de teste pro `5511914825892`.
-3. Olhar logs do worker:
-   - Se aparecer `[evolution upsert]` com erro → corrigimos a coluna/constraint que está faltando.
-   - Se NÃO aparecer erro mas o front continuar vazio → é Realtime + RLS de SELECT (passo C). Aí resolvemos com a SQL e/ou ajuste de RLS.
+Ou seja: o webhook **está chegando** (POST 200, log `[evolution] messages.upsert` registrado), mas a inserção em `contacts`/`messages` falha porque a coluna `owner_user_id` **não existe no Supabase**.
 
-Não regredimos nada do fluxo de QR, conexão da instância, ou webhook que já está em produção.
+A migration `supabase/migrations/20260513133500_whatsapp_owner_rls.sql` (que adiciona `owner_user_id` em `contacts` e `messages` + RLS por dono) está no repositório, mas **nunca foi aplicada** no banco. Por isso nada aparece na Inbox e o Kanban fica vazio — não é CSS, não é Realtime, é schema.
+
+> Obs.: você está certo, o projeto usa **Supabase direto** (não Lovable Cloud). Nada do plano abaixo mexe em Cloud — é só rodar SQL no SQL Editor do Supabase do projeto e nenhum código de QR/conexão é tocado.
+
+## Plano de correção
+
+### 1. Aplicar a migration de `owner_user_id` no Supabase (SQL Editor)
+Rodar **exatamente** o conteúdo de `supabase/migrations/20260513133500_whatsapp_owner_rls.sql`. Ele já é idempotente (`add column if not exists`, `drop policy if exists`, `create policy ...`). Cria:
+- `contacts.owner_user_id uuid → auth.users(id)`
+- `messages.owner_user_id uuid → auth.users(id)`
+- `whatsapp_instances.webhook_url text`
+- índices por `owner_user_id`
+- RLS: cada usuário só vê/edita seus próprios `contacts` e `messages`
+
+### 2. Forçar reload do schema do PostgREST
+Logo após a migration, no SQL Editor:
+```sql
+notify pgrst, 'reload schema';
+```
+Sem isto o erro `PGRST204` (schema cache) continua mesmo após criar a coluna.
+
+### 3. Backfill (opcional, recomendado)
+Se já existem `contacts`/`messages` antigos sem dono, prendê-los ao dono da instância para não “sumirem” depois do RLS:
+```sql
+update public.contacts c set owner_user_id = wi.owner_user_id
+  from public.whatsapp_instances wi
+ where c.owner_user_id is null and wi.owner_user_id is not null;
+update public.messages m set owner_user_id = c.owner_user_id
+  from public.contacts c
+ where m.contact_id = c.id and m.owner_user_id is null;
+```
+
+### 4. Validação
+1. Mandar mensagem de teste do celular para `5511914825892`.
+2. Conferir logs do worker — devem aparecer **só** `[evolution] messages.upsert` + POST 200, **sem** `[evolution upsert] ... error`.
+3. Abrir `/inbox` — o contato deve cair na coluna **Aguardando** (Realtime já está ativo).
+4. Se ainda não aparecer no front (mas o insert agora der OK), aí sim olhamos Realtime/RLS de SELECT — mas a previsão é que resolva no passo 1+2.
+
+### O que **não** muda
+- Fluxo de QR Code, `connect`, `fetchInstances`, `evolution.functions.ts`.
+- Webhook handler (`evolution.$instanceId.ts`) — os logs já provaram que ele funciona.
+- UI da Inbox / Kanban (já restauramos as 4 colunas vazias).
+- Nenhuma dependência de Lovable Cloud.
+
+### Detalhes técnicos
+- O webhook usa `supabaseAdmin` (service role) que **bypassa RLS**, então o insert depende **só** da coluna existir. Por isso a migration sozinha já destrava o webhook.
+- O front (`/inbox`) usa o cliente autenticado, então o `select` depende do RLS criado pela mesma migration — daí ela resolver os dois lados de uma vez.
+- A migration é idempotente: pode rodar de novo sem quebrar nada já existente.
