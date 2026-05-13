@@ -129,6 +129,46 @@ export function ContactCard({ contact, onClick, isOverlay, isSelected }: Props) 
         </div>
       )}
 
+      {/* Ícone ⋮ — aparece no hover */}
+      {!isOverlay && (
+        <button
+          type="button"
+          aria-label="Opções do contato"
+          onPointerDown={(e) => e.stopPropagation()}
+          onMouseDown={(e) => e.stopPropagation()}
+          onClick={(e) => {
+            e.stopPropagation();
+            const r = (e.currentTarget as HTMLElement).getBoundingClientRect();
+            const detail: CardMenuRequestDetail = {
+              contact,
+              anchor: { top: r.bottom + 4, left: r.left - 180 + r.width },
+            };
+            window.dispatchEvent(new CustomEvent("zf:card-menu", { detail }));
+          }}
+          className="zf-card-more"
+          style={{
+            position: "absolute",
+            top: showBadge ? 16 : -4,
+            right: -4,
+            width: 22,
+            height: 22,
+            display: "inline-flex",
+            alignItems: "center",
+            justifyContent: "center",
+            background: "var(--bg-surface)",
+            border: "1px solid var(--border)",
+            borderRadius: 6,
+            color: "var(--text-muted)",
+            opacity: 0,
+            transition: "opacity 100ms",
+            cursor: "pointer",
+            zIndex: 2,
+          }}
+        >
+          <MoreVertical size={14} />
+        </button>
+      )}
+
       {/* Linha 1: avatar + nome */}
       <div className="flex items-center" style={{ gap: 8 }}>
         <ContactAvatar name={contact.name} avatarUrl={contact.avatar} size={32} />
