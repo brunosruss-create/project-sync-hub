@@ -136,11 +136,11 @@ function WhatsAppPage() {
             <button
               style={buttonSecondary}
               className="flex items-center gap-2"
-              disabled={connect.isPending}
-              onClick={() => connect.mutate()}
+              disabled={connect.isPending || refreshQr.isPending}
+              onClick={() => (status === "pending" ? refreshQr.mutate() : connect.mutate())}
             >
-              {connect.isPending ? <Loader2 size={14} className="animate-spin" /> : <RefreshCw size={14} />}
-              {status === "connected" ? "Reconectar" : "Conectar"}
+              {connect.isPending || refreshQr.isPending ? <Loader2 size={14} className="animate-spin" /> : <RefreshCw size={14} />}
+              {status === "pending" ? "Gerar novo QR" : status === "connected" ? "Reconectar" : "Conectar"}
             </button>
           </div>
         </div>
@@ -167,7 +167,9 @@ function WhatsAppPage() {
                 WhatsApp → Configurações → Aparelhos conectados → Conectar aparelho
               </p>
               <p style={{ fontSize: 11, color: "var(--text-muted)", marginTop: 8 }}>
-                Esse QR expira em ~60s. Se não funcionar, clique em <b>Reconectar</b>.
+                {secondsLeft !== null && secondsLeft > 0
+                  ? `Esse QR expira em ${secondsLeft}s e será renovado automaticamente.`
+                  : "Renovando QR Code…"}
               </p>
             </div>
           </div>
