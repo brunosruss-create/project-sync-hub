@@ -66,10 +66,26 @@ function InboxPage() {
     };
   }, [user?.id]);
 
-  // Carrega contatos reais do Supabase; não mascara erro com mock.
+  // Carrega contatos reais do Supabase + realtime + refetch on focus.
   React.useEffect(() => {
+    if (!user?.id) return;
     let cancelled = false;
-    (async () => {
+
+    const mapRow = (r: any): Contact => ({
+      id: r.id,
+      name: r.name,
+      phone: r.phone,
+      avatar: r.avatar_url,
+      lastMessage: r.last_message ?? "",
+      lastMessageAt: r.last_message_at ? new Date(r.last_message_at) : new Date(),
+      assignedAgent: r.assigned_agent_id ?? null,
+      tags: Array.isArray(r.tags) ? r.tags : [],
+      isUnread: !!r.is_unread,
+      priority: r.priority === "urgent" ? "urgent" : "normal",
+      kanban_column: (r.kanban_column ?? "waiting") as KanbanColumnId,
+    });
+
+    const load = async () => {
       const { data, error } = await supabase
         .from("contacts")
         .select(
@@ -85,31 +101,60 @@ function InboxPage() {
         return;
       }
       setLoadError(null);
-      if (!data || data.length === 0) {
-        setContacts([]);
-        setIsLoadingContacts(false);
-        return;
-      }
-      const mapped: Contact[] = data.map((r: any) => ({
-        id: r.id,
-        name: r.name,
-        phone: r.phone,
-        avatar: r.avatar_url,
-        lastMessage: r.last_message ?? "",
-        lastMessageAt: r.last_message_at ? new Date(r.last_message_at) : new Date(),
-        assignedAgent: r.assigned_agent_id ?? null,
-        tags: Array.isArray(r.tags) ? r.tags : [],
-        isUnread: !!r.is_unread,
-        priority: r.priority === "urgent" ? "urgent" : "normal",
-        kanban_column: (r.kanban_column ?? "waiting") as KanbanColumnId,
-      }));
-      setContacts(mapped);
+      setContacts((data ?? []).map(mapRow));
       setIsLoadingContacts(false);
-    })();
+    };
+
+    void load();
+
+    // Realtime: novas mensagens chegando via webhook atualizam o inbox sem refresh
+    const channel = supabase
+      .channel(`inbox-contacts-${user.id}`)
+      .on(
+        "postgres_changes",
+        { event: "INSERT", schema: "public", table: "contacts", filter: `owner_user_id=eq.${user.id}` },
+        (payload) => {
+          const row = mapRow(payload.new as any);
+          setContacts((prev) =>
+            prev.some((c) => c.id === row.id)
+              ? prev
+              : [row, ...prev].sort(
+                  (a, b) => b.lastMessageAt.getTime() - a.lastMessageAt.getTime(),
+                ),
+          );
+        },
+      )
+      .on(
+        "postgres_changes",
+        { event: "UPDATE", schema: "public", table: "contacts", filter: `owner_user_id=eq.${user.id}` },
+        (payload) => {
+          const row = mapRow(payload.new as any);
+          setContacts((prev) => {
+            const exists = prev.some((c) => c.id === row.id);
+            const next = exists ? prev.map((c) => (c.id === row.id ? row : c)) : [row, ...prev];
+            return next.sort((a, b) => b.lastMessageAt.getTime() - a.lastMessageAt.getTime());
+          });
+        },
+      )
+      .on(
+        "postgres_changes",
+        { event: "INSERT", schema: "public", table: "messages", filter: `owner_user_id=eq.${user.id}` },
+        () => {
+          // Fallback: garante consistência mesmo se o UPDATE em contacts vier sem RLS visível
+          void load();
+        },
+      )
+      .subscribe();
+
+    const onFocus = () => void load();
+    window.addEventListener("focus", onFocus);
+
     return () => {
       cancelled = true;
+      window.removeEventListener("focus", onFocus);
+      void supabase.removeChannel(channel);
     };
-  }, []);
+  }, [user?.id]);
 
   // Listener para Cmd+K → "Novo contato" + tecla "N"
   React.useEffect(() => {
