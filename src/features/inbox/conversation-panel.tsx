@@ -244,12 +244,7 @@ export function ConversationPanel({
     }
   };
 
-  const onKeyDown = (e: React.KeyboardEvent<HTMLTextAreaElement>) => {
-    if (e.key === "Enter" && !e.shiftKey) {
-      e.preventDefault();
-      send();
-    }
-  };
+
 
   const menuAction = (label: string) => {
     setMenuOpen(false);
