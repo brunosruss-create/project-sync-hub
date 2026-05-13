@@ -41,6 +41,8 @@ function InboxPage() {
   const [query, setQuery] = React.useState("");
   const [openContact, setOpenContact] = React.useState<Contact | null>(null);
   const [whatsappStatus, setWhatsappStatus] = React.useState<"connected" | "disconnected" | "loading">("loading");
+  const [newContactOpen, setNewContactOpen] = React.useState(false);
+  const [highlightId, setHighlightId] = React.useState<string | null>(null);
 
   const sensors = useSensors(
     useSensor(PointerSensor, { activationConstraint: { distance: 4 } }),
