@@ -1,43 +1,45 @@
-## Diagnóstico
+## Objetivo
 
-O problema não parece estar no componente visual do QR Code. O fluxo chega a chamar a Evolution API, mas os logs do backend mostram repetidamente:
+Descobrir, com 100% de certeza, por que a Inbox mostra "não é possível conectar". As variáveis `EVOLUTION_API_URL` e `EVOLUTION_API_KEY` já existem nos secrets do Lovable — então o erro está no **valor** delas ou na **disponibilidade** do Railway. Vamos provar qual é.
 
-```text
-[evolution] createInstance: Forbidden
-```
+## O que vou fazer
 
-Isso indica que a Evolution está recusando a criação/configuração da instância antes de devolver um QR válido. Pela documentação da Evolution API, `Forbidden` em `/instance/create` normalmente significa que a chave global enviada no header `apikey` não bate com `AUTHENTICATION_API_KEY` configurada no Railway, ou que a Evolution não está aceitando essa chave como global.
+### 1. Criar rota pública de diagnóstico
+Arquivo novo: `src/routes/api/public/evo-diag.ts`
 
-Também vi um segundo problema no código: quando `/instance/create` retorna `Forbidden`, o código atual apenas registra um warning e continua tentando `/instance/connect`. Isso pode produzir uma experiência enganosa: aparece toast “Escaneie o QR Code”, mas a tela volta para “Desconectado” ou não recebe QR.
+A rota faz, no servidor (onde os secrets existem):
+- Lê `EVOLUTION_API_URL` e `EVOLUTION_API_KEY` do `process.env`
+- Mostra: tamanho da key (sem expor o valor), URL final, se tem `https://`, se tem barra no fim
+- Faz `GET {URL}/instance/fetchInstances` com header `apikey: {KEY}`
+- Retorna JSON com: `status`, `latency_ms`, `body_preview` (primeiros 300 chars), `error` se der timeout
 
-## Plano de correção
+Sem expor a key. Apenas leitura. Nada destrutivo.
 
-1. Corrigir o tratamento de erro em `configureEvolutionInstance`
-   - Se `/instance/create` falhar com `Forbidden`, `Unauthorized`, `Missing global api key` ou erro de autenticação, interromper o fluxo imediatamente.
-   - Mostrar uma mensagem clara ao usuário: a chave `EVOLUTION_API_KEY` no Lovable precisa ser exatamente a mesma de `AUTHENTICATION_API_KEY` no Railway.
-   - Só ignorar erro de create quando for realmente “instância já existe”.
+### 2. Você abre a URL
+`https://github-vercel-bridge.lovable.app/api/public/evo-diag`
 
-2. Tornar o fluxo de QR mais resiliente
-   - Antes de criar de novo, consultar/fazer connect da instância existente quando possível.
-   - Se a instância estiver em estado inconsistente, deletar/recriar apenas quando a API permitir.
-   - Não marcar sucesso nem salvar status `pending` sem QR válido.
+### 3. Interpretar o resultado
 
-3. Melhorar logs seguros para diagnóstico
-   - Registrar status HTTP e mensagem resumida da Evolution sem expor API keys.
-   - Logar qual endpoint falhou (`create`, `connect`, `setWebhook`) para separar erro de credencial de erro de QR.
+| Resposta | Significado | Fix |
+|---|---|---|
+| `status: 200` + lista de instâncias | Evolution OK — o bug está em outro lugar (RLS, webhook, instanceName) | Investigo o fluxo da Inbox |
+| `status: 401/403` | Key errada (não bate com `AUTHENTICATION_API_KEY` do Railway) | Atualizar `EVOLUTION_API_KEY` no secret |
+| `status: 404` | URL aponta pra path errado | Conferir base URL do Railway |
+| `error: ENOTFOUND` ou DNS fail | Domínio do Railway mudou ou está fora | Atualizar `EVOLUTION_API_URL` |
+| `error: timeout` ou `502/503` | Container do Railway parado/dormindo | Subir no Railway |
+| `error: "não configurado"` | Secret vazio | Repreencher o secret |
 
-4. Melhorar feedback na tela de WhatsApp
-   - Quando o backend retornar erro de credencial/configuração, exibir essa causa no toast em vez de uma mensagem genérica.
-   - Evitar o estado “Escaneie o QR Code” quando nenhum QR foi realmente salvo.
+### 4. Aplicar o fix correspondente
+Depende do resultado. Se for valor de secret, abro o formulário pra você atualizar.
 
-5. Validação após implementar
-   - Conferir logs do backend após clicar em conectar.
-   - O resultado esperado é: ou aparece o QR Code, ou aparece erro explícito de credencial/configuração da Evolution.
+### 5. Remover a rota de diagnóstico
+Após resolver, deleto `src/routes/api/public/evo-diag.ts` pra não deixar endpoint público desnecessário.
 
-## Ação externa necessária
+## Por que rota pública
 
-Mesmo com a correção no app, se o log continuar `Forbidden`, será necessário atualizar o secret `EVOLUTION_API_KEY` no Lovable para o mesmo valor de `AUTHENTICATION_API_KEY` no Railway e garantir que `EVOLUTION_API_URL` aponte para:
+Server functions normais (`createServerFn`) exigem auth e cookie de sessão, o que dificulta testar do lado de fora. `/api/public/*` não exige auth no Lovable e basta abrir no navegador. A rota é **read-only** e **não vaza a key** (só mostra comprimento e prefixo da URL).
 
-```text
-https://aware-love-production.up.railway.app
-```
+## Riscos
+
+- Nenhum. Não escreve em banco, não muda config, não expõe secrets.
+- Rota fica ativa até a remoção (passo 5) — em produção por alguns minutos só.
