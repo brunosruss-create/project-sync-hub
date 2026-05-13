@@ -3,7 +3,7 @@ import { getRequestHost } from "@tanstack/react-start/server";
 import { z } from "zod";
 import { requireSupabaseAuth } from "@/integrations/supabase/auth-middleware";
 import { supabaseAdmin } from "@/integrations/supabase/client.server";
-import { evo, instanceNameForOwner } from "@/lib/evolution.server";
+import { evo, extractQRCode, instanceNameForOwner, normalizeQRCodeImage } from "@/lib/evolution.server";
 
 const WEBHOOK_EVENTS = ["MESSAGES_UPSERT", "CONNECTION_UPDATE", "QRCODE_UPDATED"];
 
@@ -100,9 +100,13 @@ export const connectInstance = createServerFn({ method: "POST" })
     let qr: string | null = null;
     try {
       const r: any = await evo.connect(name);
-      qr = r?.base64 ?? r?.qrcode?.base64 ?? r?.qrcode ?? null;
+      qr = await normalizeQRCodeImage(extractQRCode(r));
     } catch (e: any) {
       throw new Error(`Falha ao conectar: ${e?.message ?? e}`);
+    }
+
+    if (!qr) {
+      throw new Error("A Evolution API não retornou um QR Code. Clique em Reconectar para tentar novamente.");
     }
 
     const { data: updated } = await supabaseAdmin
