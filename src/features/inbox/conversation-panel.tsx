@@ -10,16 +10,23 @@ import {
   UserPlus,
   AlertOctagon,
   Tag,
-  CalendarClock,
   Ban,
   ExternalLink,
   Check,
   Plus,
+  CalendarPlus,
 } from "lucide-react";
 import { type ContactCard as Contact, formatRelative, initials } from "./data";
 import { supabase } from "@/integrations/supabase/client";
 import { useAuth } from "@/hooks/use-auth";
 import { toast } from "sonner";
+import { ScheduleModal } from "./schedule-modal";
+import {
+  SEED_SERVICES,
+  formatCurrencyBRL,
+  formatDuration,
+  type Service,
+} from "@/features/services/data";
 
 type Tab = "conversation" | "contact" | "services" | "history";
 
