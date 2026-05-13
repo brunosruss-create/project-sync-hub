@@ -21,6 +21,7 @@ import {
 import { KanbanColumn } from "@/features/inbox/kanban-column";
 import { ContactCard } from "@/features/inbox/contact-card";
 import { ConversationPanel } from "@/features/inbox/conversation-panel";
+import { NewContactModal } from "@/features/inbox/new-contact-modal";
 import { supabase } from "@/integrations/supabase/client";
 import { useAuth } from "@/hooks/use-auth";
 
@@ -40,6 +41,8 @@ function InboxPage() {
   const [query, setQuery] = React.useState("");
   const [openContact, setOpenContact] = React.useState<Contact | null>(null);
   const [whatsappStatus, setWhatsappStatus] = React.useState<"connected" | "disconnected" | "loading">("loading");
+  const [newContactOpen, setNewContactOpen] = React.useState(false);
+  const [highlightId, setHighlightId] = React.useState<string | null>(null);
 
   const sensors = useSensors(
     useSensor(PointerSensor, { activationConstraint: { distance: 4 } }),
@@ -158,7 +161,7 @@ function InboxPage() {
 
   // Listener para Cmd+K → "Novo contato" + tecla "N"
   React.useEffect(() => {
-    const onNew = () => notify.info("Em breve: criar contato manualmente.");
+    const onNew = () => setNewContactOpen(true);
     window.addEventListener("zf:new-contact", onNew);
     const onKey = (e: KeyboardEvent) => {
       if (e.key.toLowerCase() !== "n" || e.metaKey || e.ctrlKey || e.altKey) return;
@@ -336,7 +339,7 @@ function InboxPage() {
 
           <button
             type="button"
-            onClick={() => notify.info("Em breve: criar contato manualmente.")}
+            onClick={() => setNewContactOpen(true)}
             className="btn-primary"
           >
             <Plus size={14} />
@@ -414,6 +417,31 @@ function InboxPage() {
           setContacts((prev) => prev.map((c) => (c.id === id ? { ...c, ...patch } : c)))
         }
       />
+
+      <NewContactModal
+        open={newContactOpen}
+        onClose={() => setNewContactOpen(false)}
+        onCreated={(contact, opts) => {
+          setContacts((prev) => {
+            if (prev.some((c) => c.id === contact.id)) {
+              return prev.map((c) => (c.id === contact.id ? { ...c, ...contact } : c));
+            }
+            return [contact, ...prev];
+          });
+          if (!opts.openExisting) {
+            setHighlightId(contact.id);
+            window.setTimeout(() => setHighlightId((cur) => (cur === contact.id ? null : cur)), 2200);
+          }
+          setOpenContact(contact);
+        }}
+      />
+
+      {highlightId && (
+        <style>{`
+          @keyframes zfPulseRing { 0%,100% { box-shadow: 0 0 0 0 var(--brand-400, #25C880); } 50% { box-shadow: 0 0 0 4px color-mix(in oklab, var(--brand-400, #25C880) 35%, transparent); } }
+          [data-contact-id="${highlightId}"] { animation: zfPulseRing 1s ease-in-out 2; border-color: var(--brand-400, #25C880) !important; }
+        `}</style>
+      )}
     </div>
   );
 }

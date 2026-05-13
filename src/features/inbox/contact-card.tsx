@@ -39,6 +39,7 @@ export function ContactCard({ contact, onClick, isOverlay }: Props) {
   return (
     <div
       ref={setNodeRef}
+      data-contact-id={contact.id}
       style={style}
       {...listeners}
       {...attributes}
