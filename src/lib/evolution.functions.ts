@@ -388,6 +388,7 @@ export const sendWhatsAppMessage = createServerFn({ method: "POST" })
       message_type: "text",
       status: "sent",
       sent_by: context.userId,
+      whatsapp_message_id: externalId,
     });
 
     return { ok: true, externalId };
