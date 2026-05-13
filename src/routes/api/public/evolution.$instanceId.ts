@@ -259,7 +259,7 @@ export const Route = createFileRoute("/api/public/evolution/$instanceId")({
                 console.error("[evolution upsert] no contactId after upsert", { phone });
               }
             }
-          } else if (event === "messages.update") {
+          } else if (event === "messages.update" || event === "send.message.update" || event === "messages.set") {
             const updates = Array.isArray(data?.messages)
               ? data.messages
               : Array.isArray(data)
@@ -268,11 +268,21 @@ export const Route = createFileRoute("/api/public/evolution/$instanceId")({
             const RANK: Record<string, number> = { sent: 1, delivered: 2, read: 3 };
             for (const u of updates) {
               if (!u) continue;
-              const externalId: string | null = u?.key?.id ?? u?.keyId ?? u?.id ?? null;
-              const rawStatus = String(u?.status ?? u?.update?.status ?? "").toUpperCase();
+              const externalId: string | null =
+                u?.key?.id ?? u?.keyId ?? u?.messageId ?? u?.id ?? u?.message?.key?.id ?? null;
+              const rawStatusRaw = u?.status ?? u?.update?.status ?? u?.ack ?? u?.message?.status;
+              const rawStatus = String(rawStatusRaw ?? "").toUpperCase();
               let next: "sent" | "delivered" | "read" | null = null;
+              // string statuses (Evolution)
               if (rawStatus === "DELIVERY_ACK" || rawStatus === "DELIVERED" || rawStatus === "SERVER_ACK") next = "delivered";
-              else if (rawStatus === "READ" || rawStatus === "PLAYED") next = "read";
+              else if (rawStatus === "READ" || rawStatus === "READ_RECEIPT" || rawStatus === "PLAYED") next = "read";
+              // numeric Baileys ack: 2=server, 3=delivered, 4=read, 5=played
+              else if (typeof rawStatusRaw === "number") {
+                if (rawStatusRaw >= 4) next = "read";
+                else if (rawStatusRaw === 3) next = "delivered";
+                else if (rawStatusRaw === 2) next = "delivered";
+              }
+              console.log("[evolution messages.update item]", { externalId, rawStatusRaw, rawStatus, next });
               if (!externalId || !next) continue;
 
               const { data: existing } = await supabaseAdmin
