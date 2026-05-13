@@ -19,9 +19,12 @@ import {
   type KanbanColumnId,
 } from "@/features/inbox/data";
 import { KanbanColumn } from "@/features/inbox/kanban-column";
-import { ContactCard } from "@/features/inbox/contact-card";
+import { ContactCard, type CardMenuRequestDetail } from "@/features/inbox/contact-card";
+import { CardMenu, type CardMenuAction } from "@/features/inbox/card-menu";
 import { ConversationPanel } from "@/features/inbox/conversation-panel";
 import { NewContactModal } from "@/features/inbox/new-contact-modal";
+import { EditContactModal } from "@/features/inbox/edit-contact-modal";
+import { ScheduleModal } from "@/features/inbox/schedule-modal";
 import { supabase } from "@/integrations/supabase/client";
 import { useAuth } from "@/hooks/use-auth";
 
