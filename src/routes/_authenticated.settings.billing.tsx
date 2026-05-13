@@ -61,7 +61,7 @@ const INVOICES = [
 
 function BillingPage() {
   const current: PlanKey = "trial";
-  const trialDaysLeft = 2;
+  const trialDaysLeft: number = 2;
   const usage = {
     contacts: { used: 47, total: 100 },
     messages: { used: 312, total: 1000 },
