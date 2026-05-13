@@ -184,6 +184,8 @@ export function ConversationPanel({
             media_mime: r.media_mime ?? null,
             media_name: r.media_name ?? null,
             whatsapp_message_id: r.whatsapp_message_id ?? null,
+            quoted_preview: r.quoted_preview ?? null,
+            reactions: r.reactions ?? [],
           })),
         );
       }
