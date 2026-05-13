@@ -213,6 +213,32 @@ export function ConversationPanel({
           );
         },
       )
+      .on(
+        "postgres_changes",
+        {
+          event: "UPDATE",
+          schema: "public",
+          table: "messages",
+          filter: `contact_id=eq.${contact.id}`,
+        },
+        (payload: any) => {
+          const r = payload.new;
+          setMessages((prev) =>
+            prev.map((m) =>
+              m.id === r.id
+                ? {
+                    ...m,
+                    status: r.status ?? m.status,
+                    content: r.content ?? m.content,
+                    media_url: r.media_url ?? m.media_url,
+                    media_mime: r.media_mime ?? m.media_mime,
+                    media_name: r.media_name ?? m.media_name,
+                  }
+                : m,
+            ),
+          );
+        },
+      )
       .subscribe();
 
     return () => {
