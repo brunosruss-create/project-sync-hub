@@ -29,6 +29,7 @@ import { useServerFn } from "@tanstack/react-start";
 import { sendWhatsAppMessage, refreshContactAvatar, sendWhatsAppMedia, sendWhatsAppAudio, reactToMessage, deleteMessageForEveryone, editMessage } from "@/lib/evolution.functions";
 import { ScheduleModal } from "./schedule-modal";
 import { MessageActions } from "./message-actions";
+import { ForwardModal, type ForwardSource } from "./forward-modal";
 import {
   SEED_SERVICES,
   formatCurrencyBRL,
