@@ -38,9 +38,10 @@ async function call<T = any>(
     data = text;
   }
   if (!res.ok) {
-    const msg =
-      (data && (data.message || data.error || data.response?.message)) ||
-      `Evolution ${res.status}`;
+    const detailedMessage = data?.response?.message ?? data?.message ?? data?.error;
+    const msg = Array.isArray(detailedMessage)
+      ? detailedMessage.join("; ")
+      : detailedMessage || `Evolution ${res.status}`;
     throw new Error(typeof msg === "string" ? msg : JSON.stringify(msg));
   }
   return data as T;
