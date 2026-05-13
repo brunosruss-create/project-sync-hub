@@ -91,12 +91,23 @@ function InboxPage() {
     });
 
     const load = async () => {
-      const { data, error } = await supabase
+      let { data, error } = await supabase
         .from("contacts")
         .select(
           "id,name,phone,avatar_url,kanban_column,assigned_agent_id,tags,priority,is_unread,unread_count,last_direction,last_message,last_message_at",
         )
         .order("last_message_at", { ascending: false, nullsFirst: false });
+      // Fallback se as colunas novas ainda não existirem no banco
+      if (error && /unread_count|last_direction/i.test(error.message)) {
+        const r = await supabase
+          .from("contacts")
+          .select(
+            "id,name,phone,avatar_url,kanban_column,assigned_agent_id,tags,priority,is_unread,last_message,last_message_at",
+          )
+          .order("last_message_at", { ascending: false, nullsFirst: false });
+        data = r.data;
+        error = r.error;
+      }
       if (cancelled) return;
       if (error) {
         console.warn("[inbox] erro ao carregar contatos:", error.message);
