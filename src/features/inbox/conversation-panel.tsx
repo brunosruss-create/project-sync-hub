@@ -486,7 +486,7 @@ export function ConversationPanel({
                 >
                   <div className="flex flex-col" style={{ gap: 8 }}>
                     {messages.map((m) => (
-                      <MessageBubble key={m.id} m={m} />
+                      <MessageBubble key={m.id} m={m} contactName={contact.name} contactAvatar={contact.avatar} />
                     ))}
                   </div>
                 </div>
