@@ -1,10 +1,6 @@
 import * as React from "react";
 import {
   X,
-  Send,
-  Paperclip,
-  Smile,
-  Mic,
   MoreVertical,
   CheckCheck,
   UserPlus,
@@ -16,6 +12,7 @@ import {
   Plus,
   CalendarPlus,
 } from "lucide-react";
+import { Composer } from "./composer";
 import { type ContactCard as Contact, formatRelative, initials } from "./data";
 import { ContactAvatar } from "./contact-avatar";
 import { supabase } from "@/integrations/supabase/client";
