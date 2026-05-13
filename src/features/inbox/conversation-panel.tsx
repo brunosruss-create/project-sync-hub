@@ -54,6 +54,7 @@ interface Message {
   media_url?: string | null;
   media_mime?: string | null;
   media_name?: string | null;
+  whatsapp_message_id?: string | null;
 }
 
 const MAX_CHARS = 4096;
