@@ -1,7 +1,9 @@
 import * as React from "react";
 import { createFileRoute } from "@tanstack/react-router";
+import { useServerFn } from "@tanstack/react-start";
+import { useQuery, useMutation, useQueryClient } from "@tanstack/react-query";
 import { toast } from "sonner";
-import { ExternalLink, RefreshCw } from "lucide-react";
+import { ExternalLink, RefreshCw, Loader2 } from "lucide-react";
 import {
   SettingsLayout,
   FieldGroup,
@@ -10,40 +12,79 @@ import {
   buttonDanger,
   card,
 } from "@/features/settings/settings-layout";
+import {
+  getInstance,
+  connectInstance,
+  refreshInstanceStatus,
+  disconnectInstance,
+} from "@/lib/evolution.functions";
 
 export const Route = createFileRoute("/_authenticated/settings/whatsapp")({
   component: WhatsAppPage,
 });
 
-type Status = "connected" | "disconnected" | "pending";
+type Status = "connected" | "disconnected" | "pending" | "error";
 
 function WhatsAppPage() {
-  const [status, setStatus] = React.useState<Status>("connected");
-  const [multi, setMulti] = React.useState(true);
+  const qc = useQueryClient();
+  const fetchInstance = useServerFn(getInstance);
+  const doConnect = useServerFn(connectInstance);
+  const doRefresh = useServerFn(refreshInstanceStatus);
+  const doDisconnect = useServerFn(disconnectInstance);
+
   const [confirmDc, setConfirmDc] = React.useState(false);
 
+  const { data, isLoading } = useQuery({
+    queryKey: ["whatsapp-instance"],
+    queryFn: () => fetchInstance({ data: undefined as never }),
+    refetchOnWindowFocus: false,
+  });
+
+  const instance = data?.instance ?? null;
+  const status: Status = (instance?.status as Status) ?? "disconnected";
+
+  // Polling enquanto pendente — pega QR / mudança de status
+  React.useEffect(() => {
+    if (status !== "pending") return;
+    const id = setInterval(async () => {
+      try {
+        await doRefresh({ data: undefined as never });
+        qc.invalidateQueries({ queryKey: ["whatsapp-instance"] });
+      } catch {}
+    }, 3000);
+    return () => clearInterval(id);
+  }, [status, doRefresh, qc]);
+
+  const connect = useMutation({
+    mutationFn: () => doConnect({ data: undefined as never }),
+    onSuccess: () => {
+      toast.success("Escaneie o QR Code");
+      qc.invalidateQueries({ queryKey: ["whatsapp-instance"] });
+    },
+    onError: (e: any) => toast.error(e?.message ?? "Falha ao conectar"),
+  });
+
+  const disconnect = useMutation({
+    mutationFn: () => doDisconnect({ data: undefined as never }),
+    onSuccess: () => {
+      toast.success("WhatsApp desconectado");
+      setConfirmDc(false);
+      qc.invalidateQueries({ queryKey: ["whatsapp-instance"] });
+    },
+    onError: (e: any) => toast.error(e?.message ?? "Falha"),
+  });
+
   const meta: Record<Status, { label: string; bg: string; fg: string }> = {
-    connected: {
-      label: "Conectado",
-      bg: "color-mix(in oklab, #10B981 18%, transparent)",
-      fg: "#10B981",
-    },
-    disconnected: {
-      label: "Desconectado",
-      bg: "color-mix(in oklab, #EF4444 18%, transparent)",
-      fg: "#EF4444",
-    },
-    pending: {
-      label: "Aguardando QR",
-      bg: "color-mix(in oklab, #F59E0B 18%, transparent)",
-      fg: "#F59E0B",
-    },
+    connected: { label: "Conectado", bg: "color-mix(in oklab, #10B981 18%, transparent)", fg: "#10B981" },
+    disconnected: { label: "Desconectado", bg: "color-mix(in oklab, #EF4444 18%, transparent)", fg: "#EF4444" },
+    pending: { label: "Aguardando QR", bg: "color-mix(in oklab, #F59E0B 18%, transparent)", fg: "#F59E0B" },
+    error: { label: "Erro", bg: "color-mix(in oklab, #EF4444 18%, transparent)", fg: "#EF4444" },
   };
 
   return (
     <SettingsLayout
       title="WhatsApp"
-      description="Conexão da sua conta WhatsApp ao ZapFlow."
+      description="Conexão da sua conta WhatsApp ao ZapFlow via Evolution API."
     >
       <div style={card}>
         <div className="flex items-center justify-between" style={{ marginBottom: 16 }}>
@@ -60,56 +101,55 @@ function WhatsAppPage() {
             >
               ● {meta[status].label}
             </span>
-            <span style={{ fontSize: 12, color: "var(--text-muted)" }}>
-              Status atualizado agora
-            </span>
+            {instance?.updated_at && (
+              <span style={{ fontSize: 12, color: "var(--text-muted)" }}>
+                Atualizado {new Date(instance.updated_at).toLocaleTimeString("pt-BR")}
+              </span>
+            )}
           </div>
           <div className="flex items-center gap-2">
             <button
               style={buttonSecondary}
               className="flex items-center gap-2"
-              onClick={() => {
-                setStatus("pending");
-                toast("Solicitando novo QR Code…");
-              }}
+              disabled={connect.isPending}
+              onClick={() => connect.mutate()}
             >
-              <RefreshCw size={14} /> Reconectar
+              {connect.isPending ? <Loader2 size={14} className="animate-spin" /> : <RefreshCw size={14} />}
+              {status === "connected" ? "Reconectar" : "Conectar"}
             </button>
           </div>
         </div>
 
-        {status === "pending" ? (
+        {isLoading ? (
+          <div className="flex items-center justify-center" style={{ padding: 32, color: "var(--text-muted)", fontSize: 13 }}>
+            Carregando…
+          </div>
+        ) : status === "pending" && instance?.qr_code ? (
           <div
             className="flex flex-col items-center justify-center"
-            style={{
-              padding: 32,
-              border: "1px dashed var(--border)",
-              borderRadius: 12,
-              gap: 16,
-            }}
+            style={{ padding: 32, border: "1px dashed var(--border)", borderRadius: 12, gap: 16 }}
           >
-            <div
-              style={{
-                width: 220,
-                height: 220,
-                background:
-                  "repeating-conic-gradient(var(--text-primary) 0% 25%, var(--bg-surface) 0% 50%) 50% / 18px 18px",
-                borderRadius: 12,
-                border: "8px solid var(--bg-surface)",
-                boxShadow: "0 0 0 1px var(--border)",
-              }}
+            <img
+              src={instance.qr_code.startsWith("data:") ? instance.qr_code : `data:image/png;base64,${instance.qr_code}`}
+              alt="QR Code WhatsApp"
+              width={240}
+              height={240}
+              style={{ borderRadius: 12, background: "#fff", padding: 8, boxShadow: "0 0 0 1px var(--border)" }}
             />
             <div className="text-center">
-              <p style={{ fontSize: 14, fontWeight: 500 }}>
-                Abra o WhatsApp e escaneie o QR Code
-              </p>
+              <p style={{ fontSize: 14, fontWeight: 500 }}>Abra o WhatsApp e escaneie o QR Code</p>
               <p style={{ fontSize: 12, color: "var(--text-muted)", marginTop: 4 }}>
                 WhatsApp → Configurações → Aparelhos conectados → Conectar aparelho
               </p>
+              <p style={{ fontSize: 11, color: "var(--text-muted)", marginTop: 8 }}>
+                Esse QR expira em ~60s. Se não funcionar, clique em <b>Reconectar</b>.
+              </p>
             </div>
-            <button style={buttonSecondary} onClick={() => setStatus("connected")}>
-              Simular conexão
-            </button>
+          </div>
+        ) : status === "pending" ? (
+          <div className="flex flex-col items-center justify-center" style={{ padding: 32, gap: 12 }}>
+            <Loader2 className="animate-spin" />
+            <p style={{ fontSize: 13, color: "var(--text-muted)" }}>Gerando QR Code…</p>
           </div>
         ) : status === "connected" ? (
           <div
@@ -119,19 +159,27 @@ function WhatsAppPage() {
               gap: 12,
             }}
           >
-            <Info label="Número" value="+55 11 98765-4321" />
-            <Info label="Nome do perfil" value="Meu Negócio" />
-            <Info label="Conectado em" value="12/05/2026 09:42" />
-            <Info label="Versão" value="WA Web 2.3000" />
+            <Info label="Número" value={instance?.phone_number ?? "—"} />
+            <Info label="Nome do perfil" value={instance?.profile_name ?? "—"} />
+            <Info
+              label="Conectado em"
+              value={
+                instance?.last_connected_at
+                  ? new Date(instance.last_connected_at).toLocaleString("pt-BR")
+                  : "—"
+              }
+            />
+            <Info label="Instância" value={instance?.instance_name ?? "—"} />
           </div>
         ) : (
-          <div
-            className="flex flex-col items-center justify-center text-center"
-            style={{ padding: 32, gap: 12 }}
-          >
+          <div className="flex flex-col items-center justify-center text-center" style={{ padding: 32, gap: 12 }}>
             <p style={{ fontSize: 14 }}>Nenhum WhatsApp conectado.</p>
-            <button style={buttonPrimary} onClick={() => setStatus("pending")}>
-              Conectar agora
+            <button
+              style={buttonPrimary}
+              disabled={connect.isPending}
+              onClick={() => connect.mutate()}
+            >
+              {connect.isPending ? "Conectando…" : "Conectar agora"}
             </button>
           </div>
         )}
@@ -146,30 +194,24 @@ function WhatsAppPage() {
       </div>
 
       <div style={{ marginTop: 24 }}>
-        <FieldGroup label="Multi-agente">
+        <FieldGroup label="Integração">
           <div style={card}>
-            <div className="flex items-start justify-between gap-4">
-              <div>
-                <p style={{ fontSize: 14, fontWeight: 500 }}>Atendimento simultâneo</p>
-                <p style={{ fontSize: 12, color: "var(--text-muted)", marginTop: 4 }}>
-                  Quando ativo, vários agentes podem responder conversas distintas no mesmo
-                  número, com transferência fluida entre eles.
-                </p>
-              </div>
-              <Toggle value={multi} onChange={setMulti} />
-            </div>
+            <p style={{ fontSize: 13, color: "var(--text-muted)" }}>
+              Conexão via Evolution API (self-hosted no Railway). Mensagens recebidas
+              caem direto no Inbox; envios feitos pelo Inbox vão pelo seu número conectado.
+            </p>
           </div>
         </FieldGroup>
       </div>
 
       <a
-        href="https://docs.zapflow.app/whatsapp"
+        href="https://doc.evolution-api.com"
         target="_blank"
         rel="noreferrer"
         className="inline-flex items-center gap-2"
         style={{ fontSize: 13, color: "var(--brand-400)", marginTop: 8 }}
       >
-        <ExternalLink size={14} /> Documentação da integração
+        <ExternalLink size={14} /> Documentação Evolution API
       </a>
 
       {confirmDc && (
@@ -209,13 +251,10 @@ function WhatsAppPage() {
               </button>
               <button
                 style={buttonDanger}
-                onClick={() => {
-                  setStatus("disconnected");
-                  setConfirmDc(false);
-                  toast.success("WhatsApp desconectado");
-                }}
+                disabled={disconnect.isPending}
+                onClick={() => disconnect.mutate()}
               >
-                Desconectar
+                {disconnect.isPending ? "Desconectando…" : "Desconectar"}
               </button>
             </div>
           </div>
@@ -227,46 +266,9 @@ function WhatsAppPage() {
 
 function Info({ label, value }: { label: string; value: string }) {
   return (
-    <div
-      style={{
-        padding: 12,
-        borderRadius: 8,
-        background: "var(--bg-overlay)",
-      }}
-    >
+    <div style={{ padding: 12, borderRadius: 8, background: "var(--bg-overlay)" }}>
       <div style={{ fontSize: 11, color: "var(--text-muted)", marginBottom: 4 }}>{label}</div>
       <div style={{ fontSize: 13, fontWeight: 500 }}>{value}</div>
     </div>
-  );
-}
-
-function Toggle({ value, onChange }: { value: boolean; onChange: (v: boolean) => void }) {
-  return (
-    <button
-      onClick={() => onChange(!value)}
-      style={{
-        width: 36,
-        height: 20,
-        borderRadius: 999,
-        border: 0,
-        background: value ? "var(--brand-400)" : "var(--border)",
-        position: "relative",
-        cursor: "pointer",
-        flexShrink: 0,
-      }}
-    >
-      <span
-        style={{
-          position: "absolute",
-          top: 2,
-          left: value ? 18 : 2,
-          width: 16,
-          height: 16,
-          borderRadius: 999,
-          background: "#fff",
-          transition: "left 0.15s",
-        }}
-      />
-    </button>
   );
 }
