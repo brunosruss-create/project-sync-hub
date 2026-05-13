@@ -484,6 +484,8 @@ export function ConversationPanel({
                   taRef={taRef}
                   onSend={send}
                   onClosePanel={onClose}
+                  onSendAttachments={handleSendAttachments}
+                  onSendAudio={handleSendAudio}
                 />
               </>
             ) : (
