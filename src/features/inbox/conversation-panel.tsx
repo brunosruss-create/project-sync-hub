@@ -96,6 +96,8 @@ export function ConversationPanel({
 }) {
   const { user } = useAuth();
   const sendViaEvolution = useServerFn(sendWhatsAppMessage);
+  const sendMediaFn = useServerFn(sendWhatsAppMedia);
+  const sendAudioFn = useServerFn(sendWhatsAppAudio);
   const refreshAvatar = useServerFn(refreshContactAvatar);
   const [tab, setTab] = React.useState<Tab>("conversation");
   const [draft, setDraft] = React.useState("");
