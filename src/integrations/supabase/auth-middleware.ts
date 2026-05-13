@@ -1,12 +1,12 @@
 import { createMiddleware } from "@tanstack/react-start";
 import { getRequestHeader } from "@tanstack/react-start/server";
-import { supabase as browserSupabase } from "@/integrations/supabase/client";
 
 export const requireSupabaseAuth = createMiddleware({ type: "function" })
   .client(async ({ next }) => {
     // attach the current user's bearer token to the server-fn request
     let token: string | null = null;
     try {
+      const { supabase: browserSupabase } = await import("@/integrations/supabase/client");
       const { data } = await browserSupabase.auth.getSession();
       token = data.session?.access_token ?? null;
     } catch {}
