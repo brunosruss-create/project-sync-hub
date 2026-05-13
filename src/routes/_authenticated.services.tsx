@@ -35,6 +35,13 @@ function ServicesPage() {
   const [query, setQuery] = React.useState("");
   const [editing, setEditing] = React.useState<Editing>(null);
 
+  // Cmd+K → "Novo serviço"
+  React.useEffect(() => {
+    const onNew = () => setEditing({ mode: "create" });
+    window.addEventListener("zf:new-service", onNew);
+    return () => window.removeEventListener("zf:new-service", onNew);
+  }, []);
+
   // Try to hydrate from supabase, fallback to seeds.
   React.useEffect(() => {
     let cancelled = false;
