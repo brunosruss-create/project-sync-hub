@@ -7,6 +7,7 @@ import {
   BarChart3,
   Settings,
   ChevronsUpDown,
+  Wrench,
 } from "lucide-react";
 import { useAuth } from "@/hooks/use-auth";
 import { useProfile } from "@/hooks/use-profile";
