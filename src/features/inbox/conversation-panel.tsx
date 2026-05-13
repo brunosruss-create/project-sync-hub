@@ -441,13 +441,27 @@ export function ConversationPanel({
             ) : (
               <div className="flex-1 overflow-y-auto" style={{ padding: 16 }}>
                 {tab === "contact" && <ContactTab contact={contact} />}
-                {tab === "services" && <ServicesTab />}
-                {tab === "history" && <HistoryTab />}
+                {tab === "services" && (
+                  <ServicesTab onSchedule={(ids) => openSchedule(ids)} />
+                )}
+                {tab === "history" && <HistoryTab contactId={contact.id} />}
               </div>
             )}
           </>
         )}
       </aside>
+
+      {contact && (
+        <ScheduleModal
+          contact={contact}
+          open={scheduleOpen}
+          onClose={() => setScheduleOpen(false)}
+          preselectedServiceIds={scheduleSeed}
+          onScheduled={() => {
+            onContactUpdate?.(contact.id, { kanban_column: "scheduled" });
+          }}
+        />
+      )}
     </>
   );
 }
