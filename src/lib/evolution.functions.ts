@@ -392,3 +392,29 @@ export const sendWhatsAppMessage = createServerFn({ method: "POST" })
 
     return { ok: true, externalId };
   });
+
+const refreshAvatarInput = z.object({ contactId: z.string().uuid() });
+
+export const refreshContactAvatar = createServerFn({ method: "POST" })
+  .middleware([requireSupabaseAuth])
+  .inputValidator((d) => refreshAvatarInput.parse(d))
+  .handler(async ({ data, context }) => {
+    const name = instanceNameForOwner(context.userId);
+    const { data: contact } = await supabaseAdmin
+      .from("contacts")
+      .select("id,phone,avatar_url")
+      .eq("id", data.contactId)
+      .eq("owner_user_id", context.userId)
+      .maybeSingle();
+    if (!contact?.phone) return { url: null as string | null, changed: false };
+    const number = String(contact.phone).replace(/\D/g, "");
+    const url = await tryFetchProfilePicture(name, number);
+    if (url && url !== contact.avatar_url) {
+      await supabaseAdmin
+        .from("contacts")
+        .update({ avatar_url: url })
+        .eq("id", contact.id);
+      return { url, changed: true };
+    }
+    return { url: contact.avatar_url ?? null, changed: false };
+  });
