@@ -103,6 +103,11 @@ export const connectInstance = createServerFn({ method: "POST" })
     const row = await getOrCreateRow(context.userId);
     const name = row.instance_name as string;
     const baseUrl = publicBaseUrl();
+    if (!baseUrl) {
+      throw new Error(
+        "URL pública do app não detectada. Defina o secret PUBLIC_APP_URL (ex.: https://github-vercel-bridge.lovable.app) e tente novamente.",
+      );
+    }
     const webhookUrl = `${baseUrl}/api/public/evolution/${row.id}`;
 
     let qr = await configureEvolutionInstance(name, webhookUrl, row.webhook_secret as string);
