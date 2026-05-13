@@ -3,7 +3,7 @@ import { getRequestHost } from "@tanstack/react-start/server";
 import { z } from "zod";
 import { requireSupabaseAuth } from "@/integrations/supabase/auth-middleware";
 import { supabaseAdmin } from "@/integrations/supabase/client.server";
-import { evo, instanceNameForOwner } from "@/lib/evolution.server";
+import { evo, extractQRCode, instanceNameForOwner, normalizeQRCodeImage } from "@/lib/evolution.server";
 
 const WEBHOOK_EVENTS = ["MESSAGES_UPSERT", "CONNECTION_UPDATE", "QRCODE_UPDATED"];
 
@@ -37,6 +37,42 @@ async function getOrCreateRow(userId: string) {
   return data;
 }
 
+async function configureEvolutionInstance(name: string, webhookUrl: string, webhookSecret: string) {
+  try {
+    await evo.createInstance({
+      instanceName: name,
+      integration: "WHATSAPP-BAILEYS",
+      qrcode: true,
+      webhook: {
+        url: webhookUrl,
+        headers: { "x-webhook-secret": webhookSecret },
+        events: WEBHOOK_EVENTS,
+        webhookByEvents: false,
+        webhookBase64: false,
+      },
+    });
+  } catch (e: any) {
+    const msg = String(e?.message ?? "");
+    const exists = /exist|already/i.test(msg);
+    if (!exists) console.warn("[evolution] createInstance:", msg);
+  }
+
+  try {
+    await evo.setWebhook(name, {
+      webhook: {
+        enabled: true,
+        url: webhookUrl,
+        headers: { "x-webhook-secret": webhookSecret },
+        byEvents: false,
+        base64: false,
+        events: WEBHOOK_EVENTS,
+      },
+    });
+  } catch (e: any) {
+    console.warn("[evolution] setWebhook:", e?.message);
+  }
+}
+
 export const getInstance = createServerFn({ method: "GET" })
   .middleware([requireSupabaseAuth])
   .handler(async ({ context }) => {
@@ -57,52 +93,29 @@ export const connectInstance = createServerFn({ method: "POST" })
     const baseUrl = publicBaseUrl();
     const webhookUrl = `${baseUrl}/api/public/evolution/${row.id}`;
 
-    // 1) tenta criar instância (idempotente: se existir, ignora)
-    try {
-      await evo.createInstance({
-        instanceName: name,
-        integration: "WHATSAPP-BAILEYS",
-        qrcode: true,
-        webhook: {
-          url: webhookUrl,
-          headers: { "x-webhook-secret": row.webhook_secret as string },
-          events: WEBHOOK_EVENTS,
-          webhookByEvents: false,
-          webhookBase64: false,
-        },
-      });
-    } catch (e: any) {
-      const msg = String(e?.message ?? "");
-      const exists = /exist|already/i.test(msg);
-      if (!exists) {
-        // se erro real, registra e segue tentando o connect
-        console.warn("[evolution] createInstance:", msg);
-      }
-    }
-
-    // 2) garante webhook atualizado (caso instância já existisse)
-    try {
-      await evo.setWebhook(name, {
-        webhook: {
-          enabled: true,
-          url: webhookUrl,
-          headers: { "x-webhook-secret": row.webhook_secret as string },
-          byEvents: false,
-          base64: false,
-          events: WEBHOOK_EVENTS,
-        },
-      });
-    } catch (e: any) {
-      console.warn("[evolution] setWebhook:", e?.message);
-    }
+    await configureEvolutionInstance(name, webhookUrl, row.webhook_secret as string);
 
     // 3) conecta — retorna { base64, code, ... }
     let qr: string | null = null;
     try {
       const r: any = await evo.connect(name);
-      qr = r?.base64 ?? r?.qrcode?.base64 ?? r?.qrcode ?? null;
+      qr = await normalizeQRCodeImage(extractQRCode(r));
+      if (!qr) {
+        await evo.deleteInstance(name).catch((e: any) => console.warn("[evolution] delete stale instance:", e?.message));
+        await configureEvolutionInstance(name, webhookUrl, row.webhook_secret as string);
+        const retry: any = await evo.connect(name);
+        qr = await normalizeQRCodeImage(extractQRCode(retry));
+      }
     } catch (e: any) {
       throw new Error(`Falha ao conectar: ${e?.message ?? e}`);
+    }
+
+    if (!qr) {
+      await supabaseAdmin
+        .from("whatsapp_instances")
+        .update({ status: "error", qr_code: null })
+        .eq("id", row.id);
+      throw new Error("A Evolution API não retornou um QR Code. Clique em Reconectar para tentar novamente.");
     }
 
     const { data: updated } = await supabaseAdmin
@@ -162,6 +175,22 @@ export const refreshInstanceStatus = createServerFn({ method: "POST" })
       update.qr_code = null;
       if (phone) update.phone_number = phone;
       if (profile) update.profile_name = profile;
+    } else if (status === "pending" && !row.qr_code) {
+      try {
+        const r: any = await evo.connect(name);
+        const qr = await normalizeQRCodeImage(extractQRCode(r));
+        if (qr) {
+          update.qr_code = qr;
+          update.qr_expires_at = new Date(Date.now() + 60_000).toISOString();
+        } else {
+          update.status = "error";
+          update.qr_code = null;
+        }
+      } catch (e: any) {
+        console.warn("[evolution] refresh qrcode:", e?.message);
+        update.status = "error";
+        update.qr_code = null;
+      }
     }
 
     const { data: updated } = await supabaseAdmin

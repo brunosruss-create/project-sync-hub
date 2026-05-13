@@ -1,5 +1,6 @@
 import { createFileRoute } from "@tanstack/react-router";
 import { supabaseAdmin } from "@/integrations/supabase/client.server";
+import { extractQRCode, normalizeQRCodeImage } from "@/lib/evolution.server";
 
 export const Route = createFileRoute("/api/public/evolution/$instanceId")({
   server: {
@@ -30,8 +31,7 @@ export const Route = createFileRoute("/api/public/evolution/$instanceId")({
 
         try {
           if (event === "qrcode.updated") {
-            const qr =
-              data?.qrcode?.base64 ?? data?.base64 ?? data?.qrcode ?? null;
+            const qr = await normalizeQRCodeImage(extractQRCode(payload));
             await supabaseAdmin
               .from("whatsapp_instances")
               .update({

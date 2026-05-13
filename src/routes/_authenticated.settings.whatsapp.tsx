@@ -130,7 +130,7 @@ function WhatsAppPage() {
             style={{ padding: 32, border: "1px dashed var(--border)", borderRadius: 12, gap: 16 }}
           >
             <img
-              src={instance.qr_code.startsWith("data:") ? instance.qr_code : `data:image/png;base64,${instance.qr_code}`}
+              src={instance.qr_code}
               alt="QR Code WhatsApp"
               width={240}
               height={240}
