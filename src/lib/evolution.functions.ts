@@ -115,7 +115,9 @@ export const connectInstance = createServerFn({ method: "POST" })
         .from("whatsapp_instances")
         .update({ status: "error", qr_code: null })
         .eq("id", row.id);
-      throw new Error("A Evolution API não retornou um QR Code. Clique em Reconectar para tentar novamente.");
+      throw new Error(
+        "A Evolution API respondeu sem QR Code (count:0). No Railway da Evolution, confira SERVER_URL, QRCODE_LIMIT e CONFIG_SESSION_PHONE_VERSION; depois redeploy e clique em Reconectar.",
+      );
     }
 
     const { data: updated } = await supabaseAdmin
