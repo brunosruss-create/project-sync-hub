@@ -3,7 +3,7 @@ import {
   Edit3, Tag, UserPlus, AlertOctagon, Move, CalendarPlus,
   MessageSquare, Archive, ShieldOff, ChevronRight,
 } from "lucide-react";
-import { COLUMNS, type ContactCard as Contact, type KanbanColumnId } from "./data";
+import type { ContactCard as Contact, KanbanColumnDef, KanbanColumnId } from "./data";
 
 type ActionId =
   | "edit"
@@ -20,12 +20,13 @@ export type CardMenuAction =
 
 type Props = {
   contact: Contact;
+  columns: KanbanColumnDef[];
   anchor: { top: number; left: number };
   onClose: () => void;
   onAction: (a: CardMenuAction) => void;
 };
 
-export function CardMenu({ contact, anchor, onClose, onAction }: Props) {
+export function CardMenu({ contact, columns, anchor, onClose, onAction }: Props) {
   const ref = React.useRef<HTMLDivElement | null>(null);
   const [showMove, setShowMove] = React.useState(false);
 
@@ -120,14 +121,14 @@ export function CardMenu({ contact, anchor, onClose, onAction }: Props) {
               zIndex: 71,
             }}
           >
-            {COLUMNS.map((c) => (
+            {columns.map((c) => (
               <Item
                 key={c.id}
                 icon={<span aria-hidden>{c.emoji}</span>}
-                disabled={c.id === contact.kanban_column}
+                disabled={c.slug === contact.kanban_column}
                 onClick={() => {
-                  if (c.id === contact.kanban_column) return;
-                  onAction({ type: "move", contact, column: c.id });
+                  if (c.slug === contact.kanban_column) return;
+                  onAction({ type: "move", contact, column: c.slug });
                   onClose();
                 }}
               >
