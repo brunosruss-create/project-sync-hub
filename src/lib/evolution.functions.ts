@@ -182,9 +182,14 @@ export const refreshInstanceStatus = createServerFn({ method: "POST" })
         if (qr) {
           update.qr_code = qr;
           update.qr_expires_at = new Date(Date.now() + 60_000).toISOString();
+        } else {
+          update.status = "error";
+          update.qr_code = null;
         }
       } catch (e: any) {
         console.warn("[evolution] refresh qrcode:", e?.message);
+        update.status = "error";
+        update.qr_code = null;
       }
     }
 
