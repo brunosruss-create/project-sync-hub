@@ -36,6 +36,7 @@ function WhatsAppPage() {
 
   const [confirmDc, setConfirmDc] = React.useState(false);
   const [now, setNow] = React.useState(Date.now());
+  const [clockOffset, setClockOffset] = React.useState(0);
 
   const { data, isLoading } = useQuery({
     queryKey: ["whatsapp-instance"],
@@ -46,7 +47,12 @@ function WhatsAppPage() {
   const instance = data?.instance ?? null;
   const status: Status = (instance?.status as Status) ?? "disconnected";
   const expiresAt = instance?.qr_expires_at ? new Date(instance.qr_expires_at).getTime() : 0;
-  const secondsLeft = status === "pending" && expiresAt ? Math.max(0, Math.ceil((expiresAt - now) / 1000)) : null;
+  const syncedNow = now + clockOffset;
+  const secondsLeft = status === "pending" && expiresAt ? Math.max(0, Math.ceil((expiresAt - syncedNow) / 1000)) : null;
+
+  React.useEffect(() => {
+    if (typeof data?.serverTime === "number") setClockOffset(data.serverTime - Date.now());
+  }, [data?.serverTime]);
 
   // Polling enquanto pendente — pega QR / mudança de status
   React.useEffect(() => {
@@ -76,6 +82,7 @@ function WhatsAppPage() {
   const connect = useMutation({
     mutationFn: () => doConnect({ data: undefined as never }),
     onSuccess: (result) => {
+      if (typeof result?.serverTime === "number") setClockOffset(result.serverTime - Date.now());
       if (result?.instance) qc.setQueryData(["whatsapp-instance"], { instance: result.instance });
       setNow(Date.now());
       toast.success("Escaneie o QR Code");
@@ -87,6 +94,7 @@ function WhatsAppPage() {
   const refreshQr = useMutation({
     mutationFn: () => doRefresh({ data: { forceQrRefresh: true } }),
     onSuccess: (result) => {
+      if (typeof result?.serverTime === "number") setClockOffset(result.serverTime - Date.now());
       if (result?.instance) qc.setQueryData(["whatsapp-instance"], { instance: result.instance });
       setNow(Date.now());
       toast.success("Novo QR Code gerado");
