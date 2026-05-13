@@ -299,7 +299,13 @@ function InboxPage() {
         </DndContext>
       )}
 
-      <ConversationPanel contact={openContact} onClose={() => setOpenContact(null)} />
+      <ConversationPanel
+        contact={openContact}
+        onClose={() => setOpenContact(null)}
+        onContactUpdate={(id, patch) =>
+          setContacts((prev) => prev.map((c) => (c.id === id ? { ...c, ...patch } : c)))
+        }
+      />
     </div>
   );
 }
