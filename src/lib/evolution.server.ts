@@ -1,7 +1,11 @@
 // Helper HTTP do Evolution API. Server-only (lê process.env).
+import QRCode from "qrcode";
 
 const BASE = () => {
-  let url = (process.env.EVOLUTION_API_URL ?? "").trim().replace(/\/$/, "");
+  let url = (process.env.EVOLUTION_API_URL ?? "")
+    .trim()
+    .replace(/^['"]|['"]$/g, "")
+    .replace(/\/$/, "");
   if (url && !/^https?:\/\//i.test(url)) url = `https://${url}`;
   return url;
 };
@@ -89,6 +93,48 @@ export const evo = {
       json: body,
     }),
 };
+
+function firstString(...values: unknown[]): string | null {
+  for (const value of values) {
+    if (typeof value === "string" && value.trim()) return value.trim();
+  }
+  return null;
+}
+
+export function extractQRCode(payload: any): string | null {
+  return firstString(
+    payload?.base64,
+    payload?.qrcode?.base64,
+    payload?.qrcode?.code,
+    payload?.qrcode,
+    payload?.code,
+    payload?.data?.base64,
+    payload?.data?.qrcode?.base64,
+    payload?.data?.qrcode?.code,
+    payload?.data?.qrcode,
+    payload?.data?.code,
+  );
+}
+
+export async function normalizeQRCodeImage(qr: string | null): Promise<string | null> {
+  if (!qr) return null;
+  const value = qr.trim();
+  if (!value) return null;
+  if (value.startsWith("data:image/")) return value;
+  if (/^(iVBORw0KGgo|\/9j\/|R0lGOD)/.test(value)) {
+    return `data:image/png;base64,${value}`;
+  }
+  try {
+    return await QRCode.toDataURL(value, {
+      errorCorrectionLevel: "M",
+      margin: 2,
+      width: 320,
+    });
+  } catch (e: any) {
+    console.warn("[evolution] qrcode render:", e?.message ?? e);
+    return null;
+  }
+}
 
 export function instanceNameForOwner(userId: string | null | undefined): string {
   // single-tenant: nome fixo. Mantemos param p/ futuro multi-tenant.
