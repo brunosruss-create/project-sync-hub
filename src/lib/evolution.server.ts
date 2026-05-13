@@ -93,7 +93,28 @@ export const evo = {
       method: "POST",
       json: body,
     }),
+
+  fetchProfilePictureUrl: (name: string, number: string) =>
+    call<{ profilePictureUrl?: string | null } | any>(
+      `/chat/fetchProfilePictureUrl/${encodeURIComponent(name)}`,
+      { method: "POST", json: { number } },
+    ),
 };
+
+export async function tryFetchProfilePicture(
+  instanceName: string,
+  phone: string,
+): Promise<string | null> {
+  if (!BASE() || !KEY()) return null;
+  try {
+    const r: any = await evo.fetchProfilePictureUrl(instanceName, phone);
+    const url =
+      r?.profilePictureUrl ?? r?.url ?? r?.data?.profilePictureUrl ?? null;
+    return typeof url === "string" && url.startsWith("http") ? url : null;
+  } catch {
+    return null;
+  }
+}
 
 function firstString(...values: unknown[]): string | null {
   for (const value of values) {

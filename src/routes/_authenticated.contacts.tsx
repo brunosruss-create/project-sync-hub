@@ -12,6 +12,7 @@ import {
   type KanbanColumnId,
 } from "@/features/inbox/data";
 import { ConversationPanel } from "@/features/inbox/conversation-panel";
+import { ContactAvatar } from "@/features/inbox/contact-avatar";
 import { EmptyState } from "@/components/empty-state";
 import { SkeletonCard } from "@/components/skeleton";
 import { notify } from "@/lib/notify";
@@ -475,33 +476,5 @@ function Td({
 }
 
 function Avatar({ contact }: { contact: ContactCard }) {
-  if (contact.avatar) {
-    return (
-      <img
-        src={contact.avatar}
-        alt={contact.name}
-        style={{ width: 32, height: 32, borderRadius: 999, objectFit: "cover" }}
-      />
-    );
-  }
-  return (
-    <div
-      style={{
-        width: 32,
-        height: 32,
-        borderRadius: 999,
-        background: "var(--bg-overlay)",
-        color: "var(--text-primary)",
-        display: "inline-flex",
-        alignItems: "center",
-        justifyContent: "center",
-        fontSize: 12,
-        fontWeight: 600,
-        flexShrink: 0,
-      }}
-      aria-hidden="true"
-    >
-      {initials(contact.name)}
-    </div>
-  );
+  return <ContactAvatar name={contact.name} avatarUrl={contact.avatar} size={32} />;
 }

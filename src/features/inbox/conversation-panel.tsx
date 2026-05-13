@@ -17,11 +17,12 @@ import {
   CalendarPlus,
 } from "lucide-react";
 import { type ContactCard as Contact, formatRelative, initials } from "./data";
+import { ContactAvatar } from "./contact-avatar";
 import { supabase } from "@/integrations/supabase/client";
 import { useAuth } from "@/hooks/use-auth";
 import { toast } from "sonner";
 import { useServerFn } from "@tanstack/react-start";
-import { sendWhatsAppMessage } from "@/lib/evolution.functions";
+import { sendWhatsAppMessage, refreshContactAvatar } from "@/lib/evolution.functions";
 import { ScheduleModal } from "./schedule-modal";
 import {
   SEED_SERVICES,
@@ -98,6 +99,7 @@ export function ConversationPanel({
 }) {
   const { user } = useAuth();
   const sendViaEvolution = useServerFn(sendWhatsAppMessage);
+  const refreshAvatar = useServerFn(refreshContactAvatar);
   const [tab, setTab] = React.useState<Tab>("conversation");
   const [draft, setDraft] = React.useState("");
   const [menuOpen, setMenuOpen] = React.useState(false);
@@ -120,6 +122,25 @@ export function ConversationPanel({
     setDraft("");
     setMenuOpen(false);
     setMessages(import.meta.env.DEV && contact.id.startsWith("c") ? seedMessages(contact) : []);
+  }, [contact?.id]);
+
+  // Background: refresh foto do WhatsApp ao abrir o chat (silencioso)
+  React.useEffect(() => {
+    if (!contact?.id) return;
+    let cancelled = false;
+    (async () => {
+      try {
+        const r = await refreshAvatar({ data: { contactId: contact.id } });
+        if (!cancelled && r?.changed && r.url) {
+          onContactUpdate?.(contact.id, { avatar: r.url });
+        }
+      } catch {
+        // silencioso — Evolution pode não estar configurado
+      }
+    })();
+    return () => {
+      cancelled = true;
+    };
   }, [contact?.id]);
 
   // load + subscribe to realtime messages reais do Supabase
@@ -283,19 +304,8 @@ export function ConversationPanel({
                 position: "relative",
               }}
             >
-              <div
-                className="inline-flex items-center justify-center shrink-0"
-                style={{
-                  width: 32,
-                  height: 32,
-                  borderRadius: 999,
-                  background: "var(--bg-overlay)",
-                  fontSize: 12,
-                  fontWeight: 600,
-                  position: "relative",
-                }}
-              >
-                {initials(contact.name)}
+              <div style={{ position: "relative", width: 36, height: 36, flexShrink: 0 }}>
+                <ContactAvatar name={contact.name} avatarUrl={contact.avatar} size={36} />
                 <span
                   style={{
                     position: "absolute",
