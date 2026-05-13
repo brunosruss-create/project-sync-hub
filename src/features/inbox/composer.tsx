@@ -140,9 +140,22 @@ export function Composer({ draft, setDraft, taRef, onSend, onClosePanel, onSendA
     setCaption("");
   };
 
-  const sendAttachments = () => {
-    toast.info(`Anexo (${attachments.length}) — em breve.`);
-    clearAttachments();
+  const [sendingAttach, setSendingAttach] = React.useState(false);
+  const sendAttachments = async () => {
+    if (sendingAttach) return;
+    if (!onSendAttachments) {
+      toast.error("Envio de anexo indisponível.");
+      return;
+    }
+    setSendingAttach(true);
+    try {
+      await onSendAttachments(attachments.map((a) => a.file), caption);
+      clearAttachments();
+    } catch (e: any) {
+      toast.error(e?.message ?? "Falha ao enviar anexo.");
+    } finally {
+      setSendingAttach(false);
+    }
   };
 
   // --- paste image
