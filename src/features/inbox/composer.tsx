@@ -276,7 +276,7 @@ export function Composer({ draft, setDraft, taRef, onSend, onClosePanel, onSendA
     if (longPressTimerRef.current) {
       window.clearTimeout(longPressTimerRef.current);
       longPressTimerRef.current = null;
-      if (!hasText) toast.message("Segure para gravar.");
+      toast.message("Segure para gravar.");
       return;
     }
     if (isRecording) {
