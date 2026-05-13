@@ -470,15 +470,22 @@ export function NewContactModal({ open, onClose, onCreated }: Props) {
                     left: 10,
                     top: "50%",
                     transform: "translateY(-50%)",
-                    fontSize: 16,
+                    fontSize: 13,
+                    fontWeight: 600,
+                    color: "var(--text-muted)",
+                    display: "flex",
+                    alignItems: "center",
+                    gap: 6,
+                    pointerEvents: "none",
                   }}
                   aria-hidden
                 >
-                  🇧🇷
+                  <span style={{ fontSize: 16 }}>🇧🇷</span>
+                  <span>+55</span>
                 </span>
                 <input
                   ref={phoneRef}
-                  value={formatBR(phoneInput) || phoneInput}
+                  value={formatBR(phoneInput)}
                   onChange={(e) => setPhoneInput(e.target.value)}
                   onPaste={(e) => {
                     const txt = e.clipboardData.getData("text");
@@ -487,12 +494,12 @@ export function NewContactModal({ open, onClose, onCreated }: Props) {
                       setPhoneInput(txt);
                     }
                   }}
-                  placeholder="+55 (11) 99999-9999"
+                  placeholder="(11) 99999-9999"
                   inputMode="tel"
                   style={{
                     width: "100%",
                     height: 38,
-                    padding: "0 36px 0 38px",
+                    padding: "0 36px 0 64px",
                     fontSize: 14,
                     color: "var(--text-primary)",
                     background: "var(--bg-base)",
