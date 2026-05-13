@@ -673,6 +673,7 @@ function MessageBubble({
         }}
       >
         <MessageChevron isMe={isMe} bubbleBg={audioBg} message={m} onReply={onReply} />
+        {m.quoted_preview && <QuotedPreview preview={m.quoted_preview} isMe={isMe} />}
         <AudioPlayer
           src={m.media_url}
           avatarName={contactName}
