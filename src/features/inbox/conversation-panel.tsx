@@ -17,6 +17,7 @@ import {
   CalendarPlus,
 } from "lucide-react";
 import { type ContactCard as Contact, formatRelative, initials } from "./data";
+import { ContactAvatar } from "./contact-avatar";
 import { supabase } from "@/integrations/supabase/client";
 import { useAuth } from "@/hooks/use-auth";
 import { toast } from "sonner";
