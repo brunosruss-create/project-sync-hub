@@ -91,7 +91,7 @@ export const getInstance = createServerFn({ method: "GET" })
     const name = instanceNameForOwner(context.userId);
     const { data } = await supabaseAdmin
       .from("whatsapp_instances")
-      .select("id,instance_name,status,phone_number,profile_name,qr_code,qr_expires_at,last_connected_at,updated_at")
+      .select("id,instance_name,status,phone_number,profile_name,qr_code,qr_expires_at,last_connected_at,updated_at,webhook_url")
       .eq("instance_name", name)
       .maybeSingle();
     return { instance: data ?? null };
@@ -146,12 +146,45 @@ export const connectInstance = createServerFn({ method: "POST" })
         status: "pending",
         qr_code: qr,
         qr_expires_at: new Date(Date.now() + 60_000).toISOString(),
+        webhook_url: webhookUrl,
       })
       .eq("id", row.id)
       .select("*")
       .single();
 
     return { instance: updated, qr };
+  });
+
+export const registerWebhook = createServerFn({ method: "POST" })
+  .middleware([requireSupabaseAuth])
+  .handler(async ({ context }) => {
+    const row = await getOrCreateRow(context.userId);
+    const name = row.instance_name as string;
+    const baseUrl = publicBaseUrl();
+    if (!baseUrl) {
+      throw new Error(
+        "URL pública do app não detectada. Defina o secret PUBLIC_APP_URL (ex.: https://github-vercel-bridge.lovable.app) e tente novamente.",
+      );
+    }
+    const webhookUrl = `${baseUrl}/api/public/evolution/${row.id}`;
+    await evo.setWebhook(name, {
+      webhook: {
+        enabled: true,
+        url: webhookUrl,
+        headers: { "x-webhook-secret": row.webhook_secret as string },
+        byEvents: false,
+        base64: false,
+        events: WEBHOOK_EVENTS,
+      },
+    });
+    const { data: updated } = await supabaseAdmin
+      .from("whatsapp_instances")
+      .update({ webhook_url: webhookUrl })
+      .eq("id", row.id)
+      .select("*")
+      .single();
+
+    return { instance: updated, webhookUrl };
   });
 
 const refreshInput = z.object({ forceQrRefresh: z.boolean().optional() }).optional();
@@ -264,6 +297,7 @@ export const sendWhatsAppMessage = createServerFn({ method: "POST" })
       .from("contacts")
       .select("id,phone")
       .eq("id", data.contactId)
+      .eq("owner_user_id", context.userId)
       .maybeSingle();
     if (ce || !contact?.phone) throw new Error("Contato sem telefone.");
 
@@ -277,6 +311,7 @@ export const sendWhatsAppMessage = createServerFn({ method: "POST" })
     }
 
     await supabaseAdmin.from("messages").insert({
+      owner_user_id: context.userId,
       contact_id: contact.id,
       direction: "outbound",
       content: data.text,
