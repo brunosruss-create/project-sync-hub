@@ -643,12 +643,14 @@ function MessageBubble({
   contactName,
   contactAvatar,
   onReply,
+  onReact,
 }: {
   m: Message;
   displayStatus: Message["status"];
   contactName: string;
   contactAvatar?: string | null;
   onReply?: (m: Message) => void;
+  onReact?: (m: Message, emoji: string) => void;
 }) {
   if (m.message_type === "system") {
     return (
