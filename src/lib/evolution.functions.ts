@@ -3,7 +3,7 @@ import { getRequest, getRequestHost } from "@tanstack/react-start/server";
 import { z } from "zod";
 import { requireSupabaseAuth } from "@/integrations/supabase/auth-middleware";
 import { supabaseAdmin } from "@/integrations/supabase/client.server";
-import { evo, extractQRCode, instanceNameForOwner, normalizeQRCodeImage } from "@/lib/evolution.server";
+import { evo, extractQRCode, instanceNameForOwner, normalizeQRCodeImage, tryFetchProfilePicture } from "@/lib/evolution.server";
 
 const WEBHOOK_EVENTS = ["MESSAGES_UPSERT", "CONNECTION_UPDATE", "QRCODE_UPDATED"];
 
