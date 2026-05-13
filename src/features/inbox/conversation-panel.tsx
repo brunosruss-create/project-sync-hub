@@ -256,6 +256,8 @@ export function ConversationPanel({
                     whatsapp_message_id: r.whatsapp_message_id ?? m.whatsapp_message_id,
                     quoted_preview: r.quoted_preview ?? m.quoted_preview,
                     reactions: r.reactions ?? m.reactions,
+                    deleted_at: r.deleted_at ?? m.deleted_at,
+                    edited_at: r.edited_at ?? m.edited_at,
                   }
                 : m,
             ),
