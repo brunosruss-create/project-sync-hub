@@ -19,8 +19,10 @@ import { Route as AuthCallbackRouteImport } from './routes/auth.callback'
 import { Route as AuthenticatedSuperAdminRouteImport } from './routes/_authenticated.super-admin'
 import { Route as AuthenticatedServicesRouteImport } from './routes/_authenticated.services'
 import { Route as AuthenticatedScheduleRouteImport } from './routes/_authenticated.schedule'
+import { Route as AuthenticatedReportsRouteImport } from './routes/_authenticated.reports'
 import { Route as AuthenticatedInboxRouteImport } from './routes/_authenticated.inbox'
 import { Route as AuthenticatedDashboardRouteImport } from './routes/_authenticated.dashboard'
+import { Route as AuthenticatedContactsRouteImport } from './routes/_authenticated.contacts'
 import { Route as AuthenticatedAiAgentRouteImport } from './routes/_authenticated.ai-agent'
 import { Route as AuthenticatedSuperAdminWorkspacesRouteImport } from './routes/_authenticated.super-admin.workspaces'
 import { Route as AuthenticatedSuperAdminUsersRouteImport } from './routes/_authenticated.super-admin.users'
@@ -81,6 +83,11 @@ const AuthenticatedScheduleRoute = AuthenticatedScheduleRouteImport.update({
   path: '/schedule',
   getParentRoute: () => AuthenticatedRoute,
 } as any)
+const AuthenticatedReportsRoute = AuthenticatedReportsRouteImport.update({
+  id: '/reports',
+  path: '/reports',
+  getParentRoute: () => AuthenticatedRoute,
+} as any)
 const AuthenticatedInboxRoute = AuthenticatedInboxRouteImport.update({
   id: '/inbox',
   path: '/inbox',
@@ -89,6 +96,11 @@ const AuthenticatedInboxRoute = AuthenticatedInboxRouteImport.update({
 const AuthenticatedDashboardRoute = AuthenticatedDashboardRouteImport.update({
   id: '/dashboard',
   path: '/dashboard',
+  getParentRoute: () => AuthenticatedRoute,
+} as any)
+const AuthenticatedContactsRoute = AuthenticatedContactsRouteImport.update({
+  id: '/contacts',
+  path: '/contacts',
   getParentRoute: () => AuthenticatedRoute,
 } as any)
 const AuthenticatedAiAgentRoute = AuthenticatedAiAgentRouteImport.update({
@@ -158,8 +170,10 @@ export interface FileRoutesByFullPath {
   '/reset-password': typeof ResetPasswordRoute
   '/signup': typeof SignupRoute
   '/ai-agent': typeof AuthenticatedAiAgentRoute
+  '/contacts': typeof AuthenticatedContactsRoute
   '/dashboard': typeof AuthenticatedDashboardRoute
   '/inbox': typeof AuthenticatedInboxRoute
+  '/reports': typeof AuthenticatedReportsRoute
   '/schedule': typeof AuthenticatedScheduleRoute
   '/services': typeof AuthenticatedServicesRoute
   '/super-admin': typeof AuthenticatedSuperAdminRouteWithChildren
@@ -181,8 +195,10 @@ export interface FileRoutesByTo {
   '/reset-password': typeof ResetPasswordRoute
   '/signup': typeof SignupRoute
   '/ai-agent': typeof AuthenticatedAiAgentRoute
+  '/contacts': typeof AuthenticatedContactsRoute
   '/dashboard': typeof AuthenticatedDashboardRoute
   '/inbox': typeof AuthenticatedInboxRoute
+  '/reports': typeof AuthenticatedReportsRoute
   '/schedule': typeof AuthenticatedScheduleRoute
   '/services': typeof AuthenticatedServicesRoute
   '/super-admin': typeof AuthenticatedSuperAdminRouteWithChildren
@@ -206,8 +222,10 @@ export interface FileRoutesById {
   '/reset-password': typeof ResetPasswordRoute
   '/signup': typeof SignupRoute
   '/_authenticated/ai-agent': typeof AuthenticatedAiAgentRoute
+  '/_authenticated/contacts': typeof AuthenticatedContactsRoute
   '/_authenticated/dashboard': typeof AuthenticatedDashboardRoute
   '/_authenticated/inbox': typeof AuthenticatedInboxRoute
+  '/_authenticated/reports': typeof AuthenticatedReportsRoute
   '/_authenticated/schedule': typeof AuthenticatedScheduleRoute
   '/_authenticated/services': typeof AuthenticatedServicesRoute
   '/_authenticated/super-admin': typeof AuthenticatedSuperAdminRouteWithChildren
@@ -231,8 +249,10 @@ export interface FileRouteTypes {
     | '/reset-password'
     | '/signup'
     | '/ai-agent'
+    | '/contacts'
     | '/dashboard'
     | '/inbox'
+    | '/reports'
     | '/schedule'
     | '/services'
     | '/super-admin'
@@ -254,8 +274,10 @@ export interface FileRouteTypes {
     | '/reset-password'
     | '/signup'
     | '/ai-agent'
+    | '/contacts'
     | '/dashboard'
     | '/inbox'
+    | '/reports'
     | '/schedule'
     | '/services'
     | '/super-admin'
@@ -278,8 +300,10 @@ export interface FileRouteTypes {
     | '/reset-password'
     | '/signup'
     | '/_authenticated/ai-agent'
+    | '/_authenticated/contacts'
     | '/_authenticated/dashboard'
     | '/_authenticated/inbox'
+    | '/_authenticated/reports'
     | '/_authenticated/schedule'
     | '/_authenticated/services'
     | '/_authenticated/super-admin'
@@ -377,6 +401,13 @@ declare module '@tanstack/react-router' {
       preLoaderRoute: typeof AuthenticatedScheduleRouteImport
       parentRoute: typeof AuthenticatedRoute
     }
+    '/_authenticated/reports': {
+      id: '/_authenticated/reports'
+      path: '/reports'
+      fullPath: '/reports'
+      preLoaderRoute: typeof AuthenticatedReportsRouteImport
+      parentRoute: typeof AuthenticatedRoute
+    }
     '/_authenticated/inbox': {
       id: '/_authenticated/inbox'
       path: '/inbox'
@@ -389,6 +420,13 @@ declare module '@tanstack/react-router' {
       path: '/dashboard'
       fullPath: '/dashboard'
       preLoaderRoute: typeof AuthenticatedDashboardRouteImport
+      parentRoute: typeof AuthenticatedRoute
+    }
+    '/_authenticated/contacts': {
+      id: '/_authenticated/contacts'
+      path: '/contacts'
+      fullPath: '/contacts'
+      preLoaderRoute: typeof AuthenticatedContactsRouteImport
       parentRoute: typeof AuthenticatedRoute
     }
     '/_authenticated/ai-agent': {
@@ -487,8 +525,10 @@ const AuthenticatedSuperAdminRouteWithChildren =
 
 interface AuthenticatedRouteChildren {
   AuthenticatedAiAgentRoute: typeof AuthenticatedAiAgentRoute
+  AuthenticatedContactsRoute: typeof AuthenticatedContactsRoute
   AuthenticatedDashboardRoute: typeof AuthenticatedDashboardRoute
   AuthenticatedInboxRoute: typeof AuthenticatedInboxRoute
+  AuthenticatedReportsRoute: typeof AuthenticatedReportsRoute
   AuthenticatedScheduleRoute: typeof AuthenticatedScheduleRoute
   AuthenticatedServicesRoute: typeof AuthenticatedServicesRoute
   AuthenticatedSuperAdminRoute: typeof AuthenticatedSuperAdminRouteWithChildren
@@ -501,8 +541,10 @@ interface AuthenticatedRouteChildren {
 
 const AuthenticatedRouteChildren: AuthenticatedRouteChildren = {
   AuthenticatedAiAgentRoute: AuthenticatedAiAgentRoute,
+  AuthenticatedContactsRoute: AuthenticatedContactsRoute,
   AuthenticatedDashboardRoute: AuthenticatedDashboardRoute,
   AuthenticatedInboxRoute: AuthenticatedInboxRoute,
+  AuthenticatedReportsRoute: AuthenticatedReportsRoute,
   AuthenticatedScheduleRoute: AuthenticatedScheduleRoute,
   AuthenticatedServicesRoute: AuthenticatedServicesRoute,
   AuthenticatedSuperAdminRoute: AuthenticatedSuperAdminRouteWithChildren,
