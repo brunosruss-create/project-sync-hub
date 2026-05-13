@@ -213,9 +213,93 @@ function InboxPage() {
       const detail = (e as CustomEvent<CardMenuRequestDetail>).detail;
       if (detail) setMenuState(detail);
     };
+    const onColMenu = (e: Event) => {
+      const detail = (e as CustomEvent<ColumnMenuRequestDetail>).detail;
+      if (detail) setColumnMenuState(detail);
+    };
     window.addEventListener("zf:card-menu", onMenu as EventListener);
-    return () => window.removeEventListener("zf:card-menu", onMenu as EventListener);
+    window.addEventListener("zf:column-menu", onColMenu as EventListener);
+    return () => {
+      window.removeEventListener("zf:card-menu", onMenu as EventListener);
+      window.removeEventListener("zf:column-menu", onColMenu as EventListener);
+    };
   }, []);
+
+  // Carrega colunas do Kanban + realtime + seed automático
+  React.useEffect(() => {
+    if (!user?.id) return;
+    let cancelled = false;
+
+    const mapCol = (r: any): KanbanColumnDef => ({
+      id: r.id,
+      slug: r.slug,
+      label: r.label,
+      emoji: r.emoji ?? "📌",
+      color: r.color ?? "#6B7280",
+      position: typeof r.position === "number" ? r.position : 0,
+      is_system: !!r.is_system,
+    });
+
+    const seedDefaults = async () => {
+      const rows = DEFAULT_COLUMNS.map((c) => ({
+        owner_user_id: user.id,
+        slug: c.slug,
+        label: c.label,
+        emoji: c.emoji,
+        color: c.color,
+        position: c.position,
+        is_system: true,
+      }));
+      const { data, error } = await supabase
+        .from("kanban_columns")
+        .insert(rows)
+        .select();
+      if (error) {
+        console.warn("[inbox] seed colunas falhou:", error.message);
+        return null;
+      }
+      return (data ?? []).map(mapCol);
+    };
+
+    const load = async () => {
+      const { data, error } = await supabase
+        .from("kanban_columns")
+        .select("id,slug,label,emoji,color,position,is_system")
+        .order("position", { ascending: true });
+      if (cancelled) return;
+      if (error) {
+        // Tabela inexistente → mantém defaults locais (read-only).
+        if (!/relation .* does not exist/i.test(error.message ?? "")) {
+          console.warn("[inbox] erro ao carregar colunas:", error.message);
+        }
+        setColumns(DEFAULT_COLUMNS);
+        return;
+      }
+      if (!data || data.length === 0) {
+        const seeded = await seedDefaults();
+        if (cancelled) return;
+        setColumns(seeded ?? DEFAULT_COLUMNS);
+        return;
+      }
+      setColumns(data.map(mapCol));
+    };
+
+    void load();
+
+    const channel = supabase
+      .channel(`inbox-columns-${user.id}`)
+      .on(
+        "postgres_changes",
+        { event: "*", schema: "public", table: "kanban_columns", filter: `owner_user_id=eq.${user.id}` },
+        () => void load(),
+      )
+      .subscribe();
+
+    return () => {
+      cancelled = true;
+      void supabase.removeChannel(channel);
+    };
+  }, [user?.id]);
 
   const handleMenuAction = React.useCallback(async (a: CardMenuAction) => {
     const c = a.contact;
