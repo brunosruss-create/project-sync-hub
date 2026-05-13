@@ -74,6 +74,24 @@ function InboxPage() {
     };
   }, []);
 
+  // Listener para Cmd+K → "Novo contato" + tecla "N"
+  React.useEffect(() => {
+    const onNew = () => notify.info("Em breve: criar contato manualmente.");
+    window.addEventListener("zf:new-contact", onNew);
+    const onKey = (e: KeyboardEvent) => {
+      if (e.key.toLowerCase() !== "n" || e.metaKey || e.ctrlKey || e.altKey) return;
+      const t = e.target as HTMLElement | null;
+      const tag = t?.tagName;
+      if (tag === "INPUT" || tag === "TEXTAREA" || t?.isContentEditable) return;
+      onNew();
+    };
+    window.addEventListener("keydown", onKey);
+    return () => {
+      window.removeEventListener("zf:new-contact", onNew);
+      window.removeEventListener("keydown", onKey);
+    };
+  }, []);
+
   const filtered = React.useMemo(() => {
     return contacts.filter((c) => {
       if (filter === "mine" && c.assignedAgent !== (user?.email?.split("@")[0] ?? ""))
