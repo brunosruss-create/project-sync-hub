@@ -128,10 +128,12 @@ export const getInstance = createServerFn({ method: "GET" })
     const name = instanceNameForOwner(context.userId);
     const { data } = await supabaseAdmin
       .from("whatsapp_instances")
-      .select("id,instance_name,status,phone_number,profile_name,qr_code,qr_expires_at,last_connected_at,updated_at,webhook_url")
+      .select("id,instance_name,status,phone_number,profile_name,qr_code,qr_expires_at,last_connected_at,updated_at")
       .eq("instance_name", name)
       .maybeSingle();
-    return { instance: data ?? null };
+    const baseUrl = publicBaseUrl();
+    const webhookUrl = data && baseUrl ? `${baseUrl}/api/public/evolution/${data.id}` : null;
+    return { instance: data ? { ...data, webhook_url: webhookUrl } : null };
   });
 
 export const connectInstance = createServerFn({ method: "POST" })
@@ -205,7 +207,6 @@ export const connectInstance = createServerFn({ method: "POST" })
         status: "pending",
         qr_code: qr,
         qr_expires_at: new Date(Date.now() + 60_000).toISOString(),
-        webhook_url: webhookUrl,
       })
       .eq("id", row.id)
       .select("*")
@@ -220,7 +221,7 @@ export const connectInstance = createServerFn({ method: "POST" })
       }
     }
 
-    return { instance: updated, qr };
+    return { instance: updated ? { ...updated, webhook_url: webhookUrl } : null, qr };
   });
 
 export const registerWebhook = createServerFn({ method: "POST" })
@@ -245,14 +246,7 @@ export const registerWebhook = createServerFn({ method: "POST" })
         events: WEBHOOK_EVENTS,
       },
     });
-    const { data: updated } = await supabaseAdmin
-      .from("whatsapp_instances")
-      .update({ webhook_url: webhookUrl })
-      .eq("id", row.id)
-      .select("*")
-      .single();
-
-    return { instance: updated, webhookUrl };
+    return { instance: { ...row, webhook_url: webhookUrl }, webhookUrl };
   });
 
 const refreshInput = z.object({ forceQrRefresh: z.boolean().optional() }).optional();
