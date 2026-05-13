@@ -690,6 +690,12 @@ export function ConversationPanel({
           }}
         />
       )}
+      <ForwardModal
+        open={!!forwardSource}
+        source={forwardSource}
+        excludeContactId={contact?.id}
+        onClose={() => setForwardSource(null)}
+      />
     </>
   );
 }
