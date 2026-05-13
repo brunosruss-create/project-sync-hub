@@ -605,14 +605,12 @@ export const reactToMessage = createServerFn({ method: "POST" })
 
     try {
       await evo.sendReaction(name, {
-        reactionMessage: {
-          key: {
-            id: msg.whatsapp_message_id!,
-            fromMe: msg.direction === "outbound",
-            remoteJid,
-          },
-          reaction: data.reaction,
+        key: {
+          id: msg.whatsapp_message_id!,
+          fromMe: msg.direction === "outbound",
+          remoteJid,
         },
+        reaction: data.reaction,
       });
     } catch (e: any) {
       throw new Error(`Falha ao reagir: ${e?.message ?? e}`);
