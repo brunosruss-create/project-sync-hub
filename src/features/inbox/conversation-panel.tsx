@@ -212,6 +212,7 @@ export function ConversationPanel({
                     media_url: r.media_url ?? null,
                     media_mime: r.media_mime ?? null,
                     media_name: r.media_name ?? null,
+                    whatsapp_message_id: r.whatsapp_message_id ?? null,
                   },
                 ],
           );
