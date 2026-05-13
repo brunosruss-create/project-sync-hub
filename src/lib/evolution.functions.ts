@@ -517,6 +517,7 @@ export const sendWhatsAppAudio = createServerFn({ method: "POST" })
       sent_by: context.userId,
       media_url: data.url,
       media_mime: "audio/webm",
+      whatsapp_message_id: externalId,
     });
 
     return { ok: true, externalId };
