@@ -339,7 +339,7 @@ function InboxPage() {
 
           <button
             type="button"
-            onClick={() => notify.info("Em breve: criar contato manualmente.")}
+            onClick={() => setNewContactOpen(true)}
             className="btn-primary"
           >
             <Plus size={14} />
