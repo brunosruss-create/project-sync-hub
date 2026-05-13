@@ -1,98 +1,60 @@
-# Diagnóstico
+## O que já foi entregue
+- **BUG 1** — duplicação de mensagem corrigida (removido optimistic update, realtime é fonte da verdade, dedupe por id já existia).
+- **MELHORIA 1** — foto do WhatsApp nos cards/chat/contatos com fallback de iniciais coloridas.
 
-## 1) Erro "new row violates row-level security policy for table contacts"
+## O que falta
 
-O insert do modal envia `owner_user_id: user.id`, e a migração `20260513133500_whatsapp_owner_rls.sql` cria policies coerentes (`with check (owner_user_id = auth.uid())`).
+### Melhoria 2 — Editar card existente (quick edit)
 
-A tabela `contacts`, porém, foi criada **fora** dessa migração (provavelmente via dashboard do Supabase em uma sessão anterior). Isso significa que ela quase certamente tem:
+**Ícone ⋮ no card (`src/features/inbox/contact-card.tsx`)**
+- Aparece só no hover (opacity 0 → 1, transition 100ms), 14px, `var(--text-muted)`.
+- Posição: canto superior direito. Se houver badge de não lidas, posiciona logo abaixo do badge para não conflitar.
+- Clique abre o dropdown e faz `stopPropagation` (não dispara drag nem abre o chat).
 
-- uma coluna legada `user_id` (ou similar) **NOT NULL**, que o insert atual não preenche; **ou**
-- uma policy permissiva antiga (ex.: `Enable insert for authenticated users only` exigindo `user_id = auth.uid()`) que ainda existe e bloqueia o insert porque a coluna não foi enviada.
+**Dropdown (`src/features/inbox/card-menu.tsx` — novo)**
+- 180px, posicionado abaixo do ícone, fecha em click-outside / Esc.
+- Itens, com separadores:
+  - **Contato:** Editar nome • Adicionar tag • Atribuir agente
+  - **Kanban:** Marcar/Remover urgência • Mover para coluna (submenu com as 4 colunas)
+  - **Ações:** Agendar horário (abre `ScheduleModal`) • Abrir conversa
+  - **Arquivar contato** (separador antes)
+- Cada ação: update otimista no estado local + `supabase.from('contacts').update(...)` + toast.
+- "Arquivar": seta `kanban_column = 'archived'` (ou `archived_at = now()`); o card some do kanban porque não está em nenhuma das 4 colunas visíveis.
 
-Como Postgres avalia RLS combinando todas as policies permissivas (precisa passar em pelo menos uma) **e** todas as restritivas (precisa passar em todas), uma policy legada permissiva extra não bloqueia. O bloqueio ocorre quando:
+**Modal "Editar contato" (`src/features/inbox/edit-contact-modal.tsx` — novo)**
+- 400px, abre por "Editar nome" ou pelo dropdown.
+- Campos: Nome (input), Tags (chips editáveis igual ao NewContactModal), Agente (select), Observações (textarea ligada a `contacts.notes`).
+- Imutáveis: telefone, coluna kanban (apenas exibe).
+- Salvar → update no Supabase + propaga via `onContactUpdate` no estado do `/inbox` + toast "Contato atualizado ✓".
 
-- a coluna `user_id` legada é NOT NULL e o insert falha o `WITH CHECK` original; ou
-- existe uma policy restritiva legada exigindo outra condição.
-
-## 2) WhatsApp não envia nem recebe
-
-Independente do RLS, o usuário relata que o WhatsApp não está operando. Isso aponta para a integração com a UAZAPI (instância não conectada, webhook não configurado, ou serverFn de envio quebrada). Precisa ser investigado em separado, mas não bloqueia a criação do contato.
-
-# Plano
-
-## Passo 1 — Migração de saneamento da tabela `contacts`
-
-Criar `supabase/migrations/<ts>_contacts_rls_consolidation.sql` que:
-
-1. Garante que `owner_user_id` existe e copia valores de `user_id` (se a coluna existir) para `owner_user_id` quando estiver nulo.
-2. Faz `owner_user_id` NOT NULL com default `auth.uid()` (para inserts via Supabase JS pegarem o usuário automaticamente como rede de segurança).
-3. Se existir `user_id` legado NOT NULL, torna nullable (ou define default `auth.uid()`) para não quebrar inserts.
-4. Dropa **todas** as policies existentes em `public.contacts` via `pg_policies` (loop dinâmico) e recria apenas o conjunto canônico baseado em `owner_user_id` (select/insert/update/delete) — sem restritivas duplicadas, que são desnecessárias quando todas as permissivas exigem a mesma condição.
-5. Mesmo tratamento mínimo para `messages` (drop de policies legadas conflitantes, manter apenas as baseadas em `owner_user_id`).
-
-## Passo 2 — Hardening do insert no modal
-
-Em `src/features/inbox/new-contact-modal.tsx`:
-
-- Logar `error.code`, `error.details`, `error.hint` (não só `message`) para diagnósticos futuros.
-- Se a coluna `user_id` legada continuar exigida, incluí-la no payload espelhando `user.id`.
-
-## Passo 3 — Investigação do WhatsApp (separado, mesmo turno)
-
-Listar e relatar (sem corrigir ainda):
-
-- Estado de `public.whatsapp_instances` para o usuário (existe? `connected`?).
-- ServerFn / endpoint que envia mensagem (caminho do arquivo, se existe token UAZAPI configurado em secrets).
-- Se há webhook configurado apontando para `/api/public/...` e se a rota existe.
-
-Com isso entrego um diagnóstico claro do WhatsApp e abrimos um próximo passo focado.
-
-# Detalhes técnicos
-
+**SQL necessário (você roda no SQL Editor):**
 ```sql
--- Esqueleto da migração
-alter table public.contacts
-  add column if not exists owner_user_id uuid references auth.users(id) on delete cascade;
-
-update public.contacts
-   set owner_user_id = user_id
- where owner_user_id is null
-   and exists (select 1 from information_schema.columns
-                where table_schema='public' and table_name='contacts' and column_name='user_id');
-
-alter table public.contacts
-  alter column owner_user_id set default auth.uid(),
-  alter column owner_user_id set not null;
-
--- (se user_id legado for NOT NULL)
-alter table public.contacts alter column user_id drop not null;
-
--- Drop dinâmico de TODAS as policies de contacts
-do $$
-declare p record;
-begin
-  for p in select policyname from pg_policies
-            where schemaname='public' and tablename='contacts'
-  loop
-    execute format('drop policy if exists %I on public.contacts', p.policyname);
-  end loop;
-end $$;
-
--- Recriar policies canônicas (4 policies, sem restritivas)
-create policy "contacts_select_own" on public.contacts
-  for select to authenticated using (owner_user_id = auth.uid());
-create policy "contacts_insert_own" on public.contacts
-  for insert to authenticated with check (owner_user_id = auth.uid());
-create policy "contacts_update_own" on public.contacts
-  for update to authenticated using (owner_user_id = auth.uid())
-  with check (owner_user_id = auth.uid());
-create policy "contacts_delete_own" on public.contacts
-  for delete to authenticated using (owner_user_id = auth.uid());
+alter table public.contacts add column if not exists notes text;
+alter table public.contacts add column if not exists archived_at timestamptz;
 ```
 
-Mesmo padrão mínimo para `messages` (mantendo `contact_id` e `owner_user_id`).
+---
 
-# Fora de escopo deste plano
+### Melhoria 3 — Criação em lote (`src/features/inbox/new-contact-modal.tsx`)
 
-- Implementar o envio real via UAZAPI (será tratado após o diagnóstico do passo 3).
-- Mudanças visuais no modal.
+**Polir o "Criar outro após salvar" (modo single):**
+- Após salvar com checkbox marcado: toast discreto, limpar nome/número/tags/mensagem, **manter** coluna e agente, focar `#whatsapp-number`, modal não fecha.
+
+**Modo lote (toggle "+ Adicionar em lote"):**
+- Tabela com colunas: Número WhatsApp • Nome • Tag • [✕], até 10 linhas, botão "+ adicionar linha".
+- Validação por linha: número inválido / duplicado (consulta única `contacts.select('phone')`) marca ⚠ na linha.
+- Footer: `[Cancelar]  [Criar N contatos →]` (N = linhas válidas).
+- Submit: um único `supabase.from('contacts').insert([...])` → cards aparecem na coluna selecionada via realtime → toast "N contatos criados com sucesso ✓".
+- Coluna e agente do header do modal aplicam-se a todas as linhas do lote.
+
+---
+
+## Não-regressão (vou re-testar ao final)
+Drag-and-drop, ordenação por nova mensagem, badge de não lidas, abertura do painel, tabs, botão Agendar, filtros Todos/Meus/Sem atendente, busca, formatação de telefone, dark mode, scroll horizontal, envio de mensagem aparecendo 1 única vez.
+
+## Ordem de execução
+1. Modal Editar contato (componente isolado)
+2. Dropdown ⋮ no card (consome o modal)
+3. Modo lote no NewContactModal
+4. Pequenos ajustes do "Criar outro" (single)
+5. Sweep do checklist de não-regressão
