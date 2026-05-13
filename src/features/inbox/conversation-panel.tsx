@@ -16,6 +16,7 @@ import {
   Play,
   Pause,
   Mic,
+  ChevronDown,
 } from "lucide-react";
 import { Composer } from "./composer";
 import { type ContactCard as Contact, formatRelative, initials } from "./data";
@@ -601,14 +602,16 @@ function MessageBubble({
 
   // ===== Audio: WhatsApp-like player as the bubble itself =====
   if (m.message_type === "audio" && m.media_url) {
+    const audioBg = isMe
+      ? "color-mix(in oklab, var(--brand-400) 15%, var(--bg-surface))"
+      : "var(--bg-overlay)";
     return (
       <div
+        className="group/msg relative"
         style={{
           alignSelf: isMe ? "flex-end" : "flex-start",
           maxWidth: "85%",
-          background: isMe
-            ? "color-mix(in oklab, var(--brand-400) 15%, var(--bg-surface))"
-            : "var(--bg-overlay)",
+          background: audioBg,
           border: isMe
             ? "1px solid color-mix(in oklab, var(--brand-400) 30%, transparent)"
             : "1px solid var(--border)",
@@ -617,6 +620,7 @@ function MessageBubble({
           animation: "fadeSlideIn 200ms ease-out",
         }}
       >
+        <MessageChevron isMe={isMe} bubbleBg={audioBg} />
         <AudioPlayer
           src={m.media_url}
           avatarName={contactName}
@@ -643,14 +647,16 @@ function MessageBubble({
     );
   }
 
+  const bubbleBg = isMe
+    ? "color-mix(in oklab, var(--brand-400) 15%, var(--bg-surface))"
+    : "var(--bg-overlay)";
   return (
     <div
+      className="group/msg relative"
       style={{
         alignSelf: isMe ? "flex-end" : "flex-start",
         maxWidth: "75%",
-        background: isMe
-          ? "color-mix(in oklab, var(--brand-400) 15%, var(--bg-surface))"
-          : "var(--bg-overlay)",
+        background: bubbleBg,
         border: isMe
           ? "1px solid color-mix(in oklab, var(--brand-400) 30%, transparent)"
           : "1px solid var(--border)",
@@ -663,6 +669,7 @@ function MessageBubble({
         wordBreak: "break-word",
       }}
     >
+      <MessageChevron isMe={isMe} bubbleBg={bubbleBg} />
       {m.media_url && m.message_type === "image" && (
         <a href={m.media_url} target="_blank" rel="noreferrer" style={{ display: "block", marginBottom: m.content ? 6 : 0 }}>
           <img
@@ -729,6 +736,38 @@ function getVisualMessageStatus(message: Message): Message["status"] {
 
 function fmtClock(date: Date): string {
   return date.toLocaleTimeString("pt-BR", { hour: "2-digit", minute: "2-digit" });
+}
+
+function MessageChevron({ isMe, bubbleBg }: { isMe: boolean; bubbleBg: string }) {
+  return (
+    <button
+      type="button"
+      aria-label="Opções da mensagem"
+      onClick={(e) => e.stopPropagation()}
+      className="opacity-0 group-hover/msg:opacity-100 focus:opacity-100"
+      style={{
+        position: "absolute",
+        top: 0,
+        right: isMe ? 0 : "auto",
+        left: isMe ? "auto" : 0,
+        width: 36,
+        height: 26,
+        display: "flex",
+        alignItems: "center",
+        justifyContent: "flex-end",
+        padding: "0 6px",
+        border: "none",
+        cursor: "pointer",
+        borderTopRightRadius: isMe ? 12 : 0,
+        borderTopLeftRadius: isMe ? 0 : 12,
+        background: `linear-gradient(225deg, ${bubbleBg} 45%, color-mix(in oklab, ${bubbleBg} 0%, transparent) 100%)`,
+        transition: "opacity 120ms ease-out",
+        zIndex: 2,
+      }}
+    >
+      <ChevronDown size={18} color="var(--text-muted)" strokeWidth={2.25} />
+    </button>
+  );
 }
 
 function StatusTicks({ status }: { status: Message["status"] }) {
