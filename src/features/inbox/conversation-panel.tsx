@@ -326,6 +326,8 @@ export function ConversationPanel({
 
   const handleSendAttachments = async (files: File[], caption: string) => {
     if (!contact) return;
+    const quoted = buildQuoted(replyingTo);
+    setReplyingTo(null);
     for (let i = 0; i < files.length; i++) {
       const f = files[i];
       const { url } = await uploadToStorage(f);
@@ -338,6 +340,7 @@ export function ConversationPanel({
             mime: f.type || "application/octet-stream",
             name: f.name || `file-${Date.now()}`,
             caption: cap || undefined,
+            quoted: i === 0 ? quoted : undefined,
           },
         });
       } catch (e: any) {
@@ -350,7 +353,9 @@ export function ConversationPanel({
     if (!contact) return;
     const file = new File([blob], `audio-${Date.now()}.webm`, { type: "audio/webm" });
     const { url } = await uploadToStorage(file);
-    await sendAudioFn({ data: { contactId: contact.id, url } });
+    const quoted = buildQuoted(replyingTo);
+    setReplyingTo(null);
+    await sendAudioFn({ data: { contactId: contact.id, url, quoted } });
   };
 
   const menuAction = (label: string) => {
