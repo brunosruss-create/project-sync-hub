@@ -13,7 +13,7 @@ import {
   AlertTriangle,
   Filter,
 } from "lucide-react";
-import { notify } from "@/lib/notify";
+import { notify as nfy } from "@/lib/notify";
 import { supabase } from "@/integrations/supabase/client";
 import { EmptyState } from "@/components/empty-state";
 import {
@@ -134,7 +134,7 @@ function SchedulePage() {
       (a) => a.id !== draft.id && a.agent_id === draft.agent_id && overlap(a, draft),
     );
     if (conflict) {
-      notify.error("Horário em conflito com outro agendamento desse agente.");
+      nfy.error("Horário em conflito com outro agendamento desse agente.");
       return false;
     }
     const exists = items.some((a) => a.id === draft.id);
@@ -142,7 +142,7 @@ function SchedulePage() {
       exists ? prev.map((a) => (a.id === draft.id ? draft : a)) : [...prev, draft],
     );
     setEditing(null);
-    notify.success(exists ? "Agendamento atualizado." : "Agendamento criado.");
+    nfy.success(exists ? "Agendamento atualizado." : "Agendamento criado.");
 
     const { error } = await supabase.from("appointments").upsert({
       id: draft.id,
@@ -161,14 +161,14 @@ function SchedulePage() {
 
   const setStatus = async (id: string, status: AppointmentStatus) => {
     setItems((prev) => prev.map((a) => (a.id === id ? { ...a, status } : a)));
-    notify.success(`Status: ${STATUS_LABEL[status]}`);
+    nfy.success(`Status: ${STATUS_LABEL[status]}`);
     await supabase.from("appointments").update({ status }).eq("id", id);
   };
 
   const remove = async (id: string) => {
     setItems((prev) => prev.filter((a) => a.id !== id));
     setOpenId(null);
-    notify.success("Agendamento removido.");
+    nfy.success("Agendamento removido.");
     await supabase.from("appointments").delete().eq("id", id);
   };
 
@@ -1577,15 +1577,15 @@ function AppointmentModal({
       cid = c.id;
     }
     if (!cid) {
-      notify.error("Selecione ou crie um contato.");
+      nfy.error("Selecione ou crie um contato.");
       return;
     }
     if (!serviceId) {
-      notify.error("Selecione um serviço.");
+      nfy.error("Selecione um serviço.");
       return;
     }
     if (!agentId) {
-      notify.error("Selecione um agente.");
+      nfy.error("Selecione um agente.");
       return;
     }
     const draft: Appointment = {
