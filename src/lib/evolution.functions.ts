@@ -154,9 +154,12 @@ export const connectInstance = createServerFn({ method: "POST" })
     return { instance: updated, qr };
   });
 
+const refreshInput = z.object({ forceQrRefresh: z.boolean().optional() }).optional();
+
 export const refreshInstanceStatus = createServerFn({ method: "POST" })
   .middleware([requireSupabaseAuth])
-  .handler(async ({ context }) => {
+  .inputValidator((d) => refreshInput.parse(d))
+  .handler(async ({ data, context }) => {
     const name = instanceNameForOwner(context.userId);
     const { data: row } = await supabaseAdmin
       .from("whatsapp_instances")
@@ -191,13 +194,17 @@ export const refreshInstanceStatus = createServerFn({ method: "POST" })
             ? "disconnected"
             : row.status;
 
+    const qrExpiresAt = row.qr_expires_at ? new Date(row.qr_expires_at).getTime() : 0;
+    const qrExpired = !qrExpiresAt || qrExpiresAt <= Date.now();
+    const shouldRefreshQr = Boolean(data?.forceQrRefresh) || !row.qr_code || qrExpired;
+
     const update: Record<string, any> = { status };
     if (status === "connected") {
       update.last_connected_at = new Date().toISOString();
       update.qr_code = null;
       if (phone) update.phone_number = phone;
       if (profile) update.profile_name = profile;
-    } else if (status === "pending" && !row.qr_code) {
+    } else if (status === "pending" && shouldRefreshQr) {
       try {
         const r: any = await evo.connect(name);
         const qr = await normalizeQRCodeImage(extractQRCode(r));
