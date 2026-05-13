@@ -1013,12 +1013,16 @@ function MessageChevron({
   message,
   onReply,
   onReact,
+  onEdit,
+  onDelete,
 }: {
   isMe: boolean;
   bubbleBg: string;
   message: Message;
   onReply?: (m: Message) => void;
   onReact?: (m: Message, emoji: string) => void;
+  onEdit?: () => void;
+  onDelete?: () => void;
 }) {
   return (
     <MessageActions
@@ -1033,7 +1037,91 @@ function MessageChevron({
       }}
       onReply={() => onReply?.(message)}
       onReact={(_m, emoji) => onReact?.(message, emoji)}
+      onEdit={() => onEdit?.()}
+      onDelete={() => onDelete?.()}
     />
+  );
+}
+
+function InlineEditor({
+  initial,
+  onCancel,
+  onSave,
+}: {
+  initial: string;
+  onCancel: () => void;
+  onSave: (text: string) => void;
+}) {
+  const [val, setVal] = React.useState(initial);
+  const ref = React.useRef<HTMLTextAreaElement | null>(null);
+  React.useEffect(() => {
+    ref.current?.focus();
+    ref.current?.setSelectionRange(val.length, val.length);
+  }, []);
+  return (
+    <div style={{ display: "flex", flexDirection: "column", gap: 6 }}>
+      <textarea
+        ref={ref}
+        value={val}
+        onChange={(e) => setVal(e.target.value)}
+        onKeyDown={(e) => {
+          if (e.key === "Escape") {
+            e.preventDefault();
+            onCancel();
+          } else if (e.key === "Enter" && !e.shiftKey) {
+            e.preventDefault();
+            if (val.trim()) onSave(val);
+          }
+        }}
+        rows={Math.min(6, Math.max(1, val.split("\n").length))}
+        style={{
+          width: "100%",
+          background: "var(--bg-base)",
+          border: "1px solid var(--border)",
+          borderRadius: 6,
+          color: "var(--text-primary)",
+          padding: "6px 8px",
+          fontSize: 14,
+          fontFamily: "inherit",
+          resize: "none",
+          outline: "none",
+        }}
+      />
+      <div style={{ display: "flex", gap: 6, justifyContent: "flex-end" }}>
+        <button
+          type="button"
+          onClick={onCancel}
+          style={{
+            padding: "4px 10px",
+            background: "transparent",
+            border: "1px solid var(--border)",
+            borderRadius: 6,
+            color: "var(--text-muted)",
+            cursor: "pointer",
+            fontSize: 12,
+          }}
+        >
+          Cancelar
+        </button>
+        <button
+          type="button"
+          onClick={() => val.trim() && onSave(val)}
+          disabled={!val.trim()}
+          style={{
+            padding: "4px 10px",
+            background: "var(--brand-400)",
+            border: "1px solid var(--brand-400)",
+            borderRadius: 6,
+            color: "white",
+            cursor: val.trim() ? "pointer" : "not-allowed",
+            fontSize: 12,
+            opacity: val.trim() ? 1 : 0.6,
+          }}
+        >
+          Salvar
+        </button>
+      </div>
+    </div>
   );
 }
 
