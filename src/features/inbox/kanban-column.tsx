@@ -84,7 +84,7 @@ export function KanbanColumn({ id, label, emoji, contacts, onCardClick }: Props)
       </div>
 
       <div
-        className="flex-1 overflow-y-auto flex flex-col"
+        className="flex-1 overflow-y-auto overflow-x-hidden flex flex-col"
         style={{ gap: 12, padding: "6px 2px" }}
       >
         {contacts.map((c) => (

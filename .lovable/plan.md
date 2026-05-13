@@ -1,60 +1,36 @@
-## O que já foi entregue
-- **BUG 1** — duplicação de mensagem corrigida (removido optimistic update, realtime é fonte da verdade, dedupe por id já existia).
-- **MELHORIA 1** — foto do WhatsApp nos cards/chat/contatos com fallback de iniciais coloridas.
+# Ajuste do card — remover scrollbar horizontal na coluna
 
-## O que falta
+## Causa
 
-### Melhoria 2 — Editar card existente (quick edit)
+A barrinha horizontal no rodapé de cada coluna (visível no print) é causada pelos elementos posicionados com offset negativo dentro do `ContactCard`:
 
-**Ícone ⋮ no card (`src/features/inbox/contact-card.tsx`)**
-- Aparece só no hover (opacity 0 → 1, transition 100ms), 14px, `var(--text-muted)`.
-- Posição: canto superior direito. Se houver badge de não lidas, posiciona logo abaixo do badge para não conflitar.
-- Clique abre o dropdown e faz `stopPropagation` (não dispara drag nem abre o chat).
+- Badge de não lidas: `top: -6, right: -6`
+- Botão ⋮ (hover): `top: -4 / 16, right: -4`
 
-**Dropdown (`src/features/inbox/card-menu.tsx` — novo)**
-- 180px, posicionado abaixo do ícone, fecha em click-outside / Esc.
-- Itens, com separadores:
-  - **Contato:** Editar nome • Adicionar tag • Atribuir agente
-  - **Kanban:** Marcar/Remover urgência • Mover para coluna (submenu com as 4 colunas)
-  - **Ações:** Agendar horário (abre `ScheduleModal`) • Abrir conversa
-  - **Arquivar contato** (separador antes)
-- Cada ação: update otimista no estado local + `supabase.from('contacts').update(...)` + toast.
-- "Arquivar": seta `kanban_column = 'archived'` (ou `archived_at = now()`); o card some do kanban porque não está em nenhuma das 4 colunas visíveis.
+Como o card tem `width: 100%` dentro do container `overflow-y-auto` da coluna, esses 6px que "vazam" para fora à direita geram overflow horizontal — e o navegador mostra a scrollbar.
 
-**Modal "Editar contato" (`src/features/inbox/edit-contact-modal.tsx` — novo)**
-- 400px, abre por "Editar nome" ou pelo dropdown.
-- Campos: Nome (input), Tags (chips editáveis igual ao NewContactModal), Agente (select), Observações (textarea ligada a `contacts.notes`).
-- Imutáveis: telefone, coluna kanban (apenas exibe).
-- Salvar → update no Supabase + propaga via `onContactUpdate` no estado do `/inbox` + toast "Contato atualizado ✓".
+## Mudanças (cirúrgicas, apenas visual)
 
-**SQL necessário (você roda no SQL Editor):**
-```sql
-alter table public.contacts add column if not exists notes text;
-alter table public.contacts add column if not exists archived_at timestamptz;
-```
+**1. `src/features/inbox/kanban-column.tsx`** (linha 87)
+- Trocar `className="flex-1 overflow-y-auto flex flex-col"` por `className="flex-1 overflow-y-auto overflow-x-hidden flex flex-col"`.
+- Garante que nenhum overflow horizontal interno produza scrollbar, sem afetar o scroll vertical.
 
----
+**2. `src/features/inbox/contact-card.tsx`** (badge + botão ⋮)
+- Badge não lidas: trocar `top: -6, right: -6` por `top: 6, right: 6` (fica dentro do card, sem clipping e sem causar overflow).
+- Botão ⋮: trocar `right: -4` por `right: 6`; ajustar `top` para `6` quando não há badge e `30` quando há badge (para não sobrepor o número).
+- Recalcular `anchor.left` do menu para refletir a nova posição (`r.right - 180`).
 
-### Melhoria 3 — Criação em lote (`src/features/inbox/new-contact-modal.tsx`)
+## O que NÃO muda
 
-**Polir o "Criar outro após salvar" (modo single):**
-- Após salvar com checkbox marcado: toast discreto, limpar nome/número/tags/mensagem, **manter** coluna e agente, focar `#whatsapp-number`, modal não fecha.
+- Drag & drop, listeners, dispatch do evento `zf:card-menu`, ScheduleModal, EditContactModal.
+- Estilos de hover, animações, dark mode.
+- Layout interno do card (avatar, nome, telefone, preview, tags, tempo).
+- Scroll horizontal do Kanban (entre colunas) continua funcional.
+- Lógica de mensagens, realtime, Supabase, Evolution.
 
-**Modo lote (toggle "+ Adicionar em lote"):**
-- Tabela com colunas: Número WhatsApp • Nome • Tag • [✕], até 10 linhas, botão "+ adicionar linha".
-- Validação por linha: número inválido / duplicado (consulta única `contacts.select('phone')`) marca ⚠ na linha.
-- Footer: `[Cancelar]  [Criar N contatos →]` (N = linhas válidas).
-- Submit: um único `supabase.from('contacts').insert([...])` → cards aparecem na coluna selecionada via realtime → toast "N contatos criados com sucesso ✓".
-- Coluna e agente do header do modal aplicam-se a todas as linhas do lote.
+## Teste rápido
 
----
-
-## Não-regressão (vou re-testar ao final)
-Drag-and-drop, ordenação por nova mensagem, badge de não lidas, abertura do painel, tabs, botão Agendar, filtros Todos/Meus/Sem atendente, busca, formatação de telefone, dark mode, scroll horizontal, envio de mensagem aparecendo 1 única vez.
-
-## Ordem de execução
-1. Modal Editar contato (componente isolado)
-2. Dropdown ⋮ no card (consome o modal)
-3. Modo lote no NewContactModal
-4. Pequenos ajustes do "Criar outro" (single)
-5. Sweep do checklist de não-regressão
+1. Coluna com 1+ cards → não deve aparecer scrollbar horizontal no rodapé da coluna.
+2. Badge de não lidas continua visível no canto superior direito do card.
+3. Hover no card mostra o ⋮ no canto, abre o menu na posição correta.
+4. Scroll vertical da coluna e scroll horizontal do Kanban seguem funcionando.
