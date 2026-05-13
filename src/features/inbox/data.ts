@@ -83,7 +83,7 @@ export const MOCK_CONTACTS: ContactCard[] = [
     tags: ["Pagamento"],
     isUnread: true,
     priority: "normal",
-    kanban_column: "active",
+    kanban_column: "in_progress",
   },
   {
     id: "c5",
@@ -95,7 +95,7 @@ export const MOCK_CONTACTS: ContactCard[] = [
     tags: ["Onboarding"],
     isUnread: false,
     priority: "normal",
-    kanban_column: "active",
+    kanban_column: "in_progress",
   },
   {
     id: "c6",
@@ -107,7 +107,7 @@ export const MOCK_CONTACTS: ContactCard[] = [
     tags: ["Vendas"],
     isUnread: false,
     priority: "normal",
-    kanban_column: "active",
+    kanban_column: "in_progress",
   },
   {
     id: "c7",
@@ -119,7 +119,7 @@ export const MOCK_CONTACTS: ContactCard[] = [
     tags: ["NPS+"],
     isUnread: false,
     priority: "normal",
-    kanban_column: "done",
+    kanban_column: "scheduled",
   },
   {
     id: "c8",
@@ -131,7 +131,7 @@ export const MOCK_CONTACTS: ContactCard[] = [
     tags: ["Fechado"],
     isUnread: false,
     priority: "normal",
-    kanban_column: "done",
+    kanban_column: "scheduled",
   },
   {
     id: "c9",
@@ -143,7 +143,7 @@ export const MOCK_CONTACTS: ContactCard[] = [
     tags: ["Indicação"],
     isUnread: false,
     priority: "normal",
-    kanban_column: "done",
+    kanban_column: "scheduled",
   },
   {
     id: "c10",
