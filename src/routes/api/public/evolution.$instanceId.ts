@@ -1,6 +1,38 @@
 import { createFileRoute } from "@tanstack/react-router";
 import { supabaseAdmin } from "@/integrations/supabase/client.server";
-import { extractQRCode, normalizeQRCodeImage, tryFetchProfilePicture } from "@/lib/evolution.server";
+import {
+  extractQRCode,
+  normalizeQRCodeImage,
+  tryFetchProfilePicture,
+  downloadInboundMedia,
+} from "@/lib/evolution.server";
+
+type MediaKind = "image" | "audio" | "video" | "document";
+
+const MIME_EXT: Record<string, string> = {
+  "image/jpeg": "jpg", "image/jpg": "jpg", "image/png": "png", "image/webp": "webp", "image/gif": "gif",
+  "audio/ogg": "ogg", "audio/ogg; codecs=opus": "ogg", "audio/mpeg": "mp3", "audio/mp4": "m4a", "audio/webm": "webm", "audio/wav": "wav",
+  "video/mp4": "mp4", "video/webm": "webm", "video/quicktime": "mov", "video/3gpp": "3gp",
+  "application/pdf": "pdf", "application/zip": "zip",
+};
+function extFromMime(mime: string, fallback: string): string {
+  return MIME_EXT[mime.toLowerCase()] ?? (mime.split("/")[1] ?? fallback).split(";")[0].slice(0, 5);
+}
+function detectMediaNode(message: any): { kind: MediaKind; node: any } | null {
+  if (!message) return null;
+  if (message.imageMessage) return { kind: "image", node: message.imageMessage };
+  if (message.videoMessage) return { kind: "video", node: message.videoMessage };
+  if (message.audioMessage) return { kind: "audio", node: message.audioMessage };
+  if (message.pttMessage) return { kind: "audio", node: message.pttMessage };
+  if (message.documentMessage) return { kind: "document", node: message.documentMessage };
+  if (message.documentWithCaptionMessage?.message?.documentMessage)
+    return { kind: "document", node: message.documentWithCaptionMessage.message.documentMessage };
+  if (message.stickerMessage) return { kind: "image", node: message.stickerMessage };
+  return null;
+}
+const KIND_LABEL: Record<MediaKind, string> = {
+  image: "📷 Imagem", audio: "🎵 Áudio", video: "🎬 Vídeo", document: "📎 Documento",
+};
 
 export const Route = createFileRoute("/api/public/evolution/$instanceId")({
   server: {
@@ -92,13 +124,54 @@ export const Route = createFileRoute("/api/public/evolution/$instanceId")({
               const remote = m?.key?.remoteJid ?? "";
               if (!remote || remote.endsWith("@g.us")) continue; // ignora grupos
               const phone = remote.split("@")[0];
-              const text =
+              const pushName = m?.pushName ?? null;
+
+              // ---- detectar mídia
+              const detected = detectMediaNode(m?.message);
+              let mediaType: "text" | MediaKind = "text";
+              let mediaUrl: string | null = null;
+              let mediaMime: string | null = null;
+              let mediaName: string | null = null;
+              let caption: string =
                 m?.message?.conversation ??
                 m?.message?.extendedTextMessage?.text ??
-                m?.message?.imageMessage?.caption ??
-                m?.message?.videoMessage?.caption ??
-                "[mídia]";
-              const pushName = m?.pushName ?? null;
+                "";
+
+              if (detected) {
+                caption = detected.node?.caption ?? caption ?? "";
+                const declaredMime: string | null = detected.node?.mimetype ?? null;
+                const declaredName: string | null = detected.node?.fileName ?? null;
+                try {
+                  const dl = await downloadInboundMedia(row.instance_name as string, m);
+                  if (dl) {
+                    const mime = dl.mimetype || declaredMime || "application/octet-stream";
+                    const ext = extFromMime(mime, detected.kind === "audio" ? "ogg" : "bin");
+                    const fname = declaredName || dl.fileName || `${detected.kind}-${Date.now()}.${ext}`;
+                    const path = `${row.owner_user_id}/inbound-${Date.now()}-${crypto.randomUUID()}.${ext}`;
+                    const { error: upErr } = await supabaseAdmin.storage
+                      .from("chat-media")
+                      .upload(path, dl.buffer, { contentType: mime, upsert: false });
+                    if (upErr) {
+                      console.error("[evolution upsert] storage upload", { path, error: upErr.message });
+                    } else {
+                      const { data: pub } = supabaseAdmin.storage.from("chat-media").getPublicUrl(path);
+                      mediaUrl = pub.publicUrl;
+                      mediaMime = mime;
+                      mediaName = fname;
+                      mediaType = detected.kind;
+                    }
+                  } else {
+                    console.warn("[evolution upsert] downloadInboundMedia retornou null", { kind: detected.kind });
+                  }
+                } catch (e: any) {
+                  console.error("[evolution upsert] download mídia falhou:", e?.message ?? e);
+                }
+              }
+
+              const previewText =
+                mediaType === "text"
+                  ? (caption || "[mídia]")
+                  : (caption || KIND_LABEL[mediaType as MediaKind]);
 
               // upsert contato
               const { data: existing, error: selErr } = await supabaseAdmin
@@ -113,7 +186,6 @@ export const Route = createFileRoute("/api/public/evolution/$instanceId")({
 
               let contactId = existing?.id as string | undefined;
               if (!contactId) {
-                // Best-effort: tenta foto de perfil do WhatsApp
                 const avatarUrl = await tryFetchProfilePicture(
                   row.instance_name as string,
                   phone,
@@ -127,7 +199,7 @@ export const Route = createFileRoute("/api/public/evolution/$instanceId")({
                     avatar_url: avatarUrl,
                     kanban_column: "waiting",
                     is_unread: true,
-                    last_message: text,
+                    last_message: previewText,
                     last_message_at: new Date().toISOString(),
                   })
                   .select("id")
@@ -149,7 +221,7 @@ export const Route = createFileRoute("/api/public/evolution/$instanceId")({
                   .update({
                     owner_user_id: row.owner_user_id,
                     is_unread: true,
-                    last_message: text,
+                    last_message: previewText,
                     last_message_at: new Date().toISOString(),
                   })
                   .eq("id", contactId);
@@ -159,14 +231,20 @@ export const Route = createFileRoute("/api/public/evolution/$instanceId")({
               }
 
               if (contactId) {
-                const { error: msgErr } = await supabaseAdmin.from("messages").insert({
+                const insertPayload: Record<string, unknown> = {
                   owner_user_id: row.owner_user_id,
                   contact_id: contactId,
                   direction: "inbound",
-                  content: text,
-                  message_type: "text",
+                  content: caption ?? "",
+                  message_type: mediaType,
                   status: "delivered",
-                });
+                };
+                if (mediaUrl) {
+                  insertPayload.media_url = mediaUrl;
+                  insertPayload.media_mime = mediaMime;
+                  insertPayload.media_name = mediaName;
+                }
+                const { error: msgErr } = await supabaseAdmin.from("messages").insert(insertPayload);
                 if (msgErr) {
                   console.error("[evolution upsert] insert message", {
                     contactId,

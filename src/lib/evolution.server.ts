@@ -124,7 +124,47 @@ export const evo = {
       `/chat/fetchProfilePictureUrl/${encodeURIComponent(name)}`,
       { method: "POST", json: { number } },
     ),
+
+  getBase64FromMediaMessage: (
+    name: string,
+    body: { message: any; convertToMp4?: boolean },
+  ) =>
+    call<{ base64?: string; mimetype?: string; fileName?: string } | any>(
+      `/chat/getBase64FromMediaMessage/${encodeURIComponent(name)}`,
+      { method: "POST", json: body },
+    ),
 };
+
+/**
+ * Baixa o binário (base64) de uma mensagem de mídia recebida via webhook.
+ * Tenta com `{ message: m }` primeiro e cai para `{ message: { key, message } }`.
+ */
+export async function downloadInboundMedia(
+  instanceName: string,
+  m: any,
+): Promise<{ buffer: Buffer; mimetype: string; fileName: string | null } | null> {
+  if (!BASE() || !KEY()) return null;
+  const tries: any[] = [
+    { message: m },
+    { message: { key: m?.key, message: m?.message } },
+  ];
+  for (const body of tries) {
+    try {
+      const r: any = await evo.getBase64FromMediaMessage(instanceName, body);
+      const base64: string | undefined = r?.base64 ?? r?.data?.base64 ?? r?.media;
+      const mimetype: string =
+        r?.mimetype ?? r?.data?.mimetype ?? r?.mediaType ?? "application/octet-stream";
+      const fileName: string | null = r?.fileName ?? r?.data?.fileName ?? null;
+      if (typeof base64 === "string" && base64.length > 0) {
+        const clean = base64.includes(",") ? base64.split(",").pop()! : base64;
+        return { buffer: Buffer.from(clean, "base64"), mimetype, fileName };
+      }
+    } catch (e: any) {
+      console.warn("[evolution downloadInboundMedia] tentativa falhou:", e?.message ?? e);
+    }
+  }
+  return null;
+}
 
 export async function tryFetchProfilePicture(
   instanceName: string,
