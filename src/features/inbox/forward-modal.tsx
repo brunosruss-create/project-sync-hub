@@ -321,7 +321,7 @@ export function ForwardModal({ open, source, excludeContactId, onClose }: Props)
                     checked={checked}
                     onChange={() => toggle(c.id)}
                     onClick={(e) => e.stopPropagation()}
-                    style={{ accentColor: "var(--accent)" }}
+                    style={{ accentColor: "var(--brand-400)" }}
                   />
                 </button>
               );
