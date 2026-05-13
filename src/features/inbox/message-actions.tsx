@@ -17,10 +17,12 @@ type Props = {
   bubbleBg: string;
   onReply?: (m: MessageActionContext) => void;
   onForward?: (m: MessageActionContext) => void;
-  onReact?: (m: MessageActionContext) => void;
+  onReact?: (m: MessageActionContext, emoji: string) => void;
   onEdit?: (m: MessageActionContext) => void;
   onDelete?: (m: MessageActionContext) => void;
 };
+
+const QUICK_REACTIONS = ["👍", "❤️", "😂", "😮", "😢", "🙏"];
 
 export function MessageActions({
   message,
