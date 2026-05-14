@@ -10,7 +10,20 @@ import {
   formatDuration,
   type Service,
 } from "@/features/services/data";
-import { MOCK_AGENTS, toDateInput, fromDateTimeInput } from "@/features/schedule/data";
+import {
+  MOCK_AGENTS,
+  toDateInput,
+  fromDateTimeInput,
+  formatDateBR,
+  parseDateBR,
+} from "@/features/schedule/data";
+
+interface BusyAppt {
+  id: string;
+  starts_at: string;
+  ends_at: string;
+  agent_id: string | null;
+}
 
 interface Props {
   contact: ContactCard;
