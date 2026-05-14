@@ -1,96 +1,76 @@
+
+# Transferir atendimento entre membros do workspace
+
 ## Objetivo
+Permitir que qualquer membro ativo (manager ou agente) transfira uma conversa para outro membro ativo do mesmo workspace. A coluna `contacts.assigned_agent_id` (uuid) já existe e é compartilhada via RLS por workspace — vamos usá-la corretamente, sem mexer no schema atual.
 
-Tornar o sistema **multi-tenant por workspace** de verdade: o manager (cliente SaaS) cria a equipe pelo painel, e todos os membros dessa equipe enxergam **a mesma inbox / mesmo número de WhatsApp / mesmos contatos** que o manager. Hoje cada `auth.users.id` é uma ilha isolada — vamos introduzir o conceito de "workspace = manager".
+## Escopo (o que muda e o que NÃO muda)
 
-## Modelo de dados
+Muda:
+- Botão "Transferir" no header da conversa (hoje só mostra um toast "em breve").
+- Item "Transferir para agente" no menu "..." da conversa.
+- Item "Transferir para agente" no menu "..." de cada card do Kanban (`card-menu` → ação `assign`).
+- Filtro "Meus" da inbox (hoje compara `email.split("@")[0]` com `assigned_agent_id`, o que nunca bate — pequeno bug a corrigir junto, sem mudar visual).
+- Exibição do agente responsável (chip discreto no header da conversa e no card).
 
-**Conceito:** workspace é identificado pelo `user_id` do manager. Não precisa de tabela `workspaces` — economiza migrations.
+NÃO muda:
+- Schema do banco (apenas usa `assigned_agent_id`).
+- RLS (já permite UPDATE para qualquer membro do workspace via `owner_user_id = get_my_workspace_owner()`).
+- Fluxos de envio de WhatsApp, encaminhamento, agendamento, kanban.
+- `forward-modal.tsx` (encaminhar mensagem ≠ transferir conversa) — fica intocado.
+- Tabelas `team`, `workspace_members`, `user_roles` — apenas leitura.
 
-```sql
--- Quem pertence a qual workspace
-create table public.workspace_members (
-  id uuid primary key default gen_random_uuid(),
-  workspace_owner_id uuid references auth.users(id) on delete cascade not null, -- = manager
-  member_user_id     uuid references auth.users(id) on delete cascade not null,
-  active boolean default true not null,
-  created_at timestamptz default now() not null,
-  unique (workspace_owner_id, member_user_id)
-);
+## UX
 
--- Função: dado o usuário logado, retorna o id do dono do workspace dele
--- (se ele é manager → retorna o próprio id; se é agente → retorna o manager dele)
-create function public.get_my_workspace_owner() returns uuid ...
-```
+1. Header da conversa → botão "Transferir" abre `TransferConversationModal`.
+2. Modal lista membros ativos do workspace (busca `listAssignableMembers`), exclui o usuário atual e o atual responsável, mostra avatar + nome + role (Manager/Agente).
+3. Opções: "Atribuir a mim", "Tirar atribuição" (apenas se já houver responsável), e clique em qualquer membro = transferir.
+4. Confirma → chama `assignContact({ contactId, agentUserId | null })` → toast e fecha.
+5. Header passa a mostrar "Atendente: Nome" abaixo do telefone (quando atribuído). Card no Kanban ganha um avatarzinho do agente no canto.
+6. Filtro "Meus" passa a usar `user.id === assignedAgent` (uuid).
 
-Backfill: para cada manager existente, insere ele mesmo em `workspace_members` como membro do próprio workspace.
+Permissões:
+- Manager pode transferir qualquer conversa para qualquer membro ativo.
+- Agente pode transferir qualquer conversa do workspace (todos compartilham caixa) para qualquer membro ativo, inclusive desatribuir/atribuir a si.
+- Validações server-side garantem que `agentUserId` pertence ao mesmo workspace e está `active = true`.
 
-## RLS — aqui está a mudança crítica
+## Implementação técnica
 
-Hoje as policies em `contacts`, `messages`, `whatsapp_instances`, `kanban_columns`, `appointments` usam `owner_user_id = auth.uid()`. Vamos trocar por:
+Arquivos novos:
+- `src/lib/assignment.functions.ts` — server functions:
+  - `listAssignableMembers()` (auth) → retorna `{ user_id, full_name, email, role, is_self }[]`, filtrando `workspace_members.active = true` do `get_my_workspace_owner()`. Usa `supabaseAdmin` para join com `profiles` + `auth.admin.getUserById` fallback (mesmo padrão de `team.functions.ts`).
+  - `assignContact({ contactId: uuid, agentUserId: uuid | null })` (auth) →
+    1. Resolve `ownerId = get_my_workspace_owner()` via RPC.
+    2. Confirma que `contacts.id = contactId AND owner_user_id = ownerId` existe.
+    3. Se `agentUserId` não nulo, confirma membership ativa em `workspace_members`.
+    4. `update contacts set assigned_agent_id = agentUserId where id = contactId`.
+    5. Retorna `{ ok: true, assignedTo: { user_id, full_name } | null }`.
+  - Tudo com `zod` (mesmo estilo de `team.functions.ts`); admin client só para leitura cruzada de `auth.users`/`profiles`.
 
-```sql
-using (owner_user_id = public.get_my_workspace_owner())
-```
+Arquivos novos (frontend):
+- `src/features/inbox/transfer-conversation-modal.tsx` — modal isolado, mesmo visual/tokens do `forward-modal.tsx` (reaproveita estilos, sem alterar o forward).
 
-Resultado: agente logado lê/escreve nos dados do manager dele. Os inserts continuam usando `owner_user_id = get_my_workspace_owner()` para que dados criados por agentes pertençam ao workspace do manager (e não ao próprio agente).
+Edits cirúrgicos:
+- `src/features/inbox/conversation-panel.tsx`:
+  - Substituir `onClick={() => toast.info("Transferir — em breve.")}` por abrir o novo modal.
+  - Item de menu "Transferir para agente" também abre o modal.
+  - Renderizar nome do agente atribuído (recebido via prop nova `assignedAgentName?: string | null`).
+- `src/routes/_authenticated.inbox.tsx`:
+  - Buscar `listAssignableMembers` uma vez (cache) para mapear `assigned_agent_id` → nome no card e no header.
+  - Corrigir filtro "Meus": `c.assignedAgent === user?.id`.
+  - Tratar ação `assign` do `card-menu` abrindo o modal (hoje cai no `setEditTarget`, vamos roteá-la para o modal de transferência).
+  - Após sucesso do `assignContact`, otimisticamente atualizar `contacts[].assignedAgent` (Realtime já vai reconciliar via canal `contacts` existente).
+- `src/features/inbox/contact-card.tsx` (se necessário): adicionar avatar/iniciais do responsável no canto. (Mudança visual mínima; só se não atrapalhar layout atual.)
 
-Tabelas afetadas: `contacts`, `messages`, `whatsapp_instances`, `kanban_columns`, `appointments`. Atualizo todas as policies "Users can ..." e as guards "owner guard ...".
+## Garantias anti-regressão
 
-## Backend — server functions (admin)
+- Nenhuma mudança em RLS, migrations, tabelas, ou nos fluxos de WhatsApp/forward/kanban/agenda.
+- `forward-modal.tsx` continua sendo o "encaminhar mensagem"; o "transferir conversa" é um modal separado para evitar confusão de responsabilidade.
+- Server function `assignContact` valida workspace e membership — agente não consegue atribuir para fora do próprio workspace mesmo manipulando o request.
+- Filtro "Meus" passa a funcionar (era bug silencioso); comportamento dos outros filtros ("Todos", "Sem atendente") permanece idêntico.
+- Realtime existente em `contacts` já propaga `assigned_agent_id` para os outros membros conectados — sem precisar de canal novo.
 
-Novo arquivo `src/lib/team.functions.ts`:
-
-| Função | O que faz | Quem pode chamar |
-|---|---|---|
-| `listTeamMembers` | Lista membros do workspace do usuário logado (join `workspace_members` + `auth.users` + `user_roles`) | Manager |
-| `createTeamMember` | Recebe `{ email, password, fullName, role }`. Usa `supabaseAdmin.auth.admin.createUser({ email_confirm: true })`, insere em `user_roles` (role = 'agent' ou 'manager'), insere em `workspace_members` apontando para o workspace do chamador | Manager |
-| `updateTeamMember` | Toggle ativo/inativo, mudar role | Manager |
-| `removeTeamMember` | Remove de `workspace_members` + `user_roles` (não deleta `auth.users` para preservar histórico) | Manager |
-
-Todas usam `requireSupabaseAuth` + checam `has_role(auth.uid(), 'manager')` no início. Bloqueia agente tentar bypassar.
-
-## Frontend
-
-**`src/routes/_authenticated.settings.team.tsx`** — substituir o mock `SEED` por dados reais via `useQuery(listTeamMembers)`. Modal de convite ganha campos: email, senha temporária, nome, role. Submit → `useMutation(createTeamMember)`. Toggle/remover usam `updateTeamMember`/`removeTeamMember`. Toast de sucesso, invalidate da query.
-
-**`src/hooks/use-role.tsx`** — já existe. Continua válido.
-
-**Sidebar e guards** — não muda. Já bloqueia agente nas rotas sensíveis.
-
-**Decisão sobre criação:** email + senha temporária (sem dependência de email infra). Manager entrega a senha pro agente; agente loga e (futuramente) pode trocar via `/settings/profile`.
-
-## Validação
-
-1. Manager (você) loga → vê tudo igual + Equipe lista só você.
-2. Em /settings/team → "Convidar membro" → cria `agente@x.com / 123456 / Agente` → aparece na lista.
-3. Logout, login como `agente@x.com` → sidebar enxuta (sem Configurações/Super Admin) → Inbox carrega **as mesmas conversas que o manager vê** → manda mensagem → manager vê (mesmo workspace).
-4. Manager remove o agente → próxima requisição do agente devolve dados vazios (RLS bloqueia).
-
-## Arquivos tocados
-
-**Migration nova** (`supabase/manual/20260514160000_workspace_members.sql`):
-- cria `workspace_members` + RLS
-- cria `get_my_workspace_owner()`
-- backfill: managers existentes
-- **substitui todas as policies** de `contacts`, `messages`, `whatsapp_instances`, `kanban_columns`, `appointments` para usar `get_my_workspace_owner()`
-
-**Frontend:**
-- `src/lib/team.functions.ts` (novo) — server functions admin
-- `src/routes/_authenticated.settings.team.tsx` — UI real, sem SEED
-
-**O que NÃO muda:**
-- Inbox, Kanban, drag-and-drop, chat, realtime, dashboard, conexão Evolution, webhook, schedule — código continua usando `owner_user_id`. As queries que hoje filtram por `auth.uid()` no client passam a ser cobertas pela RLS reescrita (RLS faz o filtro). Onde o client passa `owner_user_id: user.id` em inserts, troco para `get_my_workspace_owner()` via uma função SQL ou faço o insert via server function que resolve o owner.
-
-## Pontos de atenção
-
-1. **Inserts no client com `owner_user_id: user.id`**: hoje muitos componentes (new-contact-modal, schedule-modal, etc.) inserem com `owner_user_id: user.id`. Para um agente isso violaria a RLS. Solução simples: a nova RLS de INSERT aceita `owner_user_id IN (auth.uid(), get_my_workspace_owner())` — agente que envia o próprio uid falha, mas o client passa a usar `get_my_workspace_owner()`. Vou criar um helper React `useWorkspaceOwnerId()` que cacheia esse valor e atualizar os ~6 componentes que fazem insert.
-
-2. **`evolution.functions.ts`**: o `getOrCreateRow` usa `auth.uid()` como `owner_user_id` da `whatsapp_instances`. Como WhatsApp é manager-only (já bloqueado por guard), esse caminho só roda para manager → `auth.uid() === get_my_workspace_owner()`. Sem mudança.
-
-3. **Realtime**: os filtros `postgres_changes` filtram por `owner_user_id=eq.${user.id}`. Trocar por `eq.${workspaceOwnerId}` nos componentes de inbox/messages.
-
-## Escopo fora desta entrega
-
-- Convite por email com link mágico (fica para depois — exige infra de email)
-- Atribuição de conversa a agente específico (`assignedAgent` ainda mock)
-- Tela do agente trocar a própria senha (já existe? checar `/settings/profile`)
+## Fora de escopo (sugerido para depois)
+- Notificação push/sonora para o agente quando recebe uma transferência.
+- Histórico/auditoria de transferências (tabela `assignment_history`).
+- Mensagem de sistema na timeline ("Bruno transferiu para Jaqueline").
