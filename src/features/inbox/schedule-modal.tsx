@@ -61,6 +61,7 @@ export function ScheduleModal({
   const [dateInput, setDateInput] = React.useState<string>(formatDateBR(toDateInput(new Date())));
   const [dateError, setDateError] = React.useState<string | null>(null);
   const [busy, setBusy] = React.useState<BusyAppt[]>([]);
+  const [calendarOpen, setCalendarOpen] = React.useState(false);
 
   React.useEffect(() => {
     if (!open) return;
