@@ -1,64 +1,68 @@
 ## Diagnóstico
 
-A causa **não** é string hardcoded `zapflow_main` — busquei no projeto inteiro e **não existe nenhuma referência**. Todas as 14 chamadas em `evolution.functions.ts` e o webhook em `routes/api/public/evolution.$instanceId.ts` já usam `instanceNameForOwner(userId)` ou consultam por `owner_user_id`/`id`.
+Quando um segundo usuário (outro workspace) conecta o WhatsApp, a conexão acontece (status `connected`, foto carregada via `fetchInstances`/`profilePicUrl`), mas **nenhuma mensagem inbound chega** porque o **webhook não dispara com sucesso** para a linha desse usuário.
 
-A causa real está visível na sua screenshot do SQL Editor:
+Há três causas concorrentes em `src/lib/evolution.functions.ts` + handler em `src/routes/api/public/evolution.$instanceId.ts`:
 
-```
-id                                    instance_name                  status
-fffc7868-250d-4c88-bdbc-e8f044826942  zf_491da44f593147cca9f60388    connected
-3b0f3e4e-f8ec-4fcf-b593-1b74ee2bd313  zf_SEUUSERID                   disconnected
-```
+### 1. `webhook_secret` fica NULL para novos usuários (causa principal)
 
-A segunda linha (`zf_SEUUSERID`) é **lixo do UPDATE SQL** — você rodou `replace('SEU-USER-ID', '-', '')` literalmente sem substituir o placeholder, então criou uma row com `instance_name = 'zf_SEUUSERID'` e provavelmente o mesmo `owner_user_id` da row real.
+- `getOrCreateRow()` (linha 32–47) insere a linha com apenas `instance_name`, `owner_user_id`, `status`. Não gera `webhook_secret`.
+- A tabela `whatsapp_instances` não possui `DEFAULT` para `webhook_secret` em migration versionada (a primeira instância — a sua — provavelmente teve o secret semeado manualmente / por SQL antigo). Para novas linhas o valor fica **NULL**.
+- Em `connectInstance` (linha 146): `const webhookSecret = (row.webhook_secret as string | null) ?? "";` → registra o webhook na Evolution com header `x-webhook-secret: ""` (string vazia).
+- Quando a Evolution faz POST no nosso endpoint, o handler valida assim:
 
-A query do `/inbox` (linhas 72-76 de `src/routes/_authenticated.inbox.tsx`):
+  ```ts
+  const secret = request.headers.get("x-webhook-secret") ?? "";
+  if (!row || !secret || secret !== row.webhook_secret || ...) return 403;
+  ```
 
-```ts
-.from("whatsapp_instances")
-.select("status")
-.eq("owner_user_id", user?.id)
-.maybeSingle();
-```
+  Mesmo que `secret === row.webhook_secret` (ambos `""`/null), o `!secret` curto-circuita → **403 Forbidden em todos os webhooks** → 0 mensagens entram. Por isso `connection.update` "open" também não chega → o status de "connected" que você vê foi setado pelo `refreshInstanceStatus` (polling com `connectionState`/`fetchInstances`), não pelo webhook. Foto idem (vem do `fetchInstances` direto).
 
-`.maybeSingle()` **retorna erro** quando há mais de uma row para o mesmo owner. O `if (error || !data)` cai no `setWhatsappStatus("disconnected")` → Kanban mostra "WhatsApp não conectado".
+### 2. `createInstance` no fluxo `connectInstance` não passa o bloco `webhook`
 
-## Correções (sem mexer em kanban/chat/realtime/dashboard)
+- Linhas 174–179 chamam `evo.createInstance({ instanceName, integration, qrcode })` **sem** `webhook`.
+- O registro depende exclusivamente do `ensureWebhook()` posterior (linha 229), que é best-effort com `try/catch warn` — silencia falhas. Se ele falhar uma vez, o webhook simplesmente nunca existe na Evolution para esse usuário.
 
-**1. Limpar a row órfã no DB** (você roda 1x no SQL Editor):
+### 3. `publicBaseUrl()` pode retornar vazio
 
-```sql
-DELETE FROM public.whatsapp_instances
-WHERE instance_name = 'zf_SEUUSERID';
-```
+- Linhas 15–30: depende de `PUBLIC_APP_URL` (env) ou de detectar `x-forwarded-host`/`getRequestHost()`. Em alguns contextos de execução do Worker ele retorna `""`.
+- Quando vazio, `webhookUrl` em `connectInstance` (linha 145) vira `null`, o `if (webhookUrl)` na linha 227 é falso → `ensureWebhook` **nunca é chamado** → webhook nunca registrado.
 
-**2. Tornar a query do `/inbox` robusta** (`src/routes/_authenticated.inbox.tsx`, linhas 72-82):
+A combinação de (2) + (3) explica por que para o usuário 2 o webhook pode literalmente nunca ter sido registrado na Evolution; (1) explica por que, mesmo registrado, todo POST volta 403.
 
-Trocar `.maybeSingle()` por `.order("updated_at", { ascending: false }).limit(1)` e ler `data?.[0]`. Assim, mesmo se aparecer outra row futuramente (ex.: usuário desconecta/reconecta), a mais recente vence e nunca quebra a query.
+## Plano de correção (mínimo, sem mexer em kanban/chat/dashboard)
 
-```ts
-const { data, error } = await supabase
-  .from("whatsapp_instances")
-  .select("status")
-  .eq("owner_user_id", user?.id)
-  .order("updated_at", { ascending: false })
-  .limit(1);
-if (cancelled) return;
-const row = data?.[0];
-if (error || !row) {
-  setWhatsappStatus("disconnected");
-  return;
-}
-setWhatsappStatus(row.status === "connected" ? "connected" : "disconnected");
-```
+### A. Garantir `webhook_secret` sempre populado (`src/lib/evolution.functions.ts`)
 
-Sem mudar nenhum import, nenhum outro arquivo, nenhuma lógica de kanban/realtime.
+1. Em `getOrCreateRow`: ao inserir, gerar `webhook_secret: crypto.randomUUID()` e incluir no insert.
+2. Logo após carregar `existing`/`created`, se `row.webhook_secret` ainda for falsy, fazer `update` setando um novo UUID e usar esse valor adiante. Garante backfill para linhas pré-existentes sem precisar de SQL manual.
 
-## Fora de escopo
-- `evolution.functions.ts`, `evolution.server.ts`, webhook, settings/whatsapp — todos já corretos.
-- Kanban, drag-and-drop, chat, dashboard, agenda — intocados.
+### B. Endurecer o handler (`src/routes/api/public/evolution.$instanceId.ts`)
 
-## Verificação após aplicar
-- `/inbox` mostra as 10 conversas existentes.
-- Status "Conectado" continua aparecendo em `/settings/whatsapp`.
-- Mensagens novas continuam chegando em tempo real.
+- Manter rejeição quando `!secret` ou mismatch (já é o comportamento), mas adicionar log explícito do motivo (`"missing secret header"` vs `"secret mismatch"`) para facilitar diagnóstico futuro nos worker logs.
+- Não muda lógica funcional.
+
+### C. Registrar o webhook no `createInstance` também (`connectInstance`)
+
+- Restaurar o bloco `webhook` no `evo.createInstance({...})` dentro de `connectInstance`, passando `url`, `headers: { "x-webhook-secret": webhookSecret }`, `events: WEBHOOK_EVENTS`, `webhookByEvents: false`, `webhookBase64: true`. Isso faz a Evolution já nascer com o webhook, sem depender do `ensureWebhook` posterior.
+
+### D. Tornar `publicBaseUrl()` confiável
+
+- Acrescentar fallback final: se nada resolver, usar a URL pública estável `https://project--e2215eb7-4cbb-4afc-8773-9f93425b90f1.lovable.app` (do `project_urls`). Isso garante que `webhookUrl` nunca vire `null` em produção.
+- Manter prioridade para `PUBLIC_APP_URL` se o usuário tiver definido.
+
+### E. Falhas do webhook devem ser visíveis (mas não derrubar o QR)
+
+- Em `ensureWebhook`, manter `try/catch` mas, no `catch` não-auth, gravar `webhook_last_error` em uma coluna opcional? **Pular** — fora de escopo. Apenas melhorar o `console.warn` para incluir nome da instância e URL para conseguirmos rastrear nos logs.
+
+## Validação
+
+1. Logar com a segunda conta, ir em Settings → WhatsApp → conectar/escanear QR.
+2. Após `connected`, verificar nos worker logs (`[evolution]`) que recebeu `messages.upsert` (não 403).
+3. Enviar uma mensagem real para o número conectado → deve aparecer no Kanban em tempo real.
+4. Confirmar que a primeira conta (já funcionando) **continua** recebendo (o backfill do secret só roda se for null; não sobrescreve o existente).
+
+## O que NÃO muda
+
+- Webhook handler (lógica), kanban, drag-and-drop, chat, dashboard, agendamentos, contatos, serviços, settings UI.
+- Schema do banco (sem migration nova; o backfill é via update do servidor com service-role).
