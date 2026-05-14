@@ -1,84 +1,38 @@
-## Escopo
+## Problema
 
-Apenas `src/routes/_authenticated.reports.tsx`. Não tocar em dashboard, inbox, schedule, services nem em nenhum outro arquivo de feature. Dashboard fica para um plano separado.
+No card "Próximos agendamentos" do dashboard, a coluna de serviço aparece como "—". O código já tenta dois caminhos (junção `appointment_services → services` e fallback por `appointments.service_id → services.id`), mas ambos retornam vazio para os agendamentos exibidos.
 
-## Diagnóstico atual
+Causas prováveis (sem mexer em mais nada do app):
 
-A página `/reports` chama exclusivamente `mockData()` e `mockSeries()` — KPIs, séries dos gráficos, ranking de agentes, top serviços, receita: tudo literal. Nada vem do banco.
+1. Agendamentos antigos foram criados com IDs de serviço fake (`SEED_SERVICES`), que não existem na tabela `services`, então nenhum dos dois lookups encontra nome.
+2. Em `schedule-modal.tsx`, o insert em `appointment_services` é feito com `console.warn` em caso de erro — se o snapshot falha (ex.: `service_id` fake violando FK), o appointment fica salvo sem linha em `appointment_services`, e como `service_id` aponta para um id inexistente, o fallback também falha.
+3. Possível problema da junção embutida `services(name)` se o PostgREST não detectar a FK pelo nome esperado.
 
-## Tabelas reais disponíveis (já em uso no app)
+## Correções (somente em `src/features/dashboard/data.ts` e `src/features/inbox/schedule-modal.tsx`)
 
-- `messages` (owner_user_id, contact_id, direction `inbound|outbound`, status, sent_by, created_at, message_type)
-- `appointments` (owner_user_id, contact_id, service_id, agent_id, starts_at, ends_at, status)
-- `appointment_services` (appointment_id, service_id, owner_user_id)
-- `services` (id, name, price_cents, duration_minutes, status)
-- `contacts` (id, owner_user_id)
-- `kanban_columns` (id, slug, label)
+### 1. `src/features/dashboard/data.ts` — tornar a resolução de nome de serviço robusta
 
-Não existe tabela `agents` no banco — agentes hoje são `MOCK_AGENTS` em `schedule/data.ts`. O ranking por agente usará `sent_by` (uuid de `auth.users`) agrupado, exibindo o nome via `profiles.full_name` quando possível e fallback para o uuid abreviado. Sem tabela `agents` real, a aba "Equipe" some o conceito de "Sofia (IA)" hardcoded.
+- Substituir a junção embutida `services(name)` por duas queries explícitas:
+  - `select("appointment_id, service_id").in("appointment_id", upcomingIds)` em `appointment_services`
+  - `select("id,name").in("id", [todos os service_ids coletados de appointment_services + appointments.service_id])` em `services`
+- Construir um único `Map<service_id, name>` e resolver `svcLabel` por:
+  1. nomes vindos de `appointment_services` para o `appointment_id`
+  2. fallback `appointments.service_id`
+  3. `"—"` apenas se nenhum dos dois resolver
+- Aplicar a mesma simplificação no bloco de "Top 5 serviços" (mesmo padrão: buscar `service_id` em `appointment_services` e mapear nomes em uma query separada à `services`).
+- Adicionar `console.debug` curto com os ids não resolvidos, para o usuário conseguir diagnosticar dados antigos com IDs inválidos.
 
-## Plano por aba
+### 2. `src/features/inbox/schedule-modal.tsx` — garantir que novos agendamentos sempre tenham serviço válido
 
-### A. Aba "Atendimento" (service)
+- Antes do insert de `appointments`, validar que todos os `selectedServices[*].id` existem realmente em `services` (query `select("id").in("id", ids)`). Se algum não existir (caso de fallback `SEED_SERVICES`), mostrar `toast.error("Cadastre serviços em /servicos antes de agendar")` e abortar.
+- Trocar o `console.warn` do insert em `appointment_services` por `toast.error` + rollback (deletar o appointment recém-criado) em caso de falha, evitando agendamentos órfãos sem snapshot.
 
-Fonte: `messages` filtrado por `owner_user_id = auth.uid()` e `created_at` no período selecionado.
+## Fora de escopo
 
-- **Volume por dia (gráfico)**: `count(*) where direction='inbound' group by date_trunc('day', created_at)` — preencher dias vazios com 0. Para `today`, agrupar por hora (00h–23h).
-- **Tempo médio de resposta (TMR)**: para cada `inbound`, achar o próximo `outbound` do mesmo `contact_id` posterior; média dos deltas em segundos. Calculado client-side após puxar `id, contact_id, direction, created_at` do período (limit alto, paginar se >5k).
-- **Taxa de resolução**: `appointments.completed / total_appointments` no período (proxy honesto). Documentar no tooltip "% de agendamentos concluídos".
-- **Ranking por agente**: `group by sent_by` em `messages where direction='outbound'`. Colunas: nome (resolvido via `profiles`), atendimentos (contagem de conversas distintas — `count(distinct contact_id)`), TMR por agente, resolvidos (count de appointments com `agent_id = sent_by` e status `completed`).
-- **Delta vs. período anterior**: refazer mesma query no intervalo anterior de mesmo tamanho; calcular `(atual-anterior)/anterior`. Se anterior=0, exibir "—".
+- Nenhuma alteração em SQL/migrations, RLS, outros componentes ou estilos.
+- Não alterar a lógica de KPIs, kanban, agentes online ou urgentes.
 
-### B. Aba "Agendamentos" (appointments)
+## Verificação
 
-Fonte: `appointments` + `appointment_services` no período (`starts_at` no range), `owner_user_id = auth.uid()`.
-
-- **Agendamentos por dia (linha)**: `count(*) group by date(starts_at)`. Para `today`, por hora.
-- **No-show rate**: `count(status='cancelled') / count(*)` (sem coluna `no_show`, usar `cancelled` como proxy e renomear o card para "Taxa de cancelamento").
-- **Receita estimada**: somar `services.price_cents` via join `appointment_services → services` para appointments com status em `('confirmed','in_progress','completed')`. Formatar BRL.
-- **Top serviços agendados**: `group by service_id`, count e soma de receita. Resolver nomes via `services`.
-
-### C. Aba "Serviços" (services)
-
-Mesma base (appointments concluídos no período + appointment_services + services).
-
-- **Receita total**: soma `price_cents` de serviços em appointments `completed`.
-- **Ticket médio**: receita_total / count(distinct appointment_id).
-- **Receita por serviço**: `group by service_id` → vendas (qty), receita, ticket médio (receita/qty).
-
-### D. Aba "Equipe" (team)
-
-- Mesmo agrupamento de "Ranking por agente" da aba A, mas adiciona "Tempo médio" (= TMR) e omite "Satisfação" (não há dado real — remover a coluna; não inventar).
-
-## Arquitetura de dados
-
-- Criar `src/features/reports/data.functions.ts` com **server functions** TanStack (`createServerFn` + `requireSupabaseAuth`) — uma por aba: `getServiceReport`, `getAppointmentsReport`, `getServicesReport`, `getTeamReport`. Cada uma recebe `{ period: 'today'|'7d'|'30d' }`, calcula `[start, end]` server-side e retorna o shape exato consumido pela UI.
-- Em `_authenticated.reports.tsx`, substituir `mockData/mockSeries` por `useQuery` (TanStack Query) com `queryKey: ['reports', tab, period]`, `staleTime: 30_000`. Loading mantém os `SkeletonCard`. Erro: `EmptyState` com mensagem.
-- Realtime opcional (fora deste plano) — manter polling implícito do refetch ao trocar período/aba.
-- Resolução de nomes (serviços, agentes/profiles) feita server-side em uma única query com `in('id', [...])` para evitar N+1.
-
-## Detalhes técnicos
-
-- Janela de período (server-side, timezone do servidor UTC; UI exibe local):
-  - `today` → `[startOfDay(now), now]`
-  - `7d` → `[now - 7d, now]`
-  - `30d` → `[now - 30d, now]`
-- Período anterior para deltas: mesma duração imediatamente antes do início.
-- Formatação: `Intl.NumberFormat('pt-BR', { style:'currency', currency:'BRL' })` para receita, `mm:ss` para TMR (`<1min` em segundos).
-- Export CSV continua client-side, mas usando os dados reais retornados (não mock).
-- Paginação defensiva: `messages.select(...).range(0, 9999)`; se `count > 10k`, exibir aviso e usar agregação SQL via RPC (fora do escopo desta primeira passada — adicionar TODO).
-- Estados vazios: cada aba mostra `EmptyState` quando o resultado for 0 linhas em todas as métricas.
-
-## Critérios de aceite
-
-1. Sem chamadas a `mockData`/`mockSeries` no arquivo final (grep deve retornar 0).
-2. Trocar período/aba dispara request e atualiza números.
-3. Criar um appointment `completed` em `/schedule` → recarregar `/reports` (aba Serviços) → receita e ticket médio refletem.
-4. Enviar uma mensagem no inbox → "Volume por dia" da aba Atendimento incrementa o bucket do dia atual.
-5. Sem dados no período → cada card/tabela mostra "—" ou `EmptyState`, sem números fictícios.
-6. Nenhum outro arquivo do projeto modificado (apenas `_authenticated.reports.tsx` + novo `src/features/reports/data.functions.ts`).
-
-## Fora deste plano (pedidos pelo usuário em separado)
-
-- Dashboard (`_authenticated.dashboard.tsx`) também está mockado, mas o usuário pediu explicitamente para não tocar agora. Será endereçado em plano próprio.
-- Tabela real de `agents` / "Sofia (IA)" / métrica de satisfação — exigem schema novo, fora do escopo.
+- Após o deploy, criar um novo agendamento via modal escolhendo um serviço real cadastrado em `/servicos`. O nome deve aparecer no card "Próximos agendamentos" e contar em "Top 5 serviços".
+- Agendamentos antigos com `service_id` fake continuarão exibindo "—" (esperado — dado inválido no banco).
