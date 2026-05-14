@@ -12,8 +12,14 @@ import {
   card,
 } from "@/features/settings/settings-layout";
 
+import { ManagerOnly } from "@/components/manager-only";
+
 export const Route = createFileRoute("/_authenticated/settings/team")({
-  component: TeamPage,
+  component: () => (
+    <ManagerOnly>
+      <TeamPage />
+    </ManagerOnly>
+  ),
 });
 
 type Role = "manager" | "agent";

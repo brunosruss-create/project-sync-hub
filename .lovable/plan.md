@@ -1,68 +1,126 @@
-## Diagnóstico
+## Objetivo
 
-Quando um segundo usuário (outro workspace) conecta o WhatsApp, a conexão acontece (status `connected`, foto carregada via `fetchInstances`/`profilePicUrl`), mas **nenhuma mensagem inbound chega** porque o **webhook não dispara com sucesso** para a linha desse usuário.
+Implementar a distinção real entre **Manager** e **Agente** no nível de permissões: criar a tabela `user_roles` no Supabase e bloquear o acesso de Agentes às rotas sensíveis (Equipe, WhatsApp, Billing, Workspace, Super Admin). Sem mexer em convite por email e sem filtrar conversas ainda.
 
-Há três causas concorrentes em `src/lib/evolution.functions.ts` + handler em `src/routes/api/public/evolution.$instanceId.ts`:
+## Escopo desta entrega
 
-### 1. `webhook_secret` fica NULL para novos usuários (causa principal)
+**Inclui:**
+1. Schema `user_roles` + função `has_role()` no banco
+2. Hook `useRole()` para o frontend ler o papel do usuário logado
+3. Esconder itens de menu sensíveis na sidebar para Agentes
+4. Bloquear navegação direta nas rotas sensíveis (redirect para `/inbox`)
+5. Auto-promover o **primeiro usuário do sistema a Manager** + qualquer usuário sem papel cair em Manager (compat: ninguém é deslogado)
 
-- `getOrCreateRow()` (linha 32–47) insere a linha com apenas `instance_name`, `owner_user_id`, `status`. Não gera `webhook_secret`.
-- A tabela `whatsapp_instances` não possui `DEFAULT` para `webhook_secret` em migration versionada (a primeira instância — a sua — provavelmente teve o secret semeado manualmente / por SQL antigo). Para novas linhas o valor fica **NULL**.
-- Em `connectInstance` (linha 146): `const webhookSecret = (row.webhook_secret as string | null) ?? "";` → registra o webhook na Evolution com header `x-webhook-secret: ""` (string vazia).
-- Quando a Evolution faz POST no nosso endpoint, o handler valida assim:
+**Não inclui (fica para depois):**
+- Convite real por email (o modal continua mock)
+- Filtro de conversas por agente atribuído
+- Mudar dados do mock `_authenticated.settings.team.tsx` para vir do banco
 
-  ```ts
-  const secret = request.headers.get("x-webhook-secret") ?? "";
-  if (!row || !secret || secret !== row.webhook_secret || ...) return 403;
-  ```
+## Mudanças no banco (migration)
 
-  Mesmo que `secret === row.webhook_secret` (ambos `""`/null), o `!secret` curto-circuita → **403 Forbidden em todos os webhooks** → 0 mensagens entram. Por isso `connection.update` "open" também não chega → o status de "connected" que você vê foi setado pelo `refreshInstanceStatus` (polling com `connectionState`/`fetchInstances`), não pelo webhook. Foto idem (vem do `fetchInstances` direto).
+```sql
+-- 1) Enum de papéis
+create type public.app_role as enum ('manager', 'agent');
 
-### 2. `createInstance` no fluxo `connectInstance` não passa o bloco `webhook`
+-- 2) Tabela user_roles (NUNCA na profiles, por segurança)
+create table public.user_roles (
+  id uuid primary key default gen_random_uuid(),
+  user_id uuid references auth.users(id) on delete cascade not null,
+  role app_role not null,
+  created_at timestamptz default now() not null,
+  unique (user_id, role)
+);
 
-- Linhas 174–179 chamam `evo.createInstance({ instanceName, integration, qrcode })` **sem** `webhook`.
-- O registro depende exclusivamente do `ensureWebhook()` posterior (linha 229), que é best-effort com `try/catch warn` — silencia falhas. Se ele falhar uma vez, o webhook simplesmente nunca existe na Evolution para esse usuário.
+alter table public.user_roles enable row level security;
 
-### 3. `publicBaseUrl()` pode retornar vazio
+-- 3) Função SECURITY DEFINER para checar papel sem recursão
+create or replace function public.has_role(_user_id uuid, _role app_role)
+returns boolean
+language sql stable security definer set search_path = public
+as $$
+  select exists (
+    select 1 from public.user_roles
+    where user_id = _user_id and role = _role
+  )
+$$;
 
-- Linhas 15–30: depende de `PUBLIC_APP_URL` (env) ou de detectar `x-forwarded-host`/`getRequestHost()`. Em alguns contextos de execução do Worker ele retorna `""`.
-- Quando vazio, `webhookUrl` em `connectInstance` (linha 145) vira `null`, o `if (webhookUrl)` na linha 227 é falso → `ensureWebhook` **nunca é chamado** → webhook nunca registrado.
+-- 4) Função para retornar o papel "principal" do usuário (manager > agent)
+create or replace function public.get_my_role()
+returns app_role
+language sql stable security definer set search_path = public
+as $$
+  select role from public.user_roles
+  where user_id = auth.uid()
+  order by case role when 'manager' then 1 when 'agent' then 2 end
+  limit 1
+$$;
 
-A combinação de (2) + (3) explica por que para o usuário 2 o webhook pode literalmente nunca ter sido registrado na Evolution; (1) explica por que, mesmo registrado, todo POST volta 403.
+-- 5) RLS: cada usuário lê só seu próprio papel
+create policy "users read own roles"
+on public.user_roles for select to authenticated
+using (user_id = auth.uid());
 
-## Plano de correção (mínimo, sem mexer em kanban/chat/dashboard)
+-- 6) Backfill: todo usuário existente vira manager (compat)
+insert into public.user_roles (user_id, role)
+select id, 'manager'::app_role from auth.users
+on conflict (user_id, role) do nothing;
 
-### A. Garantir `webhook_secret` sempre populado (`src/lib/evolution.functions.ts`)
+-- 7) Trigger: novo signup vira manager por padrão
+create or replace function public.handle_new_user_role()
+returns trigger language plpgsql security definer set search_path = public
+as $$
+begin
+  insert into public.user_roles (user_id, role)
+  values (new.id, 'manager')
+  on conflict do nothing;
+  return new;
+end $$;
 
-1. Em `getOrCreateRow`: ao inserir, gerar `webhook_secret: crypto.randomUUID()` e incluir no insert.
-2. Logo após carregar `existing`/`created`, se `row.webhook_secret` ainda for falsy, fazer `update` setando um novo UUID e usar esse valor adiante. Garante backfill para linhas pré-existentes sem precisar de SQL manual.
+create trigger on_auth_user_created_role
+after insert on auth.users
+for each row execute function public.handle_new_user_role();
+```
 
-### B. Endurecer o handler (`src/routes/api/public/evolution.$instanceId.ts`)
+> Decisão: novo usuário entra como **manager** por padrão (cada um cria seu próprio workspace). Quando o convite real existir, o convite criará a linha como `agent` antes do signup.
 
-- Manter rejeição quando `!secret` ou mismatch (já é o comportamento), mas adicionar log explícito do motivo (`"missing secret header"` vs `"secret mismatch"`) para facilitar diagnóstico futuro nos worker logs.
-- Não muda lógica funcional.
+## Mudanças no frontend
 
-### C. Registrar o webhook no `createInstance` também (`connectInstance`)
+### Novo: `src/hooks/use-role.tsx`
+Hook que chama `supabase.rpc('get_my_role')`, retorna `'manager' | 'agent' | null` + `isManager`, `isAgent`, `loading`. Cacheado por React Query e re-fetch em `onAuthStateChange`. Fallback: se RPC falhar ou retornar null → trata como `manager` (não bloqueia ninguém em caso de erro).
 
-- Restaurar o bloco `webhook` no `evo.createInstance({...})` dentro de `connectInstance`, passando `url`, `headers: { "x-webhook-secret": webhookSecret }`, `events: WEBHOOK_EVENTS`, `webhookByEvents: false`, `webhookBase64: true`. Isso faz a Evolution já nascer com o webhook, sem depender do `ensureWebhook` posterior.
+### `src/components/app-sidebar.tsx`
+Filtrar `items` antes do render: para Agentes, esconder **Configurações** e **Super Admin**. Demais itens (Dashboard, Conversas, Agenda, Serviços, Agente IA, Contatos, Relatórios) ficam visíveis.
 
-### D. Tornar `publicBaseUrl()` confiável
+### Bloqueio de rotas sensíveis
+Adicionar `beforeLoad` (ou guard via `useEffect` + redirect) nas seguintes rotas — se `role === 'agent'`, redireciona para `/inbox`:
+- `_authenticated.settings.team.tsx`
+- `_authenticated.settings.whatsapp.tsx`
+- `_authenticated.settings.billing.tsx`
+- `_authenticated.settings.workspace.tsx`
+- `_authenticated.super-admin.*` (todas)
 
-- Acrescentar fallback final: se nada resolver, usar a URL pública estável `https://project--e2215eb7-4cbb-4afc-8773-9f93425b90f1.lovable.app` (do `project_urls`). Isso garante que `webhookUrl` nunca vire `null` em produção.
-- Manter prioridade para `PUBLIC_APP_URL` se o usuário tiver definido.
+`/settings/profile` continua acessível para Agente (ele precisa editar o próprio perfil).
 
-### E. Falhas do webhook devem ser visíveis (mas não derrubar o QR)
+### Tela `/settings/team` (mock)
+Manter o mock como está nesta entrega — só adicionar uma nota visual no topo: "Em breve: convite real por email". O escopo de tornar essa tela funcional fica para a próxima iteração.
 
-- Em `ensureWebhook`, manter `try/catch` mas, no `catch` não-auth, gravar `webhook_last_error` em uma coluna opcional? **Pular** — fora de escopo. Apenas melhorar o `console.warn` para incluir nome da instância e URL para conseguirmos rastrear nos logs.
+## Arquivos tocados
+
+- **migration nova** (criar via ferramenta de schema)
+- `src/hooks/use-role.tsx` (novo)
+- `src/components/app-sidebar.tsx` (filtrar itens)
+- `src/routes/_authenticated.settings.team.tsx` (guard + nota)
+- `src/routes/_authenticated.settings.whatsapp.tsx` (guard)
+- `src/routes/_authenticated.settings.billing.tsx` (guard)
+- `src/routes/_authenticated.settings.workspace.tsx` (guard)
+- `src/routes/_authenticated.super-admin.tsx` (guard no layout — protege todas as filhas)
 
 ## Validação
 
-1. Logar com a segunda conta, ir em Settings → WhatsApp → conectar/escanear QR.
-2. Após `connected`, verificar nos worker logs (`[evolution]`) que recebeu `messages.upsert` (não 403).
-3. Enviar uma mensagem real para o número conectado → deve aparecer no Kanban em tempo real.
-4. Confirmar que a primeira conta (já funcionando) **continua** recebendo (o backfill do secret só roda se for null; não sobrescreve o existente).
+1. Usuário existente loga → vira manager via backfill → vê tudo igual hoje.
+2. Inserir manualmente no banco `INSERT INTO user_roles (user_id, role) VALUES ('<id>', 'agent')` + remover o role manager dele → usuário deslogou+logou → não vê mais "Configurações" e "Super Admin" na sidebar; navegar manualmente para `/settings/team` redireciona para `/inbox`.
+3. Novo signup → trigger cria role 'manager' → vê tudo.
 
 ## O que NÃO muda
 
-- Webhook handler (lógica), kanban, drag-and-drop, chat, dashboard, agendamentos, contatos, serviços, settings UI.
-- Schema do banco (sem migration nova; o backfill é via update do servidor com service-role).
+Inbox, Kanban, drag-and-drop, chat, mensagens, realtime, dashboard, conexão WhatsApp Evolution, webhook handler — tudo intocado.
