@@ -148,10 +148,11 @@ export const connectInstance = createServerFn({ method: "POST" })
     let qr: string | null = null;
 
     // 0) Deleta a instância existente para garantir pairing fresco
-    // (corrige "não é possível conectar novos dispositivos" do WhatsApp)
+    // Tolerante a 404 (primeira conexão — instância ainda não existe)
     try {
       await evo.logout(name);
     } catch {}
+    let existed = true;
     try {
       await evo.deleteInstance(name);
     } catch (e: any) {
@@ -161,8 +162,13 @@ export const connectInstance = createServerFn({ method: "POST" })
           "Evolution API recusou a autenticação (Forbidden). Verifique EVOLUTION_API_KEY (Lovable) vs AUTHENTICATION_API_KEY (Railway).",
         );
       }
-      // 404 / not found é esperado quando ainda não existe
+      if (/404|not found|does not exist/i.test(msg)) {
+        existed = false;
+      }
     }
+
+    // Aguarda Evolution processar a deleção antes de recriar
+    if (existed) await new Promise((r) => setTimeout(r, 1500));
 
     // 1) Cria instância nova (já retorna QR na maioria das versões)
     try {
@@ -184,12 +190,10 @@ export const connectInstance = createServerFn({ method: "POST" })
       }
     }
 
-    // 2) Sempre chama connect para garantir QR atual.
-    // Em uma instância recém-criada, a Evolution leva ~500-1500ms até o socket
-    // Baileys subir; tentamos algumas vezes antes de declarar erro.
+    // 2) Retry no connect — Baileys leva mais tempo na primeira criação
     if (!qr) {
-      for (let attempt = 0; attempt < 4 && !qr; attempt++) {
-        if (attempt > 0) await new Promise((r) => setTimeout(r, 600));
+      for (let attempt = 0; attempt < 5 && !qr; attempt++) {
+        if (attempt > 0) await new Promise((r) => setTimeout(r, (attempt + 1) * 800));
         try {
           const r = await evo.connect(name);
           qr = await normalizeQRCodeImage(extractQRCode(r));
@@ -204,7 +208,7 @@ export const connectInstance = createServerFn({ method: "POST" })
         .from("whatsapp_instances")
         .update({ status: "error", qr_code: null })
         .eq("id", row.id);
-      throw new Error("Evolution conectou mas não devolveu QR Code. Verifique QRCODE_LIMIT no Railway.");
+      throw new Error("Não foi possível obter o QR Code. Tente novamente em alguns segundos.");
     }
 
     // 3) Salva QR no DB ANTES do webhook (que pode falhar sem afetar o QR)

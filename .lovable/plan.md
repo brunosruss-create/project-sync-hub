@@ -1,38 +1,90 @@
-## Problema
+## Escopo
 
-No card "Próximos agendamentos" do dashboard, a coluna de serviço aparece como "—". O código já tenta dois caminhos (junção `appointment_services → services` e fallback por `appointments.service_id → services.id`), mas ambos retornam vazio para os agendamentos exibidos.
+Você confirmou:
+- **Multi-tenant por `userId`** (não criar tabela `workspaces` agora — o app já isola tudo por `owner_user_id`).
+- **Aplicar UI + fix do primeiro connect já**, junto com o multi-tenant.
 
-Causas prováveis (sem mexer em mais nada do app):
+Alterações ficam contidas em **2 arquivos**:
+- `src/lib/evolution.server.ts` (1 função)
+- `src/routes/_authenticated.settings.whatsapp.tsx` (UI)
 
-1. Agendamentos antigos foram criados com IDs de serviço fake (`SEED_SERVICES`), que não existem na tabela `services`, então nenhum dos dois lookups encontra nome.
-2. Em `schedule-modal.tsx`, o insert em `appointment_services` é feito com `console.warn` em caso de erro — se o snapshot falha (ex.: `service_id` fake violando FK), o appointment fica salvo sem linha em `appointment_services`, e como `service_id` aponta para um id inexistente, o fallback também falha.
-3. Possível problema da junção embutida `services(name)` se o PostgREST não detectar a FK pelo nome esperado.
+Sem mudanças em: kanban, chat, dashboard, agendamentos, contatos, serviços, schema do DB, RLS (a tabela `whatsapp_instances` já tem `owner_user_id` + RLS por owner — vide `20260513133500_whatsapp_owner_rls.sql`).
 
-## Correções (somente em `src/features/dashboard/data.ts` e `src/features/inbox/schedule-modal.tsx`)
+---
 
-### 1. `src/features/dashboard/data.ts` — tornar a resolução de nome de serviço robusta
+## Passo 1 — Limpar a UI (`_authenticated.settings.whatsapp.tsx`)
 
-- Substituir a junção embutida `services(name)` por duas queries explícitas:
-  - `select("appointment_id, service_id").in("appointment_id", upcomingIds)` em `appointment_services`
-  - `select("id,name").in("id", [todos os service_ids coletados de appointment_services + appointments.service_id])` em `services`
-- Construir um único `Map<service_id, name>` e resolver `svcLabel` por:
-  1. nomes vindos de `appointment_services` para o `appointment_id`
-  2. fallback `appointments.service_id`
-  3. `"—"` apenas se nenhum dos dois resolver
-- Aplicar a mesma simplificação no bloco de "Top 5 serviços" (mesmo padrão: buscar `service_id` em `appointment_services` e mapear nomes em uma query separada à `services`).
-- Adicionar `console.debug` curto com os ids não resolvidos, para o usuário conseguir diagnosticar dados antigos com IDs inválidos.
+Remover do JSX:
+- Os dois `<Info>` técnicos: **"Instância"** (linha 378) e **"Webhook"** (linha 379).
+- O bloco `<FieldGroup label="Integração">` inteiro (linhas 404–430), incluindo o botão **"Re-registrar neste ambiente"**.
+- O link **"Documentação Evolution API"** (linhas 432–440).
 
-### 2. `src/features/inbox/schedule-modal.tsx` — garantir que novos agendamentos sempre tenham serviço válido
+Também remover imports e mutations órfãos resultantes:
+- `ExternalLink` do `lucide-react`.
+- `registerWebhook` do import de `evolution.functions`.
+- `doRegisterWebhook` (`useServerFn`) e a mutation `register`.
 
-- Antes do insert de `appointments`, validar que todos os `selectedServices[*].id` existem realmente em `services` (query `select("id").in("id", ids)`). Se algum não existir (caso de fallback `SEED_SERVICES`), mostrar `toast.error("Cadastre serviços em /servicos antes de agendar")` e abortar.
-- Trocar o `console.warn` do insert em `appointment_services` por `toast.error` + rollback (deletar o appointment recém-criado) em caso de falha, evitando agendamentos órfãos sem snapshot.
+A descrição do `SettingsLayout` passa de "…via Evolution API" para algo neutro: **"Conexão da sua conta WhatsApp ao ZapFlow."**
 
-## Fora de escopo
+Mantido intacto: status badge, QR flow, foto de perfil, Número/Nome do perfil/Conectado em, botão Reconectar, botão Desconectar com confirmação.
 
-- Nenhuma alteração em SQL/migrations, RLS, outros componentes ou estilos.
-- Não alterar a lógica de KPIs, kanban, agentes online ou urgentes.
+## Passo 2 — Tornar o primeiro connect tolerante (`evolution.functions.ts`, função `connectInstance`)
 
-## Verificação
+O código atual em `connectInstance` (linhas 152–165) já faz `try/catch` em volta do `evo.logout` e `evo.deleteInstance`, mas:
+- Re-lança se `isAuthError(msg)` — correto, manter.
+- Não dá tempo da Evolution processar a deleção antes do `createInstance`.
+- O loop de retry em `connect` usa apenas 600 ms entre tentativas.
 
-- Após o deploy, criar um novo agendamento via modal escolhendo um serviço real cadastrado em `/servicos`. O nome deve aparecer no card "Próximos agendamentos" e contar em "Top 5 serviços".
-- Agendamentos antigos com `service_id` fake continuarão exibindo "—" (esperado — dado inválido no banco).
+Ajustes mínimos:
+1. Após o bloco `delete`, adicionar `await new Promise(r => setTimeout(r, 1500))` somente quando o delete não tiver dado 404 (instância existia de fato). Para detectar isso, capturar a flag `existed` no catch.
+2. No loop de retry do `connect` (linhas 191–199), aumentar para **5 tentativas com backoff progressivo** (`(attempt + 1) * 800 ms`) — tolera o tempo extra do Baileys subir na primeira criação.
+3. Mensagem de erro final mais clara quando ainda assim falhar: "Não foi possível obter o QR Code. Tente novamente em alguns segundos."
+
+Sem alterar `getOrCreateRow`, webhook flow, RLS, ou qualquer outra função do arquivo.
+
+## Passo 3 — Multi-tenant por usuário (`evolution.server.ts`)
+
+Trocar **só a função `instanceNameForOwner`**:
+
+```ts
+export function instanceNameForOwner(userId: string | null | undefined): string {
+  if (!userId) throw new Error("userId required for instance name");
+  const safe = userId.replace(/-/g, "").slice(0, 24);
+  return `zf_${safe}`;
+}
+```
+
+Todas as 14 chamadas existentes em `evolution.functions.ts` já passam `context.userId` (ou `userId` em `getOrCreateRow`) — **nenhuma chamada precisa mudar**. O webhook por instância (`/api/public/evolution/${row.id}`) já é per-row, então cada usuário recebe os próprios eventos.
+
+### Migração da linha existente (`zapflow_main`)
+
+A linha atual no DB tem `instance_name = "zapflow_main"` e o `owner_user_id` do usuário que conectou primeiro. Após o deploy, o `getOrCreateRow` desse usuário vai procurar `zf_<userId>`, não achar, e criar uma nova linha — deixando a `zapflow_main` órfã.
+
+Duas opções:
+
+**A. Renomear a linha existente (recomendado, sem reconectar):**
+Você roda 1 vez no SQL Editor do Supabase:
+```sql
+UPDATE public.whatsapp_instances
+SET instance_name = 'zf_' || replace(owner_user_id::text, '-', '')
+WHERE instance_name = 'zapflow_main';
+```
+E também renomeia a instância no Evolution API (Railway) para o novo nome — ou simplesmente reconecta uma vez (gera novo QR), o que é mais simples.
+
+**B. Reconectar do zero:** ignora a linha velha, usuário escaneia QR novamente. Mais simples, mas exige reconexão.
+
+Recomendo **B** pela simplicidade — reconectar leva 10 s e evita mexer no Railway.
+
+## Passo 4 — Verificação
+
+- `/settings/whatsapp` abre, sem URL de webhook, sem nome de instância, sem botão "Re-registrar", sem link de docs.
+- Reconectar uma vez (Passo 3B): QR aparece **na primeira tentativa**.
+- Status "Conectado", foto, número e nome aparecem normalmente.
+- Mensagens continuam chegando no kanban (webhook por `row.id` continua funcional).
+- Criar segundo usuário em outro browser → conecta outro número → os dois funcionam em paralelo (cada um com sua row e sua instância `zf_<userId>` no Evolution).
+
+## Fora de escopo (não mexer)
+
+- Tabela `workspaces` / `workspace_id` em profiles (decisão sua: por usuário).
+- RLS de `whatsapp_instances` — já está correta por `owner_user_id`.
+- Super admin / outras telas.

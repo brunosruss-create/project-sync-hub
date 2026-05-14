@@ -3,10 +3,9 @@ import { createFileRoute } from "@tanstack/react-router";
 import { useServerFn } from "@tanstack/react-start";
 import { useQuery, useMutation, useQueryClient } from "@tanstack/react-query";
 import { toast } from "sonner";
-import { ExternalLink, RefreshCw, Loader2, Camera } from "lucide-react";
+import { RefreshCw, Loader2, Camera } from "lucide-react";
 import {
   SettingsLayout,
-  FieldGroup,
   buttonPrimary,
   buttonSecondary,
   buttonDanger,
@@ -17,7 +16,6 @@ import {
   connectInstance,
   refreshInstanceStatus,
   disconnectInstance,
-  registerWebhook,
   syncMyWhatsAppAvatar,
   updateMyWhatsAppAvatar,
 } from "@/lib/evolution.functions";
@@ -36,7 +34,7 @@ function WhatsAppPage() {
   const doConnect = useServerFn(connectInstance);
   const doRefresh = useServerFn(refreshInstanceStatus);
   const doDisconnect = useServerFn(disconnectInstance);
-  const doRegisterWebhook = useServerFn(registerWebhook);
+  
   const doSyncAvatar = useServerFn(syncMyWhatsAppAvatar);
   const doUpdateAvatar = useServerFn(updateMyWhatsAppAvatar);
   const profileQ = useProfile();
@@ -168,14 +166,6 @@ function WhatsAppPage() {
     onError: (e: any) => toast.error(e?.message ?? "Falha"),
   });
 
-  const register = useMutation({
-    mutationFn: () => doRegisterWebhook({ data: undefined as never }),
-    onSuccess: () => {
-      toast.success("Webhook re-registrado neste ambiente");
-      qc.invalidateQueries({ queryKey: ["whatsapp-instance"] });
-    },
-    onError: (e: any) => toast.error(e?.message ?? "Falha ao re-registrar webhook"),
-  });
 
   const meta: Record<Status, { label: string; bg: string; fg: string }> = {
     connected: { label: "Conectado", bg: "color-mix(in oklab, #10B981 18%, transparent)", fg: "#10B981" },
@@ -187,7 +177,7 @@ function WhatsAppPage() {
   return (
     <SettingsLayout
       title="WhatsApp"
-      description="Conexão da sua conta WhatsApp ao ZapFlow via Evolution API."
+      description="Conexão da sua conta WhatsApp ao ZapFlow."
     >
       <div style={card}>
         <div className="flex items-center justify-between" style={{ marginBottom: 16 }}>
@@ -375,8 +365,6 @@ function WhatsAppPage() {
                     : "—"
                 }
               />
-              <Info label="Instância" value={instance?.instance_name ?? "—"} />
-              <Info label="Webhook" value={instance?.webhook_url ?? "—"} />
             </div>
           </div>
         ) : (
@@ -400,44 +388,6 @@ function WhatsAppPage() {
           </div>
         )}
       </div>
-
-      <div style={{ marginTop: 24 }}>
-        <FieldGroup label="Integração">
-          <div style={card}>
-            <p style={{ fontSize: 13, color: "var(--text-muted)" }}>
-              Conexão via Evolution API (self-hosted no Railway). Mensagens recebidas
-              caem direto no Inbox; envios feitos pelo Inbox vão pelo seu número conectado.
-            </p>
-            {instance && (
-              <div className="flex flex-wrap items-center justify-between" style={{ gap: 12, marginTop: 16 }}>
-                <div style={{ minWidth: 0 }}>
-                  <div style={{ fontSize: 11, color: "var(--text-muted)", marginBottom: 4 }}>URL ativa do webhook</div>
-                  <div style={{ fontSize: 12, color: "var(--text-primary)", wordBreak: "break-all" }}>
-                    {instance.webhook_url ?? "Ainda não registrada"}
-                  </div>
-                </div>
-                <button
-                  style={buttonSecondary}
-                  disabled={register.isPending}
-                  onClick={() => register.mutate()}
-                >
-                  {register.isPending ? "Registrando…" : "Re-registrar neste ambiente"}
-                </button>
-              </div>
-            )}
-          </div>
-        </FieldGroup>
-      </div>
-
-      <a
-        href="https://doc.evolution-api.com"
-        target="_blank"
-        rel="noreferrer"
-        className="inline-flex items-center gap-2"
-        style={{ fontSize: 13, color: "var(--brand-400)", marginTop: 8 }}
-      >
-        <ExternalLink size={14} /> Documentação Evolution API
-      </a>
 
       {confirmDc && (
         <div
