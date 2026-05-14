@@ -46,6 +46,24 @@ function detectMediaNode(message: any, depth = 0): { kind: MediaKind; node: any 
   }
   return null;
 }
+
+function detectFromMessageType(messageType: string | null | undefined, message: any): { kind: MediaKind; node: any } | null {
+  if (!messageType) return null;
+  const t = String(messageType).toLowerCase();
+  if (t.includes("audio") || t.includes("ptt")) {
+    return { kind: "audio", node: message?.audioMessage ?? message?.pttMessage ?? message ?? {} };
+  }
+  if (t.includes("image") || t.includes("sticker")) {
+    return { kind: "image", node: message?.imageMessage ?? message?.stickerMessage ?? message ?? {} };
+  }
+  if (t.includes("video")) {
+    return { kind: "video", node: message?.videoMessage ?? message ?? {} };
+  }
+  if (t.includes("document")) {
+    return { kind: "document", node: message?.documentMessage ?? message ?? {} };
+  }
+  return null;
+}
 const KIND_LABEL: Record<MediaKind, string> = {
   image: "📷 Imagem", audio: "🎵 Áudio", video: "🎬 Vídeo", document: "📎 Documento",
 };
@@ -182,14 +200,15 @@ export const Route = createFileRoute("/api/public/evolution/$instanceId")({
               const pushName = m?.pushName ?? null;
 
               // ---- detectar mídia
-              const detected = detectMediaNode(m?.message);
-              if (m?.messageType || detected) {
-                console.log("[evolution upsert] msg type", {
-                  messageType: m?.messageType ?? null,
-                  detected: detected?.kind ?? null,
-                  msgKeys: m?.message && typeof m.message === "object" ? Object.keys(m.message) : null,
-                });
-              }
+              const detected =
+                detectMediaNode(m?.message) ??
+                detectFromMessageType(m?.messageType, m?.message);
+              console.log("[evolution upsert] msg type", {
+                messageType: m?.messageType ?? null,
+                detected: detected?.kind ?? null,
+                msgKeys: m?.message && typeof m.message === "object" ? Object.keys(m.message) : null,
+                topKeys: Object.keys(m ?? {}),
+              });
               let mediaType: "text" | MediaKind = "text";
               let mediaUrl: string | null = null;
               let mediaMime: string | null = null;

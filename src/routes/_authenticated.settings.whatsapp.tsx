@@ -3,7 +3,7 @@ import { createFileRoute } from "@tanstack/react-router";
 import { useServerFn } from "@tanstack/react-start";
 import { useQuery, useMutation, useQueryClient } from "@tanstack/react-query";
 import { toast } from "sonner";
-import { ExternalLink, RefreshCw, Loader2 } from "lucide-react";
+import { ExternalLink, RefreshCw, Loader2, Camera } from "lucide-react";
 import {
   SettingsLayout,
   FieldGroup,
@@ -19,7 +19,10 @@ import {
   disconnectInstance,
   registerWebhook,
   syncMyWhatsAppAvatar,
+  updateMyWhatsAppAvatar,
 } from "@/lib/evolution.functions";
+import { supabase } from "@/integrations/supabase/client";
+import { useProfile } from "@/hooks/use-profile";
 
 export const Route = createFileRoute("/_authenticated/settings/whatsapp")({
   component: WhatsAppPage,
@@ -35,6 +38,9 @@ function WhatsAppPage() {
   const doDisconnect = useServerFn(disconnectInstance);
   const doRegisterWebhook = useServerFn(registerWebhook);
   const doSyncAvatar = useServerFn(syncMyWhatsAppAvatar);
+  const doUpdateAvatar = useServerFn(updateMyWhatsAppAvatar);
+  const profileQ = useProfile();
+  const fileRef = React.useRef<HTMLInputElement | null>(null);
 
   const syncAvatar = useMutation({
     mutationFn: () => doSyncAvatar({ data: undefined as never }),
@@ -49,6 +55,27 @@ function WhatsAppPage() {
       }
     },
     onError: (e: any) => toast.error(e?.message ?? "Falha ao sincronizar"),
+  });
+
+  const changeAvatar = useMutation({
+    mutationFn: async (file: File) => {
+      if (!profileQ.data?.id) throw new Error("Perfil não carregado");
+      if (file.size > 2 * 1024 * 1024) throw new Error("Imagem deve ter até 2 MB");
+      if (!/^image\/(jpeg|jpg|png|webp)$/i.test(file.type)) throw new Error("Use JPG, PNG ou WEBP");
+      const ext = (file.name.split(".").pop() || "jpg").toLowerCase();
+      const path = `avatars/${profileQ.data.id}-${Date.now()}.${ext}`;
+      const { error: upErr } = await supabase.storage
+        .from("chat-media")
+        .upload(path, file, { contentType: file.type, upsert: true });
+      if (upErr) throw new Error(upErr.message);
+      const { data: pub } = supabase.storage.from("chat-media").getPublicUrl(path);
+      return doUpdateAvatar({ data: { url: pub.publicUrl } });
+    },
+    onSuccess: () => {
+      toast.success("Foto atualizada no WhatsApp");
+      qc.invalidateQueries({ queryKey: ["profile"] });
+    },
+    onError: (e: any) => toast.error(e?.message ?? "Falha ao trocar foto"),
   });
 
   const [confirmDc, setConfirmDc] = React.useState(false);
@@ -95,6 +122,17 @@ function WhatsAppPage() {
       qc.invalidateQueries({ queryKey: ["whatsapp-instance"] });
     });
   }, [status, expiresAt, secondsLeft, doRefresh, qc]);
+
+  // Auto-sincroniza foto do WhatsApp na primeira vez que conecta sem avatar
+  const autoSyncedRef = React.useRef(false);
+  React.useEffect(() => {
+    if (autoSyncedRef.current) return;
+    if (status !== "connected") return;
+    if (profileQ.isLoading) return;
+    if (profileQ.data?.avatar_url) return;
+    autoSyncedRef.current = true;
+    syncAvatar.mutate();
+  }, [status, profileQ.data?.avatar_url, profileQ.isLoading]);
 
   const connect = useMutation({
     mutationFn: () => doConnect({ data: undefined as never }),
@@ -233,25 +271,113 @@ function WhatsAppPage() {
             </button>
           </div>
         ) : status === "connected" ? (
-          <div
-            style={{
-              display: "grid",
-              gridTemplateColumns: "repeat(auto-fit, minmax(180px, 1fr))",
-              gap: 12,
-            }}
-          >
-            <Info label="Número" value={instance?.phone_number ?? "—"} />
-            <Info label="Nome do perfil" value={instance?.profile_name ?? "—"} />
-            <Info
-              label="Conectado em"
-              value={
-                instance?.last_connected_at
-                  ? new Date(instance.last_connected_at).toLocaleString("pt-BR")
-                  : "—"
-              }
-            />
-            <Info label="Instância" value={instance?.instance_name ?? "—"} />
-            <Info label="Webhook" value={instance?.webhook_url ?? "—"} />
+          <div style={{ display: "flex", flexDirection: "column", gap: 20 }}>
+            <div style={{ display: "flex", alignItems: "center", gap: 16 }}>
+              <div
+                style={{
+                  position: "relative",
+                  width: 96,
+                  height: 96,
+                  borderRadius: "50%",
+                  background: "var(--bg-overlay)",
+                  border: "1px solid var(--border)",
+                  overflow: "hidden",
+                  flexShrink: 0,
+                }}
+              >
+                {profileQ.data?.avatar_url ? (
+                  <img
+                    src={profileQ.data.avatar_url}
+                    alt="Foto de perfil"
+                    style={{ width: "100%", height: "100%", objectFit: "cover" }}
+                  />
+                ) : (
+                  <div
+                    style={{
+                      width: "100%",
+                      height: "100%",
+                      display: "flex",
+                      alignItems: "center",
+                      justifyContent: "center",
+                      color: "var(--text-muted)",
+                      fontSize: 28,
+                      fontWeight: 600,
+                    }}
+                  >
+                    {(profileQ.data?.full_name ?? "?").slice(0, 1).toUpperCase()}
+                  </div>
+                )}
+                {changeAvatar.isPending && (
+                  <div
+                    style={{
+                      position: "absolute",
+                      inset: 0,
+                      background: "rgba(0,0,0,0.5)",
+                      display: "flex",
+                      alignItems: "center",
+                      justifyContent: "center",
+                    }}
+                  >
+                    <Loader2 size={20} className="animate-spin" color="#fff" />
+                  </div>
+                )}
+              </div>
+              <div style={{ display: "flex", flexDirection: "column", gap: 8 }}>
+                <div style={{ fontSize: 14, fontWeight: 500 }}>Foto do perfil</div>
+                <div style={{ fontSize: 12, color: "var(--text-muted)" }}>
+                  Trocar aqui atualiza também na sua conta real do WhatsApp.
+                </div>
+                <div style={{ display: "flex", gap: 8, marginTop: 4 }}>
+                  <input
+                    ref={fileRef}
+                    type="file"
+                    accept="image/jpeg,image/png,image/webp"
+                    style={{ display: "none" }}
+                    onChange={(e) => {
+                      const f = e.target.files?.[0];
+                      if (f) changeAvatar.mutate(f);
+                      e.target.value = "";
+                    }}
+                  />
+                  <button
+                    style={buttonSecondary}
+                    className="flex items-center gap-2"
+                    disabled={changeAvatar.isPending}
+                    onClick={() => fileRef.current?.click()}
+                  >
+                    <Camera size={14} /> Trocar foto
+                  </button>
+                  <button
+                    style={buttonSecondary}
+                    disabled={syncAvatar.isPending}
+                    onClick={() => syncAvatar.mutate()}
+                  >
+                    {syncAvatar.isPending ? "Atualizando…" : "Atualizar do WhatsApp"}
+                  </button>
+                </div>
+              </div>
+            </div>
+
+            <div
+              style={{
+                display: "grid",
+                gridTemplateColumns: "repeat(auto-fit, minmax(180px, 1fr))",
+                gap: 12,
+              }}
+            >
+              <Info label="Número" value={instance?.phone_number ?? "—"} />
+              <Info label="Nome do perfil" value={instance?.profile_name ?? "—"} />
+              <Info
+                label="Conectado em"
+                value={
+                  instance?.last_connected_at
+                    ? new Date(instance.last_connected_at).toLocaleString("pt-BR")
+                    : "—"
+                }
+              />
+              <Info label="Instância" value={instance?.instance_name ?? "—"} />
+              <Info label="Webhook" value={instance?.webhook_url ?? "—"} />
+            </div>
           </div>
         ) : (
           <div className="flex flex-col items-center justify-center text-center" style={{ padding: 32, gap: 12 }}>
@@ -268,13 +394,6 @@ function WhatsAppPage() {
 
         {status === "connected" && (
           <div className="flex justify-end" style={{ marginTop: 16, gap: 8 }}>
-            <button
-              style={buttonSecondary}
-              disabled={syncAvatar.isPending}
-              onClick={() => syncAvatar.mutate()}
-            >
-              {syncAvatar.isPending ? "Sincronizando…" : "Sincronizar foto do WhatsApp"}
-            </button>
             <button style={buttonDanger} onClick={() => setConfirmDc(true)}>
               Desconectar
             </button>

@@ -467,6 +467,25 @@ export const syncMyWhatsAppAvatar = createServerFn({ method: "POST" })
     return { url, changed: true, reason: "ok" as const };
   });
 
+const updateAvatarInput = z.object({ url: z.string().url().max(2048) });
+
+export const updateMyWhatsAppAvatar = createServerFn({ method: "POST" })
+  .middleware([requireSupabaseAuth])
+  .inputValidator((d) => updateAvatarInput.parse(d))
+  .handler(async ({ data, context }) => {
+    const name = instanceNameForOwner(context.userId);
+    try {
+      await evo.updateProfilePicture(name, { picture: data.url });
+    } catch (e: any) {
+      throw new Error(`Falha ao atualizar foto no WhatsApp: ${e?.message ?? e}`);
+    }
+    await supabaseAdmin
+      .from("profiles")
+      .update({ avatar_url: data.url })
+      .eq("id", context.userId);
+    return { ok: true, url: data.url };
+  });
+
 // ===================== MEDIA =====================
 
 const sendMediaInput = z.object({

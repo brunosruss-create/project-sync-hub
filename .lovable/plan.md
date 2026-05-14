@@ -1,36 +1,71 @@
-## Problemas
 
-1. **Áudio recebido vira "[mídia]"** — o webhook da Evolution recebe o áudio mas armazena como mensagem de texto com preview `[mídia]`, em vez de salvar como `message_type: "audio"` com player.
-2. **Áudio enviado mostra a foto do contato** — o `AudioPlayer` no balão sempre usa o avatar do contato, mesmo quando a mensagem é minha (`isMe=true`).
+## Objetivo
 
-## Causa
+1. Em **Configurações → WhatsApp**, exibir a foto de perfil já vinculada ao número conectado e permitir **trocar a foto** — a troca aplica também na conta real do WhatsApp via Evolution API.
+2. Resolver o problema de **áudio recebido não chegar** no Inbox.
 
-### Problema 1 — `src/routes/api/public/evolution.$instanceId.ts`
-- `detectMediaNode()` (linhas 21-32) só olha campos no nível raiz de `m.message`. A Evolution frequentemente embrulha áudios PTT do WhatsApp em wrappers como `ephemeralMessage.message.audioMessage`, `viewOnceMessage.message.audioMessage`, `viewOnceMessageV2.message.audioMessage` ou `messageContextInfo` — nesses casos retorna `null` e cai no caminho de texto, gerando o preview `[mídia]`.
-- Se a detecção funciona mas `downloadInboundMedia` falha (ex.: endpoint base64 da Evolution retorna vazio), o código mantém `mediaType="text"` e também grava `[mídia]`, perdendo a informação de que era áudio.
+---
 
-### Problema 2 — `src/features/inbox/conversation-panel.tsx` (linhas 807-812)
-- O `<AudioPlayer>` recebe sempre `avatarName={contactName}` e `avatarUrl={contactAvatar}`. Não há ramificação para usar o avatar do usuário logado quando `isMe=true`.
+## 1. Foto de perfil do WhatsApp na tela de Configurações
 
-## Correções
+### Comportamento
 
-### 1. Detectar mais formatos de áudio inbound
-Em `src/routes/api/public/evolution.$instanceId.ts`:
-- Refatorar `detectMediaNode` para desembrulhar recursivamente envelopes comuns: `ephemeralMessage.message`, `viewOnceMessage.message`, `viewOnceMessageV2.message`, `viewOnceMessageV2Extension.message`, `editedMessage.message`, `protocolMessage.editedMessage`, ignorando `messageContextInfo`.
-- Reconhecer também `audioMessage` com flag `ptt: true` (já cai em `audio`, ok) e o campo legado `pttMessage`.
+- Ao abrir Configurações → WhatsApp com a instância conectada, a página mostra:
+  - Avatar circular grande (96 px) com a foto atual.
+  - Botão "Trocar foto" (abre file picker — JPG/PNG, ≤ 2 MB).
+  - Botão "Atualizar do WhatsApp" (re-puxa a foto atual do WhatsApp real).
+- Trocar foto:
+  - Upload em `chat-media/avatars/{user_id}-{timestamp}.{ext}` (público).
+  - Chama Evolution `POST /chat/updateProfilePicture/{instance}` com `{ picture: <url pública> }`.
+  - Atualiza `profiles.avatar_url` com a nova URL.
+  - Toast de sucesso e invalidação dos queries de avatar.
+- Se o usuário ainda não tiver foto sincronizada, a `syncMyWhatsAppAvatar` (já existe) roda automaticamente uma vez ao abrir a tela conectada.
 
-### 2. Não regredir para texto quando detecção foi bem-sucedida
-Ainda em `evolution.$instanceId.ts`, no bloco `if (detected) { ... }`:
-- Mesmo se o download/upload falhar, definir `mediaType = detected.kind` e `mediaMime = declaredMime` para que a mensagem seja gravada como `audio` (sem `media_url`). Assim o preview vira "🎵 Áudio" em vez de "[mídia]" e dá pra reprocessar depois.
+### Mudanças técnicas
 
-### 3. Avatar correto no player de áudio
-Em `src/features/inbox/conversation-panel.tsx`:
-- Importar `useProfile` de `@/hooks/use-profile` no componente que renderiza o balão de áudio (ou propagar via prop a partir do `ConversationPanel`).
-- No bloco do áudio (linhas 807-812), passar `avatarName` e `avatarUrl` condicionalmente:
-  - `isMe ? (profile?.full_name ?? "Eu") : contactName`
-  - `isMe ? (profile?.avatar_url ?? null) : (contactAvatar ?? null)`
+- `src/lib/evolution.server.ts`: adicionar `evo.updateProfilePicture(name, { picture })` chamando `/chat/updateProfilePicture/{instance}`.
+- `src/lib/evolution.functions.ts`: adicionar `updateMyWhatsAppAvatar` (POST, autenticado):
+  - Input: `{ url: string }` (URL pública já hospedada no Storage).
+  - Chama `evo.updateProfilePicture` e em sucesso atualiza `profiles.avatar_url`.
+  - Retorno: `{ ok: true, url }`.
+- `src/routes/_authenticated.settings.whatsapp.tsx`:
+  - Buscar `profiles.avatar_url` do usuário (query nova ou via hook existente).
+  - Renderizar bloco "Foto do perfil" dentro do card quando `status === "connected"`.
+  - Input file oculto + botão "Trocar foto"; ao escolher arquivo: upload no bucket `chat-media`, depois chama `updateMyWhatsAppAvatar`.
+  - Botão "Atualizar do WhatsApp" reusa `syncMyWhatsAppAvatar` (já existe — apenas reposicionar a UI).
+  - `useEffect` opcional: se conectado e `avatar_url` é null, dispara `syncMyWhatsAppAvatar` uma vez.
 
-## Fora do escopo
+---
 
-- Não mexer no envio (composer, forward-modal) nem em outras mensagens além das duas correções acima.
-- Não alterar estilos/cores do balão de áudio.
+## 2. Áudio recebido não chega
+
+### Diagnóstico atual
+
+Logs em produção mostram que `messages.upsert` chega com `messageType` no payload, mas o log adicional `[evolution upsert] msg type` não aparece — sugere que ou (a) o build atual em prod ainda não tem esse log, ou (b) `detectMediaNode` retorna null porque a estrutura de `m.message` para áudio difere do esperado (Baileys às vezes envelopa em `audioMessage`/`pttMessage` dentro de wrappers diferentes).
+
+### Mudanças
+
+- `src/routes/api/public/evolution.$instanceId.ts`:
+  - Trocar o log condicional por um log **sempre** dentro do loop, mostrando `messageType`, chaves de `m.message` e o resultado de `detectMediaNode` — isso garante diagnóstico mesmo em mensagens de texto.
+  - Estender `detectMediaNode` para considerar:
+    - `m.messageType === "audioMessage" | "pttMessage"` quando `m.message` está vazio (alguns webhooks da Evolution mandam só `messageType` + payload achatado em `m`).
+    - Fallback: se `messageType` indica áudio mas `detectMediaNode(m.message)` retornou null, tratar como `kind: "audio"` com `node = m.message?.audioMessage ?? m.message?.pttMessage ?? m`.
+  - Em `downloadInboundMedia`, adicionar mais um padrão de body: `{ key: m.key, message: m.message }` (sem o wrapper `message:`), que é a forma aceita por algumas versões da Evolution v2.x.
+  - Em caso de falha de download, ainda inserir a mensagem com `message_type = "audio"` (já é o comportamento atual) e gravar a URL `null` — assim o usuário vê o balão correto e o motivo aparece nos logs.
+
+### Validação
+
+- Após deploy, pedir ao usuário para enviar um áudio de outro WhatsApp para o número conectado.
+- Inspecionar logs (`server-function-logs search="upsert msg type"`) para confirmar `detected.kind = "audio"` e ver se `downloadInboundMedia` retornou conteúdo.
+- Se o áudio chegar com `media_url` preenchida, o player no Inbox renderiza normalmente (a UI já está pronta).
+
+---
+
+## Arquivos alterados
+
+- `src/lib/evolution.server.ts` — `evo.updateProfilePicture` + ajuste opcional em `downloadInboundMedia`.
+- `src/lib/evolution.functions.ts` — server fn `updateMyWhatsAppAvatar`.
+- `src/routes/api/public/evolution.$instanceId.ts` — `detectMediaNode` mais robusto + log sempre presente.
+- `src/routes/_authenticated.settings.whatsapp.tsx` — UI de avatar (mostrar, trocar, ressincronizar).
+
+Sem mudanças em outras áreas do app.
