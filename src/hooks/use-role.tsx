@@ -13,13 +13,16 @@ export function useRole() {
     staleTime: 60_000,
     queryFn: async (): Promise<AppRole> => {
       const { data, error } = await supabase.rpc("get_my_role");
-      // Fallback: on error or null, treat as manager (do not lock anyone out)
-      if (error || !data) return "manager";
+      if (error) {
+        console.error("[use-role] get_my_role failed:", error);
+        return "agent"; // fail-closed: nunca elevar para manager por erro
+      }
+      if (!data) return "agent";
       return data as AppRole;
     },
   });
 
-  const role: AppRole = q.data ?? "manager";
+  const role: AppRole = q.data ?? "agent";
   return {
     role,
     isManager: role === "manager",
