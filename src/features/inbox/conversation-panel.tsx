@@ -468,7 +468,7 @@ export function ConversationPanel({
                 </div>
               </div>
 
-              <HeaderButton onClick={() => toast.info("Transferir — em breve.")}>
+              <HeaderButton onClick={() => setTransferOpen(true)}>
                 Transferir
               </HeaderButton>
               <HeaderButton primary onClick={() => openSchedule()}>
