@@ -1,4 +1,5 @@
 import { supabase } from "@/integrations/supabase/client";
+import { SEED_SERVICES } from "@/features/services/data";
 
 export type DashPeriod = "today" | "week" | "month" | "custom";
 
@@ -49,6 +50,10 @@ function avgRespSeconds(msgs: any[]): number {
 function pctDelta(curr: number, prev: number): number {
   if (!prev) return 0;
   return Math.round(((curr - prev) / prev) * 100);
+}
+
+function isUuid(value: string): boolean {
+  return /^[0-9a-f]{8}-[0-9a-f]{4}-[1-5][0-9a-f]{3}-[89ab][0-9a-f]{3}-[0-9a-f]{12}$/i.test(value);
 }
 
 export interface DashboardData {
@@ -186,12 +191,13 @@ export async function getDashboardData(period: DashPeriod, currentUserId?: strin
   const allSvcIds = new Set<string>();
   for (const ids of svcIdsByAppt.values()) ids.forEach((i) => allSvcIds.add(i));
   for (const a of upcomingRows as any[]) if (a.service_id) allSvcIds.add(a.service_id);
-  const svcNameById = new Map<string, string>();
-  if (allSvcIds.size) {
+  const svcNameById = new Map<string, string>(SEED_SERVICES.map((s) => [s.id, s.name]));
+  const dbSvcIds = Array.from(allSvcIds).filter(isUuid);
+  if (dbSvcIds.length) {
     const { data: svcRows } = await supabase
       .from("services")
       .select("id,name")
-      .in("id", Array.from(allSvcIds));
+      .in("id", dbSvcIds);
     for (const s of (svcRows ?? []) as any[]) svcNameById.set(s.id, s.name);
   }
   const ctMap = new Map((ctRes.data ?? []).map((c: any) => [c.id, c.name]));
@@ -254,9 +260,10 @@ export async function getDashboardData(period: DashPeriod, currentUserId?: strin
     }
   }
   const topSvcIds = Array.from(new Set(asRows.map((r) => r.service_id).filter(Boolean)));
-  const topSvcNames = new Map<string, string>();
-  if (topSvcIds.length) {
-    const { data } = await supabase.from("services").select("id,name").in("id", topSvcIds);
+  const topSvcNames = new Map<string, string>(SEED_SERVICES.map((s) => [s.id, s.name]));
+  const topDbSvcIds = topSvcIds.filter(isUuid);
+  if (topDbSvcIds.length) {
+    const { data } = await supabase.from("services").select("id,name").in("id", topDbSvcIds);
     for (const s of (data ?? []) as any[]) topSvcNames.set(s.id, s.name);
   }
   const svcCount = new Map<string, number>();
