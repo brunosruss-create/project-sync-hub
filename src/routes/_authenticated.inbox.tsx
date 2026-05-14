@@ -29,6 +29,7 @@ import { ConversationPanel } from "@/features/inbox/conversation-panel";
 import { NewContactModal } from "@/features/inbox/new-contact-modal";
 import { EditContactModal } from "@/features/inbox/edit-contact-modal";
 import { ScheduleModal } from "@/features/inbox/schedule-modal";
+import { TransferConversationModal } from "@/features/inbox/transfer-conversation-modal";
 import { supabase } from "@/integrations/supabase/client";
 import { useAuth } from "@/hooks/use-auth";
 import { useWorkspaceOwnerId } from "@/hooks/use-workspace-owner";
@@ -55,6 +56,7 @@ function InboxPage() {
   const [menuState, setMenuState] = React.useState<CardMenuRequestDetail | null>(null);
   const [editTarget, setEditTarget] = React.useState<Contact | null>(null);
   const [scheduleTarget, setScheduleTarget] = React.useState<Contact | null>(null);
+  const [transferTarget, setTransferTarget] = React.useState<Contact | null>(null);
 
   // Colunas dinâmicas
   const [columns, setColumns] = React.useState<KanbanColumnDef[]>(DEFAULT_COLUMNS);
@@ -308,7 +310,11 @@ function InboxPage() {
 
   const handleMenuAction = React.useCallback(async (a: CardMenuAction) => {
     const c = a.contact;
-    if (a.type === "edit" || a.type === "add-tag" || a.type === "assign") {
+    if (a.type === "assign") {
+      setTransferTarget(c);
+      return;
+    }
+    if (a.type === "edit" || a.type === "add-tag") {
       setEditTarget(c);
       return;
     }
@@ -386,7 +392,7 @@ function InboxPage() {
 
   const filtered = React.useMemo(() => {
     return contacts.filter((c) => {
-      if (filter === "mine" && c.assignedAgent !== (user?.email?.split("@")[0] ?? ""))
+      if (filter === "mine" && c.assignedAgent !== (user?.id ?? ""))
         return false;
       if (filter === "unassigned" && c.assignedAgent) return false;
       if (query) {
@@ -784,6 +790,22 @@ function InboxPage() {
           }}
         />
       )}
+
+      <TransferConversationModal
+        open={!!transferTarget}
+        contactId={transferTarget?.id ?? null}
+        contactName={transferTarget?.name ?? null}
+        currentAssignedAgentId={transferTarget?.assignedAgent ?? null}
+        onClose={() => setTransferTarget(null)}
+        onAssigned={(agentUserId) => {
+          if (!transferTarget) return;
+          setContacts((prev) =>
+            prev.map((c) =>
+              c.id === transferTarget.id ? { ...c, assignedAgent: agentUserId } : c,
+            ),
+          );
+        }}
+      />
 
       {highlightId && (
         <style>{`

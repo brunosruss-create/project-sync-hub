@@ -32,6 +32,7 @@ import { sendWhatsAppMessage, refreshContactAvatar, sendWhatsAppMedia, sendWhats
 import { ScheduleModal } from "./schedule-modal";
 import { MessageActions } from "./message-actions";
 import { ForwardModal, type ForwardSource } from "./forward-modal";
+import { TransferConversationModal } from "./transfer-conversation-modal";
 import {
   SEED_SERVICES,
   formatCurrencyBRL,
@@ -131,6 +132,7 @@ export function ConversationPanel({
   const [replyingTo, setReplyingTo] = React.useState<Message | null>(null);
   const [editingId, setEditingId] = React.useState<string | null>(null);
   const [forwardSource, setForwardSource] = React.useState<ForwardSource | null>(null);
+  const [transferOpen, setTransferOpen] = React.useState(false);
   const open = !!contact;
   const scrollRef = React.useRef<HTMLDivElement | null>(null);
   const taRef = React.useRef<HTMLTextAreaElement | null>(null);
@@ -466,7 +468,7 @@ export function ConversationPanel({
                 </div>
               </div>
 
-              <HeaderButton onClick={() => toast.info("Transferir — em breve.")}>
+              <HeaderButton onClick={() => setTransferOpen(true)}>
                 Transferir
               </HeaderButton>
               <HeaderButton primary onClick={() => openSchedule()}>
@@ -498,7 +500,7 @@ export function ConversationPanel({
                   }}
                   onMouseLeave={() => setMenuOpen(false)}
                 >
-                  <MenuItem icon={<UserPlus size={14} />} onClick={() => menuAction("Transferir para agente")}>
+                  <MenuItem icon={<UserPlus size={14} />} onClick={() => { setMenuOpen(false); setTransferOpen(true); }}>
                     Transferir para agente
                   </MenuItem>
                   <MenuItem icon={<AlertOctagon size={14} />} onClick={() => menuAction("Marcar como urgente")}>
@@ -698,6 +700,18 @@ export function ConversationPanel({
         source={forwardSource}
         excludeContactId={contact?.id}
         onClose={() => setForwardSource(null)}
+      />
+      <TransferConversationModal
+        open={transferOpen}
+        contactId={contact?.id ?? null}
+        contactName={contact?.name ?? null}
+        currentAssignedAgentId={contact?.assignedAgent ?? null}
+        onClose={() => setTransferOpen(false)}
+        onAssigned={(agentUserId) => {
+          if (contact) {
+            onContactUpdate?.(contact.id, { assignedAgent: agentUserId });
+          }
+        }}
       />
     </>
   );
