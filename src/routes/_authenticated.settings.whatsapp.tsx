@@ -267,7 +267,14 @@ function WhatsAppPage() {
         )}
 
         {status === "connected" && (
-          <div className="flex justify-end" style={{ marginTop: 16 }}>
+          <div className="flex justify-end" style={{ marginTop: 16, gap: 8 }}>
+            <button
+              style={buttonSecondary}
+              disabled={syncAvatar.isPending}
+              onClick={() => syncAvatar.mutate()}
+            >
+              {syncAvatar.isPending ? "Sincronizando…" : "Sincronizar foto do WhatsApp"}
+            </button>
             <button style={buttonDanger} onClick={() => setConfirmDc(true)}>
               Desconectar
             </button>
