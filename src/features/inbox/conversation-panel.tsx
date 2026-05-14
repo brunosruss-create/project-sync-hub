@@ -132,6 +132,7 @@ export function ConversationPanel({
   const [replyingTo, setReplyingTo] = React.useState<Message | null>(null);
   const [editingId, setEditingId] = React.useState<string | null>(null);
   const [forwardSource, setForwardSource] = React.useState<ForwardSource | null>(null);
+  const [transferOpen, setTransferOpen] = React.useState(false);
   const open = !!contact;
   const scrollRef = React.useRef<HTMLDivElement | null>(null);
   const taRef = React.useRef<HTMLTextAreaElement | null>(null);
