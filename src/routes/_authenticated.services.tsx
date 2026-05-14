@@ -19,8 +19,14 @@ import {
   parseCurrencyToCents,
 } from "@/features/services/data";
 
+import { ManagerOnly } from "@/components/manager-only";
+
 export const Route = createFileRoute("/_authenticated/services")({
-  component: ServicesPage,
+  component: () => (
+    <ManagerOnly>
+      <ServicesPage />
+    </ManagerOnly>
+  ),
 });
 
 type Editing =
