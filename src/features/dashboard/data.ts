@@ -210,11 +210,15 @@ export async function getDashboardData(period: DashPeriod, currentUserId?: strin
       ? d.toLocaleTimeString("pt-BR", { hour: "2-digit", minute: "2-digit" })
       : d.toLocaleDateString("pt-BR", { day: "2-digit", month: "2-digit" }) + " " +
         d.toLocaleTimeString("pt-BR", { hour: "2-digit", minute: "2-digit" });
+    const names = svcNamesByAppt.get(a.id);
+    const svcLabel = names && names.length
+      ? names.join(", ")
+      : (a.service_id ? fallbackSvcMap.get(a.service_id) ?? "—" : "—");
     return {
       id: a.id,
       time,
       client: ctMap.get(a.contact_id) || "—",
-      service: svcMap.get(a.service_id) || "—",
+      service: svcLabel,
     };
   });
 
