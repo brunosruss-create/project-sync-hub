@@ -18,6 +18,7 @@ import {
   refreshInstanceStatus,
   disconnectInstance,
   registerWebhook,
+  syncMyWhatsAppAvatar,
 } from "@/lib/evolution.functions";
 
 export const Route = createFileRoute("/_authenticated/settings/whatsapp")({
