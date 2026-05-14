@@ -190,14 +190,26 @@ export async function getDashboardData(period: DashPeriod, currentUserId?: strin
   });
 
 
-  // Top services in period
-  const periodSvcIds = Array.from(new Set(appts.map((a: any) => a.service_id).filter(Boolean)));
+  // Top 5 serviços: usa appointments do período; se vazio, faz fallback para os últimos 30 dias
+  // para que o card sempre reflita o histórico real do sistema.
+  let svcSourceAppts = appts as any[];
+  if (svcSourceAppts.filter((a) => a.service_id).length === 0) {
+    const since30 = new Date(Date.now() - 30 * 24 * 3600 * 1000).toISOString();
+    const { data: fb } = await supabase
+      .from("appointments")
+      .select("id,service_id,status,starts_at")
+      .gte("starts_at", since30)
+      .neq("status", "cancelled")
+      .limit(5000);
+    svcSourceAppts = fb ?? [];
+  }
+  const periodSvcIds = Array.from(new Set(svcSourceAppts.map((a: any) => a.service_id).filter(Boolean)));
   const periodSvc = periodSvcIds.length
     ? (await supabase.from("services").select("id,name").in("id", periodSvcIds as string[])).data ?? []
     : [];
   const periodSvcMap = new Map(periodSvc.map((s: any) => [s.id, s.name]));
   const svcCount = new Map<string, number>();
-  for (const a of appts as any[]) {
+  for (const a of svcSourceAppts) {
     if (!a.service_id) continue;
     svcCount.set(a.service_id, (svcCount.get(a.service_id) ?? 0) + 1);
   }
