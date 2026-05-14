@@ -500,7 +500,7 @@ export function ConversationPanel({
                   }}
                   onMouseLeave={() => setMenuOpen(false)}
                 >
-                  <MenuItem icon={<UserPlus size={14} />} onClick={() => menuAction("Transferir para agente")}>
+                  <MenuItem icon={<UserPlus size={14} />} onClick={() => { setMenuOpen(false); setTransferOpen(true); }}>
                     Transferir para agente
                   </MenuItem>
                   <MenuItem icon={<AlertOctagon size={14} />} onClick={() => menuAction("Marcar como urgente")}>
