@@ -197,6 +197,7 @@ export async function getDashboardData(period: DashPeriod, currentUserId?: strin
   const ctMap = new Map((ctRes.data ?? []).map((c: any) => [c.id, c.name]));
   const todayIso = new Date(); todayIso.setHours(0, 0, 0, 0);
   const tomorrowIso = new Date(todayIso); tomorrowIso.setDate(todayIso.getDate() + 1);
+  const unresolvedSvc: string[] = [];
   const upcoming = upcomingRows.map((a: any) => {
     const d = new Date(a.starts_at);
     const isToday = d >= todayIso && d < tomorrowIso;
@@ -204,10 +205,17 @@ export async function getDashboardData(period: DashPeriod, currentUserId?: strin
       ? d.toLocaleTimeString("pt-BR", { hour: "2-digit", minute: "2-digit" })
       : d.toLocaleDateString("pt-BR", { day: "2-digit", month: "2-digit" }) + " " +
         d.toLocaleTimeString("pt-BR", { hour: "2-digit", minute: "2-digit" });
-    const names = svcNamesByAppt.get(a.id);
-    const svcLabel = names && names.length
-      ? names.join(", ")
-      : (a.service_id ? fallbackSvcMap.get(a.service_id) ?? "—" : "—");
+    const ids = svcIdsByAppt.get(a.id) ?? [];
+    const names = ids.map((i) => svcNameById.get(i)).filter(Boolean) as string[];
+    let svcLabel: string;
+    if (names.length) {
+      svcLabel = names.join(", ");
+    } else if (a.service_id && svcNameById.get(a.service_id)) {
+      svcLabel = svcNameById.get(a.service_id)!;
+    } else {
+      svcLabel = "—";
+      unresolvedSvc.push(`appt=${a.id} service_id=${a.service_id ?? "null"}`);
+    }
     return {
       id: a.id,
       time,
@@ -215,6 +223,7 @@ export async function getDashboardData(period: DashPeriod, currentUserId?: strin
       service: svcLabel,
     };
   });
+  if (unresolvedSvc.length) console.debug("[dashboard] serviços não resolvidos:", unresolvedSvc);
 
 
   // Top 5 serviços: agrega via appointment_services -> services do período.
