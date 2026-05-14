@@ -56,6 +56,7 @@ function InboxPage() {
   const [menuState, setMenuState] = React.useState<CardMenuRequestDetail | null>(null);
   const [editTarget, setEditTarget] = React.useState<Contact | null>(null);
   const [scheduleTarget, setScheduleTarget] = React.useState<Contact | null>(null);
+  const [transferTarget, setTransferTarget] = React.useState<Contact | null>(null);
 
   // Colunas dinâmicas
   const [columns, setColumns] = React.useState<KanbanColumnDef[]>(DEFAULT_COLUMNS);
