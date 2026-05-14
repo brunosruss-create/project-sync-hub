@@ -382,17 +382,46 @@ export function ScheduleModal({
           </FieldGroup>
 
           {/* Date */}
-          <FieldGroup label="Data" icon={<CalendarDays size={12} />}>
+          <FieldGroup label="Data (DD/MM/AAAA)" icon={<CalendarDays size={12} />}>
             <input
-              type="date"
-              value={date}
-              onChange={(e) => setDate(e.target.value)}
-              style={inputStyle}
+              type="text"
+              inputMode="numeric"
+              placeholder="DD/MM/AAAA"
+              value={dateInput}
+              onChange={(e) => {
+                let v = e.target.value.replace(/[^\d/]/g, "");
+                // auto insert slashes
+                const digits = v.replace(/\D/g, "").slice(0, 8);
+                if (digits.length >= 5) v = `${digits.slice(0, 2)}/${digits.slice(2, 4)}/${digits.slice(4)}`;
+                else if (digits.length >= 3) v = `${digits.slice(0, 2)}/${digits.slice(2)}`;
+                else v = digits;
+                setDateInput(v);
+                const iso = parseDateBR(v);
+                if (iso) {
+                  setDate(iso);
+                  setDateError(null);
+                } else if (v.length === 10) {
+                  setDateError("Data inválida");
+                } else {
+                  setDateError(null);
+                }
+              }}
+              style={{
+                ...inputStyle,
+                borderColor: dateError ? "var(--danger, #EF4444)" : "var(--border-strong)",
+              }}
             />
+            {dateError && (
+              <span style={{ fontSize: 11, color: "var(--danger, #EF4444)" }}>{dateError}</span>
+            )}
           </FieldGroup>
 
           {/* Time slots */}
-          <FieldGroup label="Horário" icon={<Clock size={12} />}>
+          <FieldGroup
+            label="Horário"
+            icon={<Clock size={12} />}
+            hint={busy.filter((b) => b.agent_id === agentId).length > 0 ? "Riscado = ocupado" : undefined}
+          >
             <div
               style={{
                 display: "grid",
@@ -404,11 +433,17 @@ export function ScheduleModal({
             >
               {SLOTS.map((slot) => {
                 const on = slot === time;
+                const st = slotState.get(slot);
+                const disabled = !!(st?.busy || st?.past);
                 return (
                   <button
                     key={slot}
                     type="button"
-                    onClick={() => setTime(slot)}
+                    onClick={() => !disabled && setTime(slot)}
+                    disabled={disabled}
+                    title={
+                      st?.busy ? "Ocupado" : st?.past ? "Horário passado" : undefined
+                    }
                     style={{
                       height: 28,
                       borderRadius: 4,
@@ -416,11 +451,20 @@ export function ScheduleModal({
                       borderColor: on ? "var(--brand-400)" : "var(--border)",
                       background: on
                         ? "color-mix(in oklab, var(--brand-400) 18%, var(--bg-surface))"
-                        : "var(--bg-base)",
-                      color: on ? "var(--brand-400)" : "var(--text-primary)",
+                        : disabled
+                          ? "var(--bg-overlay)"
+                          : "var(--bg-base)",
+                      color: on
+                        ? "var(--brand-400)"
+                        : disabled
+                          ? "var(--text-muted)"
+                          : "var(--text-primary)",
                       fontSize: 11,
                       fontWeight: on ? 600 : 500,
                       fontFamily: "ui-monospace, monospace",
+                      textDecoration: disabled ? "line-through" : "none",
+                      cursor: disabled ? "not-allowed" : "pointer",
+                      opacity: disabled ? 0.6 : 1,
                     }}
                   >
                     {slot}
@@ -429,6 +473,7 @@ export function ScheduleModal({
               })}
             </div>
           </FieldGroup>
+
 
           {/* Agent */}
           <FieldGroup label="Profissional" icon={<User size={12} />}>
