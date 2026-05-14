@@ -31,6 +31,7 @@ import { EditContactModal } from "@/features/inbox/edit-contact-modal";
 import { ScheduleModal } from "@/features/inbox/schedule-modal";
 import { supabase } from "@/integrations/supabase/client";
 import { useAuth } from "@/hooks/use-auth";
+import { useWorkspaceOwnerId } from "@/hooks/use-workspace-owner";
 
 export const Route = createFileRoute("/_authenticated/inbox")({
   component: InboxPage,
@@ -40,6 +41,7 @@ type Filter = "all" | "mine" | "unassigned";
 
 function InboxPage() {
   const { user } = useAuth();
+  const { workspaceOwnerId } = useWorkspaceOwnerId();
   const [contacts, setContacts] = React.useState<Contact[]>([]);
   const [isLoadingContacts, setIsLoadingContacts] = React.useState(true);
   const [loadError, setLoadError] = React.useState<string | null>(null);
