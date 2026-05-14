@@ -701,6 +701,18 @@ export function ConversationPanel({
         excludeContactId={contact?.id}
         onClose={() => setForwardSource(null)}
       />
+      <TransferConversationModal
+        open={transferOpen}
+        contactId={contact?.id ?? null}
+        contactName={contact?.name ?? null}
+        currentAssignedAgentId={contact?.assignedAgent ?? null}
+        onClose={() => setTransferOpen(false)}
+        onAssigned={(agentUserId) => {
+          if (contact) {
+            onContactUpdate?.(contact.id, { assignedAgent: agentUserId });
+          }
+        }}
+      />
     </>
   );
 }
