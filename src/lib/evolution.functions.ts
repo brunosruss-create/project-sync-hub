@@ -472,10 +472,38 @@ export const syncMyWhatsAppAvatar = createServerFn({ method: "POST" })
       .select("phone_number,status")
       .eq("instance_name", name)
       .maybeSingle();
-    const phone = inst?.phone_number ? String(inst.phone_number).replace(/\D/g, "") : null;
-    if (!phone) return { url: null as string | null, changed: false, reason: "no_phone" as const };
-    const url = await tryFetchProfilePicture(name, phone);
-    if (!url) return { url: null, changed: false, reason: "not_found" as const };
+    let phone = inst?.phone_number ? String(inst.phone_number).replace(/\D/g, "") : null;
+    let directPic: string | null = null;
+    // Sempre consulta fetchInstances — pega phone (se faltar) e o profilePicUrl direto.
+    try {
+      const list: any = await evo.fetchInstances(name);
+      const i = Array.isArray(list) ? list[0] : list?.[0] ?? list;
+      const d = i?.instance ?? i;
+      if (!phone) {
+        const ownerRaw: string | undefined =
+          d?.ownerJid ?? d?.owner ?? d?.wuid ?? d?.user?.id;
+        if (ownerRaw) phone = String(ownerRaw).split("@")[0].split(":")[0];
+        else if (d?.number) phone = String(d.number).replace(/\D/g, "");
+      }
+      const pic = d?.profilePicUrl ?? d?.profilePictureUrl ?? d?.profile_pic_url;
+      if (typeof pic === "string" && pic.startsWith("http")) directPic = pic;
+    } catch (e: any) {
+      console.warn("[evolution syncAvatar] fetchInstances:", e?.message);
+    }
+
+    let url: string | null = directPic;
+    if (!url && phone) {
+      url = await tryFetchProfilePicture(name, phone);
+    }
+    if (!url) {
+      return { url: null, changed: false, reason: phone ? ("not_found" as const) : ("no_phone" as const) };
+    }
+    if (phone) {
+      await supabaseAdmin
+        .from("whatsapp_instances")
+        .update({ phone_number: phone })
+        .eq("instance_name", name);
+    }
     await supabaseAdmin.from("profiles").update({ avatar_url: url }).eq("id", context.userId);
     return { url, changed: true, reason: "ok" as const };
   });
