@@ -160,17 +160,46 @@ export async function getDashboardData(period: DashPeriod, currentUserId?: strin
     .map(({ name, value, color }) => ({ name, value, color }));
 
   // Próximos agendamentos: do agora em diante (até 6 itens), independente do período selecionado.
-  const apptServiceIds = Array.from(new Set(upcomingRows.map((a: any) => a.service_id).filter(Boolean)));
+  // O nome do serviço vem da tabela de junção appointment_services -> services.
+  const upcomingIds = upcomingRows.map((a: any) => a.id);
   const apptContactIds = Array.from(new Set(upcomingRows.map((a: any) => a.contact_id).filter(Boolean)));
-  const [svcRes, ctRes] = await Promise.all([
-    apptServiceIds.length
-      ? supabase.from("services").select("id,name").in("id", apptServiceIds as string[])
+  const [apSvcRes, ctRes] = await Promise.all([
+    upcomingIds.length
+      ? supabase
+          .from("appointment_services")
+          .select("appointment_id, services(name)")
+          .in("appointment_id", upcomingIds as string[])
       : Promise.resolve({ data: [] as any[] }),
     apptContactIds.length
       ? supabase.from("contacts").select("id,name").in("id", apptContactIds as string[])
       : Promise.resolve({ data: [] as any[] }),
   ]);
-  const svcMap = new Map((svcRes.data ?? []).map((s: any) => [s.id, s.name]));
+  // Agrupa nomes de serviços por agendamento (pode haver múltiplos)
+  const svcNamesByAppt = new Map<string, string[]>();
+  for (const row of (apSvcRes.data ?? []) as any[]) {
+    const nm = row.services?.name;
+    if (!nm) continue;
+    const arr = svcNamesByAppt.get(row.appointment_id) ?? [];
+    arr.push(nm);
+    svcNamesByAppt.set(row.appointment_id, arr);
+  }
+  // Fallback: caso appointment_services não tenha registro, usa services.id direto
+  const fallbackSvcIds = Array.from(
+    new Set(
+      upcomingRows
+        .filter((a: any) => !svcNamesByAppt.has(a.id))
+        .map((a: any) => a.service_id)
+        .filter(Boolean),
+    ),
+  );
+  const fallbackSvcMap = new Map<string, string>();
+  if (fallbackSvcIds.length) {
+    const { data: fbSvc } = await supabase
+      .from("services")
+      .select("id,name")
+      .in("id", fallbackSvcIds as string[]);
+    for (const s of (fbSvc ?? []) as any[]) fallbackSvcMap.set(s.id, s.name);
+  }
   const ctMap = new Map((ctRes.data ?? []).map((c: any) => [c.id, c.name]));
   const todayIso = new Date(); todayIso.setHours(0, 0, 0, 0);
   const tomorrowIso = new Date(todayIso); tomorrowIso.setDate(todayIso.getDate() + 1);
