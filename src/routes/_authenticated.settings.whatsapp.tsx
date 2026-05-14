@@ -3,7 +3,7 @@ import { createFileRoute } from "@tanstack/react-router";
 import { useServerFn } from "@tanstack/react-start";
 import { useQuery, useMutation, useQueryClient } from "@tanstack/react-query";
 import { toast } from "sonner";
-import { ExternalLink, RefreshCw, Loader2 } from "lucide-react";
+import { ExternalLink, RefreshCw, Loader2, Camera } from "lucide-react";
 import {
   SettingsLayout,
   FieldGroup,
@@ -19,7 +19,10 @@ import {
   disconnectInstance,
   registerWebhook,
   syncMyWhatsAppAvatar,
+  updateMyWhatsAppAvatar,
 } from "@/lib/evolution.functions";
+import { supabase } from "@/integrations/supabase/client";
+import { useProfile } from "@/hooks/use-profile";
 
 export const Route = createFileRoute("/_authenticated/settings/whatsapp")({
   component: WhatsAppPage,
