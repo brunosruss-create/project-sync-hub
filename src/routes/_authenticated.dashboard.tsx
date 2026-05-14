@@ -129,34 +129,7 @@ function Dashboard() {
             {loading ? (
               <Skeleton h={240} />
             ) : (
-              <div className="flex items-center gap-3">
-                <ResponsiveContainer width="50%" height={180}>
-                  <PieChart>
-                    <Pie
-                      data={kanban}
-                      dataKey="value"
-                      innerRadius={40}
-                      outerRadius={70}
-                      paddingAngle={2}
-                    >
-                      {kanban.map((k) => (
-                        <Cell key={k.name} fill={k.color} stroke="var(--bg-surface)" />
-                      ))}
-                    </Pie>
-                  </PieChart>
-                </ResponsiveContainer>
-                <ul className="flex flex-col flex-1" style={{ gap: 6 }}>
-                  {kanban.map((k) => (
-                    <li key={k.name} className="flex items-center justify-between" style={{ fontSize: 12 }}>
-                      <span className="flex items-center gap-2">
-                        <span style={{ width: 8, height: 8, borderRadius: 2, background: k.color }} />
-                        {k.name}
-                      </span>
-                      <span style={{ fontWeight: 600 }}>{k.value}</span>
-                    </li>
-                  ))}
-                </ul>
-              </div>
+              <KanbanDistribution data={kanban} />
             )}
           </ChartCard>
         </div>
@@ -424,6 +397,148 @@ function KPI({
       >
         {positive ? <ArrowUpRight size={11} /> : <ArrowDownRight size={11} />}
         {Math.abs(delta)}% vs ontem
+      </div>
+    </div>
+  );
+}
+
+function KanbanDistribution({ data }: { data: { name: string; value: number; color: string }[] }) {
+  const items = (data ?? []).filter((d) => d.value > 0).sort((a, b) => b.value - a.value);
+  const total = items.reduce((s, d) => s + d.value, 0);
+
+  if (total === 0) {
+    return (
+      <div
+        style={{
+          display: "flex",
+          flexDirection: "column",
+          alignItems: "center",
+          justifyContent: "center",
+          height: 180,
+          gap: 8,
+          color: "var(--text-muted)",
+        }}
+      >
+        <span style={{ fontSize: 28 }}>📊</span>
+        <span style={{ fontSize: 13 }}>Nenhum dado ainda</span>
+      </div>
+    );
+  }
+
+  return (
+    <div
+      style={{
+        display: "flex",
+        alignItems: "center",
+        gap: 24,
+        width: "100%",
+        flexWrap: "wrap",
+      }}
+    >
+      <div style={{ position: "relative", flexShrink: 0, width: 180, height: 180 }}>
+        <div
+          style={{
+            position: "absolute",
+            inset: 0,
+            display: "flex",
+            flexDirection: "column",
+            alignItems: "center",
+            justifyContent: "center",
+            pointerEvents: "none",
+            zIndex: 1,
+          }}
+        >
+          <span style={{ fontSize: 26, fontWeight: 600, lineHeight: 1 }}>{total}</span>
+          <span style={{ fontSize: 11, color: "var(--text-muted)", marginTop: 2 }}>total</span>
+        </div>
+        <PieChart width={180} height={180}>
+          <Pie
+            data={items}
+            cx={90}
+            cy={90}
+            innerRadius={54}
+            outerRadius={82}
+            paddingAngle={3}
+            dataKey="value"
+            strokeWidth={0}
+            animationBegin={0}
+            animationDuration={800}
+            animationEasing="ease-out"
+          >
+            {items.map((entry, i) => (
+              <Cell key={`c-${i}`} fill={entry.color} stroke="none" />
+            ))}
+          </Pie>
+          <Tooltip
+            content={({ active, payload }) => {
+              if (!active || !payload?.length) return null;
+              const item = payload[0] as { name: string; value: number };
+              const pct = ((item.value / total) * 100).toFixed(0);
+              return (
+                <div
+                  style={{
+                    background: "var(--bg-surface)",
+                    border: "1px solid var(--border)",
+                    borderRadius: 8,
+                    padding: "8px 12px",
+                    fontSize: 12,
+                    color: "var(--text-primary)",
+                    boxShadow: "0 8px 24px rgba(0,0,0,0.12)",
+                  }}
+                >
+                  <div style={{ fontWeight: 500 }}>{item.name}</div>
+                  <div style={{ color: "var(--text-muted)", marginTop: 2 }}>
+                    {item.value} · {pct}%
+                  </div>
+                </div>
+              );
+            }}
+          />
+        </PieChart>
+      </div>
+
+      <div style={{ flex: 1, minWidth: 160, display: "flex", flexDirection: "column", gap: 10 }}>
+        {items.map((item) => {
+          const pct = (item.value / total) * 100;
+          return (
+            <div key={item.name} style={{ display: "flex", alignItems: "center", gap: 10 }}>
+              <span
+                style={{
+                  width: 10,
+                  height: 10,
+                  borderRadius: "50%",
+                  background: item.color,
+                  flexShrink: 0,
+                }}
+              />
+              <span style={{ fontSize: 12, color: "var(--text-primary)", flex: 1 }}>
+                {item.name}
+              </span>
+              <div
+                style={{
+                  width: 60,
+                  height: 4,
+                  background: "var(--bg-overlay)",
+                  borderRadius: 2,
+                  overflow: "hidden",
+                }}
+              >
+                <div
+                  style={{
+                    width: `${pct}%`,
+                    height: "100%",
+                    background: item.color,
+                    borderRadius: 2,
+                    transition: "width 800ms ease-out",
+                  }}
+                />
+              </div>
+              <span style={{ fontSize: 12, fontWeight: 600, minWidth: 18, textAlign: "right" }}>
+                {item.value}
+              </span>
+            </div>
+          );
+        })}
       </div>
     </div>
   );
