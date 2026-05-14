@@ -74,7 +74,7 @@ const COLUMN_FALLBACK: Record<string, { label: string; color: string }> = {
   urgent: { label: "Urgente", color: "#EF4444" },
 };
 
-export async function getDashboardData(period: DashPeriod): Promise<DashboardData> {
+export async function getDashboardData(period: DashPeriod, currentUserId?: string): Promise<DashboardData> {
   const { start, end, prevStart, prevEnd } = range(period);
   const todayStart = new Date(); todayStart.setHours(0, 0, 0, 0);
   const todayEnd = new Date(todayStart); todayEnd.setDate(todayStart.getDate() + 1);
@@ -90,7 +90,7 @@ export async function getDashboardData(period: DashPeriod): Promise<DashboardDat
     supabase.from("appointments").select("id,status,starts_at")
       .gte("starts_at", prevStart.toISOString()).lt("starts_at", prevEnd.toISOString()).limit(5000),
     supabase.from("appointments").select("id,contact_id,service_id,starts_at,status")
-      .gte("starts_at", new Date().toISOString()).lt("starts_at", todayEnd.toISOString())
+      .gte("starts_at", todayStart.toISOString()).lt("starts_at", todayEnd.toISOString())
       .neq("status", "cancelled").order("starts_at", { ascending: true }).limit(20),
     supabase.from("contacts").select("id,name,kanban_column,last_message,last_message_at,last_direction"),
     supabase.from("kanban_columns").select("slug,label,color,position").order("position", { ascending: true }),
@@ -186,15 +186,17 @@ export async function getDashboardData(period: DashPeriod): Promise<DashboardDat
     .sort((a, b) => b.count - a.count)
     .slice(0, 5);
 
-  // Agents online (sent_by in last 15min)
+  // Agents online: any profile with outbound message in last 5min, plus the current user (always online).
   const recentAgentIds = new Set<string>();
-  const since15 = Date.now() - 15 * 60 * 1000;
+  const since5 = Date.now() - 5 * 60 * 1000;
   for (const m of msgs as any[]) {
-    if (m.direction === "outbound" && m.sent_by && new Date(m.created_at).getTime() >= since15) {
+    if (m.direction === "outbound" && m.sent_by && new Date(m.created_at).getTime() >= since5) {
       recentAgentIds.add(m.sent_by);
     }
   }
-  const allAgentIds = new Set<string>();
+  if (currentUserId) recentAgentIds.add(currentUserId);
+
+  const allAgentIds = new Set<string>(recentAgentIds);
   for (const m of msgs as any[]) if (m.direction === "outbound" && m.sent_by) allAgentIds.add(m.sent_by);
   const agentIdsArr = Array.from(allAgentIds);
   const profiles = agentIdsArr.length
