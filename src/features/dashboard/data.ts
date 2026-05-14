@@ -159,9 +159,9 @@ export async function getDashboardData(period: DashPeriod, currentUserId?: strin
     .sort((a, b) => a.pos - b.pos)
     .map(({ name, value, color }) => ({ name, value, color }));
 
-  // Upcoming appointments (today, future)
-  const apptServiceIds = Array.from(new Set(todayAppts.map((a: any) => a.service_id).filter(Boolean)));
-  const apptContactIds = Array.from(new Set(todayAppts.map((a: any) => a.contact_id).filter(Boolean)));
+  // Próximos agendamentos: do agora em diante (até 6 itens), independente do período selecionado.
+  const apptServiceIds = Array.from(new Set(upcomingRows.map((a: any) => a.service_id).filter(Boolean)));
+  const apptContactIds = Array.from(new Set(upcomingRows.map((a: any) => a.contact_id).filter(Boolean)));
   const [svcRes, ctRes] = await Promise.all([
     apptServiceIds.length
       ? supabase.from("services").select("id,name").in("id", apptServiceIds as string[])
@@ -172,12 +172,23 @@ export async function getDashboardData(period: DashPeriod, currentUserId?: strin
   ]);
   const svcMap = new Map((svcRes.data ?? []).map((s: any) => [s.id, s.name]));
   const ctMap = new Map((ctRes.data ?? []).map((c: any) => [c.id, c.name]));
-  const upcoming = todayAppts.slice(0, 6).map((a: any) => ({
-    id: a.id,
-    time: new Date(a.starts_at).toLocaleTimeString("pt-BR", { hour: "2-digit", minute: "2-digit" }),
-    client: ctMap.get(a.contact_id) || "—",
-    service: svcMap.get(a.service_id) || "—",
-  }));
+  const todayIso = new Date(); todayIso.setHours(0, 0, 0, 0);
+  const tomorrowIso = new Date(todayIso); tomorrowIso.setDate(todayIso.getDate() + 1);
+  const upcoming = upcomingRows.map((a: any) => {
+    const d = new Date(a.starts_at);
+    const isToday = d >= todayIso && d < tomorrowIso;
+    const time = isToday
+      ? d.toLocaleTimeString("pt-BR", { hour: "2-digit", minute: "2-digit" })
+      : d.toLocaleDateString("pt-BR", { day: "2-digit", month: "2-digit" }) + " " +
+        d.toLocaleTimeString("pt-BR", { hour: "2-digit", minute: "2-digit" });
+    return {
+      id: a.id,
+      time,
+      client: ctMap.get(a.contact_id) || "—",
+      service: svcMap.get(a.service_id) || "—",
+    };
+  });
+
 
   // Top services in period
   const periodSvcIds = Array.from(new Set(appts.map((a: any) => a.service_id).filter(Boolean)));
