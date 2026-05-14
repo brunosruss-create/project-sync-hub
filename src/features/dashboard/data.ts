@@ -79,7 +79,10 @@ export async function getDashboardData(period: DashPeriod, currentUserId?: strin
   const todayStart = new Date(); todayStart.setHours(0, 0, 0, 0);
   const todayEnd = new Date(todayStart); todayEnd.setDate(todayStart.getDate() + 1);
 
-  const [msgsRes, prevMsgsRes, apptsRes, prevApptsRes, todayApptsRes, contactsRes, columnsRes] = await Promise.all([
+  const nowIso = new Date().toISOString();
+  const since24hIso = new Date(Date.now() - 24 * 3600 * 1000).toISOString();
+
+  const [msgsRes, prevMsgsRes, apptsRes, prevApptsRes, upcomingRes, contactsRes, columnsRes, recentMsgsRes] = await Promise.all([
     supabase.from("messages").select("id,contact_id,direction,sent_by,created_at")
       .gte("created_at", start.toISOString()).lt("created_at", end.toISOString())
       .order("created_at", { ascending: true }).limit(10000),
@@ -89,12 +92,17 @@ export async function getDashboardData(period: DashPeriod, currentUserId?: strin
       .gte("starts_at", start.toISOString()).lt("starts_at", end.toISOString()).limit(5000),
     supabase.from("appointments").select("id,status,starts_at")
       .gte("starts_at", prevStart.toISOString()).lt("starts_at", prevEnd.toISOString()).limit(5000),
+    // Próximos agendamentos: do agora em diante, qualquer data, exceto cancelados.
     supabase.from("appointments").select("id,contact_id,service_id,starts_at,status")
-      .gte("starts_at", todayStart.toISOString()).lt("starts_at", todayEnd.toISOString())
-      .neq("status", "cancelled").order("starts_at", { ascending: true }).limit(20),
-    supabase.from("contacts").select("id,name,kanban_column,last_message,last_message_at,last_direction"),
+      .gte("starts_at", nowIso)
+      .neq("status", "cancelled").order("starts_at", { ascending: true }).limit(6),
+    supabase.from("contacts").select("id,name,kanban_column"),
     supabase.from("kanban_columns").select("slug,label,color,position").order("position", { ascending: true }),
+    // Mensagens das últimas 24h para detectar pendências por contato (independente de last_direction).
+    supabase.from("messages").select("contact_id,direction,created_at")
+      .gte("created_at", since24hIso).order("created_at", { ascending: true }).limit(10000),
   ]);
+
 
   const msgs = msgsRes.data ?? [];
   const prevMsgs = prevMsgsRes.data ?? [];
