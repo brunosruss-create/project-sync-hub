@@ -249,7 +249,7 @@ export const registerWebhook = createServerFn({ method: "POST" })
         url: webhookUrl,
         headers: { "x-webhook-secret": row.webhook_secret as string },
         byEvents: false,
-        base64: false,
+        base64: true,
         events: WEBHOOK_EVENTS,
       },
     });
