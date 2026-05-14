@@ -58,20 +58,78 @@ export function ScheduleModal({
   const [notes, setNotes] = React.useState("");
   const [notifyWa, setNotifyWa] = React.useState(true);
   const [submitting, setSubmitting] = React.useState(false);
+  const [dateInput, setDateInput] = React.useState<string>(formatDateBR(toDateInput(new Date())));
+  const [dateError, setDateError] = React.useState<string | null>(null);
+  const [busy, setBusy] = React.useState<BusyAppt[]>([]);
 
   React.useEffect(() => {
     if (!open) return;
+    const today = toDateInput(new Date());
     setSelected(new Set(preselectedServiceIds ?? []));
-    setDate(toDateInput(new Date()));
+    setDate(today);
+    setDateInput(formatDateBR(today));
+    setDateError(null);
     setTime("09:00");
     setNotes("");
     setNotifyWa(true);
     setSubmitting(false);
   }, [open, preselectedServiceIds]);
 
+  React.useEffect(() => {
+    if (!open || !user?.id || !date) return;
+    const [y, mo, da] = date.split("-").map(Number);
+    const dayStart = new Date(y, (mo ?? 1) - 1, da ?? 1, 0, 0, 0, 0);
+    const dayEnd = new Date(dayStart.getTime() + 24 * 60 * 60_000);
+    let cancelled = false;
+    const load = async () => {
+      const { data, error } = await supabase
+        .from("appointments")
+        .select("id, starts_at, ends_at, agent_id, status")
+        .eq("owner_user_id", user.id)
+        .gte("starts_at", dayStart.toISOString())
+        .lt("starts_at", dayEnd.toISOString())
+        .neq("status", "cancelled");
+      if (cancelled) return;
+      if (error) {
+        console.warn("[schedule-modal] busy fetch:", error.message);
+        setBusy([]);
+        return;
+      }
+      setBusy((data ?? []) as BusyAppt[]);
+    };
+    load();
+    const ch = supabase
+      .channel(`schedule-modal-busy-${date}`)
+      .on("postgres_changes", { event: "*", schema: "public", table: "appointments" }, () => load())
+      .subscribe();
+    return () => {
+      cancelled = true;
+      supabase.removeChannel(ch);
+    };
+  }, [open, user?.id, date]);
+
   const selectedServices = services.filter((s) => selected.has(s.id));
   const totalMin = selectedServices.reduce((a, s) => a + s.duration_minutes, 0);
   const totalCents = selectedServices.reduce((a, s) => a + s.price_cents, 0);
+  const blockMin = Math.max(totalMin, 30);
+
+  const slotState = React.useMemo(() => {
+    const map = new Map<string, { busy: boolean; past: boolean }>();
+    const now = Date.now();
+    for (const slot of SLOTS) {
+      const start = fromDateTimeInput(date, slot);
+      const end = new Date(start.getTime() + blockMin * 60_000);
+      const past = start.getTime() < now;
+      const isBusy = busy.some((b) => {
+        if (b.agent_id !== agentId) return false;
+        const bs = new Date(b.starts_at).getTime();
+        const be = new Date(b.ends_at).getTime();
+        return start.getTime() < be && bs < end.getTime();
+      });
+      map.set(slot, { busy: isBusy, past });
+    }
+    return map;
+  }, [busy, agentId, date, blockMin]);
 
   const toggle = (id: string) => {
     setSelected((prev) => {
