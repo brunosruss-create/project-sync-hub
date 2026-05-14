@@ -34,7 +34,7 @@ function WhatsAppPage() {
   const doConnect = useServerFn(connectInstance);
   const doRefresh = useServerFn(refreshInstanceStatus);
   const doDisconnect = useServerFn(disconnectInstance);
-  const doRegisterWebhook = useServerFn(registerWebhook);
+  
   const doSyncAvatar = useServerFn(syncMyWhatsAppAvatar);
   const doUpdateAvatar = useServerFn(updateMyWhatsAppAvatar);
   const profileQ = useProfile();
