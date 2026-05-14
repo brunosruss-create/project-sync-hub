@@ -805,10 +805,10 @@ function MessageBubble({
       >
         <MessageChevron isMe={isMe} bubbleBg={audioBg} message={m} onReply={onReply} onReact={onReact} onDelete={onDelete} onForward={onForward} />
         {m.quoted_preview && <QuotedPreview preview={m.quoted_preview} isMe={isMe} />}
-        <AudioPlayer
+        <AudioPlayerWithMe
           src={m.media_url}
-          avatarName={contactName}
-          avatarUrl={contactAvatar ?? null}
+          contactName={contactName}
+          contactAvatar={contactAvatar ?? null}
           isMe={isMe}
         />
         <div
