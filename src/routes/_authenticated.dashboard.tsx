@@ -40,11 +40,11 @@ function Dashboard() {
   React.useEffect(() => {
     let cancelled = false;
     setLoading(true);
-    getDashboardData(period)
+    getDashboardData(period, user?.id)
       .then((d) => { if (!cancelled) { setData(d); setLoading(false); } })
       .catch((e) => { console.warn("[dashboard] load:", e?.message ?? e); if (!cancelled) setLoading(false); });
     return () => { cancelled = true; };
-  }, [period]);
+  }, [period, user?.id]);
 
   const displayName =
     profile?.full_name ||
