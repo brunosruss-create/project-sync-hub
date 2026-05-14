@@ -271,25 +271,113 @@ function WhatsAppPage() {
             </button>
           </div>
         ) : status === "connected" ? (
-          <div
-            style={{
-              display: "grid",
-              gridTemplateColumns: "repeat(auto-fit, minmax(180px, 1fr))",
-              gap: 12,
-            }}
-          >
-            <Info label="Número" value={instance?.phone_number ?? "—"} />
-            <Info label="Nome do perfil" value={instance?.profile_name ?? "—"} />
-            <Info
-              label="Conectado em"
-              value={
-                instance?.last_connected_at
-                  ? new Date(instance.last_connected_at).toLocaleString("pt-BR")
-                  : "—"
-              }
-            />
-            <Info label="Instância" value={instance?.instance_name ?? "—"} />
-            <Info label="Webhook" value={instance?.webhook_url ?? "—"} />
+          <div style={{ display: "flex", flexDirection: "column", gap: 20 }}>
+            <div style={{ display: "flex", alignItems: "center", gap: 16 }}>
+              <div
+                style={{
+                  position: "relative",
+                  width: 96,
+                  height: 96,
+                  borderRadius: "50%",
+                  background: "var(--bg-overlay)",
+                  border: "1px solid var(--border)",
+                  overflow: "hidden",
+                  flexShrink: 0,
+                }}
+              >
+                {profileQ.data?.avatar_url ? (
+                  <img
+                    src={profileQ.data.avatar_url}
+                    alt="Foto de perfil"
+                    style={{ width: "100%", height: "100%", objectFit: "cover" }}
+                  />
+                ) : (
+                  <div
+                    style={{
+                      width: "100%",
+                      height: "100%",
+                      display: "flex",
+                      alignItems: "center",
+                      justifyContent: "center",
+                      color: "var(--text-muted)",
+                      fontSize: 28,
+                      fontWeight: 600,
+                    }}
+                  >
+                    {(profileQ.data?.full_name ?? "?").slice(0, 1).toUpperCase()}
+                  </div>
+                )}
+                {changeAvatar.isPending && (
+                  <div
+                    style={{
+                      position: "absolute",
+                      inset: 0,
+                      background: "rgba(0,0,0,0.5)",
+                      display: "flex",
+                      alignItems: "center",
+                      justifyContent: "center",
+                    }}
+                  >
+                    <Loader2 size={20} className="animate-spin" color="#fff" />
+                  </div>
+                )}
+              </div>
+              <div style={{ display: "flex", flexDirection: "column", gap: 8 }}>
+                <div style={{ fontSize: 14, fontWeight: 500 }}>Foto do perfil</div>
+                <div style={{ fontSize: 12, color: "var(--text-muted)" }}>
+                  Trocar aqui atualiza também na sua conta real do WhatsApp.
+                </div>
+                <div style={{ display: "flex", gap: 8, marginTop: 4 }}>
+                  <input
+                    ref={fileRef}
+                    type="file"
+                    accept="image/jpeg,image/png,image/webp"
+                    style={{ display: "none" }}
+                    onChange={(e) => {
+                      const f = e.target.files?.[0];
+                      if (f) changeAvatar.mutate(f);
+                      e.target.value = "";
+                    }}
+                  />
+                  <button
+                    style={buttonSecondary}
+                    className="flex items-center gap-2"
+                    disabled={changeAvatar.isPending}
+                    onClick={() => fileRef.current?.click()}
+                  >
+                    <Camera size={14} /> Trocar foto
+                  </button>
+                  <button
+                    style={buttonSecondary}
+                    disabled={syncAvatar.isPending}
+                    onClick={() => syncAvatar.mutate()}
+                  >
+                    {syncAvatar.isPending ? "Atualizando…" : "Atualizar do WhatsApp"}
+                  </button>
+                </div>
+              </div>
+            </div>
+
+            <div
+              style={{
+                display: "grid",
+                gridTemplateColumns: "repeat(auto-fit, minmax(180px, 1fr))",
+                gap: 12,
+              }}
+            >
+              <Info label="Número" value={instance?.phone_number ?? "—"} />
+              <Info label="Nome do perfil" value={instance?.profile_name ?? "—"} />
+              <Info
+                label="Conectado em"
+                value={
+                  instance?.last_connected_at
+                    ? new Date(instance.last_connected_at).toLocaleString("pt-BR")
+                    : "—"
+                }
+              />
+              <Info label="Instância" value={instance?.instance_name ?? "—"} />
+              <Info label="Webhook" value={instance?.webhook_url ?? "—"} />
+            </div>
           </div>
         ) : (
           <div className="flex flex-col items-center justify-center text-center" style={{ padding: 32, gap: 12 }}>
