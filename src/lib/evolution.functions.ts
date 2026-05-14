@@ -12,6 +12,8 @@ function isPublicHost(host: string | null | undefined): host is string {
   return !/^(localhost|127\.|0\.0\.0\.0|::1|10\.|192\.168\.|172\.(1[6-9]|2\d|3[01])\.)/i.test(host);
 }
 
+const FALLBACK_PUBLIC_URL = "https://project--e2215eb7-4cbb-4afc-8773-9f93425b90f1.lovable.app";
+
 function publicBaseUrl(): string {
   const fromEnv =
     process.env.PUBLIC_APP_URL ||
@@ -26,7 +28,7 @@ function publicBaseUrl(): string {
     const host = getRequestHost();
     if (isPublicHost(host)) return `https://${host}`;
   } catch {}
-  return "";
+  return FALLBACK_PUBLIC_URL;
 }
 
 async function getOrCreateRow(userId: string) {
@@ -36,10 +38,27 @@ async function getOrCreateRow(userId: string) {
     .select("*")
     .eq("instance_name", name)
     .maybeSingle();
-  if (existing) return existing;
+  if (existing) {
+    if (!existing.webhook_secret) {
+      const secret = crypto.randomUUID();
+      const { data: patched } = await supabaseAdmin
+        .from("whatsapp_instances")
+        .update({ webhook_secret: secret })
+        .eq("id", existing.id)
+        .select("*")
+        .maybeSingle();
+      return patched ?? { ...existing, webhook_secret: secret };
+    }
+    return existing;
+  }
   const { data, error } = await supabaseAdmin
     .from("whatsapp_instances")
-    .insert({ instance_name: name, owner_user_id: userId, status: "disconnected" })
+    .insert({
+      instance_name: name,
+      owner_user_id: userId,
+      status: "disconnected",
+      webhook_secret: crypto.randomUUID(),
+    })
     .select("*")
     .single();
   if (error) throw new Error(`DB: ${error.message}`);
@@ -176,6 +195,17 @@ export const connectInstance = createServerFn({ method: "POST" })
         instanceName: name,
         integration: "WHATSAPP-BAILEYS",
         qrcode: true,
+        ...(webhookUrl && webhookSecret
+          ? {
+              webhook: {
+                url: webhookUrl,
+                headers: { "x-webhook-secret": webhookSecret },
+                events: WEBHOOK_EVENTS,
+                webhookByEvents: false,
+                webhookBase64: true,
+              },
+            }
+          : {}),
       });
       qr = await normalizeQRCodeImage(extractQRCode(created));
     } catch (e: any) {

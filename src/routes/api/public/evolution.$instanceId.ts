@@ -102,7 +102,24 @@ export const Route = createFileRoute("/api/public/evolution/$instanceId")({
           .eq("id", instanceId)
           .maybeSingle();
 
-        if (!row || !secret || secret !== row.webhook_secret || !row.owner_user_id) {
+        if (!row) {
+          console.warn("[evolution webhook] forbidden: instance row not found", { instanceId });
+          return new Response("forbidden", { status: 403 });
+        }
+        if (!row.owner_user_id) {
+          console.warn("[evolution webhook] forbidden: row missing owner_user_id", { instanceId });
+          return new Response("forbidden", { status: 403 });
+        }
+        if (!secret) {
+          console.warn("[evolution webhook] forbidden: missing x-webhook-secret header", { instanceId });
+          return new Response("forbidden", { status: 403 });
+        }
+        if (!row.webhook_secret) {
+          console.warn("[evolution webhook] forbidden: row has no webhook_secret in DB", { instanceId });
+          return new Response("forbidden", { status: 403 });
+        }
+        if (secret !== row.webhook_secret) {
+          console.warn("[evolution webhook] forbidden: secret mismatch", { instanceId });
           return new Response("forbidden", { status: 403 });
         }
 
