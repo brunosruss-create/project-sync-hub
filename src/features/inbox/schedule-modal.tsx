@@ -659,3 +659,134 @@ function FieldGroup({
     </div>
   );
 }
+
+function MiniCalendar({
+  valueIso,
+  onSelect,
+  onClose,
+}: {
+  valueIso: string;
+  onSelect: (iso: string) => void;
+  onClose: () => void;
+}) {
+  const ref = React.useRef<HTMLDivElement>(null);
+  const initial = React.useMemo(() => {
+    const m = valueIso.match(/^(\d{4})-(\d{2})-(\d{2})$/);
+    if (m) return new Date(parseInt(m[1]), parseInt(m[2]) - 1, parseInt(m[3]));
+    return new Date();
+  }, [valueIso]);
+  const [view, setView] = React.useState<{ y: number; m: number }>({
+    y: initial.getFullYear(),
+    m: initial.getMonth(),
+  });
+
+  React.useEffect(() => {
+    const onDoc = (e: MouseEvent) => {
+      if (ref.current && !ref.current.contains(e.target as Node)) onClose();
+    };
+    const onKey = (e: KeyboardEvent) => {
+      if (e.key === "Escape") onClose();
+    };
+    document.addEventListener("mousedown", onDoc);
+    document.addEventListener("keydown", onKey);
+    return () => {
+      document.removeEventListener("mousedown", onDoc);
+      document.removeEventListener("keydown", onKey);
+    };
+  }, [onClose]);
+
+  const first = new Date(view.y, view.m, 1);
+  const startDow = (first.getDay() + 6) % 7; // Monday-first
+  const daysInMonth = new Date(view.y, view.m + 1, 0).getDate();
+  const today = new Date();
+  const todayIso = `${today.getFullYear()}-${String(today.getMonth() + 1).padStart(2, "0")}-${String(today.getDate()).padStart(2, "0")}`;
+  const cells: Array<number | null> = [];
+  for (let i = 0; i < startDow; i++) cells.push(null);
+  for (let d = 1; d <= daysInMonth; d++) cells.push(d);
+  while (cells.length % 7 !== 0) cells.push(null);
+
+  const monthLabel = new Date(view.y, view.m, 1).toLocaleDateString("pt-BR", {
+    month: "long",
+    year: "numeric",
+  });
+  const dows = ["S", "T", "Q", "Q", "S", "S", "D"];
+
+  const navMonth = (delta: number) => {
+    setView((v) => {
+      const nm = v.m + delta;
+      const ny = v.y + Math.floor(nm / 12);
+      const nmm = ((nm % 12) + 12) % 12;
+      return { y: ny, m: nmm };
+    });
+  };
+
+  return (
+    <div
+      ref={ref}
+      style={{
+        position: "absolute",
+        top: 40,
+        right: 0,
+        zIndex: 80,
+        background: "var(--bg-surface)",
+        border: "1px solid var(--border)",
+        borderRadius: 8,
+        boxShadow: "0 12px 30px rgba(0,0,0,0.4)",
+        padding: 10,
+        width: 240,
+      }}
+    >
+      <div className="flex items-center justify-between" style={{ marginBottom: 6 }}>
+        <button
+          type="button"
+          onClick={() => navMonth(-1)}
+          style={{ width: 24, height: 24, borderRadius: 4, border: "none", background: "transparent", color: "var(--text-primary)", cursor: "pointer" }}
+        >
+          ‹
+        </button>
+        <span style={{ fontSize: 12, fontWeight: 600, color: "var(--text-primary)", textTransform: "capitalize" }}>
+          {monthLabel}
+        </span>
+        <button
+          type="button"
+          onClick={() => navMonth(1)}
+          style={{ width: 24, height: 24, borderRadius: 4, border: "none", background: "transparent", color: "var(--text-primary)", cursor: "pointer" }}
+        >
+          ›
+        </button>
+      </div>
+      <div style={{ display: "grid", gridTemplateColumns: "repeat(7, 1fr)", gap: 2 }}>
+        {dows.map((d, i) => (
+          <span key={i} style={{ fontSize: 10, color: "var(--text-muted)", textAlign: "center", padding: "2px 0" }}>
+            {d}
+          </span>
+        ))}
+        {cells.map((d, i) => {
+          if (d === null) return <span key={i} />;
+          const iso = `${view.y}-${String(view.m + 1).padStart(2, "0")}-${String(d).padStart(2, "0")}`;
+          const isSelected = iso === valueIso;
+          const isToday = iso === todayIso;
+          return (
+            <button
+              key={i}
+              type="button"
+              onClick={() => onSelect(iso)}
+              style={{
+                height: 26,
+                borderRadius: 4,
+                border: isToday ? "1px solid var(--brand-400)" : "1px solid transparent",
+                background: isSelected ? "var(--brand-400)" : "transparent",
+                color: isSelected ? "#fff" : "var(--text-primary)",
+                fontSize: 11,
+                fontWeight: isSelected ? 600 : 500,
+                cursor: "pointer",
+              }}
+            >
+              {d}
+            </button>
+          );
+        })}
+      </div>
+    </div>
+  );
+}
