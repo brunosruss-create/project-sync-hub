@@ -164,6 +164,12 @@ export const evo = {
       { method: "POST", json: { number } },
     ),
 
+  updateProfilePicture: (name: string, body: { picture: string }) =>
+    call(`/chat/updateProfilePicture/${encodeURIComponent(name)}`, {
+      method: "POST",
+      json: body,
+    }),
+
   getBase64FromMediaMessage: (
     name: string,
     body: { message: any; convertToMp4?: boolean },
