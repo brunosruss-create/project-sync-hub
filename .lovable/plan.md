@@ -1,66 +1,84 @@
-## Problemas
+## Escopo
 
-**1. Data em formato EUA (MM/DD/YYYY)** — o `<input type="date">` herda o formato do SO/locale do navegador. No modal mostra "05/13/2026" em vez de "13/05/2026".
+Apenas `src/routes/_authenticated.reports.tsx`. Não tocar em dashboard, inbox, schedule, services nem em nenhum outro arquivo de feature. Dashboard fica para um plano separado.
 
-**2. Sem visibilidade de horários ocupados** — o grid de horários no `ScheduleModal` mostra todos os slots iguais. O atendente não sabe se 09:00 já está ocupado pela agenda. Hoje a única validação é "agente selecionado", e nem isso bloqueia conflito.
+## Diagnóstico atual
 
-## Plano de correção
+A página `/reports` chama exclusivamente `mockData()` e `mockSeries()` — KPIs, séries dos gráficos, ranking de agentes, top serviços, receita: tudo literal. Nada vem do banco.
 
-### A. Data em formato BR no modal (`src/features/inbox/schedule-modal.tsx`)
+## Tabelas reais disponíveis (já em uso no app)
 
-- Substituir o `<input type="date">` nativo por um seletor controlado que sempre exibe **DD/MM/AAAA**, independente do locale do SO.
-- Implementação: input de texto com máscara `dd/mm/aaaa` + botão calendário (lucide `CalendarDays`) que abre um popover com um pequeno date-picker mensal já existente no projeto (mesmo estilo da `/schedule`). Mantém o estado interno em ISO `yyyy-mm-dd` para alimentar `fromDateTimeInput`.
-- Adicionar helpers em `src/features/schedule/data.ts`:
-  - `formatDateBR(iso)` → `"13/05/2026"`
-  - `parseDateBR(str)` → ISO `yyyy-mm-dd` (com validação dia/mês, ano 2 ou 4 dígitos)
-- Aplicar o mesmo componente onde houver outros `<input type="date">` no fluxo de agenda (varredura: `schedule-modal`, `_authenticated.schedule.tsx` se houver).
+- `messages` (owner_user_id, contact_id, direction `inbound|outbound`, status, sent_by, created_at, message_type)
+- `appointments` (owner_user_id, contact_id, service_id, agent_id, starts_at, ends_at, status)
+- `appointment_services` (appointment_id, service_id, owner_user_id)
+- `services` (id, name, price_cents, duration_minutes, status)
+- `contacts` (id, owner_user_id)
+- `kanban_columns` (id, slug, label)
 
-### B. Mostrar disponibilidade no grid de horários
+Não existe tabela `agents` no banco — agentes hoje são `MOCK_AGENTS` em `schedule/data.ts`. O ranking por agente usará `sent_by` (uuid de `auth.users`) agrupado, exibindo o nome via `profiles.full_name` quando possível e fallback para o uuid abreviado. Sem tabela `agents` real, a aba "Equipe" some o conceito de "Sofia (IA)" hardcoded.
 
-Hoje os slots renderizados em `SLOTS` (08:00–19:30 a cada 30min) ignoram a agenda. Vamos:
+## Plano por aba
 
-1. **Buscar appointments do dia + agente selecionado** quando o modal abre ou quando `date`/`agentId` mudam:
-   ```ts
-   supabase.from("appointments")
-     .select("id, starts_at, ends_at, agent_id, status")
-     .gte("starts_at", startOfDayISO)
-     .lt("starts_at", endOfDayISO)
-     .neq("status", "cancelled")
-     .eq("owner_user_id", user.id)
-   ```
-   Filtrar localmente por `agent_id === agentId` (mantém visíveis também os de outros agentes para UX futura, mas o bloqueio considera apenas o agente selecionado).
+### A. Aba "Atendimento" (service)
 
-2. **Calcular ocupação por slot**: para cada slot de 30min, marcar como `busy` se houver overlap com qualquer appointment ativo do agente. Levar em conta a duração total dos serviços selecionados (`totalMin`) — um slot fica `busy` se qualquer 30min dentro de `[slot, slot + totalMin)` colidir.
+Fonte: `messages` filtrado por `owner_user_id = auth.uid()` e `created_at` no período selecionado.
 
-3. **Renderização do slot**:
-   - Disponível: estilo atual.
-   - Ocupado: fundo `--bg-overlay`, texto riscado (`text-decoration: line-through`), `cursor: not-allowed`, `disabled`, tooltip "Ocupado — {nome do contato}".
-   - Passado (hoje, slot < agora): mesmo tratamento "indisponível", tooltip "Horário passado".
-   - Selecionado: igual hoje.
+- **Volume por dia (gráfico)**: `count(*) where direction='inbound' group by date_trunc('day', created_at)` — preencher dias vazios com 0. Para `today`, agrupar por hora (00h–23h).
+- **Tempo médio de resposta (TMR)**: para cada `inbound`, achar o próximo `outbound` do mesmo `contact_id` posterior; média dos deltas em segundos. Calculado client-side após puxar `id, contact_id, direction, created_at` do período (limit alto, paginar se >5k).
+- **Taxa de resolução**: `appointments.completed / total_appointments` no período (proxy honesto). Documentar no tooltip "% de agendamentos concluídos".
+- **Ranking por agente**: `group by sent_by` em `messages where direction='outbound'`. Colunas: nome (resolvido via `profiles`), atendimentos (contagem de conversas distintas — `count(distinct contact_id)`), TMR por agente, resolvidos (count de appointments com `agent_id = sent_by` e status `completed`).
+- **Delta vs. período anterior**: refazer mesma query no intervalo anterior de mesmo tamanho; calcular `(atual-anterior)/anterior`. Se anterior=0, exibir "—".
 
-4. **Validação no submit**: re-checar conflito antes do insert; se conflitar, `toast.error("Esse horário ficou indisponível, escolha outro.")` e abortar.
+### B. Aba "Agendamentos" (appointments)
 
-5. **Atualização em tempo real**: assinar canal Realtime `appointments` enquanto o modal estiver aberto, para refletir mudanças feitas em outra aba/dispositivo.
+Fonte: `appointments` + `appointment_services` no período (`starts_at` no range), `owner_user_id = auth.uid()`.
 
-### C. Mapeamento dos pontos de integração revisados
+- **Agendamentos por dia (linha)**: `count(*) group by date(starts_at)`. Para `today`, por hora.
+- **No-show rate**: `count(status='cancelled') / count(*)` (sem coluna `no_show`, usar `cancelled` como proxy e renomear o card para "Taxa de cancelamento").
+- **Receita estimada**: somar `services.price_cents` via join `appointment_services → services` para appointments com status em `('confirmed','in_progress','completed')`. Formatar BRL.
+- **Top serviços agendados**: `group by service_id`, count e soma de receita. Resolver nomes via `services`.
 
-- `src/features/inbox/schedule-modal.tsx` — único modal de criação via WhatsApp; recebe ajustes A + B.
-- `src/features/inbox/conversation-panel.tsx` (linha 684 / 1860) — abre o modal e faz uma operação de update em `appointments`; sem alteração funcional, mas validar que ainda recebe `onScheduled`.
-- `src/routes/_authenticated.schedule.tsx` — fonte da verdade de leitura/insert/update/delete; já dispara realtime. Sem mudança lógica, apenas garantir que o helper `formatDateBR` seja usado em qualquer label visível de data (varredura).
-- `src/routes/_authenticated.reports.tsx` — apenas leitura agregada; não precisa de mudança.
+### C. Aba "Serviços" (services)
 
-### D. Detalhes técnicos
+Mesma base (appointments concluídos no período + appointment_services + services).
 
-- Reutilizar `fromDateTimeInput` / `toDateInput` (que já produzem ISO local sem timezone shift) para evitar o bug clássico de `new Date("2026-05-13")` virar dia anterior em UTC.
-- Validação BR: regex `^(\d{2})\/(\d{2})\/(\d{4})$`, validar `Date.UTC` round-trip para rejeitar 31/02 etc.
-- Slot busy detection: `slotStart < apt.ends_at && apt.starts_at < slotEnd` (mesma fórmula do helper `overlap`).
-- Performance: cache em `useMemo` com chave `[date, agentId, appointments.length]`.
+- **Receita total**: soma `price_cents` de serviços em appointments `completed`.
+- **Ticket médio**: receita_total / count(distinct appointment_id).
+- **Receita por serviço**: `group by service_id` → vendas (qty), receita, ticket médio (receita/qty).
 
-### E. Critérios de aceite
+### D. Aba "Equipe" (team)
 
-1. Abrir o modal → data exibe `13/05/2026` mesmo com PC em locale en-US.
-2. Digitar `32/13/2026` → input rejeita (borda vermelha + mensagem inline).
-3. Criar appointment 09:00–10:00 para Ana Silva → reabrir modal no mesmo dia/agente → slots 09:00 e 09:30 aparecem riscados/desabilitados com tooltip.
-4. Mudar agente para Bruno Lima → slots voltam a ficar livres.
-5. Tentar submit num slot que ficou ocupado entre a abertura e o clique → toast de erro, sem insert.
-6. Hoje às 14:30 → slots 08:00–14:00 desabilitados como "passado".
+- Mesmo agrupamento de "Ranking por agente" da aba A, mas adiciona "Tempo médio" (= TMR) e omite "Satisfação" (não há dado real — remover a coluna; não inventar).
+
+## Arquitetura de dados
+
+- Criar `src/features/reports/data.functions.ts` com **server functions** TanStack (`createServerFn` + `requireSupabaseAuth`) — uma por aba: `getServiceReport`, `getAppointmentsReport`, `getServicesReport`, `getTeamReport`. Cada uma recebe `{ period: 'today'|'7d'|'30d' }`, calcula `[start, end]` server-side e retorna o shape exato consumido pela UI.
+- Em `_authenticated.reports.tsx`, substituir `mockData/mockSeries` por `useQuery` (TanStack Query) com `queryKey: ['reports', tab, period]`, `staleTime: 30_000`. Loading mantém os `SkeletonCard`. Erro: `EmptyState` com mensagem.
+- Realtime opcional (fora deste plano) — manter polling implícito do refetch ao trocar período/aba.
+- Resolução de nomes (serviços, agentes/profiles) feita server-side em uma única query com `in('id', [...])` para evitar N+1.
+
+## Detalhes técnicos
+
+- Janela de período (server-side, timezone do servidor UTC; UI exibe local):
+  - `today` → `[startOfDay(now), now]`
+  - `7d` → `[now - 7d, now]`
+  - `30d` → `[now - 30d, now]`
+- Período anterior para deltas: mesma duração imediatamente antes do início.
+- Formatação: `Intl.NumberFormat('pt-BR', { style:'currency', currency:'BRL' })` para receita, `mm:ss` para TMR (`<1min` em segundos).
+- Export CSV continua client-side, mas usando os dados reais retornados (não mock).
+- Paginação defensiva: `messages.select(...).range(0, 9999)`; se `count > 10k`, exibir aviso e usar agregação SQL via RPC (fora do escopo desta primeira passada — adicionar TODO).
+- Estados vazios: cada aba mostra `EmptyState` quando o resultado for 0 linhas em todas as métricas.
+
+## Critérios de aceite
+
+1. Sem chamadas a `mockData`/`mockSeries` no arquivo final (grep deve retornar 0).
+2. Trocar período/aba dispara request e atualiza números.
+3. Criar um appointment `completed` em `/schedule` → recarregar `/reports` (aba Serviços) → receita e ticket médio refletem.
+4. Enviar uma mensagem no inbox → "Volume por dia" da aba Atendimento incrementa o bucket do dia atual.
+5. Sem dados no período → cada card/tabela mostra "—" ou `EmptyState`, sem números fictícios.
+6. Nenhum outro arquivo do projeto modificado (apenas `_authenticated.reports.tsx` + novo `src/features/reports/data.functions.ts`).
+
+## Fora deste plano (pedidos pelo usuário em separado)
+
+- Dashboard (`_authenticated.dashboard.tsx`) também está mockado, mas o usuário pediu explicitamente para não tocar agora. Será endereçado em plano próprio.
+- Tabela real de `agents` / "Sofia (IA)" / métrica de satisfação — exigem schema novo, fora do escopo.

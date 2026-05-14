@@ -17,6 +17,19 @@ import {
 import { notify } from "@/lib/notify";
 import { SkeletonCard } from "@/components/skeleton";
 import { EmptyState } from "@/components/empty-state";
+import {
+  getServiceReport,
+  getAppointmentsReport,
+  getServicesReport,
+  getTeamReport,
+  formatBRL,
+  formatDuration,
+  type Period,
+  type ServiceReport,
+  type AppointmentsReport,
+  type ServicesReport,
+  type TeamReport,
+} from "@/features/reports/data";
 
 const searchSchema = z.object({
   period: fallback(z.enum(["today", "7d", "30d"]), "7d").default("7d"),
@@ -47,27 +60,41 @@ const TABS = [
   { id: "team", label: "Equipe", icon: Users },
 ] as const;
 
+type AnyReport = ServiceReport | AppointmentsReport | ServicesReport | TeamReport;
+
 function ReportsPage() {
   const { period, tab } = Route.useSearch();
   const navigate = useNavigate({ from: Route.fullPath });
   const [loading, setLoading] = React.useState(true);
+  const [error, setError] = React.useState<string | null>(null);
+  const [report, setReport] = React.useState<AnyReport | null>(null);
 
   React.useEffect(() => {
+    let cancelled = false;
     setLoading(true);
-    const t = setTimeout(() => setLoading(false), 350);
-    return () => clearTimeout(t);
+    setError(null);
+    const fetcher =
+      tab === "service" ? getServiceReport
+      : tab === "appointments" ? getAppointmentsReport
+      : tab === "services" ? getServicesReport
+      : getTeamReport;
+    fetcher(period as Period)
+      .then((r) => { if (!cancelled) setReport(r as AnyReport); })
+      .catch((e) => { if (!cancelled) setError(e?.message ?? "Falha ao carregar."); })
+      .finally(() => { if (!cancelled) setLoading(false); });
+    return () => { cancelled = true; };
   }, [period, tab]);
 
   const exportCsv = () => {
-    const rows = mockData(period, tab);
-    if (rows.length === 0) {
+    const rows = (report as any)?.exportRows as Array<Record<string, string | number>> | undefined;
+    if (!rows || rows.length === 0) {
       notify.info("Nada para exportar.");
       return;
     }
     const keys = Object.keys(rows[0]);
     const csv = [
       keys.join(","),
-      ...rows.map((r) => keys.map((k) => JSON.stringify((r as any)[k] ?? "")).join(",")),
+      ...rows.map((r) => keys.map((k) => JSON.stringify(r[k] ?? "")).join(",")),
     ].join("\n");
     const blob = new Blob([csv], { type: "text/csv;charset=utf-8" });
     const url = URL.createObjectURL(blob);
@@ -81,7 +108,6 @@ function ReportsPage() {
 
   return (
     <div className="flex flex-col" style={{ gap: 16 }}>
-      {/* Header */}
       <div className="flex flex-wrap items-center justify-between" style={{ gap: 12 }}>
         <div>
           <h1 style={{ fontSize: 22, fontWeight: 600, letterSpacing: "-0.015em" }}>Relatórios</h1>
@@ -91,7 +117,6 @@ function ReportsPage() {
         </div>
 
         <div className="flex flex-wrap items-center" style={{ gap: 8 }}>
-          {/* Período */}
           <div
             className="flex items-center"
             style={{
@@ -145,7 +170,6 @@ function ReportsPage() {
         </div>
       </div>
 
-      {/* Tabs */}
       <div
         className="flex"
         style={{ borderBottom: "1px solid var(--border)", gap: 4, overflowX: "auto" }}
@@ -181,21 +205,16 @@ function ReportsPage() {
         })}
       </div>
 
-      {/* Conteúdo */}
       {loading ? (
-        <div
-          style={{
-            display: "grid",
-            gridTemplateColumns: "repeat(auto-fill, minmax(320px, 1fr))",
-            gap: 12,
-          }}
-        >
-          {Array.from({ length: 4 }).map((_, i) => (
-            <SkeletonCard key={i} />
-          ))}
+        <div style={{ display: "grid", gridTemplateColumns: "repeat(auto-fill, minmax(320px, 1fr))", gap: 12 }}>
+          {Array.from({ length: 4 }).map((_, i) => <SkeletonCard key={i} />)}
         </div>
+      ) : error ? (
+        <EmptyState title="Erro ao carregar" description={error} />
+      ) : !report ? (
+        <EmptyState title="Sem dados" description="Tente outro período." />
       ) : (
-        <ReportTab tab={tab} period={period} />
+        <ReportTab tab={tab} report={report} />
       )}
 
       <p style={{ fontSize: 11, color: "var(--text-muted)" }}>
@@ -206,106 +225,108 @@ function ReportsPage() {
   );
 }
 
-/* -------------- Tabs -------------- */
-
-function ReportTab({
-  tab,
-  period,
-}: {
-  tab: "service" | "appointments" | "services" | "team";
-  period: "today" | "7d" | "30d";
-}) {
-  const data = mockData(period, tab);
-
-  if (data.length === 0) {
-    return (
-      <EmptyState
-        title="Sem dados no período"
-        description="Selecione outro intervalo ou aguarde novas interações."
-      />
-    );
-  }
-
+function ReportTab({ tab, report }: { tab: "service" | "appointments" | "services" | "team"; report: AnyReport }) {
   if (tab === "service") {
-    const chart = mockSeries(period);
+    const r = report as ServiceReport;
+    if (r.totalInbound === 0 && r.ranking.length === 0) {
+      return <EmptyState title="Sem atendimentos no período" description="Nenhuma mensagem registrada nesse intervalo." />;
+    }
     return (
       <div style={{ display: "grid", gridTemplateColumns: "repeat(auto-fit, minmax(320px, 1fr))", gap: 12 }}>
         <Card title="Volume de atendimentos por dia" span={2}>
           <ResponsiveContainer width="100%" height={220}>
-            <BarChart data={chart}>
+            <BarChart data={r.series}>
               <CartesianGrid strokeDasharray="3 3" stroke="var(--border)" />
               <XAxis dataKey="d" tick={{ fontSize: 11, fill: "var(--text-muted)" }} />
-              <YAxis tick={{ fontSize: 11, fill: "var(--text-muted)" }} />
+              <YAxis tick={{ fontSize: 11, fill: "var(--text-muted)" }} allowDecimals={false} />
               <Tooltip contentStyle={{ background: "var(--bg-surface)", border: "1px solid var(--border)", fontSize: 12 }} />
               <Bar dataKey="v" fill="var(--brand-400)" radius={[4, 4, 0, 0]} />
             </BarChart>
           </ResponsiveContainer>
         </Card>
 
-        <KpiCard label="Tempo médio de resposta" value="2m 14s" delta="-12%" good />
-        <KpiCard label="Taxa de resolução" value="87%" delta="+4%" good />
+        <KpiCard label="Tempo médio de resposta" value={formatDuration(r.tmrSeconds)} delta={r.tmrDelta.label} good={r.tmrDelta.good} />
+        <KpiCard label="Taxa de resolução" value={r.resolvedPct} delta={r.resolvedDelta.label} good={r.resolvedDelta.good} />
 
         <Card title="Ranking por agente" span={2}>
-          <SimpleTable
-            cols={["Agente", "Atendimentos", "TMR", "Resolvidos"]}
-            rows={data.map((r: any) => [r.name, r.total, r.tmr, r.resolved])}
-          />
+          {r.ranking.length === 0 ? (
+            <EmptyState title="Sem dados de agente" description="Ainda não houve mensagens enviadas no período." />
+          ) : (
+            <SimpleTable
+              cols={["Agente", "Atendimentos", "TMR", "Resolvidos"]}
+              rows={r.ranking.map((x) => [x.name, x.total, x.tmr, x.resolved])}
+            />
+          )}
         </Card>
       </div>
     );
   }
 
   if (tab === "appointments") {
-    const chart = mockSeries(period);
+    const r = report as AppointmentsReport;
+    if (r.total === 0) {
+      return <EmptyState title="Sem agendamentos no período" description="Crie agendamentos em /schedule." />;
+    }
     return (
       <div style={{ display: "grid", gridTemplateColumns: "repeat(auto-fit, minmax(320px, 1fr))", gap: 12 }}>
         <Card title="Agendamentos por dia" span={2}>
           <ResponsiveContainer width="100%" height={220}>
-            <LineChart data={chart}>
+            <LineChart data={r.series}>
               <CartesianGrid strokeDasharray="3 3" stroke="var(--border)" />
               <XAxis dataKey="d" tick={{ fontSize: 11, fill: "var(--text-muted)" }} />
-              <YAxis tick={{ fontSize: 11, fill: "var(--text-muted)" }} />
+              <YAxis tick={{ fontSize: 11, fill: "var(--text-muted)" }} allowDecimals={false} />
               <Tooltip contentStyle={{ background: "var(--bg-surface)", border: "1px solid var(--border)", fontSize: 12 }} />
               <Line type="monotone" dataKey="v" stroke="var(--brand-400)" strokeWidth={2} dot={false} />
             </LineChart>
           </ResponsiveContainer>
         </Card>
 
-        <KpiCard label="No-show rate" value="6,3%" delta="-1,2%" good />
-        <KpiCard label="Receita estimada" value="R$ 12.480,00" delta="+18%" good />
+        <KpiCard label="Taxa de cancelamento" value={r.cancelPct} delta={r.cancelDelta.label} good={!r.cancelDelta.good} />
+        <KpiCard label="Receita estimada" value={formatBRL(r.revenueCents)} delta={r.revenueDelta.label} good={r.revenueDelta.good} />
 
         <Card title="Top serviços agendados" span={2}>
-          <SimpleTable
-            cols={["Serviço", "Agendamentos", "Receita"]}
-            rows={data.map((r: any) => [r.name, r.qty, r.revenue])}
-          />
+          {r.topServices.length === 0 ? (
+            <EmptyState title="Sem serviços" description="Os agendamentos do período não têm serviço associado." />
+          ) : (
+            <SimpleTable
+              cols={["Serviço", "Agendamentos", "Receita"]}
+              rows={r.topServices.map((x) => [x.name, x.qty, x.revenue])}
+            />
+          )}
         </Card>
       </div>
     );
   }
 
   if (tab === "services") {
+    const r = report as ServicesReport;
+    if (r.total === 0) {
+      return <EmptyState title="Sem serviços concluídos" description="Marque agendamentos como concluídos para ver receita." />;
+    }
     return (
       <div style={{ display: "grid", gridTemplateColumns: "repeat(auto-fit, minmax(320px, 1fr))", gap: 12 }}>
-        <KpiCard label="Receita total" value="R$ 24.910,00" delta="+22%" good />
-        <KpiCard label="Ticket médio" value="R$ 134,90" delta="+5%" good />
+        <KpiCard label="Receita total" value={formatBRL(r.totalRevenueCents)} delta={r.revenueDelta.label} good={r.revenueDelta.good} />
+        <KpiCard label="Ticket médio" value={formatBRL(r.ticketCents)} delta={r.ticketDelta.label} good={r.ticketDelta.good} />
         <Card title="Receita por serviço" span={2}>
           <SimpleTable
             cols={["Serviço", "Vendas", "Receita", "Ticket médio"]}
-            rows={data.map((r: any) => [r.name, r.qty, r.revenue, r.avg])}
+            rows={r.rows.map((x) => [x.name, x.qty, x.revenue, x.avg])}
           />
         </Card>
       </div>
     );
   }
 
-  // team
+  const r = report as TeamReport;
+  if (r.rows.length === 0) {
+    return <EmptyState title="Sem atividade da equipe" description="Nenhum agente enviou mensagens no período." />;
+  }
   return (
     <div style={{ display: "grid", gridTemplateColumns: "repeat(auto-fit, minmax(320px, 1fr))", gap: 12 }}>
       <Card title="Produtividade por agente" span={2}>
         <SimpleTable
-          cols={["Agente", "Atendimentos", "Tempo médio", "Satisfação"]}
-          rows={data.map((r: any) => [r.name, r.total, r.tmr, r.score])}
+          cols={["Agente", "Atendimentos", "Tempo médio", "Resolvidos"]}
+          rows={r.rows.map((x) => [x.name, x.total, x.tmr, x.resolved])}
         />
       </Card>
     </div>
@@ -314,15 +335,7 @@ function ReportTab({
 
 /* -------------- Components -------------- */
 
-function Card({
-  title,
-  children,
-  span = 1,
-}: {
-  title: string;
-  children: React.ReactNode;
-  span?: number;
-}) {
+function Card({ title, children, span = 1 }: { title: string; children: React.ReactNode; span?: number }) {
   return (
     <div
       style={{
@@ -339,17 +352,7 @@ function Card({
   );
 }
 
-function KpiCard({
-  label,
-  value,
-  delta,
-  good,
-}: {
-  label: string;
-  value: string;
-  delta: string;
-  good?: boolean;
-}) {
+function KpiCard({ label, value, delta, good }: { label: string; value: string; delta: string; good?: boolean }) {
   return (
     <div
       style={{
@@ -369,19 +372,13 @@ function KpiCard({
           color: good ? "var(--success)" : "var(--danger)",
         }}
       >
-        {delta} vs. período anterior
+        {delta}
       </div>
     </div>
   );
 }
 
-function SimpleTable({
-  cols,
-  rows,
-}: {
-  cols: string[];
-  rows: Array<Array<string | number>>;
-}) {
+function SimpleTable({ cols, rows }: { cols: string[]; rows: Array<Array<string | number>> }) {
   return (
     <div style={{ overflowX: "auto" }}>
       <table style={{ width: "100%", borderCollapse: "collapse", fontSize: 13, minWidth: 480 }}>
@@ -428,41 +425,4 @@ function SimpleTable({
       </table>
     </div>
   );
-}
-
-/* -------------- Mock helpers -------------- */
-
-function mockSeries(period: "today" | "7d" | "30d") {
-  const days = period === "today" ? 1 : period === "7d" ? 7 : 30;
-  const labels = period === "today" ? ["Hoje"] : Array.from({ length: days }, (_, i) => `D${i + 1}`);
-  return labels.map((d, i) => ({ d, v: Math.round(20 + Math.sin(i / 2) * 10 + Math.random() * 10) }));
-}
-
-function mockData(_period: string, tab: string) {
-  if (tab === "service") {
-    return [
-      { name: "Ana Silva", total: 142, tmr: "1m 48s", resolved: 124 },
-      { name: "Bruno Costa", total: 118, tmr: "2m 32s", resolved: 99 },
-      { name: "Sofia (IA)", total: 96, tmr: "8s", resolved: 71 },
-    ];
-  }
-  if (tab === "appointments") {
-    return [
-      { name: "Revisão de Óleo", qty: 28, revenue: "R$ 2.517,20" },
-      { name: "Alinhamento", qty: 19, revenue: "R$ 1.520,00" },
-      { name: "Diagnóstico", qty: 14, revenue: "R$ 980,00" },
-    ];
-  }
-  if (tab === "services") {
-    return [
-      { name: "Revisão de Óleo", qty: 88, revenue: "R$ 7.911,20", avg: "R$ 89,90" },
-      { name: "Alinhamento", qty: 47, revenue: "R$ 3.760,00", avg: "R$ 80,00" },
-      { name: "Higienização", qty: 22, revenue: "R$ 2.398,00", avg: "R$ 109,00" },
-    ];
-  }
-  return [
-    { name: "Ana Silva", total: 142, tmr: "1m 48s", score: "4,8 ★" },
-    { name: "Bruno Costa", total: 118, tmr: "2m 32s", score: "4,6 ★" },
-    { name: "Carla Mendes", total: 76, tmr: "3m 12s", score: "4,4 ★" },
-  ];
 }
