@@ -98,7 +98,7 @@ async function configureEvolutionInstance(name: string, webhookUrl: string, webh
         headers: { "x-webhook-secret": webhookSecret },
         events: WEBHOOK_EVENTS,
         webhookByEvents: false,
-        webhookBase64: false,
+        webhookBase64: true,
       },
     });
   } catch (e: any) {
