@@ -59,7 +59,7 @@ function SchedulePage() {
   const [view, setView] = React.useState<ViewMode>("week");
   const [cursor, setCursor] = React.useState<Date>(new Date());
   const [items, setItems] = React.useState<Appointment[]>([]);
-  const [hydrated, setHydrated] = React.useState(false);
+  
   const [contacts, setContacts] = React.useState<ContactCard[]>(MOCK_CONTACTS);
   const [services] = React.useState<Service[]>(SEED_SERVICES);
   const [agents] = React.useState<Agent[]>(MOCK_AGENTS);
