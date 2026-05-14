@@ -215,6 +215,22 @@ export function ScheduleModal({
       return;
     }
 
+    // Validar que todos os serviços selecionados existem realmente no banco
+    const selectedIds = selectedServices.map((s) => s.id);
+    if (selectedIds.length) {
+      const { data: existing } = await supabase
+        .from("services")
+        .select("id")
+        .in("id", selectedIds);
+      const existingIds = new Set((existing ?? []).map((r: any) => r.id));
+      const missing = selectedIds.filter((id) => !existingIds.has(id));
+      if (missing.length) {
+        toast.error("Cadastre serviços em /servicos antes de agendar.");
+        setSubmitting(false);
+        return;
+      }
+    }
+
     const { data: appt, error: apptErr } = await supabase
       .from("appointments")
       .insert({
@@ -238,17 +254,25 @@ export function ScheduleModal({
       return;
     }
 
-    // 2. Insert appointment_services snapshot
-    const { error: svcErr } = await supabase.from("appointment_services").insert(
-      selectedServices.map((s) => ({
-        appointment_id: appt.id,
-        owner_user_id: user.id,
-        service_id: s.id,
-        price_cents: s.price_cents,
-        duration_minutes: s.duration_minutes,
-      })),
-    );
-    if (svcErr) console.warn("[schedule-modal] services snapshot:", svcErr.message);
+    // 2. Insert appointment_services snapshot — em caso de falha, faz rollback
+    if (selectedServices.length) {
+      const { error: svcErr } = await supabase.from("appointment_services").insert(
+        selectedServices.map((s) => ({
+          appointment_id: appt.id,
+          owner_user_id: user.id,
+          service_id: s.id,
+          price_cents: s.price_cents,
+          duration_minutes: s.duration_minutes,
+        })),
+      );
+      if (svcErr) {
+        console.error("[schedule-modal] services snapshot falhou:", svcErr);
+        await supabase.from("appointments").delete().eq("id", appt.id);
+        toast.error(`Não foi possível salvar os serviços: ${svcErr.message}`);
+        setSubmitting(false);
+        return;
+      }
+    }
 
     // 3. Move kanban column
     const { error: updErr } = await supabase

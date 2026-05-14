@@ -160,49 +160,44 @@ export async function getDashboardData(period: DashPeriod, currentUserId?: strin
     .map(({ name, value, color }) => ({ name, value, color }));
 
   // Próximos agendamentos: do agora em diante (até 6 itens), independente do período selecionado.
-  // O nome do serviço vem da tabela de junção appointment_services -> services.
+  // Resolve nome do serviço por duas vias explícitas (sem usar embedded join do PostgREST).
   const upcomingIds = upcomingRows.map((a: any) => a.id);
   const apptContactIds = Array.from(new Set(upcomingRows.map((a: any) => a.contact_id).filter(Boolean)));
   const [apSvcRes, ctRes] = await Promise.all([
     upcomingIds.length
       ? supabase
           .from("appointment_services")
-          .select("appointment_id, services(name)")
+          .select("appointment_id, service_id")
           .in("appointment_id", upcomingIds as string[])
       : Promise.resolve({ data: [] as any[] }),
     apptContactIds.length
       ? supabase.from("contacts").select("id,name").in("id", apptContactIds as string[])
       : Promise.resolve({ data: [] as any[] }),
   ]);
-  // Agrupa nomes de serviços por agendamento (pode haver múltiplos)
-  const svcNamesByAppt = new Map<string, string[]>();
+  // service_ids por appointment via appointment_services
+  const svcIdsByAppt = new Map<string, string[]>();
   for (const row of (apSvcRes.data ?? []) as any[]) {
-    const nm = row.services?.name;
-    if (!nm) continue;
-    const arr = svcNamesByAppt.get(row.appointment_id) ?? [];
-    arr.push(nm);
-    svcNamesByAppt.set(row.appointment_id, arr);
+    if (!row.service_id) continue;
+    const arr = svcIdsByAppt.get(row.appointment_id) ?? [];
+    arr.push(row.service_id);
+    svcIdsByAppt.set(row.appointment_id, arr);
   }
-  // Fallback: caso appointment_services não tenha registro, usa services.id direto
-  const fallbackSvcIds = Array.from(
-    new Set(
-      upcomingRows
-        .filter((a: any) => !svcNamesByAppt.has(a.id))
-        .map((a: any) => a.service_id)
-        .filter(Boolean),
-    ),
-  );
-  const fallbackSvcMap = new Map<string, string>();
-  if (fallbackSvcIds.length) {
-    const { data: fbSvc } = await supabase
+  // Coleta TODOS os service_ids candidatos (de appointment_services + de appointments.service_id)
+  const allSvcIds = new Set<string>();
+  for (const ids of svcIdsByAppt.values()) ids.forEach((i) => allSvcIds.add(i));
+  for (const a of upcomingRows as any[]) if (a.service_id) allSvcIds.add(a.service_id);
+  const svcNameById = new Map<string, string>();
+  if (allSvcIds.size) {
+    const { data: svcRows } = await supabase
       .from("services")
       .select("id,name")
-      .in("id", fallbackSvcIds as string[]);
-    for (const s of (fbSvc ?? []) as any[]) fallbackSvcMap.set(s.id, s.name);
+      .in("id", Array.from(allSvcIds));
+    for (const s of (svcRows ?? []) as any[]) svcNameById.set(s.id, s.name);
   }
   const ctMap = new Map((ctRes.data ?? []).map((c: any) => [c.id, c.name]));
   const todayIso = new Date(); todayIso.setHours(0, 0, 0, 0);
   const tomorrowIso = new Date(todayIso); tomorrowIso.setDate(todayIso.getDate() + 1);
+  const unresolvedSvc: string[] = [];
   const upcoming = upcomingRows.map((a: any) => {
     const d = new Date(a.starts_at);
     const isToday = d >= todayIso && d < tomorrowIso;
@@ -210,10 +205,17 @@ export async function getDashboardData(period: DashPeriod, currentUserId?: strin
       ? d.toLocaleTimeString("pt-BR", { hour: "2-digit", minute: "2-digit" })
       : d.toLocaleDateString("pt-BR", { day: "2-digit", month: "2-digit" }) + " " +
         d.toLocaleTimeString("pt-BR", { hour: "2-digit", minute: "2-digit" });
-    const names = svcNamesByAppt.get(a.id);
-    const svcLabel = names && names.length
-      ? names.join(", ")
-      : (a.service_id ? fallbackSvcMap.get(a.service_id) ?? "—" : "—");
+    const ids = svcIdsByAppt.get(a.id) ?? [];
+    const names = ids.map((i) => svcNameById.get(i)).filter(Boolean) as string[];
+    let svcLabel: string;
+    if (names.length) {
+      svcLabel = names.join(", ");
+    } else if (a.service_id && svcNameById.get(a.service_id)) {
+      svcLabel = svcNameById.get(a.service_id)!;
+    } else {
+      svcLabel = "—";
+      unresolvedSvc.push(`appt=${a.id} service_id=${a.service_id ?? "null"}`);
+    }
     return {
       id: a.id,
       time,
@@ -221,16 +223,16 @@ export async function getDashboardData(period: DashPeriod, currentUserId?: strin
       service: svcLabel,
     };
   });
+  if (unresolvedSvc.length) console.debug("[dashboard] serviços não resolvidos:", unresolvedSvc);
 
 
-  // Top 5 serviços: agrega via appointment_services -> services do período.
-  // Fallback para últimos 30 dias caso o período esteja vazio.
+  // Top 5 serviços do período (com fallback para últimos 30 dias).
   const apptIdsPeriod = (appts as any[]).map((a) => a.id);
-  let asRows: any[] = [];
+  let asRows: { appointment_id: string; service_id: string }[] = [];
   if (apptIdsPeriod.length) {
     const { data } = await supabase
       .from("appointment_services")
-      .select("appointment_id, services(name)")
+      .select("appointment_id, service_id")
       .in("appointment_id", apptIdsPeriod as string[]);
     asRows = (data ?? []) as any[];
   }
@@ -246,14 +248,20 @@ export async function getDashboardData(period: DashPeriod, currentUserId?: strin
     if (ids.length) {
       const { data } = await supabase
         .from("appointment_services")
-        .select("appointment_id, services(name)")
+        .select("appointment_id, service_id")
         .in("appointment_id", ids as string[]);
       asRows = (data ?? []) as any[];
     }
   }
+  const topSvcIds = Array.from(new Set(asRows.map((r) => r.service_id).filter(Boolean)));
+  const topSvcNames = new Map<string, string>();
+  if (topSvcIds.length) {
+    const { data } = await supabase.from("services").select("id,name").in("id", topSvcIds);
+    for (const s of (data ?? []) as any[]) topSvcNames.set(s.id, s.name);
+  }
   const svcCount = new Map<string, number>();
   for (const r of asRows) {
-    const nm = r.services?.name;
+    const nm = topSvcNames.get(r.service_id);
     if (!nm) continue;
     svcCount.set(nm, (svcCount.get(nm) ?? 0) + 1);
   }
