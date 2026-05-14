@@ -791,6 +791,22 @@ function InboxPage() {
         />
       )}
 
+      <TransferConversationModal
+        open={!!transferTarget}
+        contactId={transferTarget?.id ?? null}
+        contactName={transferTarget?.name ?? null}
+        currentAssignedAgentId={transferTarget?.assignedAgent ?? null}
+        onClose={() => setTransferTarget(null)}
+        onAssigned={(agentUserId) => {
+          if (!transferTarget) return;
+          setContacts((prev) =>
+            prev.map((c) =>
+              c.id === transferTarget.id ? { ...c, assignedAgent: agentUserId } : c,
+            ),
+          );
+        }}
+      />
+
       {highlightId && (
         <style>{`
           @keyframes zfPulseRing { 0%,100% { box-shadow: 0 0 0 0 var(--brand-400, #25C880); } 50% { box-shadow: 0 0 0 4px color-mix(in oklab, var(--brand-400, #25C880) 35%, transparent); } }
