@@ -183,6 +183,13 @@ export const Route = createFileRoute("/api/public/evolution/$instanceId")({
 
               // ---- detectar mídia
               const detected = detectMediaNode(m?.message);
+              if (m?.messageType || detected) {
+                console.log("[evolution upsert] msg type", {
+                  messageType: m?.messageType ?? null,
+                  detected: detected?.kind ?? null,
+                  msgKeys: m?.message && typeof m.message === "object" ? Object.keys(m.message) : null,
+                });
+              }
               let mediaType: "text" | MediaKind = "text";
               let mediaUrl: string | null = null;
               let mediaMime: string | null = null;
