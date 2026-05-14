@@ -70,7 +70,7 @@ async function ensureWebhook(name: string, webhookUrl: string, webhookSecret: st
         url: webhookUrl,
         headers: { "x-webhook-secret": webhookSecret },
         byEvents: false,
-        base64: false,
+        base64: true,
         events: WEBHOOK_EVENTS,
       },
     });
