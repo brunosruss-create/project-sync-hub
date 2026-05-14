@@ -122,17 +122,35 @@ export const Route = createFileRoute("/api/public/evolution/$instanceId")({
           } else if (event === "connection.update") {
             const state = data?.state ?? data?.connection ?? null;
             if (state === "open") {
+              const ownPhone =
+                data?.owner?.split?.("@")?.[0] ?? data?.number ?? null;
               await supabaseAdmin
                 .from("whatsapp_instances")
                 .update({
                   status: "connected",
                   qr_code: null,
                   last_connected_at: new Date().toISOString(),
-                  phone_number:
-                    data?.owner?.split?.("@")?.[0] ?? data?.number ?? undefined,
+                  phone_number: ownPhone ?? undefined,
                   profile_name: data?.profileName ?? undefined,
                 })
                 .eq("id", row.id);
+              // Sincroniza foto de perfil do WhatsApp do próprio usuário
+              if (ownPhone) {
+                try {
+                  const ownAvatar = await tryFetchProfilePicture(
+                    row.instance_name as string,
+                    String(ownPhone).replace(/\D/g, ""),
+                  );
+                  if (ownAvatar) {
+                    await supabaseAdmin
+                      .from("profiles")
+                      .update({ avatar_url: ownAvatar })
+                      .eq("id", row.owner_user_id);
+                  }
+                } catch (e: any) {
+                  console.warn("[evolution] sync own avatar falhou:", e?.message ?? e);
+                }
+              }
             } else if (state === "close") {
               const { data: current } = await supabaseAdmin
                 .from("whatsapp_instances")
