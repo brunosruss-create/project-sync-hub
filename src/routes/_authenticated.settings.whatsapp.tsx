@@ -166,14 +166,6 @@ function WhatsAppPage() {
     onError: (e: any) => toast.error(e?.message ?? "Falha"),
   });
 
-  const register = useMutation({
-    mutationFn: () => doRegisterWebhook({ data: undefined as never }),
-    onSuccess: () => {
-      toast.success("Webhook re-registrado neste ambiente");
-      qc.invalidateQueries({ queryKey: ["whatsapp-instance"] });
-    },
-    onError: (e: any) => toast.error(e?.message ?? "Falha ao re-registrar webhook"),
-  });
 
   const meta: Record<Status, { label: string; bg: string; fg: string }> = {
     connected: { label: "Conectado", bg: "color-mix(in oklab, #10B981 18%, transparent)", fg: "#10B981" },
