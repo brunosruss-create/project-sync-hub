@@ -3,10 +3,9 @@ import { createFileRoute } from "@tanstack/react-router";
 import { useServerFn } from "@tanstack/react-start";
 import { useQuery, useMutation, useQueryClient } from "@tanstack/react-query";
 import { toast } from "sonner";
-import { ExternalLink, RefreshCw, Loader2, Camera } from "lucide-react";
+import { RefreshCw, Loader2, Camera } from "lucide-react";
 import {
   SettingsLayout,
-  FieldGroup,
   buttonPrimary,
   buttonSecondary,
   buttonDanger,
@@ -17,7 +16,6 @@ import {
   connectInstance,
   refreshInstanceStatus,
   disconnectInstance,
-  registerWebhook,
   syncMyWhatsAppAvatar,
   updateMyWhatsAppAvatar,
 } from "@/lib/evolution.functions";
