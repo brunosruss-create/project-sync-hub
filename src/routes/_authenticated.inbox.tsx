@@ -392,7 +392,7 @@ function InboxPage() {
 
   const filtered = React.useMemo(() => {
     return contacts.filter((c) => {
-      if (filter === "mine" && c.assignedAgent !== (user?.email?.split("@")[0] ?? ""))
+      if (filter === "mine" && c.assignedAgent !== (user?.id ?? ""))
         return false;
       if (filter === "unassigned" && c.assignedAgent) return false;
       if (query) {
