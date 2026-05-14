@@ -108,7 +108,8 @@ export async function getDashboardData(period: DashPeriod, currentUserId?: strin
   const prevMsgs = prevMsgsRes.data ?? [];
   const appts = apptsRes.data ?? [];
   const prevAppts = prevApptsRes.data ?? [];
-  const todayAppts = todayApptsRes.data ?? [];
+  const upcomingRows = upcomingRes.data ?? [];
+  const recentMsgs = recentMsgsRes.data ?? [];
   const contacts = contactsRes.data ?? [];
   const columns = columnsRes.data ?? [];
 
