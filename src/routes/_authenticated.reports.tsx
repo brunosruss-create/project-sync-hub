@@ -30,6 +30,7 @@ import {
   type ServicesReport,
   type TeamReport,
 } from "@/features/reports/data";
+import { ManagerOnly } from "@/components/manager-only";
 
 const searchSchema = z.object({
   period: fallback(z.enum(["today", "7d", "30d"]), "7d").default("7d"),
@@ -44,7 +45,11 @@ export const Route = createFileRoute("/_authenticated/reports")({
       { name: "description", content: "Indicadores e relatórios analíticos do seu negócio." },
     ],
   }),
-  component: ReportsPage,
+  component: () => (
+    <ManagerOnly>
+      <ReportsPage />
+    </ManagerOnly>
+  ),
 });
 
 const PERIODS = [

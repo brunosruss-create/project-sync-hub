@@ -23,9 +23,14 @@ import {
 import { useAuth } from "@/hooks/use-auth";
 import { useProfile } from "@/hooks/use-profile";
 import { getDashboardData, type DashboardData, type DashPeriod } from "@/features/dashboard/data";
+import { ManagerOnly } from "@/components/manager-only";
 
 export const Route = createFileRoute("/_authenticated/dashboard")({
-  component: Dashboard,
+  component: () => (
+    <ManagerOnly>
+      <Dashboard />
+    </ManagerOnly>
+  ),
 });
 
 type Period = DashPeriod;

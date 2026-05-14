@@ -17,13 +17,13 @@ import { useProfile } from "@/hooks/use-profile";
 import { useRole } from "@/hooks/use-role";
 
 const ALL_ITEMS = [
-  { label: "Dashboard", to: "/dashboard", icon: LayoutDashboard, agentVisible: true },
+  { label: "Dashboard", to: "/dashboard", icon: LayoutDashboard, agentVisible: false },
   { label: "Conversas", to: "/inbox", icon: MessageSquare, agentVisible: true },
   { label: "Agenda", to: "/schedule", icon: Calendar, agentVisible: true },
-  { label: "Serviços", to: "/services", icon: Wrench, agentVisible: true },
-  { label: "Agente IA", to: "/ai-agent", icon: Bot, agentVisible: true },
+  { label: "Serviços", to: "/services", icon: Wrench, agentVisible: false },
+  { label: "Agente IA", to: "/ai-agent", icon: Bot, agentVisible: false },
   { label: "Contatos", to: "/contacts", icon: Users, agentVisible: true },
-  { label: "Relatórios", to: "/reports", icon: BarChart3, agentVisible: true },
+  { label: "Relatórios", to: "/reports", icon: BarChart3, agentVisible: false },
   { label: "Configurações", to: "/settings/profile", icon: Settings, agentVisible: true },
   { label: "Super Admin", to: "/super-admin/workspaces", icon: Shield, agentVisible: false },
 ] as const;

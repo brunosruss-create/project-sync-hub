@@ -11,8 +11,14 @@ import {
   UserCircle,
 } from "lucide-react";
 
+import { ManagerOnly } from "@/components/manager-only";
+
 export const Route = createFileRoute("/_authenticated/ai-agent")({
-  component: AIAgentPage,
+  component: () => (
+    <ManagerOnly>
+      <AIAgentPage />
+    </ManagerOnly>
+  ),
 });
 
 const TONES = ["Formal", "Amigável", "Casual"] as const;
