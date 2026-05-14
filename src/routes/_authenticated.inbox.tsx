@@ -73,13 +73,15 @@ function InboxPage() {
         .from("whatsapp_instances")
         .select("status")
         .eq("owner_user_id", user?.id)
-        .maybeSingle();
+        .order("updated_at", { ascending: false })
+        .limit(1);
       if (cancelled) return;
-      if (error || !data) {
+      const row = data?.[0];
+      if (error || !row) {
         setWhatsappStatus("disconnected");
         return;
       }
-      setWhatsappStatus(data.status === "connected" ? "connected" : "disconnected");
+      setWhatsappStatus(row.status === "connected" ? "connected" : "disconnected");
     })();
     return () => {
       cancelled = true;
