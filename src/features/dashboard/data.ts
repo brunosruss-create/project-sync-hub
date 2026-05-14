@@ -226,14 +226,13 @@ export async function getDashboardData(period: DashPeriod, currentUserId?: strin
   if (unresolvedSvc.length) console.debug("[dashboard] serviços não resolvidos:", unresolvedSvc);
 
 
-  // Top 5 serviços: agrega via appointment_services -> services do período.
-  // Fallback para últimos 30 dias caso o período esteja vazio.
+  // Top 5 serviços do período (com fallback para últimos 30 dias).
   const apptIdsPeriod = (appts as any[]).map((a) => a.id);
-  let asRows: any[] = [];
+  let asRows: { appointment_id: string; service_id: string }[] = [];
   if (apptIdsPeriod.length) {
     const { data } = await supabase
       .from("appointment_services")
-      .select("appointment_id, services(name)")
+      .select("appointment_id, service_id")
       .in("appointment_id", apptIdsPeriod as string[]);
     asRows = (data ?? []) as any[];
   }
@@ -249,14 +248,20 @@ export async function getDashboardData(period: DashPeriod, currentUserId?: strin
     if (ids.length) {
       const { data } = await supabase
         .from("appointment_services")
-        .select("appointment_id, services(name)")
+        .select("appointment_id, service_id")
         .in("appointment_id", ids as string[]);
       asRows = (data ?? []) as any[];
     }
   }
+  const topSvcIds = Array.from(new Set(asRows.map((r) => r.service_id).filter(Boolean)));
+  const topSvcNames = new Map<string, string>();
+  if (topSvcIds.length) {
+    const { data } = await supabase.from("services").select("id,name").in("id", topSvcIds);
+    for (const s of (data ?? []) as any[]) topSvcNames.set(s.id, s.name);
+  }
   const svcCount = new Map<string, number>();
   for (const r of asRows) {
-    const nm = r.services?.name;
+    const nm = topSvcNames.get(r.service_id);
     if (!nm) continue;
     svcCount.set(nm, (svcCount.get(nm) ?? 0) + 1);
   }
