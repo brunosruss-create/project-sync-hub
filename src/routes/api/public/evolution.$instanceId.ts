@@ -178,6 +178,11 @@ export const Route = createFileRoute("/api/public/evolution/$instanceId")({
                 caption = detected.node?.caption ?? caption ?? "";
                 const declaredMime: string | null = detected.node?.mimetype ?? null;
                 const declaredName: string | null = detected.node?.fileName ?? null;
+                // Marca o tipo desde já — mesmo que o download falhe,
+                // a mensagem fica registrada como mídia (e não como texto "[mídia]").
+                mediaType = detected.kind;
+                mediaMime = declaredMime;
+                mediaName = declaredName;
                 try {
                   const dl = await downloadInboundMedia(row.instance_name as string, m);
                   if (dl) {
@@ -195,7 +200,6 @@ export const Route = createFileRoute("/api/public/evolution/$instanceId")({
                       mediaUrl = pub.publicUrl;
                       mediaMime = mime;
                       mediaName = fname;
-                      mediaType = detected.kind;
                     }
                   } else {
                     console.warn("[evolution upsert] downloadInboundMedia retornou null", { kind: detected.kind });
