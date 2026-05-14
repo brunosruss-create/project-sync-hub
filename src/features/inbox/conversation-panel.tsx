@@ -24,6 +24,7 @@ import { type ContactCard as Contact, formatRelative, initials } from "./data";
 import { ContactAvatar } from "./contact-avatar";
 import { supabase } from "@/integrations/supabase/client";
 import { useAuth } from "@/hooks/use-auth";
+import { useProfile } from "@/hooks/use-profile";
 import { toast } from "sonner";
 import { useServerFn } from "@tanstack/react-start";
 import { sendWhatsAppMessage, refreshContactAvatar, sendWhatsAppMedia, sendWhatsAppAudio, reactToMessage, deleteMessageForEveryone, editMessage } from "@/lib/evolution.functions";
@@ -804,10 +805,10 @@ function MessageBubble({
       >
         <MessageChevron isMe={isMe} bubbleBg={audioBg} message={m} onReply={onReply} onReact={onReact} onDelete={onDelete} onForward={onForward} />
         {m.quoted_preview && <QuotedPreview preview={m.quoted_preview} isMe={isMe} />}
-        <AudioPlayer
+        <AudioPlayerWithMe
           src={m.media_url}
-          avatarName={contactName}
-          avatarUrl={contactAvatar ?? null}
+          contactName={contactName}
+          contactAvatar={contactAvatar ?? null}
           isMe={isMe}
         />
         <div
@@ -1161,6 +1162,23 @@ function fmtTime(s: number): string {
   const m = Math.floor(s / 60);
   const ss = Math.floor(s % 60).toString().padStart(2, "0");
   return `${m}:${ss}`;
+}
+
+function AudioPlayerWithMe({
+  src,
+  contactName,
+  contactAvatar,
+  isMe,
+}: {
+  src: string;
+  contactName: string;
+  contactAvatar: string | null;
+  isMe: boolean;
+}) {
+  const { data: profile } = useProfile();
+  const avatarName = isMe ? (profile?.full_name ?? "Eu") : contactName;
+  const avatarUrl = isMe ? (profile?.avatar_url ?? null) : contactAvatar;
+  return <AudioPlayer src={src} avatarName={avatarName} avatarUrl={avatarUrl} isMe={isMe} />;
 }
 
 function AudioPlayer({

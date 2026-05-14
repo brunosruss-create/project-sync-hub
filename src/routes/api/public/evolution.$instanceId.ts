@@ -18,8 +18,8 @@ const MIME_EXT: Record<string, string> = {
 function extFromMime(mime: string, fallback: string): string {
   return MIME_EXT[mime.toLowerCase()] ?? (mime.split("/")[1] ?? fallback).split(";")[0].slice(0, 5);
 }
-function detectMediaNode(message: any): { kind: MediaKind; node: any } | null {
-  if (!message) return null;
+function detectMediaNode(message: any, depth = 0): { kind: MediaKind; node: any } | null {
+  if (!message || depth > 5) return null;
   if (message.imageMessage) return { kind: "image", node: message.imageMessage };
   if (message.videoMessage) return { kind: "video", node: message.videoMessage };
   if (message.audioMessage) return { kind: "audio", node: message.audioMessage };
@@ -28,6 +28,22 @@ function detectMediaNode(message: any): { kind: MediaKind; node: any } | null {
   if (message.documentWithCaptionMessage?.message?.documentMessage)
     return { kind: "document", node: message.documentWithCaptionMessage.message.documentMessage };
   if (message.stickerMessage) return { kind: "image", node: message.stickerMessage };
+  // Unwrap envelopes (ephemeral, viewOnce, edited, etc.)
+  const wrappers = [
+    message.ephemeralMessage?.message,
+    message.viewOnceMessage?.message,
+    message.viewOnceMessageV2?.message,
+    message.viewOnceMessageV2Extension?.message,
+    message.editedMessage?.message,
+    message.protocolMessage?.editedMessage?.message,
+    message.deviceSentMessage?.message,
+  ];
+  for (const w of wrappers) {
+    if (w) {
+      const found = detectMediaNode(w, depth + 1);
+      if (found) return found;
+    }
+  }
   return null;
 }
 const KIND_LABEL: Record<MediaKind, string> = {
@@ -162,6 +178,11 @@ export const Route = createFileRoute("/api/public/evolution/$instanceId")({
                 caption = detected.node?.caption ?? caption ?? "";
                 const declaredMime: string | null = detected.node?.mimetype ?? null;
                 const declaredName: string | null = detected.node?.fileName ?? null;
+                // Marca o tipo desde já — mesmo que o download falhe,
+                // a mensagem fica registrada como mídia (e não como texto "[mídia]").
+                mediaType = detected.kind;
+                mediaMime = declaredMime;
+                mediaName = declaredName;
                 try {
                   const dl = await downloadInboundMedia(row.instance_name as string, m);
                   if (dl) {
@@ -179,7 +200,6 @@ export const Route = createFileRoute("/api/public/evolution/$instanceId")({
                       mediaUrl = pub.publicUrl;
                       mediaMime = mime;
                       mediaName = fname;
-                      mediaType = detected.kind;
                     }
                   } else {
                     console.warn("[evolution upsert] downloadInboundMedia retornou null", { kind: detected.kind });
