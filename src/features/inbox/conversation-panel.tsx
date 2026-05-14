@@ -1175,7 +1175,7 @@ function AudioPlayerWithMe({
   contactAvatar: string | null;
   isMe: boolean;
 }) {
-  const { profile } = useProfile();
+  const { data: profile } = useProfile();
   const avatarName = isMe ? (profile?.full_name ?? "Eu") : contactName;
   const avatarUrl = isMe ? (profile?.avatar_url ?? null) : contactAvatar;
   return <AudioPlayer src={src} avatarName={avatarName} avatarUrl={avatarUrl} isMe={isMe} />;
