@@ -147,7 +147,10 @@ export function ScheduleModal({
     return `Olá ${contact.name.split(" ")[0]}! Seu agendamento foi confirmado para ${dateStr} às ${time}. Serviços: ${list}. Até lá! 👋`;
   }, [date, time, selectedServices, contact.name]);
 
-  const canSubmit = selectedServices.length > 0 && !!date && !!time && !!agentId && !submitting;
+  const currentSlotState = slotState.get(time);
+  const slotUnavailable = !!(currentSlotState?.busy || currentSlotState?.past);
+  const canSubmit =
+    selectedServices.length > 0 && !!date && !!time && !!agentId && !submitting && !dateError && !slotUnavailable;
 
   const submit = async () => {
     if (!canSubmit) return;
@@ -157,12 +160,27 @@ export function ScheduleModal({
     const dateStr = startsAt.toLocaleDateString("pt-BR", { day: "2-digit", month: "2-digit" });
     const sysContent = `Agendado para ${dateStr} às ${time} — ${selectedServices.map((s) => s.name).join(", ")}`;
 
-    // 1. Insert appointment (RLS exige owner_user_id)
     if (!user?.id) {
       toast.error("Sessão expirada. Faça login novamente.");
       setSubmitting(false);
       return;
     }
+
+    // Re-check conflict at submit (race condition guard)
+    const { data: conflictRows } = await supabase
+      .from("appointments")
+      .select("id, starts_at, ends_at")
+      .eq("owner_user_id", user.id)
+      .eq("agent_id", agentId)
+      .neq("status", "cancelled")
+      .lt("starts_at", endsAt.toISOString())
+      .gt("ends_at", startsAt.toISOString());
+    if (conflictRows && conflictRows.length > 0) {
+      toast.error("Esse horário ficou indisponível, escolha outro.");
+      setSubmitting(false);
+      return;
+    }
+
     const { data: appt, error: apptErr } = await supabase
       .from("appointments")
       .insert({
