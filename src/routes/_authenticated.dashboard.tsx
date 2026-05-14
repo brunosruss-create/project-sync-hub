@@ -22,23 +22,28 @@ import {
 } from "lucide-react";
 import { useAuth } from "@/hooks/use-auth";
 import { useProfile } from "@/hooks/use-profile";
+import { getDashboardData, type DashboardData, type DashPeriod } from "@/features/dashboard/data";
 
 export const Route = createFileRoute("/_authenticated/dashboard")({
   component: Dashboard,
 });
 
-type Period = "today" | "week" | "month" | "custom";
+type Period = DashPeriod;
 
 function Dashboard() {
   const { user } = useAuth();
   const { data: profile } = useProfile();
   const [period, setPeriod] = React.useState<Period>("today");
   const [loading, setLoading] = React.useState(true);
+  const [data, setData] = React.useState<DashboardData | null>(null);
 
   React.useEffect(() => {
+    let cancelled = false;
     setLoading(true);
-    const t = setTimeout(() => setLoading(false), 600);
-    return () => clearTimeout(t);
+    getDashboardData(period)
+      .then((d) => { if (!cancelled) { setData(d); setLoading(false); } })
+      .catch((e) => { console.warn("[dashboard] load:", e?.message ?? e); if (!cancelled) setLoading(false); });
+    return () => { cancelled = true; };
   }, [period]);
 
   const displayName =
@@ -48,51 +53,18 @@ function Dashboard() {
     "ali";
 
   const kpis = [
-    { label: "Atendimentos hoje", value: "47", delta: 12, icon: MessageSquare },
-    { label: "Tempo médio de resposta", value: "2m 14s", delta: -8, icon: Clock },
-    { label: "Taxa de resolução", value: "82%", delta: 4, icon: TrendingUp },
-    { label: "Agendamentos do dia", value: "12", delta: 3, icon: Calendar },
+    { label: "Atendimentos", value: data ? String(data.kpis.atendimentos.value) : "—", delta: data?.kpis.atendimentos.delta ?? 0, icon: MessageSquare },
+    { label: "Tempo médio de resposta", value: data?.kpis.tmr.value ?? "—", delta: data?.kpis.tmr.delta ?? 0, icon: Clock },
+    { label: "Taxa de resolução", value: data?.kpis.resolution.value ?? "—", delta: data?.kpis.resolution.delta ?? 0, icon: TrendingUp },
+    { label: "Agendamentos no período", value: data ? String(data.kpis.appointments.value) : "—", delta: data?.kpis.appointments.delta ?? 0, icon: Calendar },
   ];
 
-  const hourly = Array.from({ length: 24 }, (_, h) => ({
-    hour: `${String(h).padStart(2, "0")}h`,
-    msgs: Math.round(2 + Math.sin((h / 24) * Math.PI * 2) * 8 + Math.random() * 6 + (h > 8 && h < 20 ? 10 : 0)),
-  }));
-
-  const kanban = [
-    { name: "Aguardando", value: 8, color: "#F59E0B" },
-    { name: "Em Atendimento", value: 14, color: "#3B82F6" },
-    { name: "Concluído", value: 22, color: "#10B981" },
-    { name: "Arquivado", value: 5, color: "#6B7280" },
-  ];
-
-  const upcoming = [
-    { time: "10:30", client: "João Silva", service: "Revisão de óleo" },
-    { time: "11:00", client: "Maria Costa", service: "Diagnóstico elétrico" },
-    { time: "13:30", client: "Pedro Santos", service: "Alinhamento" },
-    { time: "15:00", client: "Ana Lima", service: "Troca de pastilhas" },
-    { time: "16:30", client: "Lucas Ferreira", service: "Lavagem completa" },
-  ];
-
-  const topServices = [
-    { name: "Revisão de óleo", count: 28 },
-    { name: "Alinhamento", count: 19 },
-    { name: "Diagnóstico elétrico", count: 14 },
-    { name: "Troca de pastilhas", count: 11 },
-    { name: "Lavagem completa", count: 9 },
-  ];
-
-  const agents = [
-    { name: "Ana Souza", online: true },
-    { name: "Bruno Lima", online: true },
-    { name: "Carla Mendes", online: false },
-    { name: "Diego Alves", online: true },
-  ];
-
-  const urgent = [
-    { id: "u1", client: "Roberto Mello", waiting: 14, last: "Preciso saber o valor da revisão" },
-    { id: "u2", client: "Júlia Prado", waiting: 8, last: "Tem horário hoje à tarde?" },
-  ];
+  const hourly = data?.hourly ?? [];
+  const kanban = data?.kanban ?? [];
+  const upcoming = data?.upcoming ?? [];
+  const topServices = data?.topServices ?? [];
+  const agents = data?.agents ?? [];
+  const urgent = data?.urgent ?? [];
 
   return (
     <div className="flex flex-col" style={{ gap: 20 }}>
