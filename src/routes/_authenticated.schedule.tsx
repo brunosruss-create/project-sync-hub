@@ -61,7 +61,7 @@ function SchedulePage() {
   const [items, setItems] = React.useState<Appointment[]>([]);
   
   const [contacts, setContacts] = React.useState<ContactCard[]>(MOCK_CONTACTS);
-  const [services] = React.useState<Service[]>(SEED_SERVICES);
+  const [services, setServices] = React.useState<Service[]>(SEED_SERVICES);
   const [agents] = React.useState<Agent[]>(MOCK_AGENTS);
   const [agentFilter, setAgentFilter] = React.useState<Set<string>>(
     new Set(MOCK_AGENTS.map((a) => a.id)),
@@ -104,11 +104,15 @@ function SchedulePage() {
   }), []);
 
   const reload = React.useCallback(async () => {
-    const [{ data: appts, error: apptErr }, { data: cts }] = await Promise.all([
+    const [{ data: appts, error: apptErr }, { data: cts }, { data: svc }] = await Promise.all([
       supabase
         .from("appointments")
         .select("id,contact_id,service_id,agent_id,starts_at,ends_at,status,notes,notify_whatsapp"),
       supabase.from("contacts").select("id,name,phone,tags,priority,kanban_column,last_message,last_message_at,is_unread,assigned_agent_id"),
+      supabase
+        .from("services")
+        .select("id,category_id,name,description,price_cents,duration_minutes,emoji,color,status,created_at")
+        .order("created_at", { ascending: true }),
     ]);
     if (apptErr) console.warn("[schedule] select appointments:", apptErr.message);
     setItems(
@@ -129,6 +133,22 @@ function SchedulePage() {
           lastMessageAt: r.last_message_at ? new Date(r.last_message_at) : new Date(),
           assignedAgent: r.assigned_agent_id ?? null,
           isUnread: !!r.is_unread,
+        })),
+      );
+    }
+    if (svc && svc.length > 0) {
+      setServices(
+        svc.map((s: any) => ({
+          id: s.id,
+          category_id: s.category_id ?? "",
+          name: s.name,
+          description: s.description ?? "",
+          price_cents: s.price_cents ?? 0,
+          duration_minutes: s.duration_minutes ?? 30,
+          emoji: s.emoji ?? "🔧",
+          color: s.color ?? "#25C880",
+          status: (s.status ?? "active") as Service["status"],
+          created_at: s.created_at ? new Date(s.created_at) : new Date(),
         })),
       );
     }

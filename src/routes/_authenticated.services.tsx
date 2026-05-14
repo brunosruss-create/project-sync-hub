@@ -28,6 +28,10 @@ type Editing =
   | { mode: "edit"; service: Service }
   | null;
 
+function isUuid(value: string): boolean {
+  return /^[0-9a-f]{8}-[0-9a-f]{4}-[1-5][0-9a-f]{3}-[89ab][0-9a-f]{3}-[0-9a-f]{12}$/i.test(value);
+}
+
 function ServicesPage() {
   const [categories, setCategories] = React.useState<Category[]>(SEED_CATEGORIES);
   const [services, setServices] = React.useState<Service[]>(SEED_SERVICES);
@@ -117,8 +121,7 @@ function ServicesPage() {
     notify.success(exists ? "Serviço atualizado." : "Serviço criado.");
 
     const payload = {
-      id: draft.id,
-      category_id: draft.category_id || null,
+      category_id: draft.category_id && isUuid(draft.category_id) ? draft.category_id : null,
       name: draft.name,
       description: draft.description,
       price_cents: draft.price_cents,
@@ -127,8 +130,17 @@ function ServicesPage() {
       color: draft.color,
       status: draft.status,
     };
-    const { error } = await supabase.from("services").upsert(payload);
-    if (error) console.warn("[services] persistência ignorada:", error.message);
+    const query = exists && isUuid(draft.id)
+      ? supabase.from("services").upsert({ id: draft.id, ...payload }).select("id,created_at").single()
+      : supabase.from("services").insert(payload).select("id,created_at").single();
+    const { data, error } = await query;
+    if (error) {
+      console.warn("[services] persistência ignorada:", error.message);
+      return;
+    }
+    if (data?.id && data.id !== draft.id) {
+      setServices((prev) => prev.map((s) => (s.id === draft.id ? { ...s, id: data.id, created_at: data.created_at ? new Date(data.created_at) : s.created_at } : s)));
+    }
   };
 
   const archiveService = async (id: string) => {
