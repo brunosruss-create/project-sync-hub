@@ -270,6 +270,8 @@ export async function normalizeQRCodeImage(qr: string | null): Promise<string | 
 }
 
 export function instanceNameForOwner(userId: string | null | undefined): string {
-  // single-tenant: nome fixo. Mantemos param p/ futuro multi-tenant.
-  return "zapflow_main";
+  if (!userId) throw new Error("userId required for instance name");
+  // multi-tenant: 1 instância Evolution por usuário (zf_<userIdSemHifens>)
+  const safe = userId.replace(/-/g, "").slice(0, 24);
+  return `zf_${safe}`;
 }
