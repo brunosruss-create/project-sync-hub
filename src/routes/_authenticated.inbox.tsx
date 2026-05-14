@@ -29,6 +29,7 @@ import { ConversationPanel } from "@/features/inbox/conversation-panel";
 import { NewContactModal } from "@/features/inbox/new-contact-modal";
 import { EditContactModal } from "@/features/inbox/edit-contact-modal";
 import { ScheduleModal } from "@/features/inbox/schedule-modal";
+import { TransferConversationModal } from "@/features/inbox/transfer-conversation-modal";
 import { supabase } from "@/integrations/supabase/client";
 import { useAuth } from "@/hooks/use-auth";
 import { useWorkspaceOwnerId } from "@/hooks/use-workspace-owner";
