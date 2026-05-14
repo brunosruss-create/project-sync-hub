@@ -86,12 +86,19 @@ export function ScheduleModal({
     const dateStr = startsAt.toLocaleDateString("pt-BR", { day: "2-digit", month: "2-digit" });
     const sysContent = `Agendado para ${dateStr} às ${time} — ${selectedServices.map((s) => s.name).join(", ")}`;
 
-    // 1. Insert appointment
+    // 1. Insert appointment (RLS exige owner_user_id)
+    if (!user?.id) {
+      toast.error("Sessão expirada. Faça login novamente.");
+      setSubmitting(false);
+      return;
+    }
     const { data: appt, error: apptErr } = await supabase
       .from("appointments")
       .insert({
+        owner_user_id: user.id,
         contact_id: contact.id,
         agent_id: agentId,
+        service_id: selectedServices[0]?.id ?? null,
         starts_at: startsAt.toISOString(),
         ends_at: endsAt.toISOString(),
         status: "scheduled",
@@ -101,19 +108,24 @@ export function ScheduleModal({
       .select("id")
       .single();
 
-    if (!apptErr && appt) {
-      // 2. Insert appointment_services snapshot
-      await supabase.from("appointment_services").insert(
-        selectedServices.map((s) => ({
-          appointment_id: appt.id,
-          service_id: s.id,
-          price_cents: s.price_cents,
-          duration_minutes: s.duration_minutes,
-        })),
-      );
-    } else if (apptErr) {
-      console.warn("[schedule-modal] persistência ignorada:", apptErr.message);
+    if (apptErr || !appt) {
+      console.error("[schedule-modal] erro ao criar appointment:", apptErr);
+      toast.error(`Não foi possível agendar: ${apptErr?.message ?? "erro desconhecido"}`);
+      setSubmitting(false);
+      return;
     }
+
+    // 2. Insert appointment_services snapshot
+    const { error: svcErr } = await supabase.from("appointment_services").insert(
+      selectedServices.map((s) => ({
+        appointment_id: appt.id,
+        owner_user_id: user.id,
+        service_id: s.id,
+        price_cents: s.price_cents,
+        duration_minutes: s.duration_minutes,
+      })),
+    );
+    if (svcErr) console.warn("[schedule-modal] services snapshot:", svcErr.message);
 
     // 3. Move kanban column
     const { error: updErr } = await supabase
