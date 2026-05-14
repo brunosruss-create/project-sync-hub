@@ -1164,6 +1164,23 @@ function fmtTime(s: number): string {
   return `${m}:${ss}`;
 }
 
+function AudioPlayerWithMe({
+  src,
+  contactName,
+  contactAvatar,
+  isMe,
+}: {
+  src: string;
+  contactName: string;
+  contactAvatar: string | null;
+  isMe: boolean;
+}) {
+  const { profile } = useProfile();
+  const avatarName = isMe ? (profile?.full_name ?? "Eu") : contactName;
+  const avatarUrl = isMe ? (profile?.avatar_url ?? null) : contactAvatar;
+  return <AudioPlayer src={src} avatarName={avatarName} avatarUrl={avatarUrl} isMe={isMe} />;
+}
+
 function AudioPlayer({
   src,
   avatarName,
