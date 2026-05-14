@@ -1,71 +1,55 @@
 
-## Objetivo
+## Diagnóstico
 
-1. Em **Configurações → WhatsApp**, exibir a foto de perfil já vinculada ao número conectado e permitir **trocar a foto** — a troca aplica também na conta real do WhatsApp via Evolution API.
-2. Resolver o problema de **áudio recebido não chegar** no Inbox.
+Mapeei todos os pontos de contato entre WhatsApp/Inbox e Agenda:
 
----
+1. **Inbox → Modal de agendamento** (`src/features/inbox/conversation-panel.tsx:684`) — abre `ScheduleModal` passando o contato do WhatsApp.
+2. **ScheduleModal** (`src/features/inbox/schedule-modal.tsx`) — ao confirmar:
+   - Insere em `appointments` (linha 88).
+   - Insere em `appointment_services` (linha 105).
+   - Atualiza `contacts.kanban_column = 'scheduled'` (linha 119).
+   - Insere mensagens (system + outbound) em `messages`.
+3. **Agenda** (`src/routes/_authenticated.schedule.tsx:93-140`) — no mount faz `select` em `appointments` e `contacts`. Se vier vazio, mantém `MOCK_APPOINTMENTS`.
 
-## 1. Foto de perfil do WhatsApp na tela de Configurações
+### Causa raiz (confirmada pelas imagens enviadas)
 
-### Comportamento
+A imagem 1 mostra o contato “Cauê” na coluna **AGENDADO** (= o `kanban_column` foi atualizado e a mensagem do sistema foi enviada), mas a imagem 2 mostra a agenda exibindo apenas os 4 mocks (“Sem contato” / Alinhamento, Diagnóstico, Troca de Pasti, Polimento). Isso prova que o `select` em `appointments` voltou vazio — ou seja, o `insert` em `appointments` está falhando silenciosamente. O modal só faz `console.warn` no erro e mesmo assim mostra `toast.success`, então o usuário acredita que foi agendado.
 
-- Ao abrir Configurações → WhatsApp com a instância conectada, a página mostra:
-  - Avatar circular grande (96 px) com a foto atual.
-  - Botão "Trocar foto" (abre file picker — JPG/PNG, ≤ 2 MB).
-  - Botão "Atualizar do WhatsApp" (re-puxa a foto atual do WhatsApp real).
-- Trocar foto:
-  - Upload em `chat-media/avatars/{user_id}-{timestamp}.{ext}` (público).
-  - Chama Evolution `POST /chat/updateProfilePicture/{instance}` com `{ picture: <url pública> }`.
-  - Atualiza `profiles.avatar_url` com a nova URL.
-  - Toast de sucesso e invalidação dos queries de avatar.
-- Se o usuário ainda não tiver foto sincronizada, a `syncMyWhatsAppAvatar` (já existe) roda automaticamente uma vez ao abrir a tela conectada.
+Causas prováveis para o insert falhar:
+- **`agent_id` inválido**: o modal usa `MOCK_AGENTS[0].id = "a1"` (string fixa). Se a coluna `agent_id` for `uuid` ou tiver FK para `agents`, o insert é rejeitado.
+- **`service_id` inválido**: usa ids do `SEED_SERVICES` (mock), idem.
+- **RLS sem `owner_user_id`**: o insert não envia `owner_user_id`, então qualquer policy `with check (owner_user_id = auth.uid())` recusa.
+- A Agenda **filtra por `agentFilter`** que só conhece `MOCK_AGENTS` (`a1..a4`); se algum dia o insert passar com `agent_id` real (uuid), a agenda também esconde porque o id não está no filtro.
+- Não há `realtime` nem evento entre Inbox e Agenda — mesmo se o insert funcionar, a agenda só recarrega no mount.
 
-### Mudanças técnicas
+## Plano de correção
 
-- `src/lib/evolution.server.ts`: adicionar `evo.updateProfilePicture(name, { picture })` chamando `/chat/updateProfilePicture/{instance}`.
-- `src/lib/evolution.functions.ts`: adicionar `updateMyWhatsAppAvatar` (POST, autenticado):
-  - Input: `{ url: string }` (URL pública já hospedada no Storage).
-  - Chama `evo.updateProfilePicture` e em sucesso atualiza `profiles.avatar_url`.
-  - Retorno: `{ ok: true, url }`.
-- `src/routes/_authenticated.settings.whatsapp.tsx`:
-  - Buscar `profiles.avatar_url` do usuário (query nova ou via hook existente).
-  - Renderizar bloco "Foto do perfil" dentro do card quando `status === "connected"`.
-  - Input file oculto + botão "Trocar foto"; ao escolher arquivo: upload no bucket `chat-media`, depois chama `updateMyWhatsAppAvatar`.
-  - Botão "Atualizar do WhatsApp" reusa `syncMyWhatsAppAvatar` (já existe — apenas reposicionar a UI).
-  - `useEffect` opcional: se conectado e `avatar_url` é null, dispara `syncMyWhatsAppAvatar` uma vez.
+### 1. Migration Supabase para `appointments` + `appointment_services`
+Criar (ou reconciliar) o schema com `owner_user_id uuid not null default auth.uid()`, `contact_id uuid` (FK opcional), `agent_id text`, `service_id text` (text, para aceitar ids semente), demais campos atuais e RLS:
+- `enable row level security`
+- policy `select/insert/update/delete using (owner_user_id = auth.uid())` em ambas tabelas.
+- Index em `(owner_user_id, starts_at)`.
 
----
+### 2. `schedule-modal.tsx` — robustez
+- Enviar `owner_user_id: user.id` no insert de `appointments` e nos demais inserts.
+- **Não** mostrar toast de sucesso se `apptErr` existir; mostrar `toast.error` com a mensagem e abortar o restante (kanban/mensagens). Isso evita o falso positivo atual.
+- Disparar `window.dispatchEvent(new CustomEvent("zf:appointment-created", { detail: { appointment } }))` ao final.
 
-## 2. Áudio recebido não chega
+### 3. `_authenticated.schedule.tsx` — refletir dados reais
+- Iniciar `items` como `[]` (não `MOCK_APPOINTMENTS`); usar mocks apenas como fallback dev quando `import.meta.env.DEV` e nada veio do banco — para produção a agenda deve ser fiel ao banco.
+- Remover o filtro por `agentFilter` para appointments cujo `agent_id` não está no conjunto (ou: não filtrar quando o set contém todos os agentes conhecidos / aceitar agent_id desconhecido como “visível”).
+- Ouvir o evento `zf:appointment-created` e o canal Realtime de `appointments` (`postgres_changes` filtrado por `owner_user_id`) para atualizar `items` sem precisar recarregar a página.
+- Garantir reload ao focar a aba (`visibilitychange`).
 
-### Diagnóstico atual
+### 4. Verificação
+- Após aplicar: agendar pelo WhatsApp → esperar toast de sucesso → ir em /schedule e ver o card aparecer imediatamente (via evento) e persistido após reload.
+- Se o insert ainda falhar, o toast de erro mostrará a causa exata (RLS, FK, tipo) para correção pontual.
 
-Logs em produção mostram que `messages.upsert` chega com `messageType` no payload, mas o log adicional `[evolution upsert] msg type` não aparece — sugere que ou (a) o build atual em prod ainda não tem esse log, ou (b) `detectMediaNode` retorna null porque a estrutura de `m.message` para áudio difere do esperado (Baileys às vezes envelopa em `audioMessage`/`pttMessage` dentro de wrappers diferentes).
+## Detalhes técnicos
 
-### Mudanças
-
-- `src/routes/api/public/evolution.$instanceId.ts`:
-  - Trocar o log condicional por um log **sempre** dentro do loop, mostrando `messageType`, chaves de `m.message` e o resultado de `detectMediaNode` — isso garante diagnóstico mesmo em mensagens de texto.
-  - Estender `detectMediaNode` para considerar:
-    - `m.messageType === "audioMessage" | "pttMessage"` quando `m.message` está vazio (alguns webhooks da Evolution mandam só `messageType` + payload achatado em `m`).
-    - Fallback: se `messageType` indica áudio mas `detectMediaNode(m.message)` retornou null, tratar como `kind: "audio"` com `node = m.message?.audioMessage ?? m.message?.pttMessage ?? m`.
-  - Em `downloadInboundMedia`, adicionar mais um padrão de body: `{ key: m.key, message: m.message }` (sem o wrapper `message:`), que é a forma aceita por algumas versões da Evolution v2.x.
-  - Em caso de falha de download, ainda inserir a mensagem com `message_type = "audio"` (já é o comportamento atual) e gravar a URL `null` — assim o usuário vê o balão correto e o motivo aparece nos logs.
-
-### Validação
-
-- Após deploy, pedir ao usuário para enviar um áudio de outro WhatsApp para o número conectado.
-- Inspecionar logs (`server-function-logs search="upsert msg type"`) para confirmar `detected.kind = "audio"` e ver se `downloadInboundMedia` retornou conteúdo.
-- Se o áudio chegar com `media_url` preenchida, o player no Inbox renderiza normalmente (a UI já está pronta).
-
----
-
-## Arquivos alterados
-
-- `src/lib/evolution.server.ts` — `evo.updateProfilePicture` + ajuste opcional em `downloadInboundMedia`.
-- `src/lib/evolution.functions.ts` — server fn `updateMyWhatsAppAvatar`.
-- `src/routes/api/public/evolution.$instanceId.ts` — `detectMediaNode` mais robusto + log sempre presente.
-- `src/routes/_authenticated.settings.whatsapp.tsx` — UI de avatar (mostrar, trocar, ressincronizar).
-
-Sem mudanças em outras áreas do app.
+- Arquivos a editar:
+  - `supabase/migrations/<timestamp>_appointments.sql` (novo)
+  - `src/features/inbox/schedule-modal.tsx`
+  - `src/routes/_authenticated.schedule.tsx`
+- Sem mudanças em UI/visual — apenas dados, RLS e sincronização.
+- Não toca em nada de WhatsApp/Evolution/áudio.
