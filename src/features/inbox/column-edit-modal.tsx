@@ -29,6 +29,7 @@ export function ColumnEditModal({
   onSaved,
 }: Props) {
   const { user } = useAuth();
+  const { workspaceOwnerId } = useWorkspaceOwnerId();
   const [label, setLabel] = React.useState("");
   const [emoji, setEmoji] = React.useState("📌");
   const [color, setColor] = React.useState("#6B7280");

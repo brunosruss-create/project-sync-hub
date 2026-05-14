@@ -114,6 +114,7 @@ export function ConversationPanel({
   onContactUpdate?: (contactId: string, patch: Partial<Contact>) => void;
 }) {
   const { user } = useAuth();
+  const { workspaceOwnerId } = useWorkspaceOwnerId();
   const sendViaEvolution = useServerFn(sendWhatsAppMessage);
   const sendMediaFn = useServerFn(sendWhatsAppMedia);
   const sendAudioFn = useServerFn(sendWhatsAppAudio);

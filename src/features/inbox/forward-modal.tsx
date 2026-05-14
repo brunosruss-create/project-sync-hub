@@ -32,6 +32,7 @@ interface Props {
 
 export function ForwardModal({ open, source, excludeContactId, onClose }: Props) {
   const { user } = useAuth();
+  const { workspaceOwnerId } = useWorkspaceOwnerId();
   const sendText = useServerFn(sendWhatsAppMessage);
   const sendMedia = useServerFn(sendWhatsAppMedia);
   const sendAudio = useServerFn(sendWhatsAppAudio);

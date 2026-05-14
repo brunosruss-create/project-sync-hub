@@ -91,6 +91,7 @@ function capitalizeName(s: string) {
 
 export function NewContactModal({ open, onClose, onCreated }: Props) {
   const { user } = useAuth();
+  const { workspaceOwnerId } = useWorkspaceOwnerId();
   const { data: profile } = useProfile();
 
   const [phoneInput, setPhoneInput] = React.useState("");

@@ -51,6 +51,7 @@ export function ScheduleModal({
   onScheduled,
 }: Props) {
   const { user } = useAuth();
+  const { workspaceOwnerId } = useWorkspaceOwnerId();
   const [services, setServices] = React.useState<Service[]>([]);
 
   // Carrega serviços reais do banco (fallback para SEED apenas se DB vazio).
