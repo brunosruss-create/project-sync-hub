@@ -90,7 +90,7 @@ export async function getDashboardData(period: DashPeriod, currentUserId?: strin
     supabase.from("appointments").select("id,status,starts_at")
       .gte("starts_at", prevStart.toISOString()).lt("starts_at", prevEnd.toISOString()).limit(5000),
     supabase.from("appointments").select("id,contact_id,service_id,starts_at,status")
-      .gte("starts_at", new Date().toISOString()).lt("starts_at", todayEnd.toISOString())
+      .gte("starts_at", todayStart.toISOString()).lt("starts_at", todayEnd.toISOString())
       .neq("status", "cancelled").order("starts_at", { ascending: true }).limit(20),
     supabase.from("contacts").select("id,name,kanban_column,last_message,last_message_at,last_direction"),
     supabase.from("kanban_columns").select("slug,label,color,position").order("position", { ascending: true }),
