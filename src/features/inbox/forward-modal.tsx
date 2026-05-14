@@ -2,6 +2,7 @@ import * as React from "react";
 import { X, Search, Forward, Loader2 } from "lucide-react";
 import { supabase } from "@/integrations/supabase/client";
 import { useAuth } from "@/hooks/use-auth";
+import { useWorkspaceOwnerId } from "@/hooks/use-workspace-owner";
 import { toast } from "sonner";
 import { useServerFn } from "@tanstack/react-start";
 import { sendWhatsAppMessage, sendWhatsAppMedia, sendWhatsAppAudio } from "@/lib/evolution.functions";
@@ -50,7 +51,7 @@ export function ForwardModal({ open, source, excludeContactId, onClose }: Props)
       const { data, error } = await supabase
         .from("contacts")
         .select("id,name,phone,avatar_url")
-        .eq("owner_user_id", user.id)
+        .eq("owner_user_id", workspaceOwnerId)
         .not("phone", "is", null)
         .order("name", { ascending: true })
         .limit(500);

@@ -2,6 +2,7 @@ import * as React from "react";
 import { X, Check, Loader2, MessageCircle, ExternalLink, AlertTriangle, ChevronDown } from "lucide-react";
 import { supabase } from "@/integrations/supabase/client";
 import { useAuth } from "@/hooks/use-auth";
+import { useWorkspaceOwnerId } from "@/hooks/use-workspace-owner";
 import { useProfile } from "@/hooks/use-profile";
 import { notify } from "@/lib/notify";
 import {
@@ -141,7 +142,7 @@ export function NewContactModal({ open, onClose, onCreated }: Props) {
       const { data } = await supabase
         .from("contacts")
         .select("tags")
-        .eq("owner_user_id", user.id)
+        .eq("owner_user_id", workspaceOwnerId)
         .limit(200);
       const all = new Set<string>();
       (data ?? []).forEach((r: any) => (r.tags ?? []).forEach((t: string) => all.add(t)));
@@ -172,7 +173,7 @@ export function NewContactModal({ open, onClose, onCreated }: Props) {
       const { data, error } = await supabase
         .from("contacts")
         .select("id,name,phone,kanban_column,last_message_at,avatar_url,tags,is_unread,priority,assigned_agent_id,last_message")
-        .eq("owner_user_id", user.id)
+        .eq("owner_user_id", workspaceOwnerId)
         .or(`phone.eq.${normalized},phone.eq.${phoneDigits}`)
         .maybeSingle();
       if (error && error.code !== "PGRST116") {
@@ -274,7 +275,7 @@ export function NewContactModal({ open, onClose, onCreated }: Props) {
     setSubmitting(true);
     try {
       const insertPayload: Record<string, any> = {
-        owner_user_id: user.id,
+        owner_user_id: workspaceOwnerId,
         // Espelha em user_id caso a coluna legada ainda exista (compat).
         user_id: user.id,
         name: finalName,
@@ -324,7 +325,7 @@ export function NewContactModal({ open, onClose, onCreated }: Props) {
       // mensagem inicial
       if (showSendMessage && openingMessage.trim()) {
         const { error: msgErr } = await supabase.from("messages").insert({
-          owner_user_id: user.id,
+          owner_user_id: workspaceOwnerId,
           contact_id: created.id,
           direction: "outbound",
           content: openingMessage.trim(),
