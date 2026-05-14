@@ -14,23 +14,26 @@ import {
 } from "lucide-react";
 import { useAuth } from "@/hooks/use-auth";
 import { useProfile } from "@/hooks/use-profile";
+import { useRole } from "@/hooks/use-role";
 
-const items = [
-  { label: "Dashboard", to: "/dashboard", icon: LayoutDashboard },
-  { label: "Conversas", to: "/inbox", icon: MessageSquare },
-  { label: "Agenda", to: "/schedule", icon: Calendar },
-  { label: "Serviços", to: "/services", icon: Wrench },
-  { label: "Agente IA", to: "/ai-agent", icon: Bot },
-  { label: "Contatos", to: "/contacts", icon: Users },
-  { label: "Relatórios", to: "/reports", icon: BarChart3 },
-  { label: "Configurações", to: "/settings/profile", icon: Settings },
-  { label: "Super Admin", to: "/super-admin/workspaces", icon: Shield },
+const ALL_ITEMS = [
+  { label: "Dashboard", to: "/dashboard", icon: LayoutDashboard, agentVisible: true },
+  { label: "Conversas", to: "/inbox", icon: MessageSquare, agentVisible: true },
+  { label: "Agenda", to: "/schedule", icon: Calendar, agentVisible: true },
+  { label: "Serviços", to: "/services", icon: Wrench, agentVisible: true },
+  { label: "Agente IA", to: "/ai-agent", icon: Bot, agentVisible: true },
+  { label: "Contatos", to: "/contacts", icon: Users, agentVisible: true },
+  { label: "Relatórios", to: "/reports", icon: BarChart3, agentVisible: true },
+  { label: "Configurações", to: "/settings/profile", icon: Settings, agentVisible: true },
+  { label: "Super Admin", to: "/super-admin/workspaces", icon: Shield, agentVisible: false },
 ] as const;
 
 export function AppSidebar() {
   const path = useRouterState({ select: (s) => s.location.pathname });
   const { user } = useAuth();
   const { data: profile } = useProfile();
+  const { isAgent } = useRole();
+  const items = isAgent ? ALL_ITEMS.filter((i) => i.agentVisible) : ALL_ITEMS;
 
   const name =
     profile?.full_name ||
