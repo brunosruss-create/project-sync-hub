@@ -239,18 +239,55 @@ export async function getDashboardData(period: DashPeriod, currentUserId?: strin
     online: recentAgentIds.has(p.id),
   })).sort((a, b) => Number(b.online) - Number(a.online)).slice(0, 6);
 
-  // Urgent: last_direction inbound and last_message_at > 5min ago
+  // Atendimentos sem resposta há mais de 5 min:
+  // Para cada contato, considera a última mensagem das últimas 24h. Se for inbound e
+  // ocorreu há mais de 5min sem outbound posterior, é uma conversa pendente.
+  const lastByContact = new Map<string, { direction: string; created_at: string }>();
+  for (const m of recentMsgs as any[]) {
+    if (!m.contact_id) continue;
+    lastByContact.set(m.contact_id, { direction: m.direction, created_at: m.created_at });
+  }
   const fiveMinAgo = Date.now() - 5 * 60 * 1000;
-  const urgent = (contacts as any[])
-    .filter((c) => c.last_direction === "inbound" && c.last_message_at && new Date(c.last_message_at).getTime() < fiveMinAgo)
-    .map((c) => ({
-      id: c.id,
-      client: c.name || "—",
-      waiting: Math.max(1, Math.round((Date.now() - new Date(c.last_message_at).getTime()) / 60000)),
-      last: c.last_message || "",
+  const pendingIds: string[] = [];
+  const waitingByContact = new Map<string, number>();
+  for (const [cid, last] of lastByContact.entries()) {
+    if (last.direction !== "inbound") continue;
+    const t = new Date(last.created_at).getTime();
+    if (t >= fiveMinAgo) continue;
+    pendingIds.push(cid);
+    waitingByContact.set(cid, Math.max(1, Math.round((Date.now() - t) / 60000)));
+  }
+  const contactById = new Map((contacts as any[]).map((c) => [c.id, c.name]));
+  const missing = pendingIds.filter((id) => !contactById.has(id));
+  if (missing.length) {
+    const { data: extra } = await supabase.from("contacts").select("id,name").in("id", missing);
+    for (const c of extra ?? []) contactById.set((c as any).id, (c as any).name);
+  }
+  // Última mensagem inbound (texto curto) por contato pendente — busca rápida só desses ids.
+  const lastTextByContact = new Map<string, string>();
+  if (pendingIds.length) {
+    const { data: lastMsgs } = await supabase
+      .from("messages")
+      .select("contact_id,content,created_at,direction")
+      .in("contact_id", pendingIds)
+      .eq("direction", "inbound")
+      .order("created_at", { ascending: false })
+      .limit(pendingIds.length * 3);
+    for (const m of lastMsgs ?? []) {
+      const cid = (m as any).contact_id;
+      if (!lastTextByContact.has(cid)) lastTextByContact.set(cid, (m as any).content ?? "");
+    }
+  }
+  const urgent = pendingIds
+    .map((id) => ({
+      id,
+      client: contactById.get(id) || "—",
+      waiting: waitingByContact.get(id) ?? 0,
+      last: lastTextByContact.get(id) ?? "",
     }))
     .sort((a, b) => b.waiting - a.waiting)
     .slice(0, 5);
+
 
   return {
     kpis: {
