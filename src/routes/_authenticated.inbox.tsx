@@ -33,6 +33,7 @@ import { TransferConversationModal } from "@/features/inbox/transfer-conversatio
 import { supabase } from "@/integrations/supabase/client";
 import { useAuth } from "@/hooks/use-auth";
 import { useWorkspaceOwnerId } from "@/hooks/use-workspace-owner";
+import { useRole } from "@/hooks/use-role";
 
 export const Route = createFileRoute("/_authenticated/inbox")({
   component: InboxPage,
@@ -43,11 +44,12 @@ type Filter = "all" | "mine" | "unassigned";
 function InboxPage() {
   const { user } = useAuth();
   const { workspaceOwnerId } = useWorkspaceOwnerId();
+  const { isAgent } = useRole();
   const [contacts, setContacts] = React.useState<Contact[]>([]);
   const [isLoadingContacts, setIsLoadingContacts] = React.useState(true);
   const [loadError, setLoadError] = React.useState<string | null>(null);
   const [activeId, setActiveId] = React.useState<string | null>(null);
-  const [filter, setFilter] = React.useState<Filter>("all");
+  const [filter, setFilter] = React.useState<Filter>(isAgent ? "mine" : "all");
   const [query, setQuery] = React.useState("");
   const [openContact, setOpenContact] = React.useState<Contact | null>(null);
   const [whatsappStatus, setWhatsappStatus] = React.useState<"connected" | "disconnected" | "loading">("loading");
@@ -534,7 +536,7 @@ function InboxPage() {
               [
                 { id: "all", label: "Todos" },
                 { id: "mine", label: "Meus" },
-                { id: "unassigned", label: "Sem atendente" },
+                ...(isAgent ? [] : [{ id: "unassigned" as const, label: "Sem atendente" }]),
               ] as Array<{ id: Filter; label: string }>
             ).map((f) => (
               <button
