@@ -177,7 +177,7 @@ function WhatsAppPage() {
   return (
     <SettingsLayout
       title="WhatsApp"
-      description="Conexão da sua conta WhatsApp ao ZapFlow via Evolution API."
+      description="Conexão da sua conta WhatsApp ao ZapFlow."
     >
       <div style={card}>
         <div className="flex items-center justify-between" style={{ marginBottom: 16 }}>
