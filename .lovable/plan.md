@@ -1,126 +1,96 @@
 ## Objetivo
 
-Implementar a distinção real entre **Manager** e **Agente** no nível de permissões: criar a tabela `user_roles` no Supabase e bloquear o acesso de Agentes às rotas sensíveis (Equipe, WhatsApp, Billing, Workspace, Super Admin). Sem mexer em convite por email e sem filtrar conversas ainda.
+Tornar o sistema **multi-tenant por workspace** de verdade: o manager (cliente SaaS) cria a equipe pelo painel, e todos os membros dessa equipe enxergam **a mesma inbox / mesmo número de WhatsApp / mesmos contatos** que o manager. Hoje cada `auth.users.id` é uma ilha isolada — vamos introduzir o conceito de "workspace = manager".
 
-## Escopo desta entrega
+## Modelo de dados
 
-**Inclui:**
-1. Schema `user_roles` + função `has_role()` no banco
-2. Hook `useRole()` para o frontend ler o papel do usuário logado
-3. Esconder itens de menu sensíveis na sidebar para Agentes
-4. Bloquear navegação direta nas rotas sensíveis (redirect para `/inbox`)
-5. Auto-promover o **primeiro usuário do sistema a Manager** + qualquer usuário sem papel cair em Manager (compat: ninguém é deslogado)
-
-**Não inclui (fica para depois):**
-- Convite real por email (o modal continua mock)
-- Filtro de conversas por agente atribuído
-- Mudar dados do mock `_authenticated.settings.team.tsx` para vir do banco
-
-## Mudanças no banco (migration)
+**Conceito:** workspace é identificado pelo `user_id` do manager. Não precisa de tabela `workspaces` — economiza migrations.
 
 ```sql
--- 1) Enum de papéis
-create type public.app_role as enum ('manager', 'agent');
-
--- 2) Tabela user_roles (NUNCA na profiles, por segurança)
-create table public.user_roles (
+-- Quem pertence a qual workspace
+create table public.workspace_members (
   id uuid primary key default gen_random_uuid(),
-  user_id uuid references auth.users(id) on delete cascade not null,
-  role app_role not null,
+  workspace_owner_id uuid references auth.users(id) on delete cascade not null, -- = manager
+  member_user_id     uuid references auth.users(id) on delete cascade not null,
+  active boolean default true not null,
   created_at timestamptz default now() not null,
-  unique (user_id, role)
+  unique (workspace_owner_id, member_user_id)
 );
 
-alter table public.user_roles enable row level security;
-
--- 3) Função SECURITY DEFINER para checar papel sem recursão
-create or replace function public.has_role(_user_id uuid, _role app_role)
-returns boolean
-language sql stable security definer set search_path = public
-as $$
-  select exists (
-    select 1 from public.user_roles
-    where user_id = _user_id and role = _role
-  )
-$$;
-
--- 4) Função para retornar o papel "principal" do usuário (manager > agent)
-create or replace function public.get_my_role()
-returns app_role
-language sql stable security definer set search_path = public
-as $$
-  select role from public.user_roles
-  where user_id = auth.uid()
-  order by case role when 'manager' then 1 when 'agent' then 2 end
-  limit 1
-$$;
-
--- 5) RLS: cada usuário lê só seu próprio papel
-create policy "users read own roles"
-on public.user_roles for select to authenticated
-using (user_id = auth.uid());
-
--- 6) Backfill: todo usuário existente vira manager (compat)
-insert into public.user_roles (user_id, role)
-select id, 'manager'::app_role from auth.users
-on conflict (user_id, role) do nothing;
-
--- 7) Trigger: novo signup vira manager por padrão
-create or replace function public.handle_new_user_role()
-returns trigger language plpgsql security definer set search_path = public
-as $$
-begin
-  insert into public.user_roles (user_id, role)
-  values (new.id, 'manager')
-  on conflict do nothing;
-  return new;
-end $$;
-
-create trigger on_auth_user_created_role
-after insert on auth.users
-for each row execute function public.handle_new_user_role();
+-- Função: dado o usuário logado, retorna o id do dono do workspace dele
+-- (se ele é manager → retorna o próprio id; se é agente → retorna o manager dele)
+create function public.get_my_workspace_owner() returns uuid ...
 ```
 
-> Decisão: novo usuário entra como **manager** por padrão (cada um cria seu próprio workspace). Quando o convite real existir, o convite criará a linha como `agent` antes do signup.
+Backfill: para cada manager existente, insere ele mesmo em `workspace_members` como membro do próprio workspace.
 
-## Mudanças no frontend
+## RLS — aqui está a mudança crítica
 
-### Novo: `src/hooks/use-role.tsx`
-Hook que chama `supabase.rpc('get_my_role')`, retorna `'manager' | 'agent' | null` + `isManager`, `isAgent`, `loading`. Cacheado por React Query e re-fetch em `onAuthStateChange`. Fallback: se RPC falhar ou retornar null → trata como `manager` (não bloqueia ninguém em caso de erro).
+Hoje as policies em `contacts`, `messages`, `whatsapp_instances`, `kanban_columns`, `appointments` usam `owner_user_id = auth.uid()`. Vamos trocar por:
 
-### `src/components/app-sidebar.tsx`
-Filtrar `items` antes do render: para Agentes, esconder **Configurações** e **Super Admin**. Demais itens (Dashboard, Conversas, Agenda, Serviços, Agente IA, Contatos, Relatórios) ficam visíveis.
+```sql
+using (owner_user_id = public.get_my_workspace_owner())
+```
 
-### Bloqueio de rotas sensíveis
-Adicionar `beforeLoad` (ou guard via `useEffect` + redirect) nas seguintes rotas — se `role === 'agent'`, redireciona para `/inbox`:
-- `_authenticated.settings.team.tsx`
-- `_authenticated.settings.whatsapp.tsx`
-- `_authenticated.settings.billing.tsx`
-- `_authenticated.settings.workspace.tsx`
-- `_authenticated.super-admin.*` (todas)
+Resultado: agente logado lê/escreve nos dados do manager dele. Os inserts continuam usando `owner_user_id = get_my_workspace_owner()` para que dados criados por agentes pertençam ao workspace do manager (e não ao próprio agente).
 
-`/settings/profile` continua acessível para Agente (ele precisa editar o próprio perfil).
+Tabelas afetadas: `contacts`, `messages`, `whatsapp_instances`, `kanban_columns`, `appointments`. Atualizo todas as policies "Users can ..." e as guards "owner guard ...".
 
-### Tela `/settings/team` (mock)
-Manter o mock como está nesta entrega — só adicionar uma nota visual no topo: "Em breve: convite real por email". O escopo de tornar essa tela funcional fica para a próxima iteração.
+## Backend — server functions (admin)
 
-## Arquivos tocados
+Novo arquivo `src/lib/team.functions.ts`:
 
-- **migration nova** (criar via ferramenta de schema)
-- `src/hooks/use-role.tsx` (novo)
-- `src/components/app-sidebar.tsx` (filtrar itens)
-- `src/routes/_authenticated.settings.team.tsx` (guard + nota)
-- `src/routes/_authenticated.settings.whatsapp.tsx` (guard)
-- `src/routes/_authenticated.settings.billing.tsx` (guard)
-- `src/routes/_authenticated.settings.workspace.tsx` (guard)
-- `src/routes/_authenticated.super-admin.tsx` (guard no layout — protege todas as filhas)
+| Função | O que faz | Quem pode chamar |
+|---|---|---|
+| `listTeamMembers` | Lista membros do workspace do usuário logado (join `workspace_members` + `auth.users` + `user_roles`) | Manager |
+| `createTeamMember` | Recebe `{ email, password, fullName, role }`. Usa `supabaseAdmin.auth.admin.createUser({ email_confirm: true })`, insere em `user_roles` (role = 'agent' ou 'manager'), insere em `workspace_members` apontando para o workspace do chamador | Manager |
+| `updateTeamMember` | Toggle ativo/inativo, mudar role | Manager |
+| `removeTeamMember` | Remove de `workspace_members` + `user_roles` (não deleta `auth.users` para preservar histórico) | Manager |
+
+Todas usam `requireSupabaseAuth` + checam `has_role(auth.uid(), 'manager')` no início. Bloqueia agente tentar bypassar.
+
+## Frontend
+
+**`src/routes/_authenticated.settings.team.tsx`** — substituir o mock `SEED` por dados reais via `useQuery(listTeamMembers)`. Modal de convite ganha campos: email, senha temporária, nome, role. Submit → `useMutation(createTeamMember)`. Toggle/remover usam `updateTeamMember`/`removeTeamMember`. Toast de sucesso, invalidate da query.
+
+**`src/hooks/use-role.tsx`** — já existe. Continua válido.
+
+**Sidebar e guards** — não muda. Já bloqueia agente nas rotas sensíveis.
+
+**Decisão sobre criação:** email + senha temporária (sem dependência de email infra). Manager entrega a senha pro agente; agente loga e (futuramente) pode trocar via `/settings/profile`.
 
 ## Validação
 
-1. Usuário existente loga → vira manager via backfill → vê tudo igual hoje.
-2. Inserir manualmente no banco `INSERT INTO user_roles (user_id, role) VALUES ('<id>', 'agent')` + remover o role manager dele → usuário deslogou+logou → não vê mais "Configurações" e "Super Admin" na sidebar; navegar manualmente para `/settings/team` redireciona para `/inbox`.
-3. Novo signup → trigger cria role 'manager' → vê tudo.
+1. Manager (você) loga → vê tudo igual + Equipe lista só você.
+2. Em /settings/team → "Convidar membro" → cria `agente@x.com / 123456 / Agente` → aparece na lista.
+3. Logout, login como `agente@x.com` → sidebar enxuta (sem Configurações/Super Admin) → Inbox carrega **as mesmas conversas que o manager vê** → manda mensagem → manager vê (mesmo workspace).
+4. Manager remove o agente → próxima requisição do agente devolve dados vazios (RLS bloqueia).
 
-## O que NÃO muda
+## Arquivos tocados
 
-Inbox, Kanban, drag-and-drop, chat, mensagens, realtime, dashboard, conexão WhatsApp Evolution, webhook handler — tudo intocado.
+**Migration nova** (`supabase/manual/20260514160000_workspace_members.sql`):
+- cria `workspace_members` + RLS
+- cria `get_my_workspace_owner()`
+- backfill: managers existentes
+- **substitui todas as policies** de `contacts`, `messages`, `whatsapp_instances`, `kanban_columns`, `appointments` para usar `get_my_workspace_owner()`
+
+**Frontend:**
+- `src/lib/team.functions.ts` (novo) — server functions admin
+- `src/routes/_authenticated.settings.team.tsx` — UI real, sem SEED
+
+**O que NÃO muda:**
+- Inbox, Kanban, drag-and-drop, chat, realtime, dashboard, conexão Evolution, webhook, schedule — código continua usando `owner_user_id`. As queries que hoje filtram por `auth.uid()` no client passam a ser cobertas pela RLS reescrita (RLS faz o filtro). Onde o client passa `owner_user_id: user.id` em inserts, troco para `get_my_workspace_owner()` via uma função SQL ou faço o insert via server function que resolve o owner.
+
+## Pontos de atenção
+
+1. **Inserts no client com `owner_user_id: user.id`**: hoje muitos componentes (new-contact-modal, schedule-modal, etc.) inserem com `owner_user_id: user.id`. Para um agente isso violaria a RLS. Solução simples: a nova RLS de INSERT aceita `owner_user_id IN (auth.uid(), get_my_workspace_owner())` — agente que envia o próprio uid falha, mas o client passa a usar `get_my_workspace_owner()`. Vou criar um helper React `useWorkspaceOwnerId()` que cacheia esse valor e atualizar os ~6 componentes que fazem insert.
+
+2. **`evolution.functions.ts`**: o `getOrCreateRow` usa `auth.uid()` como `owner_user_id` da `whatsapp_instances`. Como WhatsApp é manager-only (já bloqueado por guard), esse caminho só roda para manager → `auth.uid() === get_my_workspace_owner()`. Sem mudança.
+
+3. **Realtime**: os filtros `postgres_changes` filtram por `owner_user_id=eq.${user.id}`. Trocar por `eq.${workspaceOwnerId}` nos componentes de inbox/messages.
+
+## Escopo fora desta entrega
+
+- Convite por email com link mágico (fica para depois — exige infra de email)
+- Atribuição de conversa a agente específico (`assignedAgent` ainda mock)
+- Tela do agente trocar a própria senha (já existe? checar `/settings/profile`)
