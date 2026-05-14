@@ -97,6 +97,24 @@ export function formatHM(d: Date) {
 export function toDateInput(d: Date) {
   return `${d.getFullYear()}-${String(d.getMonth() + 1).padStart(2, "0")}-${String(d.getDate()).padStart(2, "0")}`;
 }
+export function formatDateBR(iso: string): string {
+  const m = iso.match(/^(\d{4})-(\d{2})-(\d{2})$/);
+  if (!m) return iso;
+  return `${m[3]}/${m[2]}/${m[1]}`;
+}
+export function parseDateBR(str: string): string | null {
+  const m = str.match(/^(\d{1,2})\/(\d{1,2})\/(\d{2,4})$/);
+  if (!m) return null;
+  let [, d, mo, y] = m;
+  let yr = parseInt(y, 10);
+  if (yr < 100) yr += 2000;
+  const dn = parseInt(d, 10);
+  const mn = parseInt(mo, 10);
+  if (mn < 1 || mn > 12 || dn < 1 || dn > 31) return null;
+  const dt = new Date(Date.UTC(yr, mn - 1, dn));
+  if (dt.getUTCDate() !== dn || dt.getUTCMonth() !== mn - 1) return null;
+  return `${yr}-${String(mn).padStart(2, "0")}-${String(dn).padStart(2, "0")}`;
+}
 export function fromDateTimeInput(date: string, time: string): Date {
   const [y, mo, da] = date.split("-").map(Number);
   const [h, mi] = time.split(":").map(Number);

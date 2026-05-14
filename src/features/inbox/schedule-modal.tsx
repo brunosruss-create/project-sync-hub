@@ -10,7 +10,20 @@ import {
   formatDuration,
   type Service,
 } from "@/features/services/data";
-import { MOCK_AGENTS, toDateInput, fromDateTimeInput } from "@/features/schedule/data";
+import {
+  MOCK_AGENTS,
+  toDateInput,
+  fromDateTimeInput,
+  formatDateBR,
+  parseDateBR,
+} from "@/features/schedule/data";
+
+interface BusyAppt {
+  id: string;
+  starts_at: string;
+  ends_at: string;
+  agent_id: string | null;
+}
 
 interface Props {
   contact: ContactCard;
@@ -45,20 +58,78 @@ export function ScheduleModal({
   const [notes, setNotes] = React.useState("");
   const [notifyWa, setNotifyWa] = React.useState(true);
   const [submitting, setSubmitting] = React.useState(false);
+  const [dateInput, setDateInput] = React.useState<string>(formatDateBR(toDateInput(new Date())));
+  const [dateError, setDateError] = React.useState<string | null>(null);
+  const [busy, setBusy] = React.useState<BusyAppt[]>([]);
 
   React.useEffect(() => {
     if (!open) return;
+    const today = toDateInput(new Date());
     setSelected(new Set(preselectedServiceIds ?? []));
-    setDate(toDateInput(new Date()));
+    setDate(today);
+    setDateInput(formatDateBR(today));
+    setDateError(null);
     setTime("09:00");
     setNotes("");
     setNotifyWa(true);
     setSubmitting(false);
   }, [open, preselectedServiceIds]);
 
+  React.useEffect(() => {
+    if (!open || !user?.id || !date) return;
+    const [y, mo, da] = date.split("-").map(Number);
+    const dayStart = new Date(y, (mo ?? 1) - 1, da ?? 1, 0, 0, 0, 0);
+    const dayEnd = new Date(dayStart.getTime() + 24 * 60 * 60_000);
+    let cancelled = false;
+    const load = async () => {
+      const { data, error } = await supabase
+        .from("appointments")
+        .select("id, starts_at, ends_at, agent_id, status")
+        .eq("owner_user_id", user.id)
+        .gte("starts_at", dayStart.toISOString())
+        .lt("starts_at", dayEnd.toISOString())
+        .neq("status", "cancelled");
+      if (cancelled) return;
+      if (error) {
+        console.warn("[schedule-modal] busy fetch:", error.message);
+        setBusy([]);
+        return;
+      }
+      setBusy((data ?? []) as BusyAppt[]);
+    };
+    load();
+    const ch = supabase
+      .channel(`schedule-modal-busy-${date}`)
+      .on("postgres_changes", { event: "*", schema: "public", table: "appointments" }, () => load())
+      .subscribe();
+    return () => {
+      cancelled = true;
+      supabase.removeChannel(ch);
+    };
+  }, [open, user?.id, date]);
+
   const selectedServices = services.filter((s) => selected.has(s.id));
   const totalMin = selectedServices.reduce((a, s) => a + s.duration_minutes, 0);
   const totalCents = selectedServices.reduce((a, s) => a + s.price_cents, 0);
+  const blockMin = Math.max(totalMin, 30);
+
+  const slotState = React.useMemo(() => {
+    const map = new Map<string, { busy: boolean; past: boolean }>();
+    const now = Date.now();
+    for (const slot of SLOTS) {
+      const start = fromDateTimeInput(date, slot);
+      const end = new Date(start.getTime() + blockMin * 60_000);
+      const past = start.getTime() < now;
+      const isBusy = busy.some((b) => {
+        if (b.agent_id !== agentId) return false;
+        const bs = new Date(b.starts_at).getTime();
+        const be = new Date(b.ends_at).getTime();
+        return start.getTime() < be && bs < end.getTime();
+      });
+      map.set(slot, { busy: isBusy, past });
+    }
+    return map;
+  }, [busy, agentId, date, blockMin]);
 
   const toggle = (id: string) => {
     setSelected((prev) => {
@@ -76,7 +147,10 @@ export function ScheduleModal({
     return `Olá ${contact.name.split(" ")[0]}! Seu agendamento foi confirmado para ${dateStr} às ${time}. Serviços: ${list}. Até lá! 👋`;
   }, [date, time, selectedServices, contact.name]);
 
-  const canSubmit = selectedServices.length > 0 && !!date && !!time && !!agentId && !submitting;
+  const currentSlotState = slotState.get(time);
+  const slotUnavailable = !!(currentSlotState?.busy || currentSlotState?.past);
+  const canSubmit =
+    selectedServices.length > 0 && !!date && !!time && !!agentId && !submitting && !dateError && !slotUnavailable;
 
   const submit = async () => {
     if (!canSubmit) return;
@@ -86,12 +160,27 @@ export function ScheduleModal({
     const dateStr = startsAt.toLocaleDateString("pt-BR", { day: "2-digit", month: "2-digit" });
     const sysContent = `Agendado para ${dateStr} às ${time} — ${selectedServices.map((s) => s.name).join(", ")}`;
 
-    // 1. Insert appointment (RLS exige owner_user_id)
     if (!user?.id) {
       toast.error("Sessão expirada. Faça login novamente.");
       setSubmitting(false);
       return;
     }
+
+    // Re-check conflict at submit (race condition guard)
+    const { data: conflictRows } = await supabase
+      .from("appointments")
+      .select("id, starts_at, ends_at")
+      .eq("owner_user_id", user.id)
+      .eq("agent_id", agentId)
+      .neq("status", "cancelled")
+      .lt("starts_at", endsAt.toISOString())
+      .gt("ends_at", startsAt.toISOString());
+    if (conflictRows && conflictRows.length > 0) {
+      toast.error("Esse horário ficou indisponível, escolha outro.");
+      setSubmitting(false);
+      return;
+    }
+
     const { data: appt, error: apptErr } = await supabase
       .from("appointments")
       .insert({
@@ -293,17 +382,46 @@ export function ScheduleModal({
           </FieldGroup>
 
           {/* Date */}
-          <FieldGroup label="Data" icon={<CalendarDays size={12} />}>
+          <FieldGroup label="Data (DD/MM/AAAA)" icon={<CalendarDays size={12} />}>
             <input
-              type="date"
-              value={date}
-              onChange={(e) => setDate(e.target.value)}
-              style={inputStyle}
+              type="text"
+              inputMode="numeric"
+              placeholder="DD/MM/AAAA"
+              value={dateInput}
+              onChange={(e) => {
+                let v = e.target.value.replace(/[^\d/]/g, "");
+                // auto insert slashes
+                const digits = v.replace(/\D/g, "").slice(0, 8);
+                if (digits.length >= 5) v = `${digits.slice(0, 2)}/${digits.slice(2, 4)}/${digits.slice(4)}`;
+                else if (digits.length >= 3) v = `${digits.slice(0, 2)}/${digits.slice(2)}`;
+                else v = digits;
+                setDateInput(v);
+                const iso = parseDateBR(v);
+                if (iso) {
+                  setDate(iso);
+                  setDateError(null);
+                } else if (v.length === 10) {
+                  setDateError("Data inválida");
+                } else {
+                  setDateError(null);
+                }
+              }}
+              style={{
+                ...inputStyle,
+                borderColor: dateError ? "var(--danger, #EF4444)" : "var(--border-strong)",
+              }}
             />
+            {dateError && (
+              <span style={{ fontSize: 11, color: "var(--danger, #EF4444)" }}>{dateError}</span>
+            )}
           </FieldGroup>
 
           {/* Time slots */}
-          <FieldGroup label="Horário" icon={<Clock size={12} />}>
+          <FieldGroup
+            label="Horário"
+            icon={<Clock size={12} />}
+            hint={busy.filter((b) => b.agent_id === agentId).length > 0 ? "Riscado = ocupado" : undefined}
+          >
             <div
               style={{
                 display: "grid",
@@ -315,11 +433,17 @@ export function ScheduleModal({
             >
               {SLOTS.map((slot) => {
                 const on = slot === time;
+                const st = slotState.get(slot);
+                const disabled = !!(st?.busy || st?.past);
                 return (
                   <button
                     key={slot}
                     type="button"
-                    onClick={() => setTime(slot)}
+                    onClick={() => !disabled && setTime(slot)}
+                    disabled={disabled}
+                    title={
+                      st?.busy ? "Ocupado" : st?.past ? "Horário passado" : undefined
+                    }
                     style={{
                       height: 28,
                       borderRadius: 4,
@@ -327,11 +451,20 @@ export function ScheduleModal({
                       borderColor: on ? "var(--brand-400)" : "var(--border)",
                       background: on
                         ? "color-mix(in oklab, var(--brand-400) 18%, var(--bg-surface))"
-                        : "var(--bg-base)",
-                      color: on ? "var(--brand-400)" : "var(--text-primary)",
+                        : disabled
+                          ? "var(--bg-overlay)"
+                          : "var(--bg-base)",
+                      color: on
+                        ? "var(--brand-400)"
+                        : disabled
+                          ? "var(--text-muted)"
+                          : "var(--text-primary)",
                       fontSize: 11,
                       fontWeight: on ? 600 : 500,
                       fontFamily: "ui-monospace, monospace",
+                      textDecoration: disabled ? "line-through" : "none",
+                      cursor: disabled ? "not-allowed" : "pointer",
+                      opacity: disabled ? 0.6 : 1,
                     }}
                   >
                     {slot}
@@ -340,6 +473,7 @@ export function ScheduleModal({
               })}
             </div>
           </FieldGroup>
+
 
           {/* Agent */}
           <FieldGroup label="Profissional" icon={<User size={12} />}>

@@ -1,55 +1,66 @@
+## Problemas
 
-## Diagnóstico
+**1. Data em formato EUA (MM/DD/YYYY)** — o `<input type="date">` herda o formato do SO/locale do navegador. No modal mostra "05/13/2026" em vez de "13/05/2026".
 
-Mapeei todos os pontos de contato entre WhatsApp/Inbox e Agenda:
-
-1. **Inbox → Modal de agendamento** (`src/features/inbox/conversation-panel.tsx:684`) — abre `ScheduleModal` passando o contato do WhatsApp.
-2. **ScheduleModal** (`src/features/inbox/schedule-modal.tsx`) — ao confirmar:
-   - Insere em `appointments` (linha 88).
-   - Insere em `appointment_services` (linha 105).
-   - Atualiza `contacts.kanban_column = 'scheduled'` (linha 119).
-   - Insere mensagens (system + outbound) em `messages`.
-3. **Agenda** (`src/routes/_authenticated.schedule.tsx:93-140`) — no mount faz `select` em `appointments` e `contacts`. Se vier vazio, mantém `MOCK_APPOINTMENTS`.
-
-### Causa raiz (confirmada pelas imagens enviadas)
-
-A imagem 1 mostra o contato “Cauê” na coluna **AGENDADO** (= o `kanban_column` foi atualizado e a mensagem do sistema foi enviada), mas a imagem 2 mostra a agenda exibindo apenas os 4 mocks (“Sem contato” / Alinhamento, Diagnóstico, Troca de Pasti, Polimento). Isso prova que o `select` em `appointments` voltou vazio — ou seja, o `insert` em `appointments` está falhando silenciosamente. O modal só faz `console.warn` no erro e mesmo assim mostra `toast.success`, então o usuário acredita que foi agendado.
-
-Causas prováveis para o insert falhar:
-- **`agent_id` inválido**: o modal usa `MOCK_AGENTS[0].id = "a1"` (string fixa). Se a coluna `agent_id` for `uuid` ou tiver FK para `agents`, o insert é rejeitado.
-- **`service_id` inválido**: usa ids do `SEED_SERVICES` (mock), idem.
-- **RLS sem `owner_user_id`**: o insert não envia `owner_user_id`, então qualquer policy `with check (owner_user_id = auth.uid())` recusa.
-- A Agenda **filtra por `agentFilter`** que só conhece `MOCK_AGENTS` (`a1..a4`); se algum dia o insert passar com `agent_id` real (uuid), a agenda também esconde porque o id não está no filtro.
-- Não há `realtime` nem evento entre Inbox e Agenda — mesmo se o insert funcionar, a agenda só recarrega no mount.
+**2. Sem visibilidade de horários ocupados** — o grid de horários no `ScheduleModal` mostra todos os slots iguais. O atendente não sabe se 09:00 já está ocupado pela agenda. Hoje a única validação é "agente selecionado", e nem isso bloqueia conflito.
 
 ## Plano de correção
 
-### 1. Migration Supabase para `appointments` + `appointment_services`
-Criar (ou reconciliar) o schema com `owner_user_id uuid not null default auth.uid()`, `contact_id uuid` (FK opcional), `agent_id text`, `service_id text` (text, para aceitar ids semente), demais campos atuais e RLS:
-- `enable row level security`
-- policy `select/insert/update/delete using (owner_user_id = auth.uid())` em ambas tabelas.
-- Index em `(owner_user_id, starts_at)`.
+### A. Data em formato BR no modal (`src/features/inbox/schedule-modal.tsx`)
 
-### 2. `schedule-modal.tsx` — robustez
-- Enviar `owner_user_id: user.id` no insert de `appointments` e nos demais inserts.
-- **Não** mostrar toast de sucesso se `apptErr` existir; mostrar `toast.error` com a mensagem e abortar o restante (kanban/mensagens). Isso evita o falso positivo atual.
-- Disparar `window.dispatchEvent(new CustomEvent("zf:appointment-created", { detail: { appointment } }))` ao final.
+- Substituir o `<input type="date">` nativo por um seletor controlado que sempre exibe **DD/MM/AAAA**, independente do locale do SO.
+- Implementação: input de texto com máscara `dd/mm/aaaa` + botão calendário (lucide `CalendarDays`) que abre um popover com um pequeno date-picker mensal já existente no projeto (mesmo estilo da `/schedule`). Mantém o estado interno em ISO `yyyy-mm-dd` para alimentar `fromDateTimeInput`.
+- Adicionar helpers em `src/features/schedule/data.ts`:
+  - `formatDateBR(iso)` → `"13/05/2026"`
+  - `parseDateBR(str)` → ISO `yyyy-mm-dd` (com validação dia/mês, ano 2 ou 4 dígitos)
+- Aplicar o mesmo componente onde houver outros `<input type="date">` no fluxo de agenda (varredura: `schedule-modal`, `_authenticated.schedule.tsx` se houver).
 
-### 3. `_authenticated.schedule.tsx` — refletir dados reais
-- Iniciar `items` como `[]` (não `MOCK_APPOINTMENTS`); usar mocks apenas como fallback dev quando `import.meta.env.DEV` e nada veio do banco — para produção a agenda deve ser fiel ao banco.
-- Remover o filtro por `agentFilter` para appointments cujo `agent_id` não está no conjunto (ou: não filtrar quando o set contém todos os agentes conhecidos / aceitar agent_id desconhecido como “visível”).
-- Ouvir o evento `zf:appointment-created` e o canal Realtime de `appointments` (`postgres_changes` filtrado por `owner_user_id`) para atualizar `items` sem precisar recarregar a página.
-- Garantir reload ao focar a aba (`visibilitychange`).
+### B. Mostrar disponibilidade no grid de horários
 
-### 4. Verificação
-- Após aplicar: agendar pelo WhatsApp → esperar toast de sucesso → ir em /schedule e ver o card aparecer imediatamente (via evento) e persistido após reload.
-- Se o insert ainda falhar, o toast de erro mostrará a causa exata (RLS, FK, tipo) para correção pontual.
+Hoje os slots renderizados em `SLOTS` (08:00–19:30 a cada 30min) ignoram a agenda. Vamos:
 
-## Detalhes técnicos
+1. **Buscar appointments do dia + agente selecionado** quando o modal abre ou quando `date`/`agentId` mudam:
+   ```ts
+   supabase.from("appointments")
+     .select("id, starts_at, ends_at, agent_id, status")
+     .gte("starts_at", startOfDayISO)
+     .lt("starts_at", endOfDayISO)
+     .neq("status", "cancelled")
+     .eq("owner_user_id", user.id)
+   ```
+   Filtrar localmente por `agent_id === agentId` (mantém visíveis também os de outros agentes para UX futura, mas o bloqueio considera apenas o agente selecionado).
 
-- Arquivos a editar:
-  - `supabase/migrations/<timestamp>_appointments.sql` (novo)
-  - `src/features/inbox/schedule-modal.tsx`
-  - `src/routes/_authenticated.schedule.tsx`
-- Sem mudanças em UI/visual — apenas dados, RLS e sincronização.
-- Não toca em nada de WhatsApp/Evolution/áudio.
+2. **Calcular ocupação por slot**: para cada slot de 30min, marcar como `busy` se houver overlap com qualquer appointment ativo do agente. Levar em conta a duração total dos serviços selecionados (`totalMin`) — um slot fica `busy` se qualquer 30min dentro de `[slot, slot + totalMin)` colidir.
+
+3. **Renderização do slot**:
+   - Disponível: estilo atual.
+   - Ocupado: fundo `--bg-overlay`, texto riscado (`text-decoration: line-through`), `cursor: not-allowed`, `disabled`, tooltip "Ocupado — {nome do contato}".
+   - Passado (hoje, slot < agora): mesmo tratamento "indisponível", tooltip "Horário passado".
+   - Selecionado: igual hoje.
+
+4. **Validação no submit**: re-checar conflito antes do insert; se conflitar, `toast.error("Esse horário ficou indisponível, escolha outro.")` e abortar.
+
+5. **Atualização em tempo real**: assinar canal Realtime `appointments` enquanto o modal estiver aberto, para refletir mudanças feitas em outra aba/dispositivo.
+
+### C. Mapeamento dos pontos de integração revisados
+
+- `src/features/inbox/schedule-modal.tsx` — único modal de criação via WhatsApp; recebe ajustes A + B.
+- `src/features/inbox/conversation-panel.tsx` (linha 684 / 1860) — abre o modal e faz uma operação de update em `appointments`; sem alteração funcional, mas validar que ainda recebe `onScheduled`.
+- `src/routes/_authenticated.schedule.tsx` — fonte da verdade de leitura/insert/update/delete; já dispara realtime. Sem mudança lógica, apenas garantir que o helper `formatDateBR` seja usado em qualquer label visível de data (varredura).
+- `src/routes/_authenticated.reports.tsx` — apenas leitura agregada; não precisa de mudança.
+
+### D. Detalhes técnicos
+
+- Reutilizar `fromDateTimeInput` / `toDateInput` (que já produzem ISO local sem timezone shift) para evitar o bug clássico de `new Date("2026-05-13")` virar dia anterior em UTC.
+- Validação BR: regex `^(\d{2})\/(\d{2})\/(\d{4})$`, validar `Date.UTC` round-trip para rejeitar 31/02 etc.
+- Slot busy detection: `slotStart < apt.ends_at && apt.starts_at < slotEnd` (mesma fórmula do helper `overlap`).
+- Performance: cache em `useMemo` com chave `[date, agentId, appointments.length]`.
+
+### E. Critérios de aceite
+
+1. Abrir o modal → data exibe `13/05/2026` mesmo com PC em locale en-US.
+2. Digitar `32/13/2026` → input rejeita (borda vermelha + mensagem inline).
+3. Criar appointment 09:00–10:00 para Ana Silva → reabrir modal no mesmo dia/agente → slots 09:00 e 09:30 aparecem riscados/desabilitados com tooltip.
+4. Mudar agente para Bruno Lima → slots voltam a ficar livres.
+5. Tentar submit num slot que ficou ocupado entre a abertura e o clique → toast de erro, sem insert.
+6. Hoje às 14:30 → slots 08:00–14:00 desabilitados como "passado".
