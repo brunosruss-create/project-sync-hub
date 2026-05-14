@@ -186,15 +186,17 @@ export async function getDashboardData(period: DashPeriod, currentUserId?: strin
     .sort((a, b) => b.count - a.count)
     .slice(0, 5);
 
-  // Agents online (sent_by in last 15min)
+  // Agents online: any profile with outbound message in last 5min, plus the current user (always online).
   const recentAgentIds = new Set<string>();
-  const since15 = Date.now() - 15 * 60 * 1000;
+  const since5 = Date.now() - 5 * 60 * 1000;
   for (const m of msgs as any[]) {
-    if (m.direction === "outbound" && m.sent_by && new Date(m.created_at).getTime() >= since15) {
+    if (m.direction === "outbound" && m.sent_by && new Date(m.created_at).getTime() >= since5) {
       recentAgentIds.add(m.sent_by);
     }
   }
-  const allAgentIds = new Set<string>();
+  if (currentUserId) recentAgentIds.add(currentUserId);
+
+  const allAgentIds = new Set<string>(recentAgentIds);
   for (const m of msgs as any[]) if (m.direction === "outbound" && m.sent_by) allAgentIds.add(m.sent_by);
   const agentIdsArr = Array.from(allAgentIds);
   const profiles = agentIdsArr.length
