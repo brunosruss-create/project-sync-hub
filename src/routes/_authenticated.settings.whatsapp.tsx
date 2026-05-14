@@ -18,6 +18,7 @@ import {
   refreshInstanceStatus,
   disconnectInstance,
   registerWebhook,
+  syncMyWhatsAppAvatar,
 } from "@/lib/evolution.functions";
 
 export const Route = createFileRoute("/_authenticated/settings/whatsapp")({
@@ -33,6 +34,22 @@ function WhatsAppPage() {
   const doRefresh = useServerFn(refreshInstanceStatus);
   const doDisconnect = useServerFn(disconnectInstance);
   const doRegisterWebhook = useServerFn(registerWebhook);
+  const doSyncAvatar = useServerFn(syncMyWhatsAppAvatar);
+
+  const syncAvatar = useMutation({
+    mutationFn: () => doSyncAvatar({ data: undefined as never }),
+    onSuccess: (r: any) => {
+      if (r?.changed) {
+        toast.success("Foto do WhatsApp sincronizada");
+        qc.invalidateQueries({ queryKey: ["profile"] });
+      } else if (r?.reason === "no_phone") {
+        toast.error("Conecte o WhatsApp primeiro");
+      } else {
+        toast.message("Nenhuma foto encontrada no WhatsApp");
+      }
+    },
+    onError: (e: any) => toast.error(e?.message ?? "Falha ao sincronizar"),
+  });
 
   const [confirmDc, setConfirmDc] = React.useState(false);
   const [now, setNow] = React.useState(Date.now());
@@ -250,7 +267,14 @@ function WhatsAppPage() {
         )}
 
         {status === "connected" && (
-          <div className="flex justify-end" style={{ marginTop: 16 }}>
+          <div className="flex justify-end" style={{ marginTop: 16, gap: 8 }}>
+            <button
+              style={buttonSecondary}
+              disabled={syncAvatar.isPending}
+              onClick={() => syncAvatar.mutate()}
+            >
+              {syncAvatar.isPending ? "Sincronizando…" : "Sincronizar foto do WhatsApp"}
+            </button>
             <button style={buttonDanger} onClick={() => setConfirmDc(true)}>
               Desconectar
             </button>

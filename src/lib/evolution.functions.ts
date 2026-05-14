@@ -450,6 +450,23 @@ export const refreshContactAvatar = createServerFn({ method: "POST" })
     return { url: contact.avatar_url ?? null, changed: false };
   });
 
+export const syncMyWhatsAppAvatar = createServerFn({ method: "POST" })
+  .middleware([requireSupabaseAuth])
+  .handler(async ({ context }) => {
+    const name = instanceNameForOwner(context.userId);
+    const { data: inst } = await supabaseAdmin
+      .from("whatsapp_instances")
+      .select("phone_number,status")
+      .eq("instance_name", name)
+      .maybeSingle();
+    const phone = inst?.phone_number ? String(inst.phone_number).replace(/\D/g, "") : null;
+    if (!phone) return { url: null as string | null, changed: false, reason: "no_phone" as const };
+    const url = await tryFetchProfilePicture(name, phone);
+    if (!url) return { url: null, changed: false, reason: "not_found" as const };
+    await supabaseAdmin.from("profiles").update({ avatar_url: url }).eq("id", context.userId);
+    return { url, changed: true, reason: "ok" as const };
+  });
+
 // ===================== MEDIA =====================
 
 const sendMediaInput = z.object({
