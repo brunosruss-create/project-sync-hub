@@ -200,14 +200,15 @@ export const Route = createFileRoute("/api/public/evolution/$instanceId")({
               const pushName = m?.pushName ?? null;
 
               // ---- detectar mídia
-              const detected = detectMediaNode(m?.message);
-              if (m?.messageType || detected) {
-                console.log("[evolution upsert] msg type", {
-                  messageType: m?.messageType ?? null,
-                  detected: detected?.kind ?? null,
-                  msgKeys: m?.message && typeof m.message === "object" ? Object.keys(m.message) : null,
-                });
-              }
+              const detected =
+                detectMediaNode(m?.message) ??
+                detectFromMessageType(m?.messageType, m?.message);
+              console.log("[evolution upsert] msg type", {
+                messageType: m?.messageType ?? null,
+                detected: detected?.kind ?? null,
+                msgKeys: m?.message && typeof m.message === "object" ? Object.keys(m.message) : null,
+                topKeys: Object.keys(m ?? {}),
+              });
               let mediaType: "text" | MediaKind = "text";
               let mediaUrl: string | null = null;
               let mediaMime: string | null = null;
