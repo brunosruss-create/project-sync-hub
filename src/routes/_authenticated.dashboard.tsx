@@ -129,34 +129,7 @@ function Dashboard() {
             {loading ? (
               <Skeleton h={240} />
             ) : (
-              <div className="flex items-center gap-3">
-                <ResponsiveContainer width="50%" height={180}>
-                  <PieChart>
-                    <Pie
-                      data={kanban}
-                      dataKey="value"
-                      innerRadius={40}
-                      outerRadius={70}
-                      paddingAngle={2}
-                    >
-                      {kanban.map((k) => (
-                        <Cell key={k.name} fill={k.color} stroke="var(--bg-surface)" />
-                      ))}
-                    </Pie>
-                  </PieChart>
-                </ResponsiveContainer>
-                <ul className="flex flex-col flex-1" style={{ gap: 6 }}>
-                  {kanban.map((k) => (
-                    <li key={k.name} className="flex items-center justify-between" style={{ fontSize: 12 }}>
-                      <span className="flex items-center gap-2">
-                        <span style={{ width: 8, height: 8, borderRadius: 2, background: k.color }} />
-                        {k.name}
-                      </span>
-                      <span style={{ fontWeight: 600 }}>{k.value}</span>
-                    </li>
-                  ))}
-                </ul>
-              </div>
+              <KanbanDistribution data={kanban} />
             )}
           </ChartCard>
         </div>
