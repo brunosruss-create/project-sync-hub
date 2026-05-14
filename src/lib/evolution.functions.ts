@@ -283,9 +283,22 @@ export const refreshInstanceStatus = createServerFn({ method: "POST" })
       const list: any = await evo.fetchInstances(name);
       const inst = Array.isArray(list) ? list[0] : list?.[0] ?? list;
       const data = inst?.instance ?? inst;
-      phone = data?.owner?.split?.("@")?.[0] ?? data?.number ?? data?.profileName?.number ?? null;
-      profile = data?.profileName ?? data?.profilename ?? null;
-    } catch {}
+      const ownerRaw: string | undefined =
+        data?.ownerJid ?? data?.owner ?? data?.wuid ?? data?.user?.id;
+      phone = ownerRaw ? String(ownerRaw).split("@")[0].split(":")[0] : (data?.number ?? null);
+      profile = data?.profileName ?? data?.profilename ?? data?.pushName ?? null;
+      const picUrl: string | null =
+        data?.profilePicUrl ?? data?.profilePictureUrl ?? data?.profile_pic_url ?? null;
+      if (picUrl && typeof picUrl === "string" && picUrl.startsWith("http")) {
+        try {
+          await supabaseAdmin.from("profiles").update({ avatar_url: picUrl }).eq("id", context.userId);
+        } catch (e: any) {
+          console.warn("[evolution] update profile avatar:", e?.message);
+        }
+      }
+    } catch (e: any) {
+      console.warn("[evolution] fetchInstances:", e?.message);
+    }
 
     const qrExpiresAt = row.qr_expires_at ? new Date(row.qr_expires_at).getTime() : 0;
     const qrExpired = !qrExpiresAt || qrExpiresAt <= Date.now();
