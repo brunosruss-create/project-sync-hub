@@ -24,6 +24,7 @@ import { type ContactCard as Contact, formatRelative, initials } from "./data";
 import { ContactAvatar } from "./contact-avatar";
 import { supabase } from "@/integrations/supabase/client";
 import { useAuth } from "@/hooks/use-auth";
+import { useProfile } from "@/hooks/use-profile";
 import { toast } from "sonner";
 import { useServerFn } from "@tanstack/react-start";
 import { sendWhatsAppMessage, refreshContactAvatar, sendWhatsAppMedia, sendWhatsAppAudio, reactToMessage, deleteMessageForEveryone, editMessage } from "@/lib/evolution.functions";
