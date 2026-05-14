@@ -123,6 +123,17 @@ function WhatsAppPage() {
     });
   }, [status, expiresAt, secondsLeft, doRefresh, qc]);
 
+  // Auto-sincroniza foto do WhatsApp na primeira vez que conecta sem avatar
+  const autoSyncedRef = React.useRef(false);
+  React.useEffect(() => {
+    if (autoSyncedRef.current) return;
+    if (status !== "connected") return;
+    if (profileQ.isLoading) return;
+    if (profileQ.data?.avatar_url) return;
+    autoSyncedRef.current = true;
+    syncAvatar.mutate();
+  }, [status, profileQ.data?.avatar_url, profileQ.isLoading]);
+
   const connect = useMutation({
     mutationFn: () => doConnect({ data: undefined as never }),
     onSuccess: (result) => {
