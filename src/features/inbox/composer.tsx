@@ -585,7 +585,7 @@ export function Composer({ draft, setDraft, taRef, onSend, onClosePanel, onSendA
           <button
             type="button"
             aria-label="Anexar"
-            onClick={() => { setShowEmoji(false); setShowAttachMenu((v) => !v); }}
+            onClick={() => { setShowEmoji(false); setShowAttachMenu(false); openFilePicker({ accept: "image/*,video/*,.pdf,.doc,.docx,.xls,.xlsx,.ppt,.pptx,.txt,.zip,.rar,.csv", multiple: true }); }}
             style={iconBtn}
             onMouseEnter={(e) => (e.currentTarget.style.color = "var(--text-primary)")}
             onMouseLeave={(e) => (e.currentTarget.style.color = "var(--text-muted)")}
