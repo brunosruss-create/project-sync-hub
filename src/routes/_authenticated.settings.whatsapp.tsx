@@ -38,6 +38,9 @@ function WhatsAppPage() {
   const doDisconnect = useServerFn(disconnectInstance);
   const doRegisterWebhook = useServerFn(registerWebhook);
   const doSyncAvatar = useServerFn(syncMyWhatsAppAvatar);
+  const doUpdateAvatar = useServerFn(updateMyWhatsAppAvatar);
+  const profileQ = useProfile();
+  const fileRef = React.useRef<HTMLInputElement | null>(null);
 
   const syncAvatar = useMutation({
     mutationFn: () => doSyncAvatar({ data: undefined as never }),
@@ -52,6 +55,27 @@ function WhatsAppPage() {
       }
     },
     onError: (e: any) => toast.error(e?.message ?? "Falha ao sincronizar"),
+  });
+
+  const changeAvatar = useMutation({
+    mutationFn: async (file: File) => {
+      if (!profileQ.data?.id) throw new Error("Perfil não carregado");
+      if (file.size > 2 * 1024 * 1024) throw new Error("Imagem deve ter até 2 MB");
+      if (!/^image\/(jpeg|jpg|png|webp)$/i.test(file.type)) throw new Error("Use JPG, PNG ou WEBP");
+      const ext = (file.name.split(".").pop() || "jpg").toLowerCase();
+      const path = `avatars/${profileQ.data.id}-${Date.now()}.${ext}`;
+      const { error: upErr } = await supabase.storage
+        .from("chat-media")
+        .upload(path, file, { contentType: file.type, upsert: true });
+      if (upErr) throw new Error(upErr.message);
+      const { data: pub } = supabase.storage.from("chat-media").getPublicUrl(path);
+      return doUpdateAvatar({ data: { url: pub.publicUrl } });
+    },
+    onSuccess: () => {
+      toast.success("Foto atualizada no WhatsApp");
+      qc.invalidateQueries({ queryKey: ["profile"] });
+    },
+    onError: (e: any) => toast.error(e?.message ?? "Falha ao trocar foto"),
   });
 
   const [confirmDc, setConfirmDc] = React.useState(false);
