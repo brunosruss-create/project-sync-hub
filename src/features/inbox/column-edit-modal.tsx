@@ -2,6 +2,7 @@ import * as React from "react";
 import { X, Loader2, Columns3 } from "lucide-react";
 import { supabase } from "@/integrations/supabase/client";
 import { useAuth } from "@/hooks/use-auth";
+import { useWorkspaceOwnerId } from "@/hooks/use-workspace-owner";
 import { notify } from "@/lib/notify";
 import {
   type KanbanColumnDef,
@@ -28,6 +29,7 @@ export function ColumnEditModal({
   onSaved,
 }: Props) {
   const { user } = useAuth();
+  const { workspaceOwnerId } = useWorkspaceOwnerId();
   const [label, setLabel] = React.useState("");
   const [emoji, setEmoji] = React.useState("📌");
   const [color, setColor] = React.useState("#6B7280");
@@ -104,7 +106,7 @@ export function ColumnEditModal({
     const { data, error } = await supabase
       .from("kanban_columns")
       .insert({
-        owner_user_id: user.id,
+        owner_user_id: workspaceOwnerId,
         slug,
         label: finalLabel,
         emoji,

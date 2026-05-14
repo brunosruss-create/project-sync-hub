@@ -3,6 +3,7 @@ import { X, Check, CalendarDays, Clock, User, MessageCircle } from "lucide-react
 import { toast } from "sonner";
 import { supabase } from "@/integrations/supabase/client";
 import { useAuth } from "@/hooks/use-auth";
+import { useWorkspaceOwnerId } from "@/hooks/use-workspace-owner";
 import { type ContactCard } from "./data";
 import {
   SEED_SERVICES,
@@ -50,6 +51,7 @@ export function ScheduleModal({
   onScheduled,
 }: Props) {
   const { user } = useAuth();
+  const { workspaceOwnerId } = useWorkspaceOwnerId();
   const [services, setServices] = React.useState<Service[]>([]);
 
   // Carrega serviços reais do banco (fallback para SEED apenas se DB vazio).
@@ -119,7 +121,7 @@ export function ScheduleModal({
       const { data, error } = await supabase
         .from("appointments")
         .select("id, starts_at, ends_at, agent_id, status")
-        .eq("owner_user_id", user.id)
+        .eq("owner_user_id", workspaceOwnerId)
         .gte("starts_at", dayStart.toISOString())
         .lt("starts_at", dayEnd.toISOString())
         .neq("status", "cancelled");
@@ -204,7 +206,7 @@ export function ScheduleModal({
     const { data: conflictRows } = await supabase
       .from("appointments")
       .select("id, starts_at, ends_at")
-      .eq("owner_user_id", user.id)
+      .eq("owner_user_id", workspaceOwnerId)
       .eq("agent_id", agentId)
       .neq("status", "cancelled")
       .lt("starts_at", endsAt.toISOString())
@@ -234,7 +236,7 @@ export function ScheduleModal({
     const { data: appt, error: apptErr } = await supabase
       .from("appointments")
       .insert({
-        owner_user_id: user.id,
+        owner_user_id: workspaceOwnerId,
         contact_id: contact.id,
         agent_id: agentId,
         service_id: selectedServices[0]?.id ?? null,
@@ -259,7 +261,7 @@ export function ScheduleModal({
       const { error: svcErr } = await supabase.from("appointment_services").insert(
         selectedServices.map((s) => ({
           appointment_id: appt.id,
-          owner_user_id: user.id,
+          owner_user_id: workspaceOwnerId,
           service_id: s.id,
           price_cents: s.price_cents,
           duration_minutes: s.duration_minutes,
@@ -283,7 +285,7 @@ export function ScheduleModal({
 
     // 4. System message in chat
     await supabase.from("messages").insert({
-      owner_user_id: user?.id ?? null,
+      owner_user_id: workspaceOwnerId,
       contact_id: contact.id,
       direction: "system",
       content: sysContent,
@@ -295,7 +297,7 @@ export function ScheduleModal({
     // 5. Outbound confirmation message (intent)
     if (notifyWa) {
       await supabase.from("messages").insert({
-        owner_user_id: user?.id ?? null,
+        owner_user_id: workspaceOwnerId,
         contact_id: contact.id,
         direction: "outbound",
         content: previewMessage,

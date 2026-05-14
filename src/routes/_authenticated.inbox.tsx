@@ -31,6 +31,7 @@ import { EditContactModal } from "@/features/inbox/edit-contact-modal";
 import { ScheduleModal } from "@/features/inbox/schedule-modal";
 import { supabase } from "@/integrations/supabase/client";
 import { useAuth } from "@/hooks/use-auth";
+import { useWorkspaceOwnerId } from "@/hooks/use-workspace-owner";
 
 export const Route = createFileRoute("/_authenticated/inbox")({
   component: InboxPage,
@@ -40,6 +41,7 @@ type Filter = "all" | "mine" | "unassigned";
 
 function InboxPage() {
   const { user } = useAuth();
+  const { workspaceOwnerId } = useWorkspaceOwnerId();
   const [contacts, setContacts] = React.useState<Contact[]>([]);
   const [isLoadingContacts, setIsLoadingContacts] = React.useState(true);
   const [loadError, setLoadError] = React.useState<string | null>(null);
@@ -67,12 +69,13 @@ function InboxPage() {
 
   // Verifica status do WhatsApp
   React.useEffect(() => {
+    if (!workspaceOwnerId) return;
     let cancelled = false;
     (async () => {
       const { data, error } = await supabase
         .from("whatsapp_instances")
         .select("status")
-        .eq("owner_user_id", user?.id)
+        .eq("owner_user_id", workspaceOwnerId)
         .order("updated_at", { ascending: false })
         .limit(1);
       if (cancelled) return;
@@ -86,11 +89,11 @@ function InboxPage() {
     return () => {
       cancelled = true;
     };
-  }, [user?.id]);
+  }, [workspaceOwnerId]);
 
   // Carrega contatos reais do Supabase + realtime + refetch on focus.
   React.useEffect(() => {
-    if (!user?.id) return;
+    if (!workspaceOwnerId) return;
     let cancelled = false;
 
     const mapRow = (r: any): Contact => ({
@@ -144,10 +147,10 @@ function InboxPage() {
 
     // Realtime: novas mensagens chegando via webhook atualizam o inbox sem refresh
     const channel = supabase
-      .channel(`inbox-contacts-${user.id}`)
+      .channel(`inbox-contacts-${workspaceOwnerId}`)
       .on(
         "postgres_changes",
-        { event: "INSERT", schema: "public", table: "contacts", filter: `owner_user_id=eq.${user.id}` },
+        { event: "INSERT", schema: "public", table: "contacts", filter: `owner_user_id=eq.${workspaceOwnerId}` },
         (payload) => {
           const row = mapRow(payload.new as any);
           setContacts((prev) =>
@@ -161,7 +164,7 @@ function InboxPage() {
       )
       .on(
         "postgres_changes",
-        { event: "UPDATE", schema: "public", table: "contacts", filter: `owner_user_id=eq.${user.id}` },
+        { event: "UPDATE", schema: "public", table: "contacts", filter: `owner_user_id=eq.${workspaceOwnerId}` },
         (payload) => {
           const row = mapRow(payload.new as any);
           setContacts((prev) => {
@@ -173,7 +176,7 @@ function InboxPage() {
       )
       .on(
         "postgres_changes",
-        { event: "INSERT", schema: "public", table: "messages", filter: `owner_user_id=eq.${user.id}` },
+        { event: "INSERT", schema: "public", table: "messages", filter: `owner_user_id=eq.${workspaceOwnerId}` },
         () => {
           // Fallback: garante consistência mesmo se o UPDATE em contacts vier sem RLS visível
           void load();
@@ -189,7 +192,7 @@ function InboxPage() {
       window.removeEventListener("focus", onFocus);
       void supabase.removeChannel(channel);
     };
-  }, [user?.id]);
+  }, [workspaceOwnerId]);
 
   // Listener para Cmd+K → "Novo contato" + tecla "N"
   React.useEffect(() => {
@@ -229,7 +232,7 @@ function InboxPage() {
 
   // Carrega colunas do Kanban + realtime + seed automático
   React.useEffect(() => {
-    if (!user?.id) return;
+    if (!workspaceOwnerId) return;
     let cancelled = false;
 
     const mapCol = (r: any): KanbanColumnDef => ({
@@ -244,7 +247,7 @@ function InboxPage() {
 
     const seedDefaults = async () => {
       const rows = DEFAULT_COLUMNS.map((c) => ({
-        owner_user_id: user.id,
+        owner_user_id: workspaceOwnerId,
         slug: c.slug,
         label: c.label,
         emoji: c.emoji,
@@ -289,10 +292,10 @@ function InboxPage() {
     void load();
 
     const channel = supabase
-      .channel(`inbox-columns-${user.id}`)
+      .channel(`inbox-columns-${workspaceOwnerId}`)
       .on(
         "postgres_changes",
-        { event: "*", schema: "public", table: "kanban_columns", filter: `owner_user_id=eq.${user.id}` },
+        { event: "*", schema: "public", table: "kanban_columns", filter: `owner_user_id=eq.${workspaceOwnerId}` },
         () => void load(),
       )
       .subscribe();
@@ -301,7 +304,7 @@ function InboxPage() {
       cancelled = true;
       void supabase.removeChannel(channel);
     };
-  }, [user?.id]);
+  }, [workspaceOwnerId]);
 
   const handleMenuAction = React.useCallback(async (a: CardMenuAction) => {
     const c = a.contact;

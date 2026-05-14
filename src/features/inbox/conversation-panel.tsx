@@ -24,6 +24,7 @@ import { type ContactCard as Contact, formatRelative, initials } from "./data";
 import { ContactAvatar } from "./contact-avatar";
 import { supabase } from "@/integrations/supabase/client";
 import { useAuth } from "@/hooks/use-auth";
+import { useWorkspaceOwnerId } from "@/hooks/use-workspace-owner";
 import { useProfile } from "@/hooks/use-profile";
 import { toast } from "sonner";
 import { useServerFn } from "@tanstack/react-start";
@@ -113,6 +114,7 @@ export function ConversationPanel({
   onContactUpdate?: (contactId: string, patch: Partial<Contact>) => void;
 }) {
   const { user } = useAuth();
+  const { workspaceOwnerId } = useWorkspaceOwnerId();
   const sendViaEvolution = useServerFn(sendWhatsAppMessage);
   const sendMediaFn = useServerFn(sendWhatsAppMedia);
   const sendAudioFn = useServerFn(sendWhatsAppAudio);
@@ -318,7 +320,7 @@ export function ConversationPanel({
       // se Evolution não estiver configurado/conectado, persiste só no banco
       if (/Evolution|conectar|conectado|configurad/i.test(msg)) {
         const { error } = await supabase.from("messages").insert({
-          owner_user_id: user?.id ?? null,
+          owner_user_id: workspaceOwnerId,
           contact_id: contact.id,
           direction: "outbound",
           content: text,
