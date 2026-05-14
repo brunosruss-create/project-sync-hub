@@ -365,8 +365,6 @@ function WhatsAppPage() {
                     : "—"
                 }
               />
-              <Info label="Instância" value={instance?.instance_name ?? "—"} />
-              <Info label="Webhook" value={instance?.webhook_url ?? "—"} />
             </div>
           </div>
         ) : (
@@ -390,44 +388,6 @@ function WhatsAppPage() {
           </div>
         )}
       </div>
-
-      <div style={{ marginTop: 24 }}>
-        <FieldGroup label="Integração">
-          <div style={card}>
-            <p style={{ fontSize: 13, color: "var(--text-muted)" }}>
-              Conexão via Evolution API (self-hosted no Railway). Mensagens recebidas
-              caem direto no Inbox; envios feitos pelo Inbox vão pelo seu número conectado.
-            </p>
-            {instance && (
-              <div className="flex flex-wrap items-center justify-between" style={{ gap: 12, marginTop: 16 }}>
-                <div style={{ minWidth: 0 }}>
-                  <div style={{ fontSize: 11, color: "var(--text-muted)", marginBottom: 4 }}>URL ativa do webhook</div>
-                  <div style={{ fontSize: 12, color: "var(--text-primary)", wordBreak: "break-all" }}>
-                    {instance.webhook_url ?? "Ainda não registrada"}
-                  </div>
-                </div>
-                <button
-                  style={buttonSecondary}
-                  disabled={register.isPending}
-                  onClick={() => register.mutate()}
-                >
-                  {register.isPending ? "Registrando…" : "Re-registrar neste ambiente"}
-                </button>
-              </div>
-            )}
-          </div>
-        </FieldGroup>
-      </div>
-
-      <a
-        href="https://doc.evolution-api.com"
-        target="_blank"
-        rel="noreferrer"
-        className="inline-flex items-center gap-2"
-        style={{ fontSize: 13, color: "var(--brand-400)", marginTop: 8 }}
-      >
-        <ExternalLink size={14} /> Documentação Evolution API
-      </a>
 
       {confirmDc && (
         <div
