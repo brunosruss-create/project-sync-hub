@@ -280,9 +280,10 @@ export function Composer({ draft, setDraft, taRef, onSend, onClosePanel, onSendA
       return;
     }
     setSendingAudio(true);
+    const blob = audioPreview.blob;
+    discardAudioPreview();
     try {
-      await onSendAudio(audioPreview.blob);
-      discardAudioPreview();
+      await onSendAudio(blob);
     } catch (e: any) {
       toast.error(e?.message ?? "Falha ao enviar áudio.");
     } finally {
