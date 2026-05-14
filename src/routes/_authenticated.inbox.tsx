@@ -310,7 +310,11 @@ function InboxPage() {
 
   const handleMenuAction = React.useCallback(async (a: CardMenuAction) => {
     const c = a.contact;
-    if (a.type === "edit" || a.type === "add-tag" || a.type === "assign") {
+    if (a.type === "assign") {
+      setTransferTarget(c);
+      return;
+    }
+    if (a.type === "edit" || a.type === "add-tag") {
       setEditTarget(c);
       return;
     }
