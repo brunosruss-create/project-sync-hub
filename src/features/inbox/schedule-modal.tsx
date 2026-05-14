@@ -159,6 +159,23 @@ export function ScheduleModal({
     }
 
     toast.success(`Agendamento criado! 📅 ${dateStr} às ${time}`);
+    if (typeof window !== "undefined") {
+      window.dispatchEvent(
+        new CustomEvent("zf:appointment-created", {
+          detail: {
+            id: appt.id,
+            contact_id: contact.id,
+            agent_id: agentId,
+            service_id: selectedServices[0]?.id ?? null,
+            starts_at: startsAt.toISOString(),
+            ends_at: endsAt.toISOString(),
+            status: "scheduled",
+            notes,
+            notify_whatsapp: notifyWa,
+          },
+        }),
+      );
+    }
     onScheduled?.({ startsAt, serviceIds: selectedServices.map((s) => s.id) });
     onClose();
   };
