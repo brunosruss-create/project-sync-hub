@@ -50,7 +50,40 @@ export function ScheduleModal({
   onScheduled,
 }: Props) {
   const { user } = useAuth();
-  const [services] = React.useState<Service[]>(SEED_SERVICES.filter((s) => s.status === "active"));
+  const [services, setServices] = React.useState<Service[]>([]);
+
+  // Carrega serviços reais do banco (fallback para SEED apenas se DB vazio).
+  React.useEffect(() => {
+    if (!open) return;
+    let cancelled = false;
+    (async () => {
+      const { data, error } = await supabase
+        .from("services")
+        .select("id,category_id,name,description,price_cents,duration_minutes,emoji,color,status,created_at")
+        .eq("status", "active")
+        .order("created_at", { ascending: true });
+      if (cancelled) return;
+      if (error || !data || data.length === 0) {
+        setServices(SEED_SERVICES.filter((s) => s.status === "active"));
+        return;
+      }
+      setServices(
+        data.map((s: any) => ({
+          id: s.id,
+          category_id: s.category_id ?? "",
+          name: s.name,
+          description: s.description ?? "",
+          price_cents: s.price_cents ?? 0,
+          duration_minutes: s.duration_minutes ?? 30,
+          emoji: s.emoji ?? "🔧",
+          color: s.color ?? "#25C880",
+          status: (s.status ?? "active") as Service["status"],
+          created_at: s.created_at ? new Date(s.created_at) : new Date(),
+        })),
+      );
+    })();
+    return () => { cancelled = true; };
+  }, [open]);
   const [selected, setSelected] = React.useState<Set<string>>(new Set());
   const [date, setDate] = React.useState<string>(toDateInput(new Date()));
   const [time, setTime] = React.useState<string>("09:00");
