@@ -74,7 +74,7 @@ const COLUMN_FALLBACK: Record<string, { label: string; color: string }> = {
   urgent: { label: "Urgente", color: "#EF4444" },
 };
 
-export async function getDashboardData(period: DashPeriod): Promise<DashboardData> {
+export async function getDashboardData(period: DashPeriod, currentUserId?: string): Promise<DashboardData> {
   const { start, end, prevStart, prevEnd } = range(period);
   const todayStart = new Date(); todayStart.setHours(0, 0, 0, 0);
   const todayEnd = new Date(todayStart); todayEnd.setDate(todayStart.getDate() + 1);
