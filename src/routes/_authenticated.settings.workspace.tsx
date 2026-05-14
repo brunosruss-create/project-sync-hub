@@ -12,8 +12,14 @@ import {
   buttonSecondary,
 } from "@/features/settings/settings-layout";
 
+import { ManagerOnly } from "@/components/manager-only";
+
 export const Route = createFileRoute("/_authenticated/settings/workspace")({
-  component: WorkspacePage,
+  component: () => (
+    <ManagerOnly>
+      <WorkspacePage />
+    </ManagerOnly>
+  ),
 });
 
 const DAYS = [

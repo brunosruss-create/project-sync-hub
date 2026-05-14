@@ -22,8 +22,14 @@ import {
 import { supabase } from "@/integrations/supabase/client";
 import { useProfile } from "@/hooks/use-profile";
 
+import { ManagerOnly } from "@/components/manager-only";
+
 export const Route = createFileRoute("/_authenticated/settings/whatsapp")({
-  component: WhatsAppPage,
+  component: () => (
+    <ManagerOnly>
+      <WhatsAppPage />
+    </ManagerOnly>
+  ),
 });
 
 type Status = "connected" | "disconnected" | "pending" | "error";

@@ -9,8 +9,14 @@ import {
   card,
 } from "@/features/settings/settings-layout";
 
+import { ManagerOnly } from "@/components/manager-only";
+
 export const Route = createFileRoute("/_authenticated/settings/billing")({
-  component: BillingPage,
+  component: () => (
+    <ManagerOnly>
+      <BillingPage />
+    </ManagerOnly>
+  ),
 });
 
 type PlanKey = "trial" | "starter" | "pro" | "enterprise";
