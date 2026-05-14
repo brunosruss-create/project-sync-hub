@@ -470,6 +470,10 @@ function KanbanDistribution({ data }: { data: { name: string; value: number; col
             ))}
           </Pie>
           <Tooltip
+            allowEscapeViewBox={{ x: true, y: true }}
+            wrapperStyle={{ pointerEvents: "none", zIndex: 50 }}
+            offset={20}
+            position={undefined}
             content={({ active, payload }) => {
               if (!active || !payload?.length) return null;
               const item = payload[0] as { name: string; value: number };
