@@ -93,53 +93,51 @@ export function ForwardModal({ open, source, excludeContactId, onClose }: Props)
     });
   };
 
-  const handleSend = async () => {
+  const handleSend = () => {
     if (!source || selected.size === 0) return;
-    setSending(true);
-    let okCount = 0;
-    let failCount = 0;
-    for (const contactId of selected) {
-      try {
-        if (source.message_type === "text" || source.message_type === "system") {
-          const text = (source.content ?? "").trim();
-          if (!text) {
-            failCount++;
-            continue;
-          }
-          await sendText({ data: { contactId, text, quoted: undefined } });
-        } else if (source.message_type === "audio" && source.media_url) {
-          await sendAudio({ data: { contactId, url: source.media_url, quoted: undefined } });
-        } else if (
-          source.media_url &&
-          source.media_mime &&
-          (source.message_type === "image" ||
-            source.message_type === "video" ||
-            source.message_type === "document")
-        ) {
-          await sendMedia({
-            data: {
-              contactId,
-              url: source.media_url,
-              mime: source.media_mime,
-              name: source.media_name ?? "arquivo",
-              caption: source.content || undefined,
-              quoted: undefined,
-            },
-          });
-        } else {
-          failCount++;
-          continue;
-        }
-        okCount++;
-      } catch (e: any) {
-        failCount++;
-        console.warn("[forward] falhou:", e?.message ?? e);
-      }
-    }
-    setSending(false);
-    if (okCount > 0) toast.success(`Encaminhado para ${okCount} contato(s)`);
-    if (failCount > 0) toast.error(`Falha em ${failCount} envio(s)`);
+    const ids = Array.from(selected);
+    const total = ids.length;
+    // Fecha imediatamente — envio acontece em background (áudio/mídia podem demorar)
     onClose();
+    toast.message(`Encaminhando para ${total} contato(s)…`);
+
+    void (async () => {
+      const results = await Promise.allSettled(
+        ids.map(async (contactId) => {
+          if (source.message_type === "text" || source.message_type === "system") {
+            const text = (source.content ?? "").trim();
+            if (!text) throw new Error("vazio");
+            return sendText({ data: { contactId, text, quoted: undefined } });
+          }
+          if (source.message_type === "audio" && source.media_url) {
+            return sendAudio({ data: { contactId, url: source.media_url, quoted: undefined } });
+          }
+          if (
+            source.media_url &&
+            source.media_mime &&
+            (source.message_type === "image" ||
+              source.message_type === "video" ||
+              source.message_type === "document")
+          ) {
+            return sendMedia({
+              data: {
+                contactId,
+                url: source.media_url,
+                mime: source.media_mime,
+                name: source.media_name ?? "arquivo",
+                caption: source.content || undefined,
+                quoted: undefined,
+              },
+            });
+          }
+          throw new Error("tipo não suportado");
+        }),
+      );
+      const ok = results.filter((r) => r.status === "fulfilled").length;
+      const fail = total - ok;
+      if (ok > 0) toast.success(`Encaminhado para ${ok} contato(s)`);
+      if (fail > 0) toast.error(`Falha em ${fail} envio(s)`);
+    })();
   };
 
   if (!open || !source) return null;
