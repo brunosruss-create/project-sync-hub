@@ -223,33 +223,45 @@ export async function getDashboardData(period: DashPeriod, currentUserId?: strin
   });
 
 
-  // Top 5 serviços: usa appointments do período; se vazio, faz fallback para os últimos 30 dias
-  // para que o card sempre reflita o histórico real do sistema.
-  let svcSourceAppts = appts as any[];
-  if (svcSourceAppts.filter((a) => a.service_id).length === 0) {
+  // Top 5 serviços: agrega via appointment_services -> services do período.
+  // Fallback para últimos 30 dias caso o período esteja vazio.
+  const apptIdsPeriod = (appts as any[]).map((a) => a.id);
+  let asRows: any[] = [];
+  if (apptIdsPeriod.length) {
+    const { data } = await supabase
+      .from("appointment_services")
+      .select("appointment_id, services(name)")
+      .in("appointment_id", apptIdsPeriod as string[]);
+    asRows = (data ?? []) as any[];
+  }
+  if (asRows.length === 0) {
     const since30 = new Date(Date.now() - 30 * 24 * 3600 * 1000).toISOString();
-    const { data: fb } = await supabase
+    const { data: fbAppts } = await supabase
       .from("appointments")
-      .select("id,service_id,status,starts_at")
+      .select("id")
       .gte("starts_at", since30)
       .neq("status", "cancelled")
       .limit(5000);
-    svcSourceAppts = fb ?? [];
+    const ids = (fbAppts ?? []).map((r: any) => r.id);
+    if (ids.length) {
+      const { data } = await supabase
+        .from("appointment_services")
+        .select("appointment_id, services(name)")
+        .in("appointment_id", ids as string[]);
+      asRows = (data ?? []) as any[];
+    }
   }
-  const periodSvcIds = Array.from(new Set(svcSourceAppts.map((a: any) => a.service_id).filter(Boolean)));
-  const periodSvc = periodSvcIds.length
-    ? (await supabase.from("services").select("id,name").in("id", periodSvcIds as string[])).data ?? []
-    : [];
-  const periodSvcMap = new Map(periodSvc.map((s: any) => [s.id, s.name]));
   const svcCount = new Map<string, number>();
-  for (const a of svcSourceAppts) {
-    if (!a.service_id) continue;
-    svcCount.set(a.service_id, (svcCount.get(a.service_id) ?? 0) + 1);
+  for (const r of asRows) {
+    const nm = r.services?.name;
+    if (!nm) continue;
+    svcCount.set(nm, (svcCount.get(nm) ?? 0) + 1);
   }
   const topServices = Array.from(svcCount.entries())
-    .map(([id, count]) => ({ name: periodSvcMap.get(id) || "—", count }))
+    .map(([name, count]) => ({ name, count }))
     .sort((a, b) => b.count - a.count)
     .slice(0, 5);
+
 
   // Agents online: any profile with outbound message in last 5min, plus the current user (always online).
   const recentAgentIds = new Set<string>();
