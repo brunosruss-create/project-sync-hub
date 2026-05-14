@@ -70,7 +70,7 @@ async function ensureWebhook(name: string, webhookUrl: string, webhookSecret: st
         url: webhookUrl,
         headers: { "x-webhook-secret": webhookSecret },
         byEvents: false,
-        base64: false,
+        base64: true,
         events: WEBHOOK_EVENTS,
       },
     });
@@ -98,7 +98,7 @@ async function configureEvolutionInstance(name: string, webhookUrl: string, webh
         headers: { "x-webhook-secret": webhookSecret },
         events: WEBHOOK_EVENTS,
         webhookByEvents: false,
-        webhookBase64: false,
+        webhookBase64: true,
       },
     });
   } catch (e: any) {
@@ -249,7 +249,7 @@ export const registerWebhook = createServerFn({ method: "POST" })
         url: webhookUrl,
         headers: { "x-webhook-secret": row.webhook_secret as string },
         byEvents: false,
-        base64: false,
+        base64: true,
         events: WEBHOOK_EVENTS,
       },
     });
