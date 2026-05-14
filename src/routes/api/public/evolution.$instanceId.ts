@@ -46,6 +46,24 @@ function detectMediaNode(message: any, depth = 0): { kind: MediaKind; node: any 
   }
   return null;
 }
+
+function detectFromMessageType(messageType: string | null | undefined, message: any): { kind: MediaKind; node: any } | null {
+  if (!messageType) return null;
+  const t = String(messageType).toLowerCase();
+  if (t.includes("audio") || t.includes("ptt")) {
+    return { kind: "audio", node: message?.audioMessage ?? message?.pttMessage ?? message ?? {} };
+  }
+  if (t.includes("image") || t.includes("sticker")) {
+    return { kind: "image", node: message?.imageMessage ?? message?.stickerMessage ?? message ?? {} };
+  }
+  if (t.includes("video")) {
+    return { kind: "video", node: message?.videoMessage ?? message ?? {} };
+  }
+  if (t.includes("document")) {
+    return { kind: "document", node: message?.documentMessage ?? message ?? {} };
+  }
+  return null;
+}
 const KIND_LABEL: Record<MediaKind, string> = {
   image: "📷 Imagem", audio: "🎵 Áudio", video: "🎬 Vídeo", document: "📎 Documento",
 };
