@@ -1,49 +1,36 @@
-## Mudanças
+## Problemas
 
-### 1. Checks estilo WhatsApp em `MessageBubble` (`src/features/inbox/conversation-panel.tsx`)
+1. **Áudio recebido vira "[mídia]"** — o webhook da Evolution recebe o áudio mas armazena como mensagem de texto com preview `[mídia]`, em vez de salvar como `message_type: "audio"` com player.
+2. **Áudio enviado mostra a foto do contato** — o `AudioPlayer` no balão sempre usa o avatar do contato, mesmo quando a mensagem é minha (`isMe=true`).
 
-Hoje toda mensagem outbound mostra `<CheckCheck>` (dois checks), só mudando a cor quando `status === "read"`. Trocar por:
+## Causa
 
-- `status === "sent"` → `<Check size={13}>` (1 check cinza) — enviado mas não entregue
-- `status === "delivered"` → `<CheckCheck size={13}>` cinza — entregue ao aparelho
-- `status === "read"` → `<CheckCheck size={13}>` azul (`#34B7F1` / token `--info` se existir, senão hex direto pra combinar com WhatsApp)
+### Problema 1 — `src/routes/api/public/evolution.$instanceId.ts`
+- `detectMediaNode()` (linhas 21-32) só olha campos no nível raiz de `m.message`. A Evolution frequentemente embrulha áudios PTT do WhatsApp em wrappers como `ephemeralMessage.message.audioMessage`, `viewOnceMessage.message.audioMessage`, `viewOnceMessageV2.message.audioMessage` ou `messageContextInfo` — nesses casos retorna `null` e cai no caminho de texto, gerando o preview `[mídia]`.
+- Se a detecção funciona mas `downloadInboundMedia` falha (ex.: endpoint base64 da Evolution retorna vazio), o código mantém `mediaType="text"` e também grava `[mídia]`, perdendo a informação de que era áudio.
 
-Aplicar nos dois locais que renderizam o rodapé da bolha (bolha normal ~linha 689 e bolha de áudio ~linha 604). `Check` já precisa ser adicionado no import do `lucide-react`.
+### Problema 2 — `src/features/inbox/conversation-panel.tsx` (linhas 807-812)
+- O `<AudioPlayer>` recebe sempre `avatarName={contactName}` e `avatarUrl={contactAvatar}`. Não há ramificação para usar o avatar do usuário logado quando `isMe=true`.
 
-### 2. Hora real (HH:MM) no rodapé da mensagem
+## Correções
 
-Atualmente o rodapé chama `formatRelative(m.created_at)` → "há 23min". Trocar **somente dentro de `MessageBubble`** por uma função local que sempre devolve a hora:
+### 1. Detectar mais formatos de áudio inbound
+Em `src/routes/api/public/evolution.$instanceId.ts`:
+- Refatorar `detectMediaNode` para desembrulhar recursivamente envelopes comuns: `ephemeralMessage.message`, `viewOnceMessage.message`, `viewOnceMessageV2.message`, `viewOnceMessageV2Extension.message`, `editedMessage.message`, `protocolMessage.editedMessage`, ignorando `messageContextInfo`.
+- Reconhecer também `audioMessage` com flag `ptt: true` (já cai em `audio`, ok) e o campo legado `pttMessage`.
 
-```
-date.toLocaleTimeString("pt-BR", { hour: "2-digit", minute: "2-digit" })
-```
+### 2. Não regredir para texto quando detecção foi bem-sucedida
+Ainda em `evolution.$instanceId.ts`, no bloco `if (detected) { ... }`:
+- Mesmo se o download/upload falhar, definir `mediaType = detected.kind` e `mediaMime = declaredMime` para que a mensagem seja gravada como `audio` (sem `media_url`). Assim o preview vira "🎵 Áudio" em vez de "[mídia]" e dá pra reprocessar depois.
 
-Aplicar nos dois rodapés (texto/mídia + áudio).
+### 3. Avatar correto no player de áudio
+Em `src/features/inbox/conversation-panel.tsx`:
+- Importar `useProfile` de `@/hooks/use-profile` no componente que renderiza o balão de áudio (ou propagar via prop a partir do `ConversationPanel`).
+- No bloco do áudio (linhas 807-812), passar `avatarName` e `avatarUrl` condicionalmente:
+  - `isMe ? (profile?.full_name ?? "Eu") : contactName`
+  - `isMe ? (profile?.avatar_url ?? null) : (contactAvatar ?? null)`
 
-`formatRelative` continua sendo usado no card de contato (lista lateral), portanto **não** alterar a função em `data.ts`.
+## Fora do escopo
 
-### 3. Sincronizar status real do WhatsApp (webhook)
-
-Sem isso o status nunca passa de `"sent"` e os checks ficam estáticos. Em `src/routes/api/public/evolution.$instanceId.ts`, adicionar um branch para `event === "messages.update"`:
-
-- Para cada item, ler `key.id` (id da Evolution) e `status` (`DELIVERY_ACK` → `"delivered"`, `READ` / `PLAYED` → `"read"`).
-- Atualizar `messages` por `whatsapp_message_id = key.id` setando o novo status.
-- Só "subir" status (não regredir read → delivered).
-
-Para isso funcionar, também guardar o id retornado pela Evolution ao enviar:
-
-- Em `sendWhatsAppMessage` / `sendWhatsAppMedia` / `sendWhatsAppAudio` (`src/lib/evolution.functions.ts`), após o `evo.send...`, extrair `r?.key?.id` e gravar na coluna `whatsapp_message_id` no insert da `messages`.
-- Se a coluna não existir, criar via migração SQL (`alter table messages add column whatsapp_message_id text`, mais index único parcial). Confirmar com o usuário antes de rodar SQL — ou ele roda manualmente como das últimas vezes.
-
-A subscription realtime já refaz o mapeamento on `UPDATE`, então a UI atualiza sozinha.
-
-## Arquivos tocados
-
-- `src/features/inbox/conversation-panel.tsx` — ícones de check + hora HH:MM
-- `src/routes/api/public/evolution.$instanceId.ts` — handler `messages.update`
-- `src/lib/evolution.functions.ts` — salvar `whatsapp_message_id` no envio
-- SQL manual (você roda no Supabase SQL Editor): coluna `whatsapp_message_id` em `messages`
-
-## Pergunta antes de implementar
-
-A parte 3 (status real vindo do WhatsApp) exige rodar 1 SQL no Supabase. Quer que eu inclua tudo de uma vez ou prefere só as mudanças visuais (1 e 2) agora e o sync de status numa próxima rodada?
+- Não mexer no envio (composer, forward-modal) nem em outras mensagens além das duas correções acima.
+- Não alterar estilos/cores do balão de áudio.
