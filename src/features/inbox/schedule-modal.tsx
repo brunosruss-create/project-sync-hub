@@ -383,38 +383,75 @@ export function ScheduleModal({
 
           {/* Date */}
           <FieldGroup label="Data (DD/MM/AAAA)" icon={<CalendarDays size={12} />}>
-            <input
-              type="text"
-              inputMode="numeric"
-              placeholder="DD/MM/AAAA"
-              value={dateInput}
-              onChange={(e) => {
-                let v = e.target.value.replace(/[^\d/]/g, "");
-                // auto insert slashes
-                const digits = v.replace(/\D/g, "").slice(0, 8);
-                if (digits.length >= 5) v = `${digits.slice(0, 2)}/${digits.slice(2, 4)}/${digits.slice(4)}`;
-                else if (digits.length >= 3) v = `${digits.slice(0, 2)}/${digits.slice(2)}`;
-                else v = digits;
-                setDateInput(v);
-                const iso = parseDateBR(v);
-                if (iso) {
-                  setDate(iso);
-                  setDateError(null);
-                } else if (v.length === 10) {
-                  setDateError("Data inválida");
-                } else {
-                  setDateError(null);
-                }
-              }}
-              style={{
-                ...inputStyle,
-                borderColor: dateError ? "var(--danger, #EF4444)" : "var(--border-strong)",
-              }}
-            />
+            <div style={{ position: "relative" }}>
+              <input
+                type="text"
+                inputMode="numeric"
+                placeholder="DD/MM/AAAA"
+                value={dateInput}
+                onChange={(e) => {
+                  let v = e.target.value.replace(/[^\d/]/g, "");
+                  const digits = v.replace(/\D/g, "").slice(0, 8);
+                  if (digits.length >= 5) v = `${digits.slice(0, 2)}/${digits.slice(2, 4)}/${digits.slice(4)}`;
+                  else if (digits.length >= 3) v = `${digits.slice(0, 2)}/${digits.slice(2)}`;
+                  else v = digits;
+                  setDateInput(v);
+                  const iso = parseDateBR(v);
+                  if (iso) {
+                    setDate(iso);
+                    setDateError(null);
+                  } else if (v.length === 10) {
+                    setDateError("Data inválida");
+                  } else {
+                    setDateError(null);
+                  }
+                }}
+                style={{
+                  ...inputStyle,
+                  paddingRight: 36,
+                  borderColor: dateError ? "var(--danger, #EF4444)" : "var(--border-strong)",
+                }}
+              />
+              <button
+                type="button"
+                aria-label="Abrir calendário"
+                onClick={() => setCalendarOpen((v) => !v)}
+                style={{
+                  position: "absolute",
+                  right: 4,
+                  top: 4,
+                  width: 26,
+                  height: 26,
+                  display: "inline-flex",
+                  alignItems: "center",
+                  justifyContent: "center",
+                  borderRadius: 4,
+                  border: "none",
+                  background: "transparent",
+                  color: "var(--text-muted)",
+                  cursor: "pointer",
+                }}
+              >
+                <CalendarDays size={14} />
+              </button>
+              {calendarOpen && (
+                <MiniCalendar
+                  valueIso={date}
+                  onSelect={(iso) => {
+                    setDate(iso);
+                    setDateInput(formatDateBR(iso));
+                    setDateError(null);
+                    setCalendarOpen(false);
+                  }}
+                  onClose={() => setCalendarOpen(false)}
+                />
+              )}
+            </div>
             {dateError && (
               <span style={{ fontSize: 11, color: "var(--danger, #EF4444)" }}>{dateError}</span>
             )}
           </FieldGroup>
+
 
           {/* Time slots */}
           <FieldGroup
