@@ -222,21 +222,50 @@ export const Route = createFileRoute("/api/public/evolution/$instanceId")({
                 caption = detected.node?.caption ?? caption ?? "";
                 const declaredMime: string | null = detected.node?.mimetype ?? null;
                 const declaredName: string | null = detected.node?.fileName ?? null;
-                // Marca o tipo desde já — mesmo que o download falhe,
-                // a mensagem fica registrada como mídia (e não como texto "[mídia]").
                 mediaType = detected.kind;
                 mediaMime = declaredMime;
                 mediaName = declaredName;
-                try {
-                  const dl = await downloadInboundMedia(row.instance_name as string, m);
-                  if (dl) {
-                    const mime = dl.mimetype || declaredMime || "application/octet-stream";
+
+                // 1) Tenta base64 inline do webhook (Evolution com base64:true)
+                const inlineBase64: string | null =
+                  m?.message?.base64 ??
+                  detected.node?.base64 ??
+                  m?.base64 ??
+                  m?.media?.base64 ??
+                  null;
+
+                let buffer: Buffer | null = null;
+                let mime: string = declaredMime || "application/octet-stream";
+                let fileName: string | null = declaredName;
+
+                if (typeof inlineBase64 === "string" && inlineBase64.length > 0) {
+                  const clean = inlineBase64.includes(",") ? inlineBase64.split(",").pop()! : inlineBase64;
+                  buffer = Buffer.from(clean, "base64");
+                  console.log("[evolution upsert] base64 inline ok", { kind: detected.kind, bytes: buffer.length });
+                } else {
+                  // 2) Fallback: chama API getBase64FromMediaMessage
+                  try {
+                    const dl = await downloadInboundMedia(row.instance_name as string, m);
+                    if (dl) {
+                      buffer = dl.buffer;
+                      mime = dl.mimetype || mime;
+                      fileName = fileName || dl.fileName;
+                    } else {
+                      console.warn("[evolution upsert] downloadInboundMedia retornou null", { kind: detected.kind });
+                    }
+                  } catch (e: any) {
+                    console.error("[evolution upsert] download mídia falhou:", e?.message ?? e);
+                  }
+                }
+
+                if (buffer) {
+                  try {
                     const ext = extFromMime(mime, detected.kind === "audio" ? "ogg" : "bin");
-                    const fname = declaredName || dl.fileName || `${detected.kind}-${Date.now()}.${ext}`;
+                    const fname = fileName || `${detected.kind}-${Date.now()}.${ext}`;
                     const path = `${row.owner_user_id}/inbound-${Date.now()}-${crypto.randomUUID()}.${ext}`;
                     const { error: upErr } = await supabaseAdmin.storage
                       .from("chat-media")
-                      .upload(path, dl.buffer, { contentType: mime, upsert: false });
+                      .upload(path, buffer, { contentType: mime, upsert: false });
                     if (upErr) {
                       console.error("[evolution upsert] storage upload", { path, error: upErr.message });
                     } else {
@@ -245,11 +274,9 @@ export const Route = createFileRoute("/api/public/evolution/$instanceId")({
                       mediaMime = mime;
                       mediaName = fname;
                     }
-                  } else {
-                    console.warn("[evolution upsert] downloadInboundMedia retornou null", { kind: detected.kind });
+                  } catch (e: any) {
+                    console.error("[evolution upsert] storage exception:", e?.message ?? e);
                   }
-                } catch (e: any) {
-                  console.error("[evolution upsert] download mídia falhou:", e?.message ?? e);
                 }
               }
 
