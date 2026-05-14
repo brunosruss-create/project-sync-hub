@@ -79,7 +79,10 @@ export async function getDashboardData(period: DashPeriod, currentUserId?: strin
   const todayStart = new Date(); todayStart.setHours(0, 0, 0, 0);
   const todayEnd = new Date(todayStart); todayEnd.setDate(todayStart.getDate() + 1);
 
-  const [msgsRes, prevMsgsRes, apptsRes, prevApptsRes, todayApptsRes, contactsRes, columnsRes] = await Promise.all([
+  const nowIso = new Date().toISOString();
+  const since24hIso = new Date(Date.now() - 24 * 3600 * 1000).toISOString();
+
+  const [msgsRes, prevMsgsRes, apptsRes, prevApptsRes, upcomingRes, contactsRes, columnsRes, recentMsgsRes] = await Promise.all([
     supabase.from("messages").select("id,contact_id,direction,sent_by,created_at")
       .gte("created_at", start.toISOString()).lt("created_at", end.toISOString())
       .order("created_at", { ascending: true }).limit(10000),
@@ -89,18 +92,24 @@ export async function getDashboardData(period: DashPeriod, currentUserId?: strin
       .gte("starts_at", start.toISOString()).lt("starts_at", end.toISOString()).limit(5000),
     supabase.from("appointments").select("id,status,starts_at")
       .gte("starts_at", prevStart.toISOString()).lt("starts_at", prevEnd.toISOString()).limit(5000),
+    // Próximos agendamentos: do agora em diante, qualquer data, exceto cancelados.
     supabase.from("appointments").select("id,contact_id,service_id,starts_at,status")
-      .gte("starts_at", todayStart.toISOString()).lt("starts_at", todayEnd.toISOString())
-      .neq("status", "cancelled").order("starts_at", { ascending: true }).limit(20),
-    supabase.from("contacts").select("id,name,kanban_column,last_message,last_message_at,last_direction"),
+      .gte("starts_at", nowIso)
+      .neq("status", "cancelled").order("starts_at", { ascending: true }).limit(6),
+    supabase.from("contacts").select("id,name,kanban_column"),
     supabase.from("kanban_columns").select("slug,label,color,position").order("position", { ascending: true }),
+    // Mensagens das últimas 24h para detectar pendências por contato (independente de last_direction).
+    supabase.from("messages").select("contact_id,direction,created_at")
+      .gte("created_at", since24hIso).order("created_at", { ascending: true }).limit(10000),
   ]);
+
 
   const msgs = msgsRes.data ?? [];
   const prevMsgs = prevMsgsRes.data ?? [];
   const appts = apptsRes.data ?? [];
   const prevAppts = prevApptsRes.data ?? [];
-  const todayAppts = todayApptsRes.data ?? [];
+  const upcomingRows = upcomingRes.data ?? [];
+  const recentMsgs = recentMsgsRes.data ?? [];
   const contacts = contactsRes.data ?? [];
   const columns = columnsRes.data ?? [];
 
@@ -150,9 +159,9 @@ export async function getDashboardData(period: DashPeriod, currentUserId?: strin
     .sort((a, b) => a.pos - b.pos)
     .map(({ name, value, color }) => ({ name, value, color }));
 
-  // Upcoming appointments (today, future)
-  const apptServiceIds = Array.from(new Set(todayAppts.map((a: any) => a.service_id).filter(Boolean)));
-  const apptContactIds = Array.from(new Set(todayAppts.map((a: any) => a.contact_id).filter(Boolean)));
+  // Próximos agendamentos: do agora em diante (até 6 itens), independente do período selecionado.
+  const apptServiceIds = Array.from(new Set(upcomingRows.map((a: any) => a.service_id).filter(Boolean)));
+  const apptContactIds = Array.from(new Set(upcomingRows.map((a: any) => a.contact_id).filter(Boolean)));
   const [svcRes, ctRes] = await Promise.all([
     apptServiceIds.length
       ? supabase.from("services").select("id,name").in("id", apptServiceIds as string[])
@@ -163,21 +172,44 @@ export async function getDashboardData(period: DashPeriod, currentUserId?: strin
   ]);
   const svcMap = new Map((svcRes.data ?? []).map((s: any) => [s.id, s.name]));
   const ctMap = new Map((ctRes.data ?? []).map((c: any) => [c.id, c.name]));
-  const upcoming = todayAppts.slice(0, 6).map((a: any) => ({
-    id: a.id,
-    time: new Date(a.starts_at).toLocaleTimeString("pt-BR", { hour: "2-digit", minute: "2-digit" }),
-    client: ctMap.get(a.contact_id) || "—",
-    service: svcMap.get(a.service_id) || "—",
-  }));
+  const todayIso = new Date(); todayIso.setHours(0, 0, 0, 0);
+  const tomorrowIso = new Date(todayIso); tomorrowIso.setDate(todayIso.getDate() + 1);
+  const upcoming = upcomingRows.map((a: any) => {
+    const d = new Date(a.starts_at);
+    const isToday = d >= todayIso && d < tomorrowIso;
+    const time = isToday
+      ? d.toLocaleTimeString("pt-BR", { hour: "2-digit", minute: "2-digit" })
+      : d.toLocaleDateString("pt-BR", { day: "2-digit", month: "2-digit" }) + " " +
+        d.toLocaleTimeString("pt-BR", { hour: "2-digit", minute: "2-digit" });
+    return {
+      id: a.id,
+      time,
+      client: ctMap.get(a.contact_id) || "—",
+      service: svcMap.get(a.service_id) || "—",
+    };
+  });
 
-  // Top services in period
-  const periodSvcIds = Array.from(new Set(appts.map((a: any) => a.service_id).filter(Boolean)));
+
+  // Top 5 serviços: usa appointments do período; se vazio, faz fallback para os últimos 30 dias
+  // para que o card sempre reflita o histórico real do sistema.
+  let svcSourceAppts = appts as any[];
+  if (svcSourceAppts.filter((a) => a.service_id).length === 0) {
+    const since30 = new Date(Date.now() - 30 * 24 * 3600 * 1000).toISOString();
+    const { data: fb } = await supabase
+      .from("appointments")
+      .select("id,service_id,status,starts_at")
+      .gte("starts_at", since30)
+      .neq("status", "cancelled")
+      .limit(5000);
+    svcSourceAppts = fb ?? [];
+  }
+  const periodSvcIds = Array.from(new Set(svcSourceAppts.map((a: any) => a.service_id).filter(Boolean)));
   const periodSvc = periodSvcIds.length
     ? (await supabase.from("services").select("id,name").in("id", periodSvcIds as string[])).data ?? []
     : [];
   const periodSvcMap = new Map(periodSvc.map((s: any) => [s.id, s.name]));
   const svcCount = new Map<string, number>();
-  for (const a of appts as any[]) {
+  for (const a of svcSourceAppts) {
     if (!a.service_id) continue;
     svcCount.set(a.service_id, (svcCount.get(a.service_id) ?? 0) + 1);
   }
@@ -207,18 +239,55 @@ export async function getDashboardData(period: DashPeriod, currentUserId?: strin
     online: recentAgentIds.has(p.id),
   })).sort((a, b) => Number(b.online) - Number(a.online)).slice(0, 6);
 
-  // Urgent: last_direction inbound and last_message_at > 5min ago
+  // Atendimentos sem resposta há mais de 5 min:
+  // Para cada contato, considera a última mensagem das últimas 24h. Se for inbound e
+  // ocorreu há mais de 5min sem outbound posterior, é uma conversa pendente.
+  const lastByContact = new Map<string, { direction: string; created_at: string }>();
+  for (const m of recentMsgs as any[]) {
+    if (!m.contact_id) continue;
+    lastByContact.set(m.contact_id, { direction: m.direction, created_at: m.created_at });
+  }
   const fiveMinAgo = Date.now() - 5 * 60 * 1000;
-  const urgent = (contacts as any[])
-    .filter((c) => c.last_direction === "inbound" && c.last_message_at && new Date(c.last_message_at).getTime() < fiveMinAgo)
-    .map((c) => ({
-      id: c.id,
-      client: c.name || "—",
-      waiting: Math.max(1, Math.round((Date.now() - new Date(c.last_message_at).getTime()) / 60000)),
-      last: c.last_message || "",
+  const pendingIds: string[] = [];
+  const waitingByContact = new Map<string, number>();
+  for (const [cid, last] of lastByContact.entries()) {
+    if (last.direction !== "inbound") continue;
+    const t = new Date(last.created_at).getTime();
+    if (t >= fiveMinAgo) continue;
+    pendingIds.push(cid);
+    waitingByContact.set(cid, Math.max(1, Math.round((Date.now() - t) / 60000)));
+  }
+  const contactById = new Map((contacts as any[]).map((c) => [c.id, c.name]));
+  const missing = pendingIds.filter((id) => !contactById.has(id));
+  if (missing.length) {
+    const { data: extra } = await supabase.from("contacts").select("id,name").in("id", missing);
+    for (const c of extra ?? []) contactById.set((c as any).id, (c as any).name);
+  }
+  // Última mensagem inbound (texto curto) por contato pendente — busca rápida só desses ids.
+  const lastTextByContact = new Map<string, string>();
+  if (pendingIds.length) {
+    const { data: lastMsgs } = await supabase
+      .from("messages")
+      .select("contact_id,content,created_at,direction")
+      .in("contact_id", pendingIds)
+      .eq("direction", "inbound")
+      .order("created_at", { ascending: false })
+      .limit(pendingIds.length * 3);
+    for (const m of lastMsgs ?? []) {
+      const cid = (m as any).contact_id;
+      if (!lastTextByContact.has(cid)) lastTextByContact.set(cid, (m as any).content ?? "");
+    }
+  }
+  const urgent = pendingIds
+    .map((id) => ({
+      id,
+      client: contactById.get(id) || "—",
+      waiting: waitingByContact.get(id) ?? 0,
+      last: lastTextByContact.get(id) ?? "",
     }))
     .sort((a, b) => b.waiting - a.waiting)
     .slice(0, 5);
+
 
   return {
     kpis: {
