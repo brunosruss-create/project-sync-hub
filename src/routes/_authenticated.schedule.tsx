@@ -90,59 +90,97 @@ function SchedulePage() {
     };
   }, []);
 
-  // Try hydrate from supabase
-  React.useEffect(() => {
-    let cancelled = false;
-    (async () => {
-      const [{ data: appts }, { data: cts }] = await Promise.all([
-        supabase
-          .from("appointments")
-          .select(
-            "id,contact_id,service_id,agent_id,starts_at,ends_at,status,notes,notify_whatsapp",
-          ),
-        supabase.from("contacts").select("id,name,phone,tags,priority,kanban_column,last_message,last_message_at,is_unread,assigned_agent_id"),
-      ]);
-      if (cancelled) return;
-      if (appts && appts.length > 0) {
-        setItems(
-          appts.map((r: any) => ({
-            id: r.id,
-            contact_id: r.contact_id ?? "",
-            service_id: r.service_id ?? "",
-            agent_id: r.agent_id ?? "",
-            starts_at: new Date(r.starts_at),
-            ends_at: new Date(r.ends_at),
-            status: (r.status ?? "scheduled") as AppointmentStatus,
-            notes: r.notes ?? "",
-            notify_whatsapp: !!r.notify_whatsapp,
-          })),
-        );
-      }
-      if (cts && cts.length > 0) {
-        setContacts(
-          cts.map((r: any) => ({
-            id: r.id,
-            name: r.name,
-            phone: r.phone,
-            tags: Array.isArray(r.tags) ? r.tags : [],
-            priority: (r.priority === "urgent" ? "urgent" : "normal"),
-            kanban_column: (r.kanban_column ?? "waiting"),
-            lastMessage: r.last_message ?? "",
-            lastMessageAt: r.last_message_at ? new Date(r.last_message_at) : new Date(),
-            assignedAgent: r.assigned_agent_id ?? null,
-            isUnread: !!r.is_unread,
-          })),
-        );
-      }
-    })();
-    return () => {
-      cancelled = true;
-    };
-  }, []);
+  // Hydrate from supabase + realtime + cross-tab events
+  const mapAppt = React.useCallback((r: any): Appointment => ({
+    id: r.id,
+    contact_id: r.contact_id ?? "",
+    service_id: r.service_id ?? "",
+    agent_id: r.agent_id ?? "",
+    starts_at: new Date(r.starts_at),
+    ends_at: new Date(r.ends_at),
+    status: (r.status ?? "scheduled") as AppointmentStatus,
+    notes: r.notes ?? "",
+    notify_whatsapp: !!r.notify_whatsapp,
+  }), []);
 
+  const reload = React.useCallback(async () => {
+    const [{ data: appts, error: apptErr }, { data: cts }] = await Promise.all([
+      supabase
+        .from("appointments")
+        .select("id,contact_id,service_id,agent_id,starts_at,ends_at,status,notes,notify_whatsapp"),
+      supabase.from("contacts").select("id,name,phone,tags,priority,kanban_column,last_message,last_message_at,is_unread,assigned_agent_id"),
+    ]);
+    if (apptErr) console.warn("[schedule] select appointments:", apptErr.message);
+    setItems(
+      (appts && appts.length > 0)
+        ? appts.map(mapAppt)
+        : (import.meta.env.DEV ? MOCK_APPOINTMENTS : []),
+    );
+    if (cts && cts.length > 0) {
+      setContacts(
+        cts.map((r: any) => ({
+          id: r.id,
+          name: r.name,
+          phone: r.phone,
+          tags: Array.isArray(r.tags) ? r.tags : [],
+          priority: (r.priority === "urgent" ? "urgent" : "normal"),
+          kanban_column: (r.kanban_column ?? "waiting"),
+          lastMessage: r.last_message ?? "",
+          lastMessageAt: r.last_message_at ? new Date(r.last_message_at) : new Date(),
+          assignedAgent: r.assigned_agent_id ?? null,
+          isUnread: !!r.is_unread,
+        })),
+      );
+    }
+    setHydrated(true);
+  }, [mapAppt]);
+
+  React.useEffect(() => {
+    void reload();
+    // refresh ao voltar para a aba
+    const onVis = () => { if (document.visibilityState === "visible") void reload(); };
+    document.addEventListener("visibilitychange", onVis);
+    // evento disparado pelo ScheduleModal (Inbox/WhatsApp)
+    const onCreated = (e: Event) => {
+      const detail = (e as CustomEvent).detail;
+      if (!detail?.id) { void reload(); return; }
+      setItems((prev) => prev.some((a) => a.id === detail.id) ? prev : [...prev, mapAppt(detail)]);
+    };
+    window.addEventListener("zf:appointment-created", onCreated);
+    // realtime
+    const ch = supabase
+      .channel("appointments-rt")
+      .on("postgres_changes", { event: "*", schema: "public", table: "appointments" }, (payload) => {
+        if (payload.eventType === "DELETE") {
+          const id = (payload.old as any)?.id;
+          if (id) setItems((prev) => prev.filter((a) => a.id !== id));
+          return;
+        }
+        const row = payload.new as any;
+        if (!row) return;
+        setItems((prev) => {
+          const next = mapAppt(row);
+          const i = prev.findIndex((a) => a.id === next.id);
+          if (i === -1) return [...prev, next];
+          const copy = prev.slice();
+          copy[i] = next;
+          return copy;
+        });
+      })
+      .subscribe();
+    return () => {
+      document.removeEventListener("visibilitychange", onVis);
+      window.removeEventListener("zf:appointment-created", onCreated);
+      supabase.removeChannel(ch);
+    };
+  }, [reload, mapAppt]);
+
+  // Filtra por agente, mas SEMPRE mantém visíveis appointments cujo agent_id
+  // não é conhecido (ex.: criados via WhatsApp com id de agente fora do mock).
+  const knownAgents = React.useMemo(() => new Set(agents.map((a) => a.id)), [agents]);
   const filtered = React.useMemo(
-    () => items.filter((a) => agentFilter.has(a.agent_id)),
-    [items, agentFilter],
+    () => items.filter((a) => !knownAgents.has(a.agent_id) || agentFilter.has(a.agent_id)),
+    [items, agentFilter, knownAgents],
   );
 
   const open = openId ? items.find((i) => i.id === openId) ?? null : null;
