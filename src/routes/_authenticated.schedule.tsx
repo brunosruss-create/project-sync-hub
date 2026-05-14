@@ -132,7 +132,7 @@ function SchedulePage() {
         })),
       );
     }
-    setHydrated(true);
+    
   }, [mapAppt]);
 
   React.useEffect(() => {
