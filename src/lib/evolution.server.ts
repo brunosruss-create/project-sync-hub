@@ -192,6 +192,7 @@ export async function downloadInboundMedia(
   const tries: any[] = [
     { message: m },
     { message: { key: m?.key, message: m?.message } },
+    { key: m?.key, message: m?.message },
   ];
   for (const body of tries) {
     try {
