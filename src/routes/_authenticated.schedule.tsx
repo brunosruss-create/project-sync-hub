@@ -120,7 +120,7 @@ function SchedulePage() {
     id: r.id,
     contact_id: r.contact_id ?? "",
     service_id: r.service_id ?? "",
-    agent_id: r.agent_id ?? "",
+    agent_id: r.professional_id ?? r.agent_id ?? "",
     starts_at: new Date(r.starts_at),
     ends_at: new Date(r.ends_at),
     status: (r.status ?? "scheduled") as AppointmentStatus,
