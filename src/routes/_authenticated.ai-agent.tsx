@@ -97,6 +97,19 @@ function AIAgentPage() {
   const [tester, setTester] = React.useState(false);
   const [hydrated, setHydrated] = React.useState(false);
 
+  // === NOVOS CAMPOS COMPORTAMENTAIS ===
+  const [introduceByName, setIntroduceByName] = React.useState(true);
+  const [declareAsAi, setDeclareAsAi] = React.useState(false);
+  const [mentionBusiness, setMentionBusiness] = React.useState(true);
+  const [multipleProfs, setMultipleProfs] = React.useState(false);
+  const [pricePolicy, setPricePolicy] = React.useState<
+    "always" | "on_request" | "never"
+  >("on_request");
+  const [canReschedule, setCanReschedule] = React.useState(false);
+  const [canCancel, setCanCancel] = React.useState(false);
+  const [minAdvanceHours, setMinAdvanceHours] = React.useState(2);
+  const [maxQuestions, setMaxQuestions] = React.useState(1);
+
   // Hidrata form quando config chega
   React.useEffect(() => {
     const c = configQ.data?.config;
