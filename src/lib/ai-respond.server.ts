@@ -1,9 +1,32 @@
 import { supabaseAdmin } from "@/integrations/supabase/client.server";
 
-type WorkingHours = Record<
-  string,
-  { enabled: boolean; start: string; end: string }
->;
+type DayCfg = {
+  enabled?: boolean;
+  active?: boolean;
+  start?: string;
+  end?: string;
+};
+type WorkingHours = Record<string, DayCfg>;
+
+// Mapeia índice 0..6 (domingo=0) para as várias chaves aceitas.
+const DAY_KEYS: string[][] = [
+  ["sunday", "sun", "dom", "domingo"],
+  ["monday", "mon", "seg", "segunda", "segunda-feira"],
+  ["tuesday", "tue", "ter", "terca", "terça", "terca-feira", "terça-feira"],
+  ["wednesday", "wed", "qua", "quarta", "quarta-feira"],
+  ["thursday", "thu", "qui", "quinta", "quinta-feira"],
+  ["friday", "fri", "sex", "sexta", "sexta-feira"],
+  ["saturday", "sat", "sab", "sábado", "sabado"],
+];
+
+function parseHM(v: string | undefined, fallback: number): number {
+  if (!v || typeof v !== "string") return fallback;
+  const [hStr, mStr] = v.split(":");
+  const h = parseInt(hStr, 10);
+  const m = parseInt(mStr ?? "0", 10);
+  if (Number.isNaN(h)) return fallback;
+  return h * 60 + (Number.isNaN(m) ? 0 : m);
+}
 
 type PriceDisclosurePolicy = "always" | "on_request" | "never";
 
