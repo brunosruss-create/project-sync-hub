@@ -17,6 +17,7 @@ import {
   listActiveSegments,
   getWorkspaceProfile,
   updateWorkspaceProfile,
+  updateWorkspaceSegmentWithDefaults,
 } from "@/lib/onboarding.functions";
 
 import { ManagerOnly } from "@/components/manager-only";
@@ -46,6 +47,7 @@ function WorkspacePage() {
   const listSegmentsFn = useServerFn(listActiveSegments);
   const getProfileFn = useServerFn(getWorkspaceProfile);
   const updateProfileFn = useServerFn(updateWorkspaceProfile);
+  const updateSegmentDefaultsFn = useServerFn(updateWorkspaceSegmentWithDefaults);
 
   const segmentsQ = useQuery({
     queryKey: ["active-segments"],
@@ -74,6 +76,9 @@ function WorkspacePage() {
     ),
   );
   const [saving, setSaving] = React.useState(false);
+  const [confirmSwitch, setConfirmSwitch] = React.useState<null | {
+    name: string;
+  }>(null);
 
   // Hidrata estado quando o perfil carrega
   React.useEffect(() => {
@@ -85,6 +90,37 @@ function WorkspacePage() {
 
   const segments = segmentsQ.data?.segments ?? [];
   const selectedSegment = segments.find((s) => s.id === segmentId);
+  const currentSegmentId = profileQ.data?.segment_id ?? null;
+  const segmentChanged = !!currentSegmentId && segmentId !== currentSegmentId;
+
+  const persist = async (applyDefaults: boolean) => {
+    setSaving(true);
+    try {
+      if (applyDefaults) {
+        await updateSegmentDefaultsFn({
+          data: { business_name: name.trim(), segment_id: segmentId },
+        });
+      } else {
+        await updateProfileFn({
+          data: { business_name: name.trim(), segment_id: segmentId },
+        });
+      }
+      await Promise.all([
+        qc.invalidateQueries({ queryKey: ["workspace-profile"] }),
+        qc.invalidateQueries({ queryKey: ["workspace-ai-config"] }),
+      ]);
+      toast.success(
+        applyDefaults
+          ? "Segmento atualizado e defaults da IA aplicados"
+          : "Configurações do negócio salvas",
+      );
+      setConfirmSwitch(null);
+    } catch (e) {
+      toast.error(e instanceof Error ? e.message : "Erro ao salvar");
+    } finally {
+      setSaving(false);
+    }
+  };
 
   const handleSave = async () => {
     if (!segmentId) {
@@ -95,16 +131,11 @@ function WorkspacePage() {
       toast.error("Informe o nome do negócio");
       return;
     }
-    setSaving(true);
-    try {
-      await updateProfileFn({ data: { business_name: name.trim(), segment_id: segmentId } });
-      await qc.invalidateQueries({ queryKey: ["workspace-profile"] });
-      toast.success("Configurações do negócio salvas");
-    } catch (e) {
-      toast.error(e instanceof Error ? e.message : "Erro ao salvar");
-    } finally {
-      setSaving(false);
+    if (segmentChanged) {
+      setConfirmSwitch({ name: selectedSegment?.name ?? "novo segmento" });
+      return;
     }
+    await persist(false);
   };
 
   return (
