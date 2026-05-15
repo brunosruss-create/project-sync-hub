@@ -365,6 +365,65 @@ function AIAgentPage() {
         </Card>
       </Section>
 
+      {/* COMPORTAMENTO DO AGENTE */}
+      <Section title="Comportamento do agente">
+        <Card>
+          <ToggleRow
+            label="A IA se apresenta pelo nome ao cliente?"
+            value={introduceByName}
+            onChange={setIntroduceByName}
+          />
+          <ToggleRow
+            label="A IA menciona o nome do negócio na apresentação?"
+            value={mentionBusiness}
+            onChange={setMentionBusiness}
+          />
+          <ToggleRow
+            label="A IA se declara como agente virtual se perguntada?"
+            value={declareAsAi}
+            onChange={setDeclareAsAi}
+            hint="Quando desligado, a IA evita confirmar espontaneamente que é uma IA."
+          />
+          <ToggleRow
+            label="Este negócio tem mais de um profissional?"
+            value={multipleProfs}
+            onChange={setMultipleProfs}
+            hint="Se desligado, a IA não pergunta com qual profissional o cliente quer ser atendido."
+          />
+          <div style={{ marginTop: 12 }}>
+            <Field label="Quando a IA pode informar preços?">
+              <select
+                style={input}
+                value={pricePolicy}
+                onChange={(e) =>
+                  setPricePolicy(
+                    e.target.value as "always" | "on_request" | "never",
+                  )
+                }
+              >
+                <option value="always">Sempre, proativamente</option>
+                <option value="on_request">Apenas quando o cliente perguntar</option>
+                <option value="never">Nunca — direcionar para atendente</option>
+              </select>
+            </Field>
+          </div>
+          <div className="grid gap-3 md:grid-cols-2" style={{ marginTop: 12 }}>
+            <Field label="Máximo de perguntas por mensagem (recomendado: 1)">
+              <input
+                style={input}
+                type="number"
+                min={1}
+                max={5}
+                value={maxQuestions}
+                onChange={(e) =>
+                  setMaxQuestions(Math.max(1, Number(e.target.value) || 1))
+                }
+              />
+            </Field>
+          </div>
+        </Card>
+      </Section>
+
       {/* FLUXO */}
       <Section title="Fluxo de atendimento">
         <Card>
