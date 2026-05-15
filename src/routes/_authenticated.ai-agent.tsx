@@ -1,10 +1,11 @@
 import * as React from "react";
 import { createFileRoute } from "@tanstack/react-router";
+import { useQuery, useMutation, useQueryClient } from "@tanstack/react-query";
+import { useServerFn } from "@tanstack/react-start";
 import { toast } from "sonner";
 import {
   Bot,
   Send,
-  Plus,
   X,
   ArrowRight,
   CheckCircle2,
@@ -12,6 +13,13 @@ import {
 } from "lucide-react";
 
 import { ManagerOnly } from "@/components/manager-only";
+import {
+  getWorkspaceAiConfig,
+  updateWorkspaceAiConfig,
+  getWorkspaceAiStats,
+} from "@/lib/onboarding.functions";
+import { aiRespond } from "@/lib/ai-respond.functions";
+import { supabase } from "@/integrations/supabase/client";
 
 export const Route = createFileRoute("/_authenticated/ai-agent")({
   component: () => (
@@ -24,64 +32,121 @@ export const Route = createFileRoute("/_authenticated/ai-agent")({
 const TONES = ["Formal", "Amigável", "Casual"] as const;
 type Tone = (typeof TONES)[number];
 
-const SERVICES_MOCK = [
-  { id: "s1", name: "Revisão de óleo" },
-  { id: "s2", name: "Diagnóstico elétrico" },
-  { id: "s3", name: "Alinhamento" },
-  { id: "s4", name: "Troca de pastilhas" },
-  { id: "s5", name: "Lavagem completa" },
-];
-
+// UI key (Seg/Ter/...) ↔ chave persistida no banco (monday/tuesday/...)
 const DAYS = [
-  { key: "mon", label: "Seg" },
-  { key: "tue", label: "Ter" },
-  { key: "wed", label: "Qua" },
-  { key: "thu", label: "Qui" },
-  { key: "fri", label: "Sex" },
-  { key: "sat", label: "Sáb" },
-  { key: "sun", label: "Dom" },
+  { key: "monday", label: "Seg" },
+  { key: "tuesday", label: "Ter" },
+  { key: "wednesday", label: "Qua" },
+  { key: "thursday", label: "Qui" },
+  { key: "friday", label: "Sex" },
+  { key: "saturday", label: "Sáb" },
+  { key: "sunday", label: "Dom" },
 ] as const;
 
+type DayCfg = { enabled: boolean; start: string; end: string };
+type WorkingHours = Record<string, DayCfg>;
+
+const DEFAULT_HOURS: WorkingHours = Object.fromEntries(
+  DAYS.map((d) => [
+    d.key,
+    { enabled: d.key !== "sunday", start: "08:00", end: "20:00" },
+  ]),
+);
+
 function AIAgentPage() {
+  const qc = useQueryClient();
+  const getConfigFn = useServerFn(getWorkspaceAiConfig);
+  const updateConfigFn = useServerFn(updateWorkspaceAiConfig);
+  const getStatsFn = useServerFn(getWorkspaceAiStats);
+  const aiRespondFn = useServerFn(aiRespond);
+
+  const configQ = useQuery({
+    queryKey: ["workspace-ai-config"],
+    queryFn: () => getConfigFn(),
+  });
+  const statsQ = useQuery({
+    queryKey: ["workspace-ai-stats"],
+    queryFn: () => getStatsFn(),
+    refetchInterval: 60_000,
+  });
+  const servicesQ = useQuery({
+    queryKey: ["my-services"],
+    queryFn: async () => {
+      const { data, error } = await supabase
+        .from("services")
+        .select("id,name")
+        .order("name");
+      if (error) throw new Error(error.message);
+      return data ?? [];
+    },
+  });
+
   const [active, setActive] = React.useState(true);
   const [name, setName] = React.useState("Sofia");
   const [tone, setTone] = React.useState<Tone>("Amigável");
-  const [prompt, setPrompt] = React.useState(
-    `Você é a Sofia, assistente virtual de uma oficina mecânica.
-Seja cordial, objetiva e use linguagem simples.
-Sempre confirme placa do veículo e modelo antes de sugerir serviços.
-Se o cliente pedir algo fora do seu escopo, transfira para um atendente humano.`,
-  );
+  const [prompt, setPrompt] = React.useState("");
   const [maxMessages, setMaxMessages] = React.useState(5);
-  const [keywords, setKeywords] = React.useState<string[]>([
-    "humano",
-    "atendente",
-    "reclamação",
-  ]);
+  const [keywords, setKeywords] = React.useState<string[]>([]);
   const [kwInput, setKwInput] = React.useState("");
-  const [autoSchedule, setAutoSchedule] = React.useState(true);
-  const [scheduleInstr, setScheduleInstr] = React.useState(
-    "Ofereça sempre 2 horários disponíveis nos próximos 3 dias úteis e confirme com o cliente.",
-  );
-  const [enabledServices, setEnabledServices] = React.useState<string[]>(["s1", "s3"]);
-  const [hours, setHours] = React.useState<Record<string, { active: boolean; start: string; end: string }>>(
-    () =>
-      Object.fromEntries(
-        DAYS.map((d) => [
-          d.key,
-          { active: d.key !== "sun", start: "08:00", end: "20:00" },
-        ]),
-      ),
-  );
-  const [offHoursMsg, setOffHoursMsg] = React.useState(
-    "Olá! No momento estamos fora do horário de atendimento. Retornaremos a partir das 8h.",
-  );
+  const [autoSchedule, setAutoSchedule] = React.useState(false);
+  const [scheduleInstr, setScheduleInstr] = React.useState("");
+  const [enabledServices, setEnabledServices] = React.useState<string[]>([]);
+  const [hours, setHours] = React.useState<WorkingHours>(DEFAULT_HOURS);
+  const [offHoursMsg, setOffHoursMsg] = React.useState("");
   const [tester, setTester] = React.useState(false);
+  const [hydrated, setHydrated] = React.useState(false);
+
+  // Hidrata form quando config chega
+  React.useEffect(() => {
+    const c = configQ.data?.config;
+    if (!c || hydrated) return;
+    setActive(!!c.ai_enabled);
+    setName(c.ai_assistant_name ?? "Sofia");
+    setTone(((c.ai_tone as Tone) ?? "Amigável") as Tone);
+    setPrompt(c.ai_custom_prompt ?? "");
+    setMaxMessages(c.ai_transfer_after_messages ?? 5);
+    setKeywords(
+      Array.isArray(c.ai_transfer_keywords) ? (c.ai_transfer_keywords as string[]) : [],
+    );
+    setAutoSchedule(!!c.ai_schedule_enabled);
+    setScheduleInstr(c.ai_schedule_instruction ?? "");
+    const wh = (c.ai_working_hours ?? null) as WorkingHours | null;
+    setHours(wh ? { ...DEFAULT_HOURS, ...wh } : DEFAULT_HOURS);
+    setOffHoursMsg(c.ai_out_of_hours_message ?? "");
+    // ai_enabled_service_ids — coluna nova, ignora se não vier
+    const ids = (c as Record<string, unknown>).ai_enabled_service_ids;
+    if (Array.isArray(ids)) setEnabledServices(ids as string[]);
+    setHydrated(true);
+  }, [configQ.data, hydrated]);
+
+  const saveMutation = useMutation({
+    mutationFn: () =>
+      updateConfigFn({
+        data: {
+          ai_enabled: active,
+          ai_assistant_name: name,
+          ai_tone: tone,
+          ai_custom_prompt: prompt || null,
+          ai_transfer_keywords: keywords,
+          ai_transfer_after_messages: maxMessages,
+          ai_schedule_enabled: autoSchedule,
+          ai_schedule_instruction: scheduleInstr || null,
+          ai_working_hours: hours,
+          ai_out_of_hours_message: offHoursMsg,
+          ai_enabled_service_ids: enabledServices,
+        },
+      }),
+    onSuccess: () => {
+      qc.invalidateQueries({ queryKey: ["workspace-ai-config"] });
+      toast.success("Configuração do agente salva");
+    },
+    onError: (e) => toast.error(e instanceof Error ? e.message : "Erro ao salvar"),
+  });
 
   const stats = [
-    { label: "Atendimentos hoje", value: "47" },
-    { label: "Taxa de resolução", value: "82%" },
-    { label: "Satisfação", value: "4.7" },
+    { label: "Atendimentos hoje", value: String(statsQ.data?.messages_today ?? 0) },
+    { label: "Transferências", value: String(statsQ.data?.transfers_today ?? 0) },
+    { label: "Erros", value: String(statsQ.data?.errors_today ?? 0) },
   ];
 
   const addKeyword = () => {
@@ -92,7 +157,9 @@ Se o cliente pedir algo fora do seu escopo, transfira para um atendente humano.`
   };
 
   const toggleService = (id: string) =>
-    setEnabledServices((arr) => (arr.includes(id) ? arr.filter((x) => x !== id) : [...arr, id]));
+    setEnabledServices((arr) =>
+      arr.includes(id) ? arr.filter((x) => x !== id) : [...arr, id],
+    );
 
   return (
     <div className="flex flex-col" style={{ gap: 24, maxWidth: 960 }}>
@@ -197,7 +264,7 @@ Se o cliente pedir algo fora do seu escopo, transfira para um atendente humano.`
             </Field>
           </div>
           <div style={{ marginTop: 12 }}>
-            <Field label="Prompt principal">
+            <Field label="Instruções específicas (opcional)">
               <textarea
                 style={{
                   ...input,
@@ -210,7 +277,7 @@ Se o cliente pedir algo fora do seu escopo, transfira para um atendente humano.`
                 }}
                 value={prompt}
                 onChange={(e) => setPrompt(e.target.value)}
-                placeholder="Ex: Você é a Sofia, assistente da clínica X. Seja cordial..."
+                placeholder="Use para regras específicas do seu negócio. O prompt base e o do segmento são aplicados automaticamente."
               />
             </Field>
           </div>
@@ -332,34 +399,44 @@ Se o cliente pedir algo fora do seu escopo, transfira para um atendente humano.`
               </div>
               <div style={{ marginTop: 16 }}>
                 <Field label="Serviços que o agente pode agendar">
-                  <div className="grid gap-2 md:grid-cols-2">
-                    {SERVICES_MOCK.map((s) => {
-                      const checked = enabledServices.includes(s.id);
-                      return (
-                        <label
-                          key={s.id}
-                          className="flex items-center gap-2"
-                          style={{
-                            padding: "8px 10px",
-                            border: "1px solid var(--border)",
-                            borderRadius: 6,
-                            fontSize: 13,
-                            cursor: "pointer",
-                            background: checked
-                              ? "color-mix(in oklab, var(--brand-400) 8%, transparent)"
-                              : "transparent",
-                          }}
-                        >
-                          <input
-                            type="checkbox"
-                            checked={checked}
-                            onChange={() => toggleService(s.id)}
-                          />
-                          {s.name}
-                        </label>
-                      );
-                    })}
-                  </div>
+                  {servicesQ.isLoading ? (
+                    <div style={{ fontSize: 12, color: "var(--text-muted)" }}>
+                      Carregando serviços…
+                    </div>
+                  ) : (servicesQ.data ?? []).length === 0 ? (
+                    <div style={{ fontSize: 12, color: "var(--text-muted)" }}>
+                      Nenhum serviço cadastrado ainda. Cadastre em “Serviços”.
+                    </div>
+                  ) : (
+                    <div className="grid gap-2 md:grid-cols-2">
+                      {(servicesQ.data ?? []).map((s) => {
+                        const checked = enabledServices.includes(s.id);
+                        return (
+                          <label
+                            key={s.id}
+                            className="flex items-center gap-2"
+                            style={{
+                              padding: "8px 10px",
+                              border: "1px solid var(--border)",
+                              borderRadius: 6,
+                              fontSize: 13,
+                              cursor: "pointer",
+                              background: checked
+                                ? "color-mix(in oklab, var(--brand-400) 8%, transparent)"
+                                : "transparent",
+                            }}
+                          >
+                            <input
+                              type="checkbox"
+                              checked={checked}
+                              onChange={() => toggleService(s.id)}
+                            />
+                            {s.name}
+                          </label>
+                        );
+                      })}
+                    </div>
+                  )}
                 </Field>
               </div>
             </>
@@ -379,15 +456,18 @@ Se o cliente pedir algo fora do seu escopo, transfira para um atendente humano.`
             }}
           >
             {DAYS.map((d) => {
-              const h = hours[d.key];
+              const h = hours[d.key] ?? DEFAULT_HOURS[d.key];
               return (
                 <React.Fragment key={d.key}>
                   <label className="flex items-center gap-2" style={{ fontSize: 13 }}>
                     <input
                       type="checkbox"
-                      checked={h.active}
+                      checked={h.enabled}
                       onChange={(e) =>
-                        setHours({ ...hours, [d.key]: { ...h, active: e.target.checked } })
+                        setHours({
+                          ...hours,
+                          [d.key]: { ...h, enabled: e.target.checked },
+                        })
                       }
                     />
                     {d.label}
@@ -395,7 +475,7 @@ Se o cliente pedir algo fora do seu escopo, transfira para um atendente humano.`
                   <input
                     type="time"
                     value={h.start}
-                    disabled={!h.active}
+                    disabled={!h.enabled}
                     onChange={(e) =>
                       setHours({ ...hours, [d.key]: { ...h, start: e.target.value } })
                     }
@@ -404,7 +484,7 @@ Se o cliente pedir algo fora do seu escopo, transfira para um atendente humano.`
                   <input
                     type="time"
                     value={h.end}
-                    disabled={!h.active}
+                    disabled={!h.enabled}
                     onChange={(e) =>
                       setHours({ ...hours, [d.key]: { ...h, end: e.target.value } })
                     }
@@ -435,16 +515,31 @@ Se o cliente pedir algo fora do seu escopo, transfira para um atendente humano.`
           background: "var(--bg-base)",
         }}
       >
-        <button style={btnSecondary}>Cancelar</button>
+        <button
+          style={btnSecondary}
+          onClick={() => {
+            setHydrated(false);
+            qc.invalidateQueries({ queryKey: ["workspace-ai-config"] });
+          }}
+        >
+          Cancelar
+        </button>
         <button
           style={btnPrimary}
-          onClick={() => toast.success("Configuração do agente salva")}
+          disabled={saveMutation.isPending}
+          onClick={() => saveMutation.mutate()}
         >
-          Salvar alterações
+          {saveMutation.isPending ? "Salvando…" : "Salvar alterações"}
         </button>
       </div>
 
-      {tester && <TesterModal name={name} onClose={() => setTester(false)} />}
+      {tester && (
+        <TesterModal
+          name={name}
+          aiRespondFn={aiRespondFn}
+          onClose={() => setTester(false)}
+        />
+      )}
     </div>
   );
 }
@@ -480,10 +575,22 @@ function FlowDiagram() {
       </div>
       <ArrowRight size={14} style={{ color: "var(--text-muted)" }} />
       <div className="flex flex-col" style={{ gap: 6 }}>
-        <div style={{ ...node, color: "#10B981", borderColor: "color-mix(in oklab, #10B981 40%, var(--border))" }}>
+        <div
+          style={{
+            ...node,
+            color: "#10B981",
+            borderColor: "color-mix(in oklab, #10B981 40%, var(--border))",
+          }}
+        >
           <CheckCircle2 size={14} /> Resolvido
         </div>
-        <div style={{ ...node, color: "#F59E0B", borderColor: "color-mix(in oklab, #F59E0B 40%, var(--border))" }}>
+        <div
+          style={{
+            ...node,
+            color: "#F59E0B",
+            borderColor: "color-mix(in oklab, #F59E0B 40%, var(--border))",
+          }}
+        >
           <UserCircle size={14} /> Transferir para humano
         </div>
       </div>
@@ -491,26 +598,59 @@ function FlowDiagram() {
   );
 }
 
-function TesterModal({ name, onClose }: { name: string; onClose: () => void }) {
-  const [messages, setMessages] = React.useState<{ role: "user" | "bot"; text: string }[]>([
+type Msg = { role: "user" | "bot"; text: string };
+
+function TesterModal({
+  name,
+  aiRespondFn,
+  onClose,
+}: {
+  name: string;
+  aiRespondFn: ReturnType<typeof useServerFn<typeof aiRespond>>;
+  onClose: () => void;
+}) {
+  const [messages, setMessages] = React.useState<Msg[]>([
     { role: "bot", text: `Olá! Sou ${name}. Como posso te ajudar hoje?` },
   ]);
   const [input, setInput] = React.useState("");
+  const [sending, setSending] = React.useState(false);
 
-  const send = () => {
+  const send = async () => {
     const v = input.trim();
-    if (!v) return;
+    if (!v || sending) return;
     setMessages((m) => [...m, { role: "user", text: v }]);
     setInput("");
-    setTimeout(() => {
+    setSending(true);
+    try {
+      const { data: u } = await supabase.auth.getUser();
+      if (!u.user) throw new Error("Sessão expirada");
+      const history = messages.map((m) => ({
+        role: m.role === "user" ? ("user" as const) : ("assistant" as const),
+        content: m.text,
+      }));
+      const res = await aiRespondFn({
+        data: {
+          workspace_owner_id: u.user.id,
+          message: v,
+          conversation_history: history,
+          preview: true,
+        },
+      });
+      let text = "";
+      if (res.action === "send_message") text = res.response;
+      else if (res.action === "send_out_of_hours") text = res.response;
+      else if (res.action === "transfer_to_human") text = res.response;
+      else if (res.action === "skip") text = `(Pulado: ${res.reason})`;
+      else if (res.action === "error") text = `(Erro: ${res.error})`;
+      setMessages((m) => [...m, { role: "bot", text }]);
+    } catch (e) {
       setMessages((m) => [
         ...m,
-        {
-          role: "bot",
-          text: `Entendi, você disse "${v}". (Resposta simulada — conecte o agente para usar IA real.)`,
-        },
+        { role: "bot", text: `(Erro: ${e instanceof Error ? e.message : String(e)})` },
       ]);
-    }, 600);
+    } finally {
+      setSending(false);
+    }
   };
 
   return (
@@ -550,12 +690,20 @@ function TesterModal({ name, onClose }: { name: string; onClose: () => void }) {
           </div>
           <button
             onClick={onClose}
-            style={{ background: "transparent", border: 0, color: "var(--text-muted)", cursor: "pointer" }}
+            style={{
+              background: "transparent",
+              border: 0,
+              color: "var(--text-muted)",
+              cursor: "pointer",
+            }}
           >
             <X size={16} />
           </button>
         </div>
-        <div className="flex-1 overflow-y-auto" style={{ padding: 14, display: "flex", flexDirection: "column", gap: 8 }}>
+        <div
+          className="flex-1 overflow-y-auto"
+          style={{ padding: 14, display: "flex", flexDirection: "column", gap: 8 }}
+        >
           {messages.map((m, i) => (
             <div
               key={i}
@@ -566,14 +714,17 @@ function TesterModal({ name, onClose }: { name: string; onClose: () => void }) {
                 fontSize: 13,
                 borderRadius:
                   m.role === "user" ? "12px 2px 12px 12px" : "2px 12px 12px 12px",
-                background:
-                  m.role === "user" ? "var(--brand-400)" : "var(--bg-overlay)",
+                background: m.role === "user" ? "var(--brand-400)" : "var(--bg-overlay)",
                 color: m.role === "user" ? "#fff" : "var(--text-primary)",
+                whiteSpace: "pre-wrap",
               }}
             >
               {m.text}
             </div>
           ))}
+          {sending && (
+            <div style={{ fontSize: 12, color: "var(--text-muted)" }}>digitando…</div>
+          )}
         </div>
         <div
           className="flex items-center gap-2"
@@ -585,8 +736,9 @@ function TesterModal({ name, onClose }: { name: string; onClose: () => void }) {
             onKeyDown={(e) => e.key === "Enter" && send()}
             placeholder="Digite uma mensagem…"
             style={{ ...inputBase, flex: 1 }}
+            disabled={sending}
           />
-          <button style={btnPrimary} onClick={send}>
+          <button style={btnPrimary} onClick={send} disabled={sending}>
             <Send size={14} />
           </button>
         </div>
@@ -643,7 +795,15 @@ function Card({ children }: { children: React.ReactNode }) {
 function Section({ title, children }: { title: string; children: React.ReactNode }) {
   return (
     <div className="flex flex-col" style={{ gap: 10 }}>
-      <h2 style={{ fontSize: 13, fontWeight: 600, textTransform: "uppercase", letterSpacing: "0.05em", color: "var(--text-muted)" }}>
+      <h2
+        style={{
+          fontSize: 13,
+          fontWeight: 600,
+          textTransform: "uppercase",
+          letterSpacing: "0.05em",
+          color: "var(--text-muted)",
+        }}
+      >
         {title}
       </h2>
       {children}
