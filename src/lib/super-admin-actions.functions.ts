@@ -5,21 +5,7 @@ import { supabaseAdmin } from "@/integrations/supabase/client.server";
 
 type AppRole = "super_admin" | "manager" | "agent";
 
-async function assertSuperAdmin(userId: string, email: string | null) {
-  const { data, error } = await supabaseAdmin.rpc("is_super_admin").select();
-  // rpc with bound JWT bypassed; check directly via user_roles
-  if (error) {
-    // fallback table check
-    const { data: r } = await supabaseAdmin
-      .from("user_roles")
-      .select("role")
-      .eq("user_id", userId)
-      .eq("role", "super_admin")
-      .maybeSingle();
-    if (!r) throw new Error("Acesso negado");
-    return;
-  }
-  // RPC executed as service role — auth.uid() is null → returns false. So always do table check.
+async function assertSuperAdmin(userId: string) {
   const { data: r } = await supabaseAdmin
     .from("user_roles")
     .select("role")
@@ -27,8 +13,6 @@ async function assertSuperAdmin(userId: string, email: string | null) {
     .eq("role", "super_admin")
     .maybeSingle();
   if (!r) throw new Error("Acesso negado");
-  void data;
-  void email;
 }
 
 async function audit(
