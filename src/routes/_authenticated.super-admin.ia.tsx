@@ -138,10 +138,9 @@ function GeminiTab() {
             value={form.gemini_model ?? ""}
             onChange={(e) => setForm({ ...form, gemini_model: e.target.value })}
           >
-            <option value="gemini-3.1-flash-lite">Gemini 3.1 Flash-Lite (recomendado, mais barato)</option>
-            <option value="gemini-3-flash">Gemini 3 Flash</option>
-            <option value="gemini-3.1-pro">Gemini 3.1 Pro</option>
-            <option value="gemini-2.5-flash">Gemini 2.5 Flash</option>
+            <option value="gemini-2.5-flash">Gemini 2.5 Flash (recomendado — rápido e barato)</option>
+            <option value="gemini-2.5-pro">Gemini 2.5 Pro (qualidade máxima)</option>
+            <option value="gemini-2.0-flash">Gemini 2.0 Flash</option>
             <option value="gemini-1.5-flash">Gemini 1.5 Flash (legado)</option>
             <option value="gemini-1.5-pro">Gemini 1.5 Pro (legado)</option>
           </select>
