@@ -16,15 +16,18 @@ export type Professional = {
   created_at: string;
 };
 
-async function getOwnerId(supabase: any): Promise<string> {
-  const { data, error } = await supabase.rpc("get_my_workspace_owner");
+async function getOwnerId(supabase: any, userId: string): Promise<string> {
+  const { data, error } = await supabase
+    .from("workspace_members")
+    .select("workspace_owner_id")
+    .eq("member_user_id", userId)
+    .eq("active", true)
+    .limit(1)
+    .maybeSingle();
   if (error) {
-    throw new Error(
-      `Falha ao identificar workspace (${error.message}). Verifique se a migration de profissionais foi aplicada no Supabase.`,
-    );
+    throw new Error(`Falha ao identificar workspace: ${error.message}`);
   }
-  if (!data) throw new Error("workspace owner não encontrado");
-  return data as string;
+  return (data?.workspace_owner_id as string) ?? userId;
 }
 
 async function assertManager(supabase: any, userId: string) {
