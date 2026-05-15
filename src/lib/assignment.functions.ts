@@ -96,12 +96,13 @@ export const assignContact = createServerFn({ method: "POST" })
       const { userId, supabase } = context;
       const ownerId = await resolveOwnerId(supabase, userId);
 
-      // Only managers can transfer/assign conversations.
+      // Only managers (donos de workspace) can transfer/assign conversations.
       const { data: isManager } = await supabaseAdmin
-        .from("user_roles")
-        .select("role")
-        .eq("user_id", userId)
-        .eq("role", "manager")
+        .from("workspace_members")
+        .select("workspace_owner_id")
+        .eq("workspace_owner_id", userId)
+        .eq("member_user_id", userId)
+        .eq("active", true)
         .maybeSingle();
       if (!isManager) {
         throw new Error("Apenas managers podem transferir conversas.");

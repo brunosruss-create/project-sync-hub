@@ -17,11 +17,14 @@ export type TeamMember = {
 };
 
 async function assertManager(userId: string) {
+  // Source of truth: o usuário é manager se ele é dono de algum workspace
+  // (workspace_members.workspace_owner_id = member_user_id).
   const { data, error } = await supabaseAdmin
-    .from("user_roles")
-    .select("role")
-    .eq("user_id", userId)
-    .eq("role", "manager")
+    .from("workspace_members")
+    .select("workspace_owner_id")
+    .eq("workspace_owner_id", userId)
+    .eq("member_user_id", userId)
+    .eq("active", true)
     .maybeSingle();
   if (error) throw new Error(error.message);
   if (!data) throw new Error("Apenas managers podem gerenciar a equipe.");
