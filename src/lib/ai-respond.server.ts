@@ -313,14 +313,19 @@ export async function runAiResponse(input: AiRunInput): Promise<AiRunResult> {
     ...input,
   };
 
-  // ── LOCK SOFT: deduplica chamadas idênticas dentro de janela de 10s ──
-  // Evita dupla resposta quando o webhook é reentregue ou quando a mesma
-  // mensagem dispara dois processamentos concorrentes. NÃO toca no webhook.
+  // ── LOCK SOFT: deduplica chamadas para a MESMA mensagem do WhatsApp ──
+  // Quando o Evolution reentrega o webhook (mesmo m.key.id), usamos esse id
+  // como chave estável. Sem id (ex.: testador de prévia), caímos num bucket
+  // de 10s + hash do conteúdo.
   let dedupKey: string | null = null;
   if (!data.preview) {
-    const bucket = Math.floor(Date.now() / 10000);
-    const msgPart = (data.message ?? "").slice(0, 200);
-    dedupKey = `${data.workspace_owner_id}|${data.contact_id ?? ""}|${bucket}|${msgPart}`;
+    if (data.wa_message_id) {
+      dedupKey = `wa:${data.workspace_owner_id}:${data.wa_message_id}`;
+    } else {
+      const bucket = Math.floor(Date.now() / 10000);
+      const msgPart = (data.message ?? "").slice(0, 200);
+      dedupKey = `${data.workspace_owner_id}|${data.contact_id ?? ""}|${bucket}|${msgPart}`;
+    }
     const { data: existing } = await supabaseAdmin
       .from("ai_usage_logs")
       .select("id")
