@@ -26,6 +26,7 @@ import { Route as AuthenticatedContactsRouteImport } from './routes/_authenticat
 import { Route as AuthenticatedAiAgentRouteImport } from './routes/_authenticated.ai-agent'
 import { Route as AuthenticatedSuperAdminWorkspacesRouteImport } from './routes/_authenticated.super-admin.workspaces'
 import { Route as AuthenticatedSuperAdminUsersRouteImport } from './routes/_authenticated.super-admin.users'
+import { Route as AuthenticatedSuperAdminIaRouteImport } from './routes/_authenticated.super-admin.ia'
 import { Route as AuthenticatedSuperAdminHealthRouteImport } from './routes/_authenticated.super-admin.health'
 import { Route as AuthenticatedSuperAdminBillingRouteImport } from './routes/_authenticated.super-admin.billing'
 import { Route as AuthenticatedSettingsWorkspaceRouteImport } from './routes/_authenticated.settings.workspace'
@@ -122,6 +123,12 @@ const AuthenticatedSuperAdminUsersRoute =
     path: '/users',
     getParentRoute: () => AuthenticatedSuperAdminRoute,
   } as any)
+const AuthenticatedSuperAdminIaRoute =
+  AuthenticatedSuperAdminIaRouteImport.update({
+    id: '/ia',
+    path: '/ia',
+    getParentRoute: () => AuthenticatedSuperAdminRoute,
+  } as any)
 const AuthenticatedSuperAdminHealthRoute =
   AuthenticatedSuperAdminHealthRouteImport.update({
     id: '/health',
@@ -200,6 +207,7 @@ export interface FileRoutesByFullPath {
   '/settings/workspace': typeof AuthenticatedSettingsWorkspaceRoute
   '/super-admin/billing': typeof AuthenticatedSuperAdminBillingRoute
   '/super-admin/health': typeof AuthenticatedSuperAdminHealthRoute
+  '/super-admin/ia': typeof AuthenticatedSuperAdminIaRoute
   '/super-admin/users': typeof AuthenticatedSuperAdminUsersRoute
   '/super-admin/workspaces': typeof AuthenticatedSuperAdminWorkspacesRoute
   '/api/public/evolution/$instanceId': typeof ApiPublicEvolutionInstanceIdRoute
@@ -227,6 +235,7 @@ export interface FileRoutesByTo {
   '/settings/workspace': typeof AuthenticatedSettingsWorkspaceRoute
   '/super-admin/billing': typeof AuthenticatedSuperAdminBillingRoute
   '/super-admin/health': typeof AuthenticatedSuperAdminHealthRoute
+  '/super-admin/ia': typeof AuthenticatedSuperAdminIaRoute
   '/super-admin/users': typeof AuthenticatedSuperAdminUsersRoute
   '/super-admin/workspaces': typeof AuthenticatedSuperAdminWorkspacesRoute
   '/api/public/evolution/$instanceId': typeof ApiPublicEvolutionInstanceIdRoute
@@ -256,6 +265,7 @@ export interface FileRoutesById {
   '/_authenticated/settings/workspace': typeof AuthenticatedSettingsWorkspaceRoute
   '/_authenticated/super-admin/billing': typeof AuthenticatedSuperAdminBillingRoute
   '/_authenticated/super-admin/health': typeof AuthenticatedSuperAdminHealthRoute
+  '/_authenticated/super-admin/ia': typeof AuthenticatedSuperAdminIaRoute
   '/_authenticated/super-admin/users': typeof AuthenticatedSuperAdminUsersRoute
   '/_authenticated/super-admin/workspaces': typeof AuthenticatedSuperAdminWorkspacesRoute
   '/api/public/evolution/$instanceId': typeof ApiPublicEvolutionInstanceIdRoute
@@ -285,6 +295,7 @@ export interface FileRouteTypes {
     | '/settings/workspace'
     | '/super-admin/billing'
     | '/super-admin/health'
+    | '/super-admin/ia'
     | '/super-admin/users'
     | '/super-admin/workspaces'
     | '/api/public/evolution/$instanceId'
@@ -312,6 +323,7 @@ export interface FileRouteTypes {
     | '/settings/workspace'
     | '/super-admin/billing'
     | '/super-admin/health'
+    | '/super-admin/ia'
     | '/super-admin/users'
     | '/super-admin/workspaces'
     | '/api/public/evolution/$instanceId'
@@ -340,6 +352,7 @@ export interface FileRouteTypes {
     | '/_authenticated/settings/workspace'
     | '/_authenticated/super-admin/billing'
     | '/_authenticated/super-admin/health'
+    | '/_authenticated/super-admin/ia'
     | '/_authenticated/super-admin/users'
     | '/_authenticated/super-admin/workspaces'
     | '/api/public/evolution/$instanceId'
@@ -477,6 +490,13 @@ declare module '@tanstack/react-router' {
       preLoaderRoute: typeof AuthenticatedSuperAdminUsersRouteImport
       parentRoute: typeof AuthenticatedSuperAdminRoute
     }
+    '/_authenticated/super-admin/ia': {
+      id: '/_authenticated/super-admin/ia'
+      path: '/ia'
+      fullPath: '/super-admin/ia'
+      preLoaderRoute: typeof AuthenticatedSuperAdminIaRouteImport
+      parentRoute: typeof AuthenticatedSuperAdminRoute
+    }
     '/_authenticated/super-admin/health': {
       id: '/_authenticated/super-admin/health'
       path: '/health'
@@ -546,6 +566,7 @@ declare module '@tanstack/react-router' {
 interface AuthenticatedSuperAdminRouteChildren {
   AuthenticatedSuperAdminBillingRoute: typeof AuthenticatedSuperAdminBillingRoute
   AuthenticatedSuperAdminHealthRoute: typeof AuthenticatedSuperAdminHealthRoute
+  AuthenticatedSuperAdminIaRoute: typeof AuthenticatedSuperAdminIaRoute
   AuthenticatedSuperAdminUsersRoute: typeof AuthenticatedSuperAdminUsersRoute
   AuthenticatedSuperAdminWorkspacesRoute: typeof AuthenticatedSuperAdminWorkspacesRoute
 }
@@ -554,6 +575,7 @@ const AuthenticatedSuperAdminRouteChildren: AuthenticatedSuperAdminRouteChildren
   {
     AuthenticatedSuperAdminBillingRoute: AuthenticatedSuperAdminBillingRoute,
     AuthenticatedSuperAdminHealthRoute: AuthenticatedSuperAdminHealthRoute,
+    AuthenticatedSuperAdminIaRoute: AuthenticatedSuperAdminIaRoute,
     AuthenticatedSuperAdminUsersRoute: AuthenticatedSuperAdminUsersRoute,
     AuthenticatedSuperAdminWorkspacesRoute:
       AuthenticatedSuperAdminWorkspacesRoute,
