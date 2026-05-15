@@ -1,58 +1,100 @@
-## Problemas identificados
+## Escopo
 
-1. **Sidebar vaza "Super Admin" para qualquer manager.** O `src/components/app-sidebar.tsx` esconde o item apenas para `isAgent`. Qualquer usuário comum (manager) — incluindo `goldenf0408@gmail.com` — vê o link.
-2. **Guard do route confia em `profiles.role`**, coluna ad-hoc que não existe no schema oficial (`app_role` só tem `manager`/`agent`). Hoje qualquer um que clicar pode entrar até a checagem assíncrona terminar.
-3. **Páginas Workspaces / Usuários / Saúde / Cobrança usam SEED hard-coded.** Os "usuários" não são reais.
+Apenas dentro de `/super-admin/*`. Nenhuma mudança em kanban, chat, whatsapp, agenda, serviços, auth, ou RLS de tabelas de produto. Tudo aditivo.
 
-## Escopo cirúrgico (NÃO toco em mais nada)
+## 1. Migração SQL nova
+Arquivo: `supabase/manual/20260518000000_super_admin_actions.sql`
 
-Apenas arquivos abaixo. Nenhum estilo, layout, RLS de outras tabelas, ou comportamento do app principal será alterado.
+- `alter table public.profiles add column if not exists is_blocked boolean default false;`
+- `alter table public.profiles add column if not exists plan text;` (se ainda não existir; usado pela tab Configurações)
+- Índices: `contacts(owner_user_id, last_message_at desc)`.
+- Tabela `audit_logs` (idempotente: actor_id, actor_email, action, resource_type, resource_id, metadata jsonb, created_at).
+- Novas RPCs SECURITY DEFINER, todas com guard `if not public.is_super_admin() then raise exception 'forbidden'`:
+  - `admin_workspace_summary(owner uuid)` → métricas (contatos, mensagens mês, agendamentos, membros, plano, instância WA, último ping, número).
+  - `admin_workspace_members(owner uuid)` → membros (id, email, full_name, role, is_blocked, created_at).
+  - `admin_workspace_contacts(owner uuid, lim int default 50)` → contatos read-only.
+  - `admin_workspace_audit(owner uuid, lim int default 5)` → últimas ações.
+  - `admin_set_user_role(target uuid, new_role app_role)` → update + audit insert; bloqueia auto-rebaixar de super_admin.
+  - `admin_set_user_blocked(target uuid, blocked boolean)` → update + audit; bloqueia auto-bloqueio.
+  - `admin_set_workspace_plan(owner uuid, plan text)` → update + audit.
+- Sem novas policies destrutivas; service role continua bypassando.
 
-### 1. Definição oficial de super admin (1 migração nova)
+## 2. Server functions novas
+Arquivo: `src/lib/super-admin-actions.functions.ts` — apenas `createServerFn` + imports.
 
-`supabase/manual/20260517000000_super_admin.sql`:
-- `alter type public.app_role add value if not exists 'super_admin';`
-- `create or replace function public.is_super_admin() returns boolean security definer …` lendo `user_roles`.
-- `grant 'super_admin'` apenas para o e-mail real `bruno…@gmail.com` (lookup em `auth.users`).
-- Nada mais — sem mexer em RLS de outras tabelas.
+Cada uma: `requireSupabaseAuth` + checa `is_super_admin()` via RPC com `supabaseAdmin`, log em audit_logs, retorna DTO simples.
 
-### 2. Hook `useIsSuperAdmin` (novo arquivo)
+- `getWorkspaceDetail({ ownerId })` → chama as 4 RPCs `admin_workspace_*` em paralelo.
+- `setUserRole({ userId, role })`.
+- `setUserBlocked({ userId, blocked })`.
+- `setWorkspacePlan({ ownerId, plan })`.
+- `resetUserPassword({ userId })` → usa `supabaseAdmin.auth.admin.generateLink({ type: 'recovery', email })` e dispara o email padrão; loga em audit. Server-only (service role).
+- `forceWhatsappReconnect({ ownerId })` → opcional: chama Evolution helper já existente, sem mexer no fluxo do cliente.
+- `suspendWorkspace({ ownerId })` / `deleteWorkspace({ ownerId, confirmEmail })` → marca todos os membros `is_blocked=true`; delete só se confirmEmail bate com email do dono.
 
-`src/hooks/use-is-super-admin.tsx` — chama `supabase.rpc('is_super_admin')`, fail-closed (false em qualquer erro). Usa `useAuth` para esperar sessão pronta antes da query.
+Validação Zod em todos os inputs (uuid, enum, max length).
 
-### 3. Sidebar (1 linha de mudança)
+## 3. UI — novo drawer
+Arquivo novo: `src/features/super-admin/inspect-workspace-drawer.tsx`
 
-`src/components/app-sidebar.tsx`: filtrar o item "Super Admin" usando `useIsSuperAdmin()`. Sem alterações visuais para os outros itens.
+- Drawer 520px slide-in da direita, 200ms ease-out, overlay escuro com clique fora fechando.
+- Header: avatar (iniciais), nome do dono, badge status WA, botão ✕.
+- Tabs (state local): Resumo / Usuários / Contatos / Configurações.
+- Cada tab tem `useQuery` próprio com `queryKey: ['admin','ws', ownerId, tab]`.
+- Resumo: 2x2 cards de métricas + bloco info + lista das 5 últimas ações.
+- Usuários: lista membros com avatar colorido determinístico, badge role, dropdown ⋮ (Trocar role / Resetar senha / Bloquear|Desbloquear). Mutations invalidam o query.
+- Contatos: tabela read-only, "Mostrando 50 de N".
+- Configurações: bloco WA (instance, status, ping, número, botão Forçar reconexão), select de plano + Salvar, ações de risco (Suspender, Deletar — modal de confirmação digitando email do dono).
+- Toda mutation: `useMutation` + toast + invalidate query.
 
-### 4. Guard do layout super admin
+Estilo: reutiliza `adminCard`, tokens existentes; nada de cores hardcoded fora do padrão já aplicado nas páginas admin atuais (mantém o padrão inline-style usado lá).
 
-`src/routes/_authenticated.super-admin.tsx`: trocar a query em `profiles.role` por `useIsSuperAdmin()` (fail-closed). Mantém o `toast.error` + redirect para `/dashboard`. Layout/visual intactos.
+## 4. Integração na tela Workspaces
+Arquivo: `src/routes/_authenticated.super-admin.workspaces.tsx`
 
-### 5. Server functions com dados reais (admin client)
+- Adiciona estado `inspectId: string | null`.
+- Botão 👁 (linha 138-140) passa a `setInspectId(w.workspace_owner_id)` em vez do toast.
+- Renderiza `<InspectWorkspaceDrawer ownerId={inspectId} onClose={…} />` no fim do componente.
+- Suspender/Excluir continuam por enquanto OU passam a chamar `suspendWorkspace`/`deleteWorkspace` com confirm dialog (incluído).
 
-Novo `src/lib/super-admin.functions.ts` (apenas `createServerFn`, padrão correto):
-- `listWorkspaces()` — junta `auth.users` + `user_roles(role='manager')` + agregados de `workspace_members` (count usuários) e `contacts` (count) por `owner_user_id`.
-- `listAllUsers()` — `auth.users` + `user_roles` + workspace owner.
-- `listInstancesHealth()` — `whatsapp_instances` + `auth.users` (email do dono).
-- Todas protegidas por `requireSupabaseAuth` + verificação `is_super_admin()` no handler (defesa em profundidade); usam `supabaseAdmin` para bypass de RLS.
+## 5. Tela Usuários — limpeza + ações
+Arquivo: `src/routes/_authenticated.super-admin.users.tsx`
 
-### 6. Substituir SEED nas 3 páginas
+- **Remover** botão "Impersonar" e import `UserCog` se ficar órfão.
+- Coluna "Ações" passa a ser um menu ⋮ com:
+  - Trocar role (popover inline com select; opção super_admin só aparece para super_admin atual — já é o caso já que a tela inteira é gated).
+  - Resetar senha (modal de confirmação → `resetUserPassword`).
+  - Bloquear/Desbloquear (modal só para bloquear).
+- Adiciona campo `is_blocked` no tipo `User` e no SELECT da RPC `admin_list_users` (atualizar a função no novo SQL — basta `create or replace` da RPC existente acrescentando a coluna; idempotente).
+- Linha de usuário bloqueado: opacity 0.5 + badge vermelho "Bloqueado" ao lado do nome.
+- Mutations invalidam `["admin","users"]`.
 
-- `_authenticated.super-admin.workspaces.tsx`: trocar `SEED` por `useQuery` + `listWorkspaces`. Manter colunas, filtros e estilos.
-- `_authenticated.super-admin.users.tsx`: trocar `SEED` por `useQuery` + `listAllUsers`. Mantém UI.
-- `_authenticated.super-admin.health.tsx`: trocar `SEED` por `useQuery` + `listInstancesHealth`. Status real = `whatsapp_instances.status`. Métricas inexistentes (msgs/min, latência) ficam como `—` em vez de números falsos.
-- `_authenticated.super-admin.billing.tsx`: como ainda não há tabela de billing real, exibir KPIs com valor "—" e tabela "Trials vencidos" derivada de `created_at` dos workspaces sem plano (placeholder honesto, sem dados falsos). Marcar com nota "dados de billing serão integrados quando Stripe estiver ativo".
+## 6. Bloqueio de login para usuários `is_blocked`
+Arquivo: `src/routes/_authenticated.tsx` (apenas o guard que já existe)
 
-## Detalhes técnicos
+- Após carregar profile, se `profile.is_blocked === true` → `signOut()` + redirect para `/login?blocked=1` + toast "Sua conta foi bloqueada por um administrador". Mudança de ~5 linhas, não toca em mais nada do fluxo de auth.
+- Página `/login` mostra mensagem se `?blocked=1`. (1 linha).
 
-- A nova migração é aditiva (`add value if not exists`, novas funções) — não quebra nada existente.
-- `supabaseAdmin` só é usado dentro de `createServerFn` em arquivos `.functions.ts` (regra do template).
-- Todas as funções verificam `is_super_admin()` antes de retornar dados — guard duplo (route + server).
-- Nenhuma alteração em: app-sidebar styling, settings, inbox, schedule, services, dashboard, RLS de tabelas existentes.
+## 7. Segurança / regras invariantes
+- Nenhuma operação admin no client direto: tudo via server fn com service role.
+- Toda server fn re-verifica `is_super_admin()` no handler (defesa em profundidade).
+- Auto-proteção: server fns rejeitam quando `target === actor` para bloquear/rebaixar.
+- audit_logs preenchido em toda mutation.
 
-## Resultado esperado
+## Arquivos tocados (resumo)
 
-- `goldenf0408@gmail.com` (manager comum) deixa de ver "Super Admin" no sidebar e é bloqueado se acessar a URL diretamente.
-- Apenas o e-mail real do dono (bruno…) vê o painel.
-- Workspaces / Usuários / Saúde mostram dados reais do Supabase (auth.users, user_roles, workspace_members, whatsapp_instances).
-- Cobrança fica honesto até integrar Stripe.
+Novos:
+- `supabase/manual/20260518000000_super_admin_actions.sql`
+- `src/lib/super-admin-actions.functions.ts`
+- `src/features/super-admin/inspect-workspace-drawer.tsx`
+
+Editados (cirúrgico):
+- `src/routes/_authenticated.super-admin.workspaces.tsx` — adicionar drawer + handlers.
+- `src/routes/_authenticated.super-admin.users.tsx` — remover Impersonar, trocar ações, badge bloqueado.
+- `src/routes/_authenticated.tsx` — 5 linhas para gate `is_blocked`.
+- `src/routes/login.tsx` — mensagem opcional `?blocked=1`.
+
+NÃO tocados: kanban, inbox, whatsapp, agenda, serviços, settings do cliente, RLS de outras tabelas, sidebar, dashboard, hooks de auth.
+
+## Ação manual exigida ao usuário
+Rodar o novo SQL `20260518000000_super_admin_actions.sql` no SQL Editor (em uma única execução — não envolve `ALTER TYPE … ADD VALUE`, então é seguro).
