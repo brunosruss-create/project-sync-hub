@@ -97,7 +97,7 @@ export const getWorkspaceDetail = createServerFn({ method: "POST" })
       supabaseAdmin
         .from("audit_logs")
         .select("id, action, resource_type, resource_id, actor_email, metadata, created_at")
-        .or(`resource_id.eq.${ownerId}`)
+        .eq("resource_id", ownerId)
         .order("created_at", { ascending: false })
         .limit(5),
     ]);
