@@ -1,6 +1,6 @@
 import * as React from "react";
 import { createFileRoute } from "@tanstack/react-router";
-import { useQuery } from "@tanstack/react-query";
+import { useQuery, useQueryClient } from "@tanstack/react-query";
 import { useServerFn } from "@tanstack/react-start";
 import { toast } from "sonner";
 import {
@@ -62,12 +62,18 @@ function GeminiTab() {
   const fetchFn = useServerFn(getAiGlobalSettings);
   const updateFn = useServerFn(updateAiGlobalSettings);
   const testFn = useServerFn(testGeminiConnection);
-  const q = useQuery({ queryKey: ["ai-globals"], queryFn: () => fetchFn({ data: {} }) });
+  const qc = useQueryClient();
+  const q = useQuery({ queryKey: ["ai-globals"], queryFn: () => fetchFn() });
+  const savedKeyValue = q.data?.settings.gemini_api_key?.value ?? "";
+  const savedKeyHint =
+    savedKeyValue.length > 0
+      ? `✓ Chave salva no banco (••••${savedKeyValue.slice(-4)}, ${savedKeyValue.length} caracteres)`
+      : "⚠ Nenhuma chave salva no banco ainda";
   const [form, setForm] = React.useState<Record<string, string>>({});
   React.useEffect(() => {
     if (q.data?.settings) {
       setForm({
-        gemini_api_key: q.data.settings.gemini_api_key?.value ?? "",
+        gemini_api_key: "",
         gemini_model: q.data.settings.gemini_model?.value ?? "gemini-2.5-flash",
         gemini_temperature: q.data.settings.gemini_temperature?.value ?? "0.7",
         gemini_max_tokens: q.data.settings.gemini_max_tokens?.value ?? "1000",
@@ -80,8 +86,12 @@ function GeminiTab() {
 
   const save = async () => {
     try {
-      await updateFn({ data: form });
-      toast.success("Configurações salvas");
+      const payload: Record<string, string> = { ...form };
+      // Não sobrescreve a chave com vazio (deixar em branco = manter a atual)
+      if (!payload.gemini_api_key) delete payload.gemini_api_key;
+      const r = await updateFn({ data: payload });
+      toast.success(`Configurações salvas (${r.saved} campos atualizados)`);
+      await qc.invalidateQueries({ queryKey: ["ai-globals"] });
     } catch (e) {
       toast.error(e instanceof Error ? e.message : "Erro ao salvar");
     }
@@ -90,7 +100,7 @@ function GeminiTab() {
     setTesting(true);
     setStatus(null);
     try {
-      const r = await testFn({ data: {} });
+      const r = await testFn();
       setStatus({ ok: r.ok, msg: r.ok ? `Conectado (${r.model})` : r.error ?? "Erro" });
     } finally {
       setTesting(false);
@@ -129,8 +139,18 @@ function GeminiTab() {
             style={adminInput}
             value={form.gemini_api_key ?? ""}
             onChange={(e) => setForm({ ...form, gemini_api_key: e.target.value })}
-            placeholder="AIzaSy…"
+            placeholder={savedKeyValue ? "Deixe vazio para manter a chave atual" : "AIzaSy…"}
+            autoComplete="off"
           />
+          <div
+            style={{
+              marginTop: 6,
+              fontSize: 11,
+              color: savedKeyValue ? "#10B981" : "#F59E0B",
+            }}
+          >
+            {savedKeyHint}
+          </div>
         </Field>
         <Field label="Modelo">
           <select
@@ -213,7 +233,7 @@ function SegmentsTab() {
   const listFn = useServerFn(listAiSegments);
   const toggleFn = useServerFn(toggleAiSegment);
   const upsertFn = useServerFn(upsertAiSegment);
-  const q = useQuery({ queryKey: ["ai-segments"], queryFn: () => listFn({ data: {} }) });
+  const q = useQuery({ queryKey: ["ai-segments"], queryFn: () => listFn() });
   const [editing, setEditing] = React.useState<any>(null);
 
   if (q.isLoading) return <p style={{ fontSize: 13, opacity: 0.6 }}>Carregando…</p>;
@@ -390,7 +410,7 @@ function SegmentEditor({
 
 function UsageTab() {
   const fn = useServerFn(getAiUsageMetrics);
-  const q = useQuery({ queryKey: ["ai-usage"], queryFn: () => fn({ data: {} }) });
+  const q = useQuery({ queryKey: ["ai-usage"], queryFn: () => fn() });
   if (q.isLoading) return <p style={{ fontSize: 13, opacity: 0.6 }}>Carregando…</p>;
   const m = q.data;
   if (!m) return null;

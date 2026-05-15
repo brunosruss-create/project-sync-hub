@@ -53,17 +53,36 @@ export const updateAiGlobalSettings = createServerFn({ method: "POST" })
   )
   .handler(async ({ data, context }) => {
     await assertSuperAdmin(context.userId);
+    if (!process.env.APP_SUPABASE_SERVICE_ROLE_KEY) {
+      throw new Error(
+        "Servidor sem APP_SUPABASE_SERVICE_ROLE_KEY — peça ao admin do projeto para configurar essa secret.",
+      );
+    }
     const rows = Object.entries(data)
-      .filter(([_, v]) => v !== undefined)
+      .filter(([_, v]) => v !== undefined && v !== "")
       .map(([key, value]) => ({
         key,
         value: String(value),
         updated_at: new Date().toISOString(),
       }));
-    if (rows.length === 0) return { ok: true };
-    const { error } = await supabaseAdmin.from("global_settings").upsert(rows);
-    if (error) throw new Error(error.message);
-    return { ok: true };
+    if (rows.length === 0) return { ok: true, saved: 0 };
+    console.log(
+      "[updateAiGlobalSettings] upserting keys:",
+      rows.map((r) => `${r.key}(${r.value.length}ch)`).join(", "),
+    );
+    const { data: result, error } = await supabaseAdmin
+      .from("global_settings")
+      .upsert(rows, { onConflict: "key" })
+      .select("key,value");
+    if (error) {
+      console.error("[updateAiGlobalSettings] upsert error:", error);
+      throw new Error(`${error.code ?? ""} ${error.message}`.trim());
+    }
+    console.log(
+      "[updateAiGlobalSettings] upsert ok, rows returned:",
+      (result ?? []).map((r) => `${r.key}=${(r.value ?? "").length}ch`).join(", "),
+    );
+    return { ok: true, saved: rows.length };
   });
 
 // ============= TEST GEMINI =============
