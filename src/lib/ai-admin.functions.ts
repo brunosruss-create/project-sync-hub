@@ -77,7 +77,7 @@ export const testGeminiConnection = createServerFn({ method: "POST" })
       .in("key", ["gemini_api_key", "gemini_model"]);
     const map = Object.fromEntries((data ?? []).map((r) => [r.key, r.value ?? ""]));
     const apiKey = map.gemini_api_key;
-    const model = map.gemini_model || "gemini-1.5-flash";
+    const model = map.gemini_model || "gemini-3.1-flash-lite";
     if (!apiKey) return { ok: false, error: "API key não configurada" };
     try {
       const url = `https://generativelanguage.googleapis.com/v1beta/models/${model}:generateContent?key=${apiKey}`;
