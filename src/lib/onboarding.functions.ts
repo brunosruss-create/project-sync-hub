@@ -168,6 +168,8 @@ export const getWorkspaceProfile = createServerFn({ method: "POST" })
   });
 
 // ============= UPDATE WORKSPACE PROFILE =============
+// Atualiza apenas nome do negócio. Para trocar segmento e aplicar defaults
+// da IA, use updateWorkspaceSegmentWithDefaults.
 export const updateWorkspaceProfile = createServerFn({ method: "POST" })
   .middleware([requireSupabaseAuth])
   .inputValidator((input) =>
@@ -179,7 +181,6 @@ export const updateWorkspaceProfile = createServerFn({ method: "POST" })
       .parse(input),
   )
   .handler(async ({ data, context }) => {
-    // valida segmento ativo
     const { data: seg } = await supabaseAdmin
       .from("ai_segments")
       .select("id")
@@ -196,4 +197,79 @@ export const updateWorkspaceProfile = createServerFn({ method: "POST" })
       .eq("id", context.userId);
     if (error) throw new Error(error.message);
     return { ok: true };
+  });
+
+// ============= UPDATE SEGMENT + APLICAR DEFAULTS DA IA =============
+// Usado ao trocar o segmento: sobrescreve nome do assistente, tom,
+// palavras-chave de transferência e contagem de mensagens com os defaults
+// do segmento alvo.
+export const updateWorkspaceSegmentWithDefaults = createServerFn({ method: "POST" })
+  .middleware([requireSupabaseAuth])
+  .inputValidator((input) =>
+    z
+      .object({
+        business_name: z.string().min(1).max(120),
+        segment_id: z.string().uuid(),
+      })
+      .parse(input),
+  )
+  .handler(async ({ data, context }) => {
+    const { data: segment } = await supabaseAdmin
+      .from("ai_segments")
+      .select(
+        "id,default_assistant_name,default_tone,default_transfer_keywords,default_transfer_after_messages",
+      )
+      .eq("id", data.segment_id)
+      .eq("is_active", true)
+      .maybeSingle();
+    if (!segment) throw new Error("Segmento inválido ou inativo");
+    const { error } = await supabaseAdmin
+      .from("profiles")
+      .update({
+        business_name: data.business_name,
+        segment_id: segment.id,
+        ai_assistant_name: segment.default_assistant_name ?? "Sofia",
+        ai_tone: segment.default_tone ?? "Amigável",
+        ai_transfer_keywords:
+          segment.default_transfer_keywords ?? ["humano", "atendente", "reclamação"],
+        ai_transfer_after_messages: segment.default_transfer_after_messages ?? 5,
+      })
+      .eq("id", context.userId);
+    if (error) throw new Error(error.message);
+    return { ok: true };
+  });
+
+// ============= MÉTRICAS DA IA DO WORKSPACE (página /ai-agent) =============
+export const getWorkspaceAiStats = createServerFn({ method: "POST" })
+  .middleware([requireSupabaseAuth])
+  .handler(async ({ context }) => {
+    const today = new Date();
+    today.setHours(0, 0, 0, 0);
+    const since = today.toISOString();
+    const [{ count: messages }, { count: transfers }, { count: errors }] =
+      await Promise.all([
+        supabaseAdmin
+          .from("ai_usage_logs")
+          .select("id", { count: "exact", head: true })
+          .eq("workspace_owner_id", context.userId)
+          .eq("action", "send_message")
+          .gte("created_at", since),
+        supabaseAdmin
+          .from("ai_usage_logs")
+          .select("id", { count: "exact", head: true })
+          .eq("workspace_owner_id", context.userId)
+          .eq("action", "transfer_to_human")
+          .gte("created_at", since),
+        supabaseAdmin
+          .from("ai_usage_logs")
+          .select("id", { count: "exact", head: true })
+          .eq("workspace_owner_id", context.userId)
+          .eq("action", "error")
+          .gte("created_at", since),
+      ]);
+    return {
+      messages_today: messages ?? 0,
+      transfers_today: transfers ?? 0,
+      errors_today: errors ?? 0,
+    };
   });
