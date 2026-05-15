@@ -428,7 +428,13 @@ export async function runAiResponse(input: AiRunInput): Promise<AiRunResult> {
     (profile.ai_timezone as string | null) ||
     (profile.business_timezone as string | null) ||
     "America/Sao_Paulo";
-  if (!isWithinHours(profile.ai_working_hours as WorkingHours, tz)) {
+  const aiHours = profile.ai_working_hours as WorkingHours | null;
+  const bizHours = profile.business_hours as WorkingHours | null;
+  const effectiveHours =
+    aiHours && typeof aiHours === "object" && Object.keys(aiHours).length > 0
+      ? aiHours
+      : bizHours;
+  if (!isWithinHours(effectiveHours, tz)) {
     const out = profile.ai_out_of_hours_message ?? "Estamos fora do horário de atendimento.";
     if (!data.preview) {
       await supabaseAdmin.from("ai_usage_logs").insert({
