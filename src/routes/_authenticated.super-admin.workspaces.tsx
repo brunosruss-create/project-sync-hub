@@ -29,6 +29,7 @@ type Workspace = {
 function WorkspacesAdmin() {
   const [search, setSearch] = React.useState("");
   const [status, setStatus] = React.useState<"all" | "active" | "inactive">("all");
+  const [inspectId, setInspectId] = React.useState<string | null>(null);
 
   const { data: items = [], isLoading, error } = useQuery({
     queryKey: ["admin", "workspaces"],
