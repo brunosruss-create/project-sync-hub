@@ -180,7 +180,7 @@ export const getWorkspaceProfile = createServerFn({ method: "POST" })
     const { data } = await supabaseAdmin
       .from("profiles")
       .select(
-        "business_name,business_description,segment_id,business_hours,business_timezone,welcome_message",
+        "business_name,business_description,segment_id,business_hours,business_timezone,welcome_message,business_address,business_phone,business_website,business_logo_url",
       )
       .eq("id", context.userId)
       .maybeSingle();
@@ -191,6 +191,10 @@ export const getWorkspaceProfile = createServerFn({ method: "POST" })
       business_hours: (data?.business_hours as BusinessHours | null) ?? null,
       business_timezone: data?.business_timezone ?? "America/Sao_Paulo",
       welcome_message: data?.welcome_message ?? "",
+      business_address: data?.business_address ?? "",
+      business_phone: data?.business_phone ?? "",
+      business_website: data?.business_website ?? "",
+      business_logo_url: data?.business_logo_url ?? "",
     };
   });
 
