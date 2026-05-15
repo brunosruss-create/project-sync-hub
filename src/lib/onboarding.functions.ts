@@ -122,7 +122,7 @@ export const getWorkspaceAiConfig = createServerFn({ method: "POST" })
     const { data } = await supabaseAdmin
       .from("profiles")
       .select(
-        "ai_enabled,ai_assistant_name,ai_tone,ai_custom_prompt,ai_transfer_keywords,ai_transfer_after_messages,ai_schedule_enabled,ai_schedule_instruction,ai_working_hours,ai_out_of_hours_message,ai_enabled_service_ids,ai_timezone,business_name,business_description,business_timezone,segment_id",
+        "ai_enabled,ai_assistant_name,ai_tone,ai_custom_prompt,ai_transfer_keywords,ai_transfer_after_messages,ai_schedule_enabled,ai_schedule_instruction,ai_working_hours,ai_out_of_hours_message,ai_enabled_service_ids,ai_timezone,business_name,business_description,business_timezone,segment_id,ai_introduce_by_name,ai_declare_as_ai,ai_mention_business_name,ai_has_multiple_professionals,ai_price_disclosure_policy,ai_can_reschedule,ai_can_cancel,ai_min_advance_hours,ai_required_fields,ai_max_questions_per_message",
       )
       .eq("id", context.userId)
       .maybeSingle();
@@ -161,6 +161,19 @@ export const updateWorkspaceAiConfig = createServerFn({ method: "POST" })
         ai_out_of_hours_message: z.string().max(1000).optional(),
         ai_enabled_service_ids: z.array(z.string().uuid()).max(200).optional(),
         ai_timezone: z.string().min(1).max(64).optional(),
+        // Comportamento (novos)
+        ai_introduce_by_name: z.boolean().optional(),
+        ai_declare_as_ai: z.boolean().optional(),
+        ai_mention_business_name: z.boolean().optional(),
+        ai_has_multiple_professionals: z.boolean().optional(),
+        ai_price_disclosure_policy: z
+          .enum(["always", "on_request", "never"])
+          .optional(),
+        ai_can_reschedule: z.boolean().optional(),
+        ai_can_cancel: z.boolean().optional(),
+        ai_min_advance_hours: z.number().int().min(0).max(720).optional(),
+        ai_required_fields: z.array(z.string().max(64)).max(40).optional(),
+        ai_max_questions_per_message: z.number().int().min(1).max(5).optional(),
       })
       .parse(input),
   )

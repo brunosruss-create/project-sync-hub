@@ -97,6 +97,19 @@ function AIAgentPage() {
   const [tester, setTester] = React.useState(false);
   const [hydrated, setHydrated] = React.useState(false);
 
+  // === NOVOS CAMPOS COMPORTAMENTAIS ===
+  const [introduceByName, setIntroduceByName] = React.useState(true);
+  const [declareAsAi, setDeclareAsAi] = React.useState(false);
+  const [mentionBusiness, setMentionBusiness] = React.useState(true);
+  const [multipleProfs, setMultipleProfs] = React.useState(false);
+  const [pricePolicy, setPricePolicy] = React.useState<
+    "always" | "on_request" | "never"
+  >("on_request");
+  const [canReschedule, setCanReschedule] = React.useState(false);
+  const [canCancel, setCanCancel] = React.useState(false);
+  const [minAdvanceHours, setMinAdvanceHours] = React.useState(2);
+  const [maxQuestions, setMaxQuestions] = React.useState(1);
+
   // Hidrata form quando config chega
   React.useEffect(() => {
     const c = configQ.data?.config;
@@ -122,6 +135,22 @@ function AIAgentPage() {
       (cAny.business_timezone as string | undefined) ||
       "America/Sao_Paulo";
     setTimezone(tz);
+    // Novos campos comportamentais
+    setIntroduceByName((cAny.ai_introduce_by_name as boolean | undefined) ?? true);
+    setDeclareAsAi((cAny.ai_declare_as_ai as boolean | undefined) ?? false);
+    setMentionBusiness((cAny.ai_mention_business_name as boolean | undefined) ?? true);
+    setMultipleProfs((cAny.ai_has_multiple_professionals as boolean | undefined) ?? false);
+    setPricePolicy(
+      ((cAny.ai_price_disclosure_policy as
+        | "always"
+        | "on_request"
+        | "never"
+        | undefined) ?? "on_request"),
+    );
+    setCanReschedule((cAny.ai_can_reschedule as boolean | undefined) ?? false);
+    setCanCancel((cAny.ai_can_cancel as boolean | undefined) ?? false);
+    setMinAdvanceHours((cAny.ai_min_advance_hours as number | undefined) ?? 2);
+    setMaxQuestions((cAny.ai_max_questions_per_message as number | undefined) ?? 1);
     setHydrated(true);
   }, [configQ.data, hydrated]);
 
@@ -141,6 +170,15 @@ function AIAgentPage() {
           ai_out_of_hours_message: offHoursMsg,
           ai_enabled_service_ids: enabledServices,
           ai_timezone: timezone,
+          ai_introduce_by_name: introduceByName,
+          ai_declare_as_ai: declareAsAi,
+          ai_mention_business_name: mentionBusiness,
+          ai_has_multiple_professionals: multipleProfs,
+          ai_price_disclosure_policy: pricePolicy,
+          ai_can_reschedule: canReschedule,
+          ai_can_cancel: canCancel,
+          ai_min_advance_hours: minAdvanceHours,
+          ai_max_questions_per_message: maxQuestions,
         },
       }),
     onSuccess: () => {
@@ -327,6 +365,65 @@ function AIAgentPage() {
         </Card>
       </Section>
 
+      {/* COMPORTAMENTO DO AGENTE */}
+      <Section title="Comportamento do agente">
+        <Card>
+          <ToggleRow
+            label="A IA se apresenta pelo nome ao cliente?"
+            value={introduceByName}
+            onChange={setIntroduceByName}
+          />
+          <ToggleRow
+            label="A IA menciona o nome do negócio na apresentação?"
+            value={mentionBusiness}
+            onChange={setMentionBusiness}
+          />
+          <ToggleRow
+            label="A IA se declara como agente virtual se perguntada?"
+            value={declareAsAi}
+            onChange={setDeclareAsAi}
+            hint="Quando desligado, a IA evita confirmar espontaneamente que é uma IA."
+          />
+          <ToggleRow
+            label="Este negócio tem mais de um profissional?"
+            value={multipleProfs}
+            onChange={setMultipleProfs}
+            hint="Se desligado, a IA não pergunta com qual profissional o cliente quer ser atendido."
+          />
+          <div style={{ marginTop: 12 }}>
+            <Field label="Quando a IA pode informar preços?">
+              <select
+                style={input}
+                value={pricePolicy}
+                onChange={(e) =>
+                  setPricePolicy(
+                    e.target.value as "always" | "on_request" | "never",
+                  )
+                }
+              >
+                <option value="always">Sempre, proativamente</option>
+                <option value="on_request">Apenas quando o cliente perguntar</option>
+                <option value="never">Nunca — direcionar para atendente</option>
+              </select>
+            </Field>
+          </div>
+          <div className="grid gap-3 md:grid-cols-2" style={{ marginTop: 12 }}>
+            <Field label="Máximo de perguntas por mensagem (recomendado: 1)">
+              <input
+                style={input}
+                type="number"
+                min={1}
+                max={5}
+                value={maxQuestions}
+                onChange={(e) =>
+                  setMaxQuestions(Math.max(1, Number(e.target.value) || 1))
+                }
+              />
+            </Field>
+          </div>
+        </Card>
+      </Section>
+
       {/* FLUXO */}
       <Section title="Fluxo de atendimento">
         <Card>
@@ -430,6 +527,32 @@ function AIAgentPage() {
                     onChange={(e) => setScheduleInstr(e.target.value)}
                   />
                 </Field>
+              </div>
+              <div style={{ marginTop: 12 }}>
+                <Field label="Antecedência mínima para agendamento (horas)">
+                  <input
+                    style={input}
+                    type="number"
+                    min={0}
+                    max={720}
+                    value={minAdvanceHours}
+                    onChange={(e) =>
+                      setMinAdvanceHours(Math.max(0, Number(e.target.value) || 0))
+                    }
+                  />
+                </Field>
+              </div>
+              <div style={{ marginTop: 12 }}>
+                <ToggleRow
+                  label="A IA pode reagendar horários já marcados?"
+                  value={canReschedule}
+                  onChange={setCanReschedule}
+                />
+                <ToggleRow
+                  label="A IA pode cancelar agendamentos?"
+                  value={canCancel}
+                  onChange={setCanCancel}
+                />
               </div>
               <div style={{ marginTop: 16 }}>
                 <Field label="Serviços que o agente pode agendar">
@@ -901,6 +1024,35 @@ function BigToggle({ value, onChange }: { value: boolean; onChange: (v: boolean)
         }}
       />
     </button>
+  );
+}
+
+function ToggleRow({
+  label,
+  value,
+  onChange,
+  hint,
+}: {
+  label: string;
+  value: boolean;
+  onChange: (v: boolean) => void;
+  hint?: string;
+}) {
+  return (
+    <div
+      className="flex items-start justify-between gap-4"
+      style={{ padding: "8px 0" }}
+    >
+      <div>
+        <div style={{ fontSize: 13, fontWeight: 500 }}>{label}</div>
+        {hint && (
+          <div style={{ fontSize: 12, color: "var(--text-muted)", marginTop: 2 }}>
+            {hint}
+          </div>
+        )}
+      </div>
+      <SmallToggle value={value} onChange={onChange} />
+    </div>
   );
 }
 
