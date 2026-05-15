@@ -133,6 +133,7 @@ function AIAgentPage() {
           ai_schedule_instruction: scheduleInstr || null,
           ai_working_hours: hours,
           ai_out_of_hours_message: offHoursMsg,
+          ai_enabled_service_ids: enabledServices,
         },
       }),
     onSuccess: () => {
