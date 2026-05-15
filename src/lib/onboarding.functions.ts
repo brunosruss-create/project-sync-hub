@@ -222,6 +222,10 @@ export const updateWorkspaceProfile = createServerFn({ method: "POST" })
         business_hours: HoursSchema,
         business_timezone: z.string().min(1).max(64).optional(),
         welcome_message: z.string().max(2000).optional(),
+        business_address: z.string().max(300).optional(),
+        business_phone: z.string().max(40).optional(),
+        business_website: z.string().max(300).optional(),
+        business_logo_url: z.string().max(500).optional(),
       })
       .parse(input),
   )
@@ -244,6 +248,10 @@ export const updateWorkspaceProfile = createServerFn({ method: "POST" })
       update.ai_timezone = data.business_timezone;
     }
     if (data.welcome_message !== undefined) update.welcome_message = data.welcome_message;
+    if (data.business_address !== undefined) update.business_address = data.business_address;
+    if (data.business_phone !== undefined) update.business_phone = data.business_phone;
+    if (data.business_website !== undefined) update.business_website = data.business_website;
+    if (data.business_logo_url !== undefined) update.business_logo_url = data.business_logo_url;
     const { error } = await supabaseAdmin
       .from("profiles")
       .update(update)
