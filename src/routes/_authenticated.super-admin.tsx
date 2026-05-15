@@ -15,6 +15,7 @@ import {
   CreditCard,
   Shield,
   LogOut,
+  Bot,
 } from "lucide-react";
 import { useAuth } from "@/hooks/use-auth";
 import { useIsSuperAdmin } from "@/hooks/use-is-super-admin";
