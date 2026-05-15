@@ -4,6 +4,59 @@ import { MoreVertical } from "lucide-react";
 import { ContactCard } from "./contact-card";
 import type { ContactCard as Contact, KanbanColumnDef } from "./data";
 
+const EMPTY_STATES: Record<string, { icon: string; title: string; subtitle: string }> = {
+  waiting: {
+    icon: "💬",
+    title: "Nenhuma conversa aguardando",
+    subtitle: "Mensagens novas do WhatsApp aparecem aqui automaticamente.",
+  },
+  in_progress: {
+    icon: "🎧",
+    title: "Sem atendimentos em andamento",
+    subtitle: "Mova uma conversa para cá quando começar a atender.",
+  },
+  scheduled: {
+    icon: "📅",
+    title: "Nenhum agendamento confirmado",
+    subtitle: "Contatos com horário marcado aparecem aqui.",
+  },
+  urgent: {
+    icon: "✅",
+    title: "Nenhuma urgência no momento",
+    subtitle: "Marque conversas críticas como urgente quando necessário.",
+  },
+};
+
+function ColumnEmptyState({ slug }: { slug: string }) {
+  const state = EMPTY_STATES[slug] ?? {
+    icon: "📭",
+    title: "Nenhum card aqui",
+    subtitle: "Arraste conversas para esta coluna.",
+  };
+  return (
+    <div
+      style={{
+        display: "flex",
+        flexDirection: "column",
+        alignItems: "center",
+        justifyContent: "center",
+        padding: "40px 20px",
+        textAlign: "center",
+        gap: 4,
+        opacity: 0.5,
+      }}
+    >
+      <span style={{ fontSize: 28, lineHeight: 1 }}>{state.icon}</span>
+      <p style={{ fontSize: 13, fontWeight: 500, marginTop: 4, color: "var(--text-primary)" }}>
+        {state.title}
+      </p>
+      <p style={{ fontSize: 12, fontWeight: 400, color: "var(--text-muted)" }}>
+        {state.subtitle}
+      </p>
+    </div>
+  );
+}
+
 export type ColumnMenuRequestDetail = {
   column: KanbanColumnDef;
   anchor: { top: number; left: number };
@@ -133,20 +186,7 @@ export function KanbanColumn({ column, contacts, onCardClick }: Props) {
         {contacts.map((c) => (
           <ContactCard key={c.id} contact={c} onClick={() => onCardClick(c)} />
         ))}
-        {contacts.length === 0 && (
-          <div
-            style={{
-              fontSize: 12,
-              color: "var(--text-muted)",
-              textAlign: "center",
-              padding: "32px 8px",
-              border: "1px dashed var(--border)",
-              borderRadius: 8,
-            }}
-          >
-            Solte um card aqui
-          </div>
-        )}
+        {contacts.length === 0 && <ColumnEmptyState slug={slug} />}
       </div>
     </div>
   );

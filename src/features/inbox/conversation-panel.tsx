@@ -20,7 +20,7 @@ import {
   Trash2,
 } from "lucide-react";
 import { Composer } from "./composer";
-import { type ContactCard as Contact, formatRelative, initials } from "./data";
+import { type ContactCard as Contact, formatRelative, formatPhone, initials } from "./data";
 import { ContactAvatar } from "./contact-avatar";
 import { supabase } from "@/integrations/supabase/client";
 import { useAuth } from "@/hooks/use-auth";
@@ -454,17 +454,17 @@ export function ConversationPanel({
               <div className="flex-1 min-w-0">
                 <div
                   className="truncate"
-                  style={{ fontSize: 13, fontWeight: 600, lineHeight: 1.2 }}
+                  style={{ fontSize: 15, fontWeight: 600, letterSpacing: "-0.01em", lineHeight: 1.2 }}
                 >
                   {contact.name}
                 </div>
                 <div
-                  className="truncate"
-                  style={{ fontSize: 11, color: "var(--text-muted)" }}
+                  className="truncate flex items-center"
+                  style={{ fontSize: 12, color: "var(--text-muted)", gap: 6, marginTop: 2 }}
                 >
-                  <span style={{ color: "var(--brand-400)" }}>● online</span>
-                  <span style={{ margin: "0 6px", opacity: 0.4 }}>·</span>
-                  <span className="font-mono">{contact.phone}</span>
+                  <span style={{ color: "var(--brand-400)", fontSize: 11 }}>● online</span>
+                  <span style={{ opacity: 0.4 }}>·</span>
+                  <span className="font-mono">{formatPhone(contact.phone)}</span>
                 </div>
               </div>
 
