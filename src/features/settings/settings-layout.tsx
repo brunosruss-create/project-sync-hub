@@ -60,7 +60,26 @@ export function SettingsLayout({
           Configurações
         </div>
         <ul className="flex flex-col" style={{ gap: 2 }}>
-          {items.map((it) => {
+          {items.map((it, idx) => {
+            if (it.kind === "section") {
+              return (
+                <li
+                  key={`sec-${idx}`}
+                  style={{
+                    fontSize: 10,
+                    fontWeight: 600,
+                    textTransform: "uppercase",
+                    letterSpacing: "0.06em",
+                    color: "var(--text-muted)",
+                    padding: idx === 0 ? "4px 8px 4px" : "12px 8px 4px",
+                    marginTop: idx === 0 ? 0 : 6,
+                    borderTop: idx === 0 ? "none" : "1px solid var(--border)",
+                  }}
+                >
+                  {it.label}
+                </li>
+              );
+            }
             const active = path === it.to;
             const Icon = it.icon;
             return (
