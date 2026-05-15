@@ -105,7 +105,7 @@ function TeamPage() {
   return (
     <SettingsLayout
       title="Equipe"
-      description="Gerencie membros da sua equipe. Todos compartilham o mesmo número de WhatsApp e a mesma caixa de entrada."
+      description="Gerencie quem tem acesso ao sistema e atende pelo WhatsApp."
     >
       <div className="flex items-center justify-between" style={{ marginBottom: 16 }}>
         <p style={{ fontSize: 13, color: "var(--text-muted)" }}>
