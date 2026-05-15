@@ -1,50 +1,35 @@
 ## Problema
 
-A lista de modelos no `/super-admin/ia` está desatualizada. Mostra Gemini 1.5 (legado/descontinuado) e 2.0, e não tem nenhum modelo da família **Gemini 3** — incluindo o **Gemini 3.1 Flash-Lite** (último modelo estável e mais barato/rápido) e o **Gemini 3 Flash**, que é o recomendado atual.
+Em **Configurações → Negócio**, o campo "Segmento" está com 4 opções hardcoded (Mecânico / Clínica / Dentista / Outro) e nem é salvo de verdade — é só um `useState` local. Enquanto isso, no Super Admin → IA → Segmentos já existe uma lista completa de **16+ segmentos** (Estética, Médico, Odontologia, Salão, Barbearia, Mecânica, Veterinária, Advocacia, etc.) gravada na tabela `ai_segments`, e o onboarding já usa essa mesma lista via `listActiveSegments`.
 
-## Modelos válidos hoje na API oficial Google (`generativelanguage.googleapis.com/v1beta/.../:generateContent`)
+A correção é fazer o select de Segmento puxar dinamicamente da tabela `ai_segments` (igual ao onboarding) e persistir a escolha em `profiles.segment_id`.
 
-Confirmado em https://ai.google.dev/gemini-api/docs/models — modelos de texto/chat suportados:
+## Plano
 
-| Código (API) | Nome amigável | Status | Quando usar |
-|---|---|---|---|
-| `gemini-3.1-pro-preview` | Gemini 3.1 Pro | Preview | Qualidade máxima, raciocínio complexo |
-| `gemini-3-flash-preview` | Gemini 3 Flash | Preview | **Recomendado** — equilíbrio frontier-class |
-| `gemini-3.1-flash-lite` | Gemini 3.1 Flash-Lite | **Estável** | Mais rápido e barato da família 3 |
-| `gemini-3.1-flash-lite-preview` | Gemini 3.1 Flash-Lite (preview) | Preview | Acesso antecipado a melhorias |
-| `gemini-2.5-pro` | Gemini 2.5 Pro | Estável | Raciocínio profundo (geração anterior) |
-| `gemini-2.5-flash` | Gemini 2.5 Flash | Estável | Custo/performance família 2.5 |
-| `gemini-2.5-flash-lite` | Gemini 2.5 Flash-Lite | Estável | Mais barato família 2.5 |
+### 1. Reaproveitar `listActiveSegments` (já existe)
+Em `src/lib/onboarding.functions.ts` já temos a função que retorna todos os segmentos ativos ordenados por `sort_order`, com `id, name, slug, description, icon`. Não precisa criar nada novo no backend para listar.
 
-**Removidos** (deprecados/sem valor):
-- `gemini-2.0-flash` — substituído por 2.5/3.x
-- `gemini-1.5-flash` / `gemini-1.5-pro` — descontinuados pelo Google
+### 2. Criar server function para ler/atualizar dados do workspace
+Em `src/lib/onboarding.functions.ts` (ou novo `workspace.functions.ts`), adicionar:
 
-## Plano de correção
+- `getWorkspaceProfile` — retorna `business_name, business_description, segment_id` do `profiles` do usuário.
+- `updateWorkspaceSegment` — recebe `{ segment_id: uuid, business_name?: string }`, valida que o segmento existe e está ativo, e faz `update` em `profiles`.
 
-### 1. Atualizar lista de modelos no select
-Arquivo: `src/routes/_authenticated.super-admin.ia.tsx` (linhas 168–172)
+> Escopo: vou cuidar **só do segmento + nome do negócio** nesse passo. Os outros campos da tela (endereço, telefone, site, horários, mensagem de boas-vindas) continuam mock — não fazem parte do pedido. Se quiser que eu também conecte esses, me avisa.
 
-Trocar pelas 7 opções acima, agrupadas com `<optgroup>`:
-- **Gemini 3 (mais novos)** — 3.1 Flash-Lite (estável), 3 Flash, 3.1 Pro, 3.1 Flash-Lite preview
-- **Gemini 2.5 (estáveis)** — 2.5 Flash, 2.5 Flash-Lite, 2.5 Pro
+### 3. Atualizar a tela `_authenticated.settings.workspace.tsx`
+- Trocar o `useState("Mecânico")` por `useState<string | null>(null)` guardando `segment_id`.
+- Carregar `getWorkspaceProfile` + `listActiveSegments` via `useQuery` (paralelo).
+- Renderizar o `<select>` com `<option value={s.id}>{s.icon} {s.name}</option>` para cada segmento ativo.
+- Pré-selecionar o `segment_id` atual do perfil.
+- No botão "Salvar alterações", chamar `updateWorkspaceSegment({ segment_id, business_name })` e mostrar toast de sucesso/erro real (substitui o `setTimeout` falso).
+- Invalidar a query depois de salvar.
 
-Marcar `gemini-3.1-flash-lite` como **recomendado** (rápido, barato e estável).
-
-### 2. Atualizar default em todo o backend
-Trocar todos os fallbacks `"gemini-2.5-flash"` para `"gemini-3.1-flash-lite"`:
-- `src/routes/_authenticated.super-admin.ia.tsx` linha 77
-- `src/lib/ai-admin.functions.ts` (função `testGeminiConnection`)
-- `src/lib/ai-respond.functions.ts` linha 148
-
-### 3. Atualizar comentário de custo em `ai-respond.functions.ts`
-Já cita "Gemini 3.1 Flash-Lite" mas o código real usa 2.5-flash. Alinhar tudo em 3.1 Flash-Lite com os preços oficiais ($0.10 input / $0.40 output por 1M tokens, conforme Google).
-
-### 4. (Opcional) Validar modelo antes de salvar
-Em `updateAiGlobalSettings`, validar com `z.enum([...])` se `gemini_model` é um dos 7 códigos válidos, evitando o usuário salvar um modelo escrito errado.
+### 4. Mostrar descrição do segmento (opcional)
+Logo abaixo do select, exibir a `description` do segmento selecionado em texto pequeno (ex.: "Salões de cabeleireiro, manicure, pedicure, sobrancelhas") pra confirmar visualmente a escolha — exatamente como aparece nos cards do Super Admin.
 
 ## Resultado
 
-- O select passa a mostrar apenas modelos válidos hoje na API Gemini, com o **3.1 Flash-Lite como recomendado**.
-- Default do sistema atualizado pra 3.1 Flash-Lite (mais barato e rápido que o 2.5-flash que está hoje).
-- Custos no log batem com o modelo real chamado.
+- O dropdown de Segmento em Configurações → Negócio mostra a **mesma lista completa** que o onboarding e o Super Admin.
+- A escolha é persistida em `profiles.segment_id`, então a IA passa a usar o prompt do segmento certo desse workspace.
+- Se o super admin adicionar/desativar segmentos, a tela atualiza sozinha sem deploy.
