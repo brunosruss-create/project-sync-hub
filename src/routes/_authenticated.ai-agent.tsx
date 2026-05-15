@@ -528,6 +528,32 @@ function AIAgentPage() {
                   />
                 </Field>
               </div>
+              <div style={{ marginTop: 12 }}>
+                <Field label="Antecedência mínima para agendamento (horas)">
+                  <input
+                    style={input}
+                    type="number"
+                    min={0}
+                    max={720}
+                    value={minAdvanceHours}
+                    onChange={(e) =>
+                      setMinAdvanceHours(Math.max(0, Number(e.target.value) || 0))
+                    }
+                  />
+                </Field>
+              </div>
+              <div style={{ marginTop: 12 }}>
+                <ToggleRow
+                  label="A IA pode reagendar horários já marcados?"
+                  value={canReschedule}
+                  onChange={setCanReschedule}
+                />
+                <ToggleRow
+                  label="A IA pode cancelar agendamentos?"
+                  value={canCancel}
+                  onChange={setCanCancel}
+                />
+              </div>
               <div style={{ marginTop: 16 }}>
                 <Field label="Serviços que o agente pode agendar">
                   {servicesQ.isLoading ? (
