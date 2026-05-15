@@ -530,6 +530,24 @@ function AIAgentPage() {
           </div>
 
           <div style={{ marginTop: 16 }}>
+            <Field label="Fuso horário">
+              <select
+                style={input}
+                value={timezone}
+                onChange={(e) => setTimezone(e.target.value)}
+              >
+                <option value="America/Sao_Paulo">America/Sao_Paulo (GMT-3)</option>
+                <option value="America/Manaus">America/Manaus (GMT-4)</option>
+                <option value="America/Belem">America/Belem (GMT-3)</option>
+                <option value="America/Fortaleza">America/Fortaleza (GMT-3)</option>
+                <option value="America/Recife">America/Recife (GMT-3)</option>
+                <option value="America/Cuiaba">America/Cuiaba (GMT-4)</option>
+                <option value="America/Rio_Branco">America/Rio_Branco (GMT-5)</option>
+              </select>
+            </Field>
+          </div>
+
+          <div style={{ marginTop: 16 }}>
             <Field label="Mensagem fora do horário">
               <textarea
                 style={{ ...input, height: 80, padding: 10, resize: "vertical" }}
