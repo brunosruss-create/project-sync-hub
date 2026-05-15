@@ -15,6 +15,7 @@ import {
   CreditCard,
   Shield,
   LogOut,
+  Bot,
 } from "lucide-react";
 import { useAuth } from "@/hooks/use-auth";
 import { useIsSuperAdmin } from "@/hooks/use-is-super-admin";
@@ -26,6 +27,7 @@ export const Route = createFileRoute("/_authenticated/super-admin")({
 const NAV = [
   { to: "/super-admin/workspaces", label: "Workspaces", icon: Building2 },
   { to: "/super-admin/users", label: "Usuários", icon: Users },
+  { to: "/super-admin/ia", label: "Inteligência Artificial", icon: Bot },
   { to: "/super-admin/health", label: "Saúde", icon: Activity },
   { to: "/super-admin/billing", label: "Cobrança", icon: CreditCard },
 ] as const;
