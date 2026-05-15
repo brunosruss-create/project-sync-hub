@@ -1,9 +1,32 @@
 import { supabaseAdmin } from "@/integrations/supabase/client.server";
 
-type WorkingHours = Record<
-  string,
-  { enabled: boolean; start: string; end: string }
->;
+type DayCfg = {
+  enabled?: boolean;
+  active?: boolean;
+  start?: string;
+  end?: string;
+};
+type WorkingHours = Record<string, DayCfg>;
+
+// Mapeia índice 0..6 (domingo=0) para as várias chaves aceitas.
+const DAY_KEYS: string[][] = [
+  ["sunday", "sun", "dom", "domingo"],
+  ["monday", "mon", "seg", "segunda", "segunda-feira"],
+  ["tuesday", "tue", "ter", "terca", "terça", "terca-feira", "terça-feira"],
+  ["wednesday", "wed", "qua", "quarta", "quarta-feira"],
+  ["thursday", "thu", "qui", "quinta", "quinta-feira"],
+  ["friday", "fri", "sex", "sexta", "sexta-feira"],
+  ["saturday", "sat", "sab", "sábado", "sabado"],
+];
+
+function parseHM(v: string | undefined, fallback: number): number {
+  if (!v || typeof v !== "string") return fallback;
+  const [hStr, mStr] = v.split(":");
+  const h = parseInt(hStr, 10);
+  const m = parseInt(mStr ?? "0", 10);
+  if (Number.isNaN(h)) return fallback;
+  return h * 60 + (Number.isNaN(m) ? 0 : m);
+}
 
 type PriceDisclosurePolicy = "always" | "on_request" | "never";
 
@@ -41,24 +64,54 @@ function isWithinHours(
   hours: WorkingHours | null | undefined,
   timezone: string,
 ): boolean {
-  if (!hours) return true;
+  if (!hours || typeof hours !== "object" || Object.keys(hours).length === 0) {
+    return true;
+  }
+  const tz = timezone || "America/Sao_Paulo";
+  // Usa índice numérico do dia (0=domingo..6=sábado) — independente de locale.
   const fmt = new Intl.DateTimeFormat("en-US", {
-    timeZone: timezone || "America/Sao_Paulo",
-    weekday: "long",
+    timeZone: tz,
+    weekday: "short",
     hour: "2-digit",
     minute: "2-digit",
     hour12: false,
   });
   const parts = fmt.formatToParts(new Date());
-  const weekday = (parts.find((p) => p.type === "weekday")?.value ?? "").toLowerCase();
-  const hh = parseInt(parts.find((p) => p.type === "hour")?.value ?? "0", 10);
+  const wdShort = (parts.find((p) => p.type === "weekday")?.value ?? "").toLowerCase();
+  const SHORT_TO_IDX: Record<string, number> = {
+    sun: 0, mon: 1, tue: 2, wed: 3, thu: 4, fri: 5, sat: 6,
+  };
+  const dayIdx = SHORT_TO_IDX[wdShort] ?? new Date().getUTCDay();
+  let hh = parseInt(parts.find((p) => p.type === "hour")?.value ?? "0", 10);
   const mm = parseInt(parts.find((p) => p.type === "minute")?.value ?? "0", 10);
-  const cfg = hours[weekday];
-  if (!cfg || !cfg.enabled) return false;
-  const [sh, sm] = (cfg.start ?? "00:00").split(":").map(Number);
-  const [eh, em] = (cfg.end ?? "23:59").split(":").map(Number);
-  const minutes = (hh % 24) * 60 + mm;
-  return minutes >= sh * 60 + sm && minutes <= eh * 60 + em;
+  if (hh === 24) hh = 0;
+
+  // Procura a config do dia tentando todas as chaves aceitas.
+  const candidates = DAY_KEYS[dayIdx] ?? [];
+  let cfg: DayCfg | undefined;
+  let matchedKey: string | null = null;
+  for (const k of candidates) {
+    if (hours[k]) { cfg = hours[k]; matchedKey = k; break; }
+  }
+  if (!cfg) {
+    console.log("[ai hours] dia não configurado", { tz, dayIdx, wdShort, keys: Object.keys(hours) });
+    return false;
+  }
+  const enabled = cfg.enabled ?? cfg.active ?? false;
+  if (!enabled) {
+    console.log("[ai hours] dia desativado", { tz, matchedKey });
+    return false;
+  }
+  const startMin = parseHM(cfg.start, 0);
+  const endMin = parseHM(cfg.end, 23 * 60 + 59);
+  const nowMin = (hh % 24) * 60 + mm;
+  const within = nowMin >= startMin && nowMin <= endMin;
+  if (!within) {
+    console.log("[ai hours] fora do intervalo", {
+      tz, matchedKey, nowMin, startMin, endMin,
+    });
+  }
+  return within;
 }
 
 const TONE_MAP: Record<string, string> = {
@@ -375,7 +428,13 @@ export async function runAiResponse(input: AiRunInput): Promise<AiRunResult> {
     (profile.ai_timezone as string | null) ||
     (profile.business_timezone as string | null) ||
     "America/Sao_Paulo";
-  if (!isWithinHours(profile.ai_working_hours as WorkingHours, tz)) {
+  const aiHours = profile.ai_working_hours as WorkingHours | null;
+  const bizHours = profile.business_hours as WorkingHours | null;
+  const effectiveHours =
+    aiHours && typeof aiHours === "object" && Object.keys(aiHours).length > 0
+      ? aiHours
+      : bizHours;
+  if (!isWithinHours(effectiveHours, tz)) {
     const out = profile.ai_out_of_hours_message ?? "Estamos fora do horário de atendimento.";
     if (!data.preview) {
       await supabaseAdmin.from("ai_usage_logs").insert({
