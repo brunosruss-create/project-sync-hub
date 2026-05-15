@@ -390,9 +390,18 @@ export const Route = createFileRoute("/api/public/evolution/$instanceId")({
                 }
 
                 // ───── Disparo da IA (texto, sem humano atribuído) ─────
-                const humanInControl =
-                  !!assignedAgentId ||
-                  (kanbanColumn && !["waiting", "scheduled"].includes(kanbanColumn));
+                // Humano "no controle" = atendente humano explicitamente atribuído.
+                // Não usamos kanban_column como gate (abrir um chat move pra in_progress
+                // e isso desligaria a IA pra sempre).
+                const humanInControl = !!assignedAgentId;
+                console.log("[evolution ai] gate", {
+                  contactId,
+                  mediaType,
+                  hasCaption: !!caption.trim(),
+                  assignedAgentId: assignedAgentId ?? null,
+                  kanbanColumn: kanbanColumn ?? null,
+                  humanInControl,
+                });
                 if (mediaType === "text" && caption.trim() && !humanInControl) {
                   try {
                     const { data: history } = await supabaseAdmin
