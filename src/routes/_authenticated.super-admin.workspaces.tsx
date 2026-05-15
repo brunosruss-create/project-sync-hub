@@ -4,6 +4,7 @@ import { useQuery } from "@tanstack/react-query";
 import { Search, Eye, PauseCircle, Trash2 } from "lucide-react";
 import { toast } from "sonner";
 import { supabase } from "@/integrations/supabase/client";
+import { InspectWorkspaceDrawer } from "@/features/super-admin/inspect-workspace-drawer";
 import {
   adminCard,
   adminInput,
