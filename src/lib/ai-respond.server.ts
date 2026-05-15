@@ -113,6 +113,7 @@ const FIELD_LABELS: Record<string, string> = {
 function buildWorkspaceLayer(
   p: Record<string, any> & Partial<AiBehaviorConfig> & {
     segment_default_required_fields?: string[];
+    __is_first_message?: boolean;
   },
 ): string {
   const parts: string[] = [];
@@ -123,9 +124,20 @@ function buildWorkspaceLayer(
   const introduceByName = p.ai_introduce_by_name ?? true;
   const declareAsAi = p.ai_declare_as_ai ?? false;
   const mentionBusiness = p.ai_mention_business_name ?? true;
+  const isFirst = p.__is_first_message ?? false;
 
   if (introduceByName && name) {
     parts.push(`Seu nome é ${name}.`);
+    if (isFirst) {
+      const intro = mentionBusiness && business
+        ? `OBRIGATÓRIO: Esta é a primeira mensagem da conversa. Comece sua resposta se apresentando pelo nome ("${name}") e mencionando o negócio ("${business}"). Exemplo: "Olá! Eu sou a ${name}, do ${business}.".`
+        : `OBRIGATÓRIO: Esta é a primeira mensagem da conversa. Comece sua resposta se apresentando pelo nome. Exemplo: "Olá! Eu sou a ${name}.".`;
+      parts.push(intro);
+    } else {
+      parts.push(
+        `Se o cliente perguntar seu nome ou quem é você, responda que é ${name}${mentionBusiness && business ? `, do ${business}` : ""}.`,
+      );
+    }
   }
   if (mentionBusiness && business) {
     parts.push(`Você atende o ${business}.`);
@@ -352,12 +364,14 @@ export async function runAiResponse(input: AiRunInput): Promise<AiRunResult> {
     };
   }
 
+  const isFirstMessage = (data.conversation_history ?? []).length === 0;
   const finalPrompt = [
     g.ai_base_prompt,
     segment?.segment_prompt ?? "",
     buildWorkspaceLayer({
       ...profile,
       segment_default_required_fields: segment?.default_required_fields ?? [],
+      __is_first_message: isFirstMessage,
     }),
   ]
     .filter(Boolean)
