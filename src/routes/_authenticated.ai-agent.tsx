@@ -286,8 +286,35 @@ function AIAgentPage() {
                 onChange={(e) => setPrompt(e.target.value)}
                 placeholder="Use para regras específicas do seu negócio. O prompt base e o do segmento são aplicados automaticamente."
               />
-            </Field>
+          </Field>
           </div>
+          {configQ.data?.segment?.segment_prompt && (
+            <div style={{ marginTop: 16 }}>
+              <Field
+                label={`Prompt do segmento (${configQ.data.segment.icon ?? ""} ${configQ.data.segment.name}) — aplicado pelo Super Admin`}
+              >
+                <textarea
+                  readOnly
+                  value={configQ.data.segment.segment_prompt}
+                  style={{
+                    ...input,
+                    height: 140,
+                    padding: 12,
+                    fontFamily: "var(--font-mono, ui-monospace, monospace)",
+                    fontSize: 12,
+                    lineHeight: 1.6,
+                    background: "var(--bg-overlay)",
+                    color: "var(--text-muted)",
+                    cursor: "default",
+                    resize: "vertical",
+                  }}
+                />
+              </Field>
+              <div style={{ fontSize: 11, color: "var(--text-muted)", marginTop: 6 }}>
+                Esse prompt é gerenciado em Super Admin → IA → Segmentos e se aplica a todos os workspaces deste segmento.
+              </div>
+            </div>
+          )}
           <div className="flex justify-end" style={{ marginTop: 12 }}>
             <button
               style={btnSecondary}
