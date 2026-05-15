@@ -137,13 +137,13 @@ function WorkspacesAdmin() {
                     </Td>
                     <Td>
                       <div className="flex items-center gap-1">
-                        <button style={adminBtnGhost} onClick={() => toast(`Detalhes de ${w.owner_email ?? w.workspace_owner_id}`)}>
+                        <button style={adminBtnGhost} onClick={() => setInspectId(w.workspace_owner_id)}>
                           <Eye size={12} />
                         </button>
-                        <button style={adminBtnGhost} onClick={() => toast("Suspender ainda não implementado")}>
+                        <button style={adminBtnGhost} onClick={() => toast("Use o drawer → Configurações para suspender")}>
                           <PauseCircle size={12} />
                         </button>
-                        <button style={adminBtnDanger} onClick={() => toast("Excluir ainda não implementado")}>
+                        <button style={adminBtnDanger} onClick={() => toast("Use o drawer → Configurações para deletar")}>
                           <Trash2 size={12} />
                         </button>
                       </div>
