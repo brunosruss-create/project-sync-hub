@@ -251,6 +251,7 @@ function SchedulePage() {
       contact_id: draft.contact_id || null,
       service_id: draft.service_id || null,
       agent_id: draft.agent_id || null,
+      professional_id: draft.agent_id || null,
       starts_at: draft.starts_at.toISOString(),
       ends_at: draft.ends_at.toISOString(),
       status: draft.status,
