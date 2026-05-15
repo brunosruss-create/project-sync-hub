@@ -76,9 +76,14 @@ export const testGeminiConnection = createServerFn({ method: "POST" })
       .select("key,value")
       .in("key", ["gemini_api_key", "gemini_model"]);
     const map = Object.fromEntries((data ?? []).map((r) => [r.key, r.value ?? ""]));
-    const apiKey = map.gemini_api_key;
-    const model = map.gemini_model || "gemini-3.1-flash-lite";
-    if (!apiKey) return { ok: false, error: "API key não configurada" };
+    const apiKey = (map.gemini_api_key ?? "").trim();
+    const model = map.gemini_model || "gemini-2.5-flash";
+    if (!apiKey) {
+      return {
+        ok: false,
+        error: "Chave não foi salva no banco. Cole a API key e clique em 'Salvar configurações' antes de testar.",
+      };
+    }
     try {
       const url = `https://generativelanguage.googleapis.com/v1beta/models/${model}:generateContent?key=${apiKey}`;
       const res = await fetch(url, {
@@ -91,6 +96,12 @@ export const testGeminiConnection = createServerFn({ method: "POST" })
       });
       if (!res.ok) {
         const t = await res.text();
+        if (res.status === 400 || res.status === 401 || res.status === 403) {
+          return { ok: false, error: `Chave inválida ou sem permissão (HTTP ${res.status}). Detalhe: ${t.slice(0, 160)}` };
+        }
+        if (res.status === 404) {
+          return { ok: false, error: `Modelo "${model}" não disponível nessa API key. Escolha outro modelo.` };
+        }
         return { ok: false, error: `HTTP ${res.status}: ${t.slice(0, 200)}` };
       }
       return { ok: true, model };
