@@ -5,6 +5,21 @@ type WorkingHours = Record<
   { enabled: boolean; start: string; end: string }
 >;
 
+type PriceDisclosurePolicy = "always" | "on_request" | "never";
+
+interface AiBehaviorConfig {
+  ai_introduce_by_name: boolean;
+  ai_declare_as_ai: boolean;
+  ai_mention_business_name: boolean;
+  ai_has_multiple_professionals: boolean;
+  ai_price_disclosure_policy: PriceDisclosurePolicy;
+  ai_can_reschedule: boolean;
+  ai_can_cancel: boolean;
+  ai_min_advance_hours: number;
+  ai_required_fields: string[];
+  ai_max_questions_per_message: number;
+}
+
 export type AiRunInput = {
   workspace_owner_id: string;
   contact_id?: string | null;
@@ -44,16 +59,191 @@ function isWithinHours(
   return minutes >= sh * 60 + sm && minutes <= eh * 60 + em;
 }
 
-function buildWorkspaceLayer(p: any): string {
+const TONE_MAP: Record<string, string> = {
+  amigavel:
+    "Use linguagem cordial, próxima e acessível. Evite termos técnicos desnecessários.",
+  amigável:
+    "Use linguagem cordial, próxima e acessível. Evite termos técnicos desnecessários.",
+  formal: "Use linguagem formal e profissional.",
+  casual:
+    "Use linguagem leve, casual e próxima. Pode usar expressões do dia a dia.",
+  descontraido:
+    "Use linguagem leve, casual e próxima. Pode usar expressões do dia a dia.",
+  descontraído:
+    "Use linguagem leve, casual e próxima. Pode usar expressões do dia a dia.",
+  tecnico:
+    "Use linguagem técnica e precisa. O cliente espera respostas especializadas.",
+  técnico:
+    "Use linguagem técnica e precisa. O cliente espera respostas especializadas.",
+};
+
+const FIELD_LABELS: Record<string, string> = {
+  placa: "placa do veículo",
+  marca: "marca do veículo",
+  modelo: "modelo do veículo",
+  ano: "ano do veículo",
+  descricao_problema: "descrição do problema",
+  area_interesse: "área de interesse (rosto ou corpo)",
+  primeira_vez_ou_retorno: "se é primeira consulta ou retorno",
+  especialidade: "especialidade desejada",
+  convenio_ou_particular: "se vai usar convênio ou particular",
+  emergencia_ou_eletivo: "se é emergência ou consulta eletiva",
+  primeira_vez_ou_paciente: "se é a primeira vez ou já é paciente",
+  tem_pedido_medico: "se tem pedido médico",
+  tipo_aparelho: "tipo de aparelho",
+  problema: "descrição do problema",
+  em_garantia: "se ainda está na garantia",
+  nome_animal: "nome do animal",
+  especie: "espécie do animal",
+  raca: "raça do animal",
+  idade: "idade do animal",
+  peso: "peso do animal",
+  tipo_veiculo: "tipo do veículo (hatch, sedan, SUV, caminhonete)",
+  porte_veiculo: "porte do veículo",
+  objetivo_principal: "objetivo principal do cliente",
+  area_do_direito: "área do direito envolvida",
+  objetivo:
+    "objetivo (emagrecer, ganhar massa, condicionamento, reabilitação)",
+  nivel_experiencia: "nível de experiência",
+  queixa_principal:
+    "queixa principal (dor nas costas, lesão esportiva, pós-operatório, etc.)",
+  servico_desejado: "serviço desejado",
+};
+
+function buildWorkspaceLayer(
+  p: Record<string, any> & Partial<AiBehaviorConfig> & {
+    segment_default_required_fields?: string[];
+  },
+): string {
   const parts: string[] = [];
-  if (p.ai_assistant_name) parts.push(`Você se chama ${p.ai_assistant_name}.`);
-  if (p.ai_tone) parts.push(`Seu tom de voz é: ${p.ai_tone}.`);
-  if (p.business_name) parts.push(`Você atende: ${p.business_name}.`);
-  if (p.business_description) parts.push(`Sobre o negócio: ${p.business_description}`);
-  if (p.ai_custom_prompt) parts.push(`Instruções específicas: ${p.ai_custom_prompt}`);
+
+  // === IDENTIDADE ===
+  const name = p.ai_assistant_name as string | null | undefined;
+  const business = p.business_name as string | null | undefined;
+  const introduceByName = p.ai_introduce_by_name ?? true;
+  const declareAsAi = p.ai_declare_as_ai ?? false;
+  const mentionBusiness = p.ai_mention_business_name ?? true;
+
+  if (introduceByName && name) {
+    parts.push(`Seu nome é ${name}.`);
+  }
+  if (mentionBusiness && business) {
+    parts.push(`Você atende o ${business}.`);
+  }
+  if (declareAsAi) {
+    parts.push(
+      `Você é um assistente virtual. Se perguntado diretamente, confirme que é uma IA assistente do ${business ?? "negócio"}.`,
+    );
+  } else {
+    parts.push(
+      `Nunca mencione espontaneamente que é uma IA. Se perguntado diretamente, diga que é um assistente do ${business ?? "estabelecimento"}.`,
+    );
+  }
+
+  // === TOM DE VOZ ===
+  if (p.ai_tone) {
+    const key = String(p.ai_tone).toLowerCase();
+    const toneText = TONE_MAP[key];
+    if (toneText) parts.push(toneText);
+    else parts.push(`Seu tom de voz é: ${p.ai_tone}.`);
+  }
+
+  // === DESCRIÇÃO DO NEGÓCIO ===
+  if (p.business_description) {
+    parts.push(`Sobre o negócio: ${p.business_description}`);
+  }
+
+  // === PROFISSIONAIS ===
+  const hasMultiple = p.ai_has_multiple_professionals ?? false;
+  if (!hasMultiple) {
+    parts.push(
+      `Não pergunte com qual profissional o cliente deseja ser atendido. Há apenas um profissional disponível.`,
+    );
+  }
+
+  // === POLÍTICA DE PREÇOS ===
+  const pricePolicy: PriceDisclosurePolicy =
+    (p.ai_price_disclosure_policy as PriceDisclosurePolicy) ?? "on_request";
+  if (pricePolicy === "always") {
+    parts.push(
+      `Informe os preços dos serviços quando apresentar opções ao cliente.`,
+    );
+  } else if (pricePolicy === "on_request") {
+    parts.push(
+      `Informe os preços apenas se o cliente perguntar diretamente.`,
+    );
+  } else if (pricePolicy === "never") {
+    parts.push(
+      `Nunca informe preços. Se perguntado, diga que os valores são informados diretamente pelo atendente.`,
+    );
+  }
+
+  // === AGENDAMENTO ===
   if (p.ai_schedule_enabled && p.ai_schedule_instruction) {
     parts.push(`Para agendamentos: ${p.ai_schedule_instruction}`);
+    const minHours = p.ai_min_advance_hours ?? 2;
+    parts.push(`Antecedência mínima para agendamento: ${minHours} hora(s).`);
   }
+  const canReschedule = p.ai_can_reschedule ?? false;
+  const canCancel = p.ai_can_cancel ?? false;
+  if (!canReschedule) {
+    parts.push(
+      `Você não pode remarcar horários já agendados. Oriente o cliente a falar com um atendente.`,
+    );
+  }
+  if (!canCancel) {
+    parts.push(
+      `Você não pode cancelar agendamentos. Oriente o cliente a falar com um atendente.`,
+    );
+  }
+
+  // === COLETA DE DADOS OBRIGATÓRIA ===
+  const workspaceFields: string[] = Array.isArray(p.ai_required_fields)
+    ? (p.ai_required_fields as string[])
+    : [];
+  const segmentFields: string[] = Array.isArray(p.segment_default_required_fields)
+    ? (p.segment_default_required_fields as string[])
+    : [];
+  const requiredFields =
+    workspaceFields.length > 0 ? workspaceFields : segmentFields;
+
+  if (requiredFields.length > 0) {
+    const labels = requiredFields
+      .map((f) => FIELD_LABELS[f] ?? f)
+      .join(", ");
+    parts.push(
+      `Antes de qualquer ação (orçamento, agendamento, encaminhamento), colete as seguintes informações se ainda não fornecidas: ${labels}.`,
+    );
+  }
+
+  // === INSTRUÇÕES ESPECÍFICAS DO WORKSPACE ===
+  if (p.ai_custom_prompt) {
+    parts.push(
+      `Instruções específicas do estabelecimento: ${p.ai_custom_prompt}`,
+    );
+  }
+
+  // === MENSAGEM DE BOAS-VINDAS (referência de tom) ===
+  if (p.welcome_message) {
+    parts.push(`Tom de referência para boas-vindas: ${p.welcome_message}`);
+  }
+
+  // === REGRAS ABSOLUTAS DE COMPORTAMENTO ===
+  const maxQ = p.ai_max_questions_per_message ?? 1;
+  parts.push(
+    `
+REGRAS ABSOLUTAS — NUNCA VIOLE:
+1. Responda SEMPRE em uma única mensagem. Nunca envie dois blocos separados.
+2. Faça no máximo ${maxQ} pergunta por mensagem. Se precisar de mais informações, priorize a mais importante.
+3. Não repita informações que já foram ditas nesta conversa.
+4. Não use asteriscos (*) ou hashtags (#) para formatação. Use linguagem natural.
+5. Seja direto e objetivo. Evite frases de efeito desnecessárias.
+6. Nunca invente informações sobre serviços, preços ou disponibilidade não fornecidos.
+7. Se não souber algo, diga que vai verificar e pergunte se pode ajudar em mais alguma coisa.
+8. Nunca pressione o cliente. Não use táticas de urgência artificial.
+`.trim(),
+  );
+
   return parts.join("\n");
 }
 
@@ -68,6 +258,24 @@ export async function runAiResponse(input: AiRunInput): Promise<AiRunResult> {
     preview: false,
     ...input,
   };
+
+  // ── LOCK SOFT: deduplica chamadas idênticas dentro de janela de 10s ──
+  // Evita dupla resposta quando o webhook é reentregue ou quando a mesma
+  // mensagem dispara dois processamentos concorrentes. NÃO toca no webhook.
+  let dedupKey: string | null = null;
+  if (!data.preview) {
+    const bucket = Math.floor(Date.now() / 10000);
+    const msgPart = (data.message ?? "").slice(0, 200);
+    dedupKey = `${data.workspace_owner_id}|${data.contact_id ?? ""}|${bucket}|${msgPart}`;
+    const { data: existing } = await supabaseAdmin
+      .from("ai_usage_logs")
+      .select("id")
+      .eq("dedup_key", dedupKey)
+      .maybeSingle();
+    if (existing) {
+      return { action: "skip", reason: "duplicate" };
+    }
+  }
 
   const { data: globalRows } = await supabaseAdmin
     .from("global_settings")
@@ -84,21 +292,25 @@ export async function runAiResponse(input: AiRunInput): Promise<AiRunResult> {
     return { action: "skip", reason: "Gemini não configurado" };
   }
 
+  // Carrega profile + segmento (join) numa única query.
   const { data: profile } = await supabaseAdmin
     .from("profiles")
-    .select("*")
+    .select(
+      "*, ai_segments:segment_id ( id, segment_prompt, default_transfer_keywords, default_required_fields )",
+    )
     .eq("id", data.workspace_owner_id)
     .maybeSingle();
   if (!profile) return { action: "skip", reason: "Workspace não encontrado" };
   if (!profile.ai_enabled) return { action: "skip", reason: "IA desativada" };
 
-  const { data: segment } = profile.segment_id
-    ? await supabaseAdmin
-        .from("ai_segments")
-        .select("segment_prompt,default_transfer_keywords,id")
-        .eq("id", profile.segment_id)
-        .maybeSingle()
-    : { data: null as any };
+  const segment = (profile as any).ai_segments as
+    | {
+        id: string;
+        segment_prompt: string | null;
+        default_transfer_keywords: string[] | null;
+        default_required_fields: string[] | null;
+      }
+    | null;
 
   const tz =
     (profile.ai_timezone as string | null) ||
@@ -112,6 +324,7 @@ export async function runAiResponse(input: AiRunInput): Promise<AiRunResult> {
         segment_id: segment?.id ?? null,
         contact_id: data.contact_id ?? null,
         action: "send_out_of_hours",
+        dedup_key: dedupKey,
       });
     }
     return { action: "send_out_of_hours", response: out };
@@ -129,6 +342,7 @@ export async function runAiResponse(input: AiRunInput): Promise<AiRunResult> {
         segment_id: segment?.id ?? null,
         contact_id: data.contact_id ?? null,
         action: "transfer_to_human",
+        dedup_key: dedupKey,
       });
     }
     return {
@@ -141,7 +355,10 @@ export async function runAiResponse(input: AiRunInput): Promise<AiRunResult> {
   const finalPrompt = [
     g.ai_base_prompt,
     segment?.segment_prompt ?? "",
-    buildWorkspaceLayer(profile),
+    buildWorkspaceLayer({
+      ...profile,
+      segment_default_required_fields: segment?.default_required_fields ?? [],
+    }),
   ]
     .filter(Boolean)
     .join("\n\n---\n\n");
@@ -178,6 +395,7 @@ export async function runAiResponse(input: AiRunInput): Promise<AiRunResult> {
           contact_id: data.contact_id ?? null,
           action: "error",
           error_message: JSON.stringify(json).slice(0, 500),
+          dedup_key: dedupKey,
         });
       }
       return { action: "error", error: `HTTP ${res.status}` };
@@ -198,6 +416,7 @@ export async function runAiResponse(input: AiRunInput): Promise<AiRunResult> {
         tokens_output: tokensOut,
         tokens_total: tokensTotal,
         cost_estimate_cents: costCents,
+        dedup_key: dedupKey,
       });
     }
     return { action: "send_message", response: text, tokens_total: tokensTotal };
@@ -210,6 +429,7 @@ export async function runAiResponse(input: AiRunInput): Promise<AiRunResult> {
         contact_id: data.contact_id ?? null,
         action: "error",
         error_message: msg.slice(0, 500),
+        dedup_key: dedupKey,
       });
     }
     return { action: "error", error: msg };
