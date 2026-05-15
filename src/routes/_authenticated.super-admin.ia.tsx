@@ -62,12 +62,18 @@ function GeminiTab() {
   const fetchFn = useServerFn(getAiGlobalSettings);
   const updateFn = useServerFn(updateAiGlobalSettings);
   const testFn = useServerFn(testGeminiConnection);
+  const qc = useQueryClient();
   const q = useQuery({ queryKey: ["ai-globals"], queryFn: () => fetchFn() });
+  const savedKeyValue = q.data?.settings.gemini_api_key?.value ?? "";
+  const savedKeyHint =
+    savedKeyValue.length > 0
+      ? `✓ Chave salva no banco (••••${savedKeyValue.slice(-4)}, ${savedKeyValue.length} caracteres)`
+      : "⚠ Nenhuma chave salva no banco ainda";
   const [form, setForm] = React.useState<Record<string, string>>({});
   React.useEffect(() => {
     if (q.data?.settings) {
       setForm({
-        gemini_api_key: q.data.settings.gemini_api_key?.value ?? "",
+        gemini_api_key: "",
         gemini_model: q.data.settings.gemini_model?.value ?? "gemini-2.5-flash",
         gemini_temperature: q.data.settings.gemini_temperature?.value ?? "0.7",
         gemini_max_tokens: q.data.settings.gemini_max_tokens?.value ?? "1000",
@@ -80,8 +86,12 @@ function GeminiTab() {
 
   const save = async () => {
     try {
-      await updateFn({ data: form });
-      toast.success("Configurações salvas");
+      const payload: Record<string, string> = { ...form };
+      // Não sobrescreve a chave com vazio (deixar em branco = manter a atual)
+      if (!payload.gemini_api_key) delete payload.gemini_api_key;
+      const r = await updateFn({ data: payload });
+      toast.success(`Configurações salvas (${r.saved} campos atualizados)`);
+      await qc.invalidateQueries({ queryKey: ["ai-globals"] });
     } catch (e) {
       toast.error(e instanceof Error ? e.message : "Erro ao salvar");
     }
