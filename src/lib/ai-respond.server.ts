@@ -364,12 +364,14 @@ export async function runAiResponse(input: AiRunInput): Promise<AiRunResult> {
     };
   }
 
+  const isFirstMessage = (data.conversation_history ?? []).length === 0;
   const finalPrompt = [
     g.ai_base_prompt,
     segment?.segment_prompt ?? "",
     buildWorkspaceLayer({
       ...profile,
       segment_default_required_fields: segment?.default_required_fields ?? [],
+      __is_first_message: isFirstMessage,
     }),
   ]
     .filter(Boolean)
