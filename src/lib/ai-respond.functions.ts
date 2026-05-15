@@ -8,16 +8,6 @@ type WorkingHours = Record<
   { enabled: boolean; start: string; end: string }
 >;
 
-const DAY_KEYS = [
-  "sunday",
-  "monday",
-  "tuesday",
-  "wednesday",
-  "thursday",
-  "friday",
-  "saturday",
-] as const;
-
 function isWithinHours(
   hours: WorkingHours | null | undefined,
   timezone: string,
