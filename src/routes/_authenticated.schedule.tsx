@@ -312,7 +312,7 @@ function SchedulePage() {
           </h1>
           <p style={{ marginTop: 2, fontSize: 12, color: "var(--text-muted)" }}>
             {filtered.length} agendamento{filtered.length === 1 ? "" : "s"} ·{" "}
-            {agentFilter.size} de {agents.length} agentes
+            {agentFilter.size} de {agents.length} profissionais
           </p>
         </div>
 
@@ -336,7 +336,7 @@ function SchedulePage() {
               }}
             >
               <Filter size={14} />
-              Agentes
+              Profissionais
             </button>
             {filterOpen && (
               <div
