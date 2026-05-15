@@ -71,10 +71,26 @@ function SchedulePage() {
   
   const [contacts, setContacts] = React.useState<ContactCard[]>(MOCK_CONTACTS);
   const [services, setServices] = React.useState<Service[]>(SEED_SERVICES);
-  const [agents] = React.useState<Agent[]>(MOCK_AGENTS);
-  const [agentFilter, setAgentFilter] = React.useState<Set<string>>(
-    new Set(MOCK_AGENTS.map((a) => a.id)),
+
+  const fetchProfessionals = useServerFn(listProfessionals);
+  const profQ = useQuery({
+    queryKey: ["professionals"],
+    queryFn: () => fetchProfessionals(),
+    staleTime: 30_000,
+  });
+  const agents = React.useMemo<Agent[]>(
+    () =>
+      (profQ.data ?? []).map((p) => ({
+        id: p.id,
+        name: p.name,
+        color: p.avatar_color || nameToColor(p.name),
+      })),
+    [profQ.data],
   );
+  const [agentFilter, setAgentFilter] = React.useState<Set<string>>(new Set());
+  React.useEffect(() => {
+    setAgentFilter(new Set(agents.map((a) => a.id)));
+  }, [agents]);
   const [filterOpen, setFilterOpen] = React.useState(false);
   const [editing, setEditing] = React.useState<
     { mode: "create"; preset?: Partial<Appointment> } | { mode: "edit"; appt: Appointment } | null
