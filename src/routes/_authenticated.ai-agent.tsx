@@ -1027,6 +1027,35 @@ function BigToggle({ value, onChange }: { value: boolean; onChange: (v: boolean)
   );
 }
 
+function ToggleRow({
+  label,
+  value,
+  onChange,
+  hint,
+}: {
+  label: string;
+  value: boolean;
+  onChange: (v: boolean) => void;
+  hint?: string;
+}) {
+  return (
+    <div
+      className="flex items-start justify-between gap-4"
+      style={{ padding: "8px 0" }}
+    >
+      <div>
+        <div style={{ fontSize: 13, fontWeight: 500 }}>{label}</div>
+        {hint && (
+          <div style={{ fontSize: 12, color: "var(--text-muted)", marginTop: 2 }}>
+            {hint}
+          </div>
+        )}
+      </div>
+      <SmallToggle value={value} onChange={onChange} />
+    </div>
+  );
+}
+
 function SmallToggle({ value, onChange }: { value: boolean; onChange: (v: boolean) => void }) {
   return (
     <button
