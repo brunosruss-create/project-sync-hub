@@ -64,24 +64,54 @@ function isWithinHours(
   hours: WorkingHours | null | undefined,
   timezone: string,
 ): boolean {
-  if (!hours) return true;
+  if (!hours || typeof hours !== "object" || Object.keys(hours).length === 0) {
+    return true;
+  }
+  const tz = timezone || "America/Sao_Paulo";
+  // Usa índice numérico do dia (0=domingo..6=sábado) — independente de locale.
   const fmt = new Intl.DateTimeFormat("en-US", {
-    timeZone: timezone || "America/Sao_Paulo",
-    weekday: "long",
+    timeZone: tz,
+    weekday: "short",
     hour: "2-digit",
     minute: "2-digit",
     hour12: false,
   });
   const parts = fmt.formatToParts(new Date());
-  const weekday = (parts.find((p) => p.type === "weekday")?.value ?? "").toLowerCase();
-  const hh = parseInt(parts.find((p) => p.type === "hour")?.value ?? "0", 10);
+  const wdShort = (parts.find((p) => p.type === "weekday")?.value ?? "").toLowerCase();
+  const SHORT_TO_IDX: Record<string, number> = {
+    sun: 0, mon: 1, tue: 2, wed: 3, thu: 4, fri: 5, sat: 6,
+  };
+  const dayIdx = SHORT_TO_IDX[wdShort] ?? new Date().getUTCDay();
+  let hh = parseInt(parts.find((p) => p.type === "hour")?.value ?? "0", 10);
   const mm = parseInt(parts.find((p) => p.type === "minute")?.value ?? "0", 10);
-  const cfg = hours[weekday];
-  if (!cfg || !cfg.enabled) return false;
-  const [sh, sm] = (cfg.start ?? "00:00").split(":").map(Number);
-  const [eh, em] = (cfg.end ?? "23:59").split(":").map(Number);
-  const minutes = (hh % 24) * 60 + mm;
-  return minutes >= sh * 60 + sm && minutes <= eh * 60 + em;
+  if (hh === 24) hh = 0;
+
+  // Procura a config do dia tentando todas as chaves aceitas.
+  const candidates = DAY_KEYS[dayIdx] ?? [];
+  let cfg: DayCfg | undefined;
+  let matchedKey: string | null = null;
+  for (const k of candidates) {
+    if (hours[k]) { cfg = hours[k]; matchedKey = k; break; }
+  }
+  if (!cfg) {
+    console.log("[ai hours] dia não configurado", { tz, dayIdx, wdShort, keys: Object.keys(hours) });
+    return false;
+  }
+  const enabled = cfg.enabled ?? cfg.active ?? false;
+  if (!enabled) {
+    console.log("[ai hours] dia desativado", { tz, matchedKey });
+    return false;
+  }
+  const startMin = parseHM(cfg.start, 0);
+  const endMin = parseHM(cfg.end, 23 * 60 + 59);
+  const nowMin = (hh % 24) * 60 + mm;
+  const within = nowMin >= startMin && nowMin <= endMin;
+  if (!within) {
+    console.log("[ai hours] fora do intervalo", {
+      tz, matchedKey, nowMin, startMin, endMin,
+    });
+  }
+  return within;
 }
 
 const TONE_MAP: Record<string, string> = {
