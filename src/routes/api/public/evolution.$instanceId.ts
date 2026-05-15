@@ -307,7 +307,7 @@ export const Route = createFileRoute("/api/public/evolution/$instanceId")({
               // upsert contato
               const { data: existing, error: selErr } = await supabaseAdmin
                 .from("contacts")
-                .select("id")
+                .select("id,assigned_agent_id,kanban_column")
                 .eq("phone", phone)
                 .eq("owner_user_id", row.owner_user_id)
                 .maybeSingle();
@@ -316,6 +316,8 @@ export const Route = createFileRoute("/api/public/evolution/$instanceId")({
               }
 
               let contactId = existing?.id as string | undefined;
+              let assignedAgentId = existing?.assigned_agent_id as string | null | undefined;
+              let kanbanColumn = existing?.kanban_column as string | null | undefined;
               if (!contactId) {
                 const avatarUrl = await tryFetchProfilePicture(
                   row.instance_name as string,
