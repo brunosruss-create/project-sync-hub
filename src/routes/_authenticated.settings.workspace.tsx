@@ -89,6 +89,9 @@ function WorkspacePage() {
           business_hours?: Hours | null;
           business_timezone?: string;
           welcome_message?: string;
+          business_address?: string;
+          business_phone?: string;
+          business_website?: string;
         }
       | undefined;
     if (!p) return;
@@ -101,6 +104,9 @@ function WorkspacePage() {
     if (typeof p.welcome_message === "string" && p.welcome_message.length > 0) {
       setWelcome(p.welcome_message);
     }
+    if (typeof p.business_address === "string") setAddress(p.business_address);
+    if (typeof p.business_phone === "string") setPhone(p.business_phone);
+    if (typeof p.business_website === "string") setSite(p.business_website);
   }, [profileQ.data]);
 
   const segments = segmentsQ.data?.segments ?? [];
@@ -125,6 +131,9 @@ function WorkspacePage() {
           business_hours: hours,
           business_timezone: tz,
           welcome_message: welcome,
+          business_address: address.trim(),
+          business_phone: phone.trim(),
+          business_website: site.trim(),
         },
       });
       await Promise.all([

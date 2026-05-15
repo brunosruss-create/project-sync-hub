@@ -1,55 +1,65 @@
-## Diagnóstico
+## Análise: o que é cosmético vs. salvo no banco
 
-A IA só responde no botão "Testar agente" porque é o único lugar do código que chama `aiRespond`. Conferi os arquivos:
+### 🔴 Perfil (`/settings/profile`) — **100% cosmético**
+O `handleSave` só faz `setTimeout(600ms)` + toast. Nada vai pro banco.
 
-- `src/lib/ai-respond.functions.ts` — define o serverFn `aiRespond`.
-- `src/routes/_authenticated.ai-agent.tsx` — único consumidor (modal de teste).
-- `src/routes/api/public/evolution.$instanceId.ts` — webhook do WhatsApp. Recebe `messages.upsert`, salva contato + mensagem inbound, mas **nunca chama a IA nem envia resposta**.
+| Campo | Status | Coluna existente? |
+|---|---|---|
+| Nome completo | ❌ cosmético | `profiles.full_name` ✅ existe |
+| Telefone | ❌ cosmético | ❌ coluna não existe |
+| Trocar foto | ❌ botão fake ("em breve") | `profiles.avatar_url` ✅ existe |
+| Trocar senha | ❌ inputs sem handler | usa `supabase.auth` |
+| Idioma | ⚪ cosmético (você quer manter) | — |
+| Fuso horário | ❌ cosmético | ❌ coluna não existe (no profile pessoal) |
+| Notificações Email/Push | ❌ cosmético | ❌ colunas não existem |
 
-Resultado: mensagem de cliente real entra no inbox, mas nada dispara o Gemini nem o `sendText` da Evolution. Por isso só o teste “funciona”.
+### 🟢 Negócio (`/settings/workspace`) — **realmente salvo**
+Usa `updateWorkspaceProfile` server fn → grava em `profiles`.
 
-Além disso, `aiRespond` usa `requireSupabaseAuth` como middleware — ele não pode ser chamado de um webhook público sem sessão de usuário. Precisa ter a lógica disponível em uma função interna chamável pelo servidor.
+| Campo | Status |
+|---|---|
+| Nome do negócio | ✅ salvo (`business_name`) |
+| Segmento | ✅ salvo (`segment_id`) |
+| Horários de funcionamento | ✅ salvo (`business_hours`) |
+| Fuso horário | ✅ salvo (`business_timezone`) |
+| Mensagem de boas-vindas | ✅ salvo (`welcome_message`) |
+| **Endereço** | ❌ cosmético — sem coluna |
+| **Telefone comercial** | ❌ cosmético — sem coluna |
+| **Site** | ❌ cosmético — sem coluna |
+| Enviar logo | ❌ botão fake ("em breve") |
 
-## Plano
+---
 
-### 1. Extrair o núcleo da IA para uma função server-only reutilizável
-- Criar `src/lib/ai-respond.server.ts` exportando `runAiResponse({ workspace_owner_id, contact_id, message, conversation_history, preview })` com toda a lógica que hoje está dentro do `.handler` do `aiRespond`:
-  - busca de `global_settings`, `profiles`, `ai_segments`
-  - checagem `ai_enabled`, horário (`isWithinHours` com timezone)
-  - palavras-chave de transferência
-  - chamada ao Gemini
-  - inserção em `ai_usage_logs`
-- Refatorar `aiRespond` (serverFn autenticado) para apenas validar input e chamar `runAiResponse`. Comportamento do teste continua idêntico.
+## Plano de correção
 
-### 2. Disparar a IA no webhook quando chega mensagem do cliente
-Em `src/routes/api/public/evolution.$instanceId.ts`, no bloco `messages.upsert`, depois de inserir a mensagem inbound com sucesso:
+### 1. Migration SQL (`supabase/manual/20260531000000_profile_persistence.sql`)
+Adicionar colunas faltantes em `profiles`:
+- `phone text` (telefone pessoal)
+- `user_timezone text default 'America/Sao_Paulo'`
+- `notify_email boolean default true`
+- `notify_push boolean default true`
+- `business_address text`
+- `business_phone text`
+- `business_website text`
+- `business_logo_url text`
 
-- Pular se `mediaType !== "text"` (Gemini hoje só recebe texto) ou `caption` vazio.
-- Pular se a coluna do contato já indica handoff humano (`kanban_column` em `in_progress`/`transferred`/etc — usar a mesma regra que já bloqueia atribuição automática). Ler isso do `contacts` no mesmo round-trip do upsert.
-- Buscar histórico recente: últimas N mensagens (ex.: 20) desse `contact_id`, ordenadas asc, mapeadas para `{ role: 'user' | 'assistant', content }` usando `direction` (`inbound` → user, `outbound` → assistant).
-- Chamar `runAiResponse({ workspace_owner_id: row.owner_user_id, contact_id, message: caption, conversation_history })`.
-- Tratar o resultado:
-  - `send_message` ou `send_out_of_hours`: enviar via `evo.sendText(row.instance_name, { number: phone, text: response })`. Inserir em `messages` como `direction: 'outbound'`, `status: 'sent'`, `whatsapp_message_id` retornado pela Evolution. Atualizar `contacts.last_message`/`last_message_at`.
-  - `transfer_to_human`: NÃO responder; mover `contacts.kanban_column` para `waiting`/`in_progress` (mesma coluna usada no fluxo manual de transferência) e marcar `is_unread = true` para um humano assumir. Logar em `ai_usage_logs` (já feito pelo runner).
-  - `skip` / `error`: não enviar nada; apenas logar.
-- Tudo dentro de `try/catch` — falha da IA NUNCA pode quebrar o webhook (precisa retornar 200 para a Evolution).
+### 2. Server functions
+**`src/lib/profile.functions.ts`** (novo): `getMyProfile` + `updateMyProfile` (nome, telefone, fuso, notificações) usando `requireSupabaseAuth`.
 
-### 3. Marcar mensagens enviadas pela IA
-- Adicionar coluna opcional `is_ai` boolean na tabela `messages` via nova migração `supabase/manual/2026053…_messages_is_ai.sql` (`add column if not exists is_ai boolean not null default false`).
-- Setar `is_ai: true` no insert outbound disparado pela IA.
-- Não muda nada na UI agora; serve para auditoria e para evitar reenvios em loop (filtra histórico se quiser).
+**`src/lib/onboarding.functions.ts`** (editar): estender `getWorkspaceProfile` e `updateWorkspaceProfile` para incluir `business_address`, `business_phone`, `business_website`, `business_logo_url`.
 
-### 4. Validação manual após implementar
-- Enviar mensagem do WhatsApp real → verificar:
-  - aparece no inbox
-  - aparece resposta da IA logo depois (mesma resposta do botão "Testar")
-  - log em `ai_usage_logs` com `action='send_message'`
-  - fora do horário: cliente recebe `ai_out_of_hours_message`
-  - palavra "humano": IA não responde, conversa vai para fila humana
-- Conferir que o "Testar agente" continua funcionando (nada de regressão).
+### 3. UI
+**`_authenticated.settings.profile.tsx`**: trocar `setTimeout` por chamada real ao server fn; hidratar todos os campos do banco; manter idioma cosmético.
 
-### Arquivos afetados
-- novo: `src/lib/ai-respond.server.ts`
-- novo: `supabase/manual/2026053…_messages_is_ai.sql`
-- editado: `src/lib/ai-respond.functions.ts` (passa a delegar para o server helper)
-- editado: `src/routes/api/public/evolution.$instanceId.ts` (gatilho da IA + envio outbound)
+**`_authenticated.settings.workspace.tsx`**: hidratar e enviar endereço/telefone/site no `persist()`.
+
+### 4. Fora do escopo (deixo cosmético com nota)
+- Upload real de avatar/logo (precisa Supabase Storage bucket)
+- Trocar senha (já existe `updatePassword` no `useAuth`, posso ligar se quiser)
+- Idioma (você pediu pra manter)
+
+---
+
+**Confirma esse plano?** Em particular:
+1. Quer que eu inclua troca de senha real (já temos a função pronta)?
+2. Upload de logo/avatar agora ou deixo pra depois?
