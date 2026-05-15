@@ -173,9 +173,30 @@ function GeminiTab() {
           Aplicado a TODOS os workspaces como camada 1.
         </p>
         <textarea
-          style={{ ...adminInput, height: 200, padding: 10, fontFamily: "monospace", fontSize: 12 }}
+          ref={(el) => {
+            if (el) {
+              el.style.height = "auto";
+              el.style.height = el.scrollHeight + "px";
+            }
+          }}
+          style={{
+            ...adminInput,
+            width: "100%",
+            display: "block",
+            minHeight: 200,
+            padding: 10,
+            fontFamily: "monospace",
+            fontSize: 12,
+            resize: "vertical",
+            overflow: "hidden",
+            boxSizing: "border-box",
+          }}
           value={form.ai_base_prompt ?? ""}
-          onChange={(e) => setForm({ ...form, ai_base_prompt: e.target.value })}
+          onChange={(e) => {
+            setForm({ ...form, ai_base_prompt: e.target.value });
+            e.currentTarget.style.height = "auto";
+            e.currentTarget.style.height = e.currentTarget.scrollHeight + "px";
+          }}
         />
       </div>
 
