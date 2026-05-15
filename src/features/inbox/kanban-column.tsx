@@ -133,20 +133,7 @@ export function KanbanColumn({ column, contacts, onCardClick }: Props) {
         {contacts.map((c) => (
           <ContactCard key={c.id} contact={c} onClick={() => onCardClick(c)} />
         ))}
-        {contacts.length === 0 && (
-          <div
-            style={{
-              fontSize: 12,
-              color: "var(--text-muted)",
-              textAlign: "center",
-              padding: "32px 8px",
-              border: "1px dashed var(--border)",
-              borderRadius: 8,
-            }}
-          >
-            Solte um card aqui
-          </div>
-        )}
+        {contacts.length === 0 && <ColumnEmptyState slug={slug} />}
       </div>
     </div>
   );

@@ -175,7 +175,12 @@ export function ContactCard({ contact, onClick, isOverlay, isSelected }: Props) 
         <ContactAvatar name={contact.name} avatarUrl={contact.avatar} size={32} />
         <div
           className="flex-1 min-w-0 truncate"
-          style={{ fontSize: 13, fontWeight: 500, color: "var(--text-primary)" }}
+          style={{
+            fontSize: 14,
+            fontWeight: 600,
+            letterSpacing: "-0.01em",
+            color: "var(--text-primary)",
+          }}
         >
           {contact.name}
         </div>
@@ -187,7 +192,7 @@ export function ContactCard({ contact, onClick, isOverlay, isSelected }: Props) 
       {/* Linha 2: telefone formatado */}
       <div
         className="font-mono"
-        style={{ marginTop: 6, fontSize: 11, color: "var(--text-muted)" }}
+        style={{ marginTop: 6, fontSize: 12, fontWeight: 400, color: "var(--text-muted)", opacity: 0.65 }}
       >
         {formatPhone(contact.phone)}
       </div>
@@ -197,8 +202,10 @@ export function ContactCard({ contact, onClick, isOverlay, isSelected }: Props) 
         className="truncate"
         style={{
           marginTop: 8,
-          fontSize: 12,
+          fontSize: 13,
+          fontWeight: 400,
           color: "var(--text-muted)",
+          opacity: 0.8,
           lineHeight: 1.45,
         }}
       >
@@ -230,7 +237,7 @@ export function ContactCard({ contact, onClick, isOverlay, isSelected }: Props) 
           ))}
         </div>
         <div
-          style={{ fontSize: 11, color: "var(--text-muted)", flexShrink: 0 }}
+          style={{ fontSize: 11, fontWeight: 400, color: "var(--text-muted)", opacity: 0.5, flexShrink: 0 }}
         >
           {formatRelative(contact.lastMessageAt)}
         </div>
