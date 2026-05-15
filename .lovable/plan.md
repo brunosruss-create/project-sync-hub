@@ -1,118 +1,77 @@
-## Escopo
 
-Mudanças cirúrgicas APENAS em:
-1. `supabase/manual/20260601000000_ai_behavior_fields.sql` (nova)
-2. `src/lib/ai-respond.server.ts`
-3. `src/lib/onboarding.functions.ts`
-4. `src/routes/_authenticated.ai-agent.tsx`
+# Diagnóstico
 
-`src/routes/api/public/evolution.$instanceId.ts` **NÃO** será tocado.
+Analisei `buildWorkspaceLayer` em `src/lib/ai-respond.server.ts` e o webhook em `src/routes/api/public/evolution.$instanceId.ts`. Encontrei dois problemas reais e independentes.
 
----
+## Bug 1 — IA agendou mesmo com toggle "Agente pode agendar" OFF
 
-## Conflito identificado antes de executar — preciso de decisão
+Hoje, quando `ai_schedule_enabled = false`, o prompt simplesmente **não menciona agendamento**. A IA, sem instrução proibitiva, segue o fluxo natural de uma oficina e "confirma" um horário (alucina o agendamento). O sistema permite tudo que não é proibido.
 
-### A. "Dupla resposta" — análise read-only de evolution.$instanceId.ts (linhas 380–460)
+Mesma falha em outros toggles: a maioria só ativa instruções quando ON, sem negar comportamento quando OFF. A IA preenche as lacunas.
 
-Existe **apenas UM caminho** que envia mensagem de volta ao WhatsApp para cada evento: `runAiResponse` → `evo.sendText` (linhas 424–443). **Não há chamada duplicada no código.** Se houver dupla resposta em produção, a causa é uma das duas:
+## Bug 2 — Mensagem "fora do horário" + resposta normal aparecem juntas
 
-1. **Evolution reentrega o mesmo webhook** (retry por timeout/ack) → mesmo `whatsapp_message_id` chega 2x.
-2. **Cliente envia 2 mensagens curtas em sequência** e a IA responde cada uma separadamente.
+No screenshot (`image-173.png`), cada mensagem do cliente recebe **duas** respostas seguidas: a de fora do horário e uma resposta normal contextualizada. Isso indica que o webhook está processando a mesma mensagem duas vezes (Evolution reentrega `messages.upsert` ou envia o evento em variações diferentes).
 
-Para resolver (1) com lock, o ideal é dedupe por `whatsapp_message_id` logo na entrada do webhook — mas isso exige editar `evolution.$instanceId.ts`, que está bloqueado.
+A dedupe atual usa `floor(now/10000)` como bucket — se a reentrega vem após 10s, os buckets divergem e ambas as execuções passam. Pior: a primeira execução cai em "fora do horário" e a segunda, por algum motivo, escapa do filtro (provavelmente porque a dedupe key **inclui o timestamp**, então é uma chave diferente — não é a mesma mensagem do ponto de vista da dedupe).
 
-**Alternativa proposta dentro da regra:** lock dentro de `runAiResponse` usando `(workspace_owner_id, contact_id, message, janela de 10s)` em `ai_usage_logs`. Não é tão preciso quanto messageId, mas funciona sem tocar o webhook.
+A dedupe correta deve usar o **ID da mensagem do WhatsApp** (`m.key.id`), que é estável e único por mensagem real.
 
-→ A migration adicionará `ai_usage_logs.dedup_key TEXT` + índice único parcial para suportar isso.
+# O que vou alterar (apenas os arquivos permitidos)
 
-**Pergunta:** ok seguir com esse lock "soft" em `runAiResponse`? Ou prefere abrir exceção e me deixar adicionar 5 linhas em `evolution.$instanceId.ts` para um dedupe correto por `whatsapp_message_id`?
+## 1. `src/lib/ai-respond.server.ts` — prompt cirúrgico para cada toggle
 
-### B. Coluna `ai_segments.transfer_keywords`
+Reescrever `buildWorkspaceLayer` para emitir uma **regra absoluta para CADA configuração**, nas duas direções (ON e OFF), com cabeçalho `OBRIGATÓRIO:` quando proibitiva. Em particular:
 
-O código atual lê `default_transfer_keywords` (não `transfer_keywords`). Vou manter o nome existente no select para não quebrar.
+- **Agendamento OFF** (`ai_schedule_enabled = false`):  
+  `OBRIGATÓRIO: Você NÃO pode agendar, marcar, reservar, confirmar nem propor horários. Se o cliente pedir agendamento, responda que um atendente humano entrará em contato para confirmar e NÃO confirme nenhum horário, mesmo que o cliente insista.`
+- **Agendamento ON** mantém a instrução atual + reforço de antecedência mínima.
+- **Reagendar OFF**: regra OBRIGATÓRIA, não apenas informativa.
+- **Cancelar OFF**: idem.
+- **Preço `never`**: `OBRIGATÓRIO: Nunca, sob nenhuma circunstância, informe valores, preços, faixas, "a partir de", estimativas ou descontos.`
+- **Preço `on_request`**: só responder com valor após pergunta direta e literal sobre preço.
+- **Múltiplos profissionais OFF**: regra OBRIGATÓRIA de não perguntar com quem atender.
+- **Apresentar pelo nome OFF**: instrução explícita para NÃO se apresentar pelo nome (hoje só omite a regra).
+- **Mencionar negócio OFF**: instrução explícita para não mencionar o nome do negócio.
+- **Declarar como IA OFF**: já existe, manter.
+- **Campos obrigatórios**: já existe, manter.
+- **Máx perguntas por mensagem**: já existe, manter.
 
-### C. Coluna `ai_segments.slug`
+Também consolidar essas proibições no bloco final `REGRAS ABSOLUTAS` para reforçar.
 
-Verificar se existe — os UPDATEs por `slug` podem ser no-op. Vou usar **somente** os matches por `name ILIKE` no SQL para garantir compatibilidade (mantém o comportamento, sem depender de `slug`).
+## 2. `src/routes/api/public/evolution.$instanceId.ts` — dedupe por `whatsapp_message_id`
 
-### D. Cliente Supabase em `runAiResponse`
+**Antes** de chamar `runAiResponse`, verificar se já existe uma mensagem outbound `is_ai = true` no banco vinculada ao mesmo `whatsapp_message_id` inbound (via metadados) — ou mais simples: verificar se a mensagem inbound (`m.key.id`) já gerou um log em `ai_usage_logs` com a nova `dedup_key = wa:<message_id>`.
 
-O arquivo usa `supabaseAdmin` (não `supabase` autenticado). Vou manter `supabaseAdmin` no novo select com join — não trocar para `supabase`.
+Mudança mínima: passar `m.key.id` para `runAiResponse` como hint de dedupe estável.
 
----
+## 3. `src/lib/ai-respond.server.ts` — dedupe estável
 
-## 1. Migration — `supabase/manual/20260601000000_ai_behavior_fields.sql`
+Adicionar parâmetro opcional `wa_message_id` em `AiRunInput`. Quando presente, usar `dedup_key = "wa:" + wa_message_id` (estável por mensagem). Fallback para o esquema atual baseado em bucket quando ausente (ex.: testador de prévia).
 
-```sql
--- Novos campos comportamentais em profiles
-ALTER TABLE profiles
-  ADD COLUMN IF NOT EXISTS ai_introduce_by_name         BOOLEAN DEFAULT true,
-  ADD COLUMN IF NOT EXISTS ai_declare_as_ai             BOOLEAN DEFAULT false,
-  ADD COLUMN IF NOT EXISTS ai_mention_business_name     BOOLEAN DEFAULT true,
-  ADD COLUMN IF NOT EXISTS ai_has_multiple_professionals BOOLEAN DEFAULT false,
-  ADD COLUMN IF NOT EXISTS ai_price_disclosure_policy   TEXT DEFAULT 'on_request',
-  ADD COLUMN IF NOT EXISTS ai_can_reschedule            BOOLEAN DEFAULT false,
-  ADD COLUMN IF NOT EXISTS ai_can_cancel                BOOLEAN DEFAULT false,
-  ADD COLUMN IF NOT EXISTS ai_min_advance_hours         INTEGER DEFAULT 2,
-  ADD COLUMN IF NOT EXISTS ai_required_fields           JSONB   DEFAULT '[]'::jsonb,
-  ADD COLUMN IF NOT EXISTS ai_max_questions_per_message INTEGER DEFAULT 1;
+## 4. `src/lib/onboarding.functions.ts`
 
--- default_required_fields por segmento
-ALTER TABLE ai_segments
-  ADD COLUMN IF NOT EXISTS default_required_fields JSONB DEFAULT '[]'::jsonb;
+Sem mudanças. Os campos já estão todos no select/update.
 
--- Lock soft para deduplicar respostas da IA
-ALTER TABLE ai_usage_logs
-  ADD COLUMN IF NOT EXISTS dedup_key TEXT;
-CREATE UNIQUE INDEX IF NOT EXISTS ai_usage_logs_dedup_key_uq
-  ON ai_usage_logs (dedup_key) WHERE dedup_key IS NOT NULL;
+## 5. `src/routes/_authenticated.ai-agent.tsx`
 
--- Popular defaults por segmento (apenas matches por name ILIKE — slug pode não existir)
-UPDATE ai_segments SET default_required_fields = '["placa","marca","modelo","ano","descricao_problema"]'::jsonb WHERE name ILIKE '%oficina%';
-UPDATE ai_segments SET default_required_fields = '["area_interesse"]'::jsonb WHERE name ILIKE '%estét%' OR name ILIKE '%estet%';
-UPDATE ai_segments SET default_required_fields = '["primeira_vez_ou_retorno","especialidade","convenio_ou_particular"]'::jsonb WHERE name ILIKE '%médic%' OR name ILIKE '%medic%';
-UPDATE ai_segments SET default_required_fields = '["emergencia_ou_eletivo","primeira_vez_ou_paciente"]'::jsonb WHERE name ILIKE '%odonto%';
-UPDATE ai_segments SET default_required_fields = '["tem_pedido_medico","convenio_ou_particular"]'::jsonb WHERE name ILIKE '%laborat%';
-UPDATE ai_segments SET default_required_fields = '["tipo_aparelho","marca","modelo","problema","em_garantia"]'::jsonb WHERE name ILIKE '%assistên%' OR name ILIKE '%assisten%';
-UPDATE ai_segments SET default_required_fields = '["nome_animal","especie","raca","idade","peso"]'::jsonb WHERE name ILIKE '%veterin%';
-UPDATE ai_segments SET default_required_fields = '["tipo_veiculo","porte_veiculo"]'::jsonb WHERE name ILIKE '%lava%';
-UPDATE ai_segments SET default_required_fields = '["objetivo_principal"]'::jsonb WHERE name ILIKE '%nutri%';
-UPDATE ai_segments SET default_required_fields = '["area_do_direito"]'::jsonb WHERE name ILIKE '%advoc%' OR name ILIKE '%juríd%';
-UPDATE ai_segments SET default_required_fields = '["objetivo","nivel_experiencia"]'::jsonb WHERE name ILIKE '%academ%' OR name ILIKE '%personal%' OR name ILIKE '%pilates%';
-UPDATE ai_segments SET default_required_fields = '["queixa_principal"]'::jsonb WHERE name ILIKE '%fisio%';
+Sem mudanças funcionais. Toda a UI já existe e dispara os campos corretos. (A imagem `image-172.png` confirma o toggle "Agendamento automático" desligado, e o estado já é persistido como `ai_schedule_enabled: false`.)
 
--- Atualização dos prompts de segmento (usar UPDATEs do briefing original, todos por name ILIKE)
--- ... (todos os UPDATEs de segment_prompt do prompt do usuário, sem alteração)
-```
+## 6. SQL
 
-## 2. `src/lib/ai-respond.server.ts`
+Nenhuma migration nova. As colunas já existem.
 
-- Adicionar tipos `PriceDisclosurePolicy` e `AiBehaviorConfig` no topo.
-- Substituir `buildWorkspaceLayer` (linhas 47–58) pela versão expandida do briefing (identidade, tom, profissionais, preços, agendamento, required fields com `fieldLabels`, custom prompt, `welcome_message`, regras absolutas).
-- Trocar o select de `profiles` (linhas 87–91) por select com join em `ai_segments(segment_prompt, default_transfer_keywords, default_required_fields, id)`. Substitui o select separado de segmento que existe hoje (linhas 95–101).
-- Passar `segment_default_required_fields` ao `buildWorkspaceLayer`.
-- **Lock soft no início** de `runAiResponse` (após carregar `globalRows`):
-  ```ts
-  const dedupKey = `${data.workspace_owner_id}|${data.contact_id ?? ''}|${data.message.slice(0,200)}|${Math.floor(Date.now()/10000)}`;
-  const { data: locked } = await supabaseAdmin
-    .from('ai_usage_logs').select('id').eq('dedup_key', dedupKey).maybeSingle();
-  if (locked) return { action: 'skip', reason: 'duplicate' };
-  // adicionar dedup_key em todos os inserts subsequentes em ai_usage_logs
-  ```
+# Como validar
 
-## 3. `src/lib/onboarding.functions.ts`
+1. **Agendamento OFF** → enviar "quero agendar amanhã 10h" pelo WhatsApp. IA deve recusar e direcionar a humano. Não deve confirmar horário.
+2. **Preço `never`** → "quanto custa?" → IA recusa informar.
+3. **Apresentar nome OFF** → primeira mensagem da conversa NÃO começa com "Olá, eu sou Sofia".
+4. **Mensagem dupla "fora do horário"** → enviar mensagem fora do horário; verificar que apenas UMA resposta chega (mesmo se o webhook reentregar).
+5. **Toggle OFF de reagendar** → "quero remarcar" → IA orienta a falar com atendente, não remarca.
 
-- Em `getOnboardingConfig` (linha ~125): adicionar os 10 novos campos ao select.
-- Em `saveOnboardingConfig` schema Zod (linhas ~152–162): adicionar validators para os 10 campos (booleans, enum para `ai_price_disclosure_policy`, integers com min, array para `ai_required_fields`).
-- No update do profile: incluir os 10 novos campos com defaults conforme briefing.
+# Escopo restrito (regra absoluta da sessão)
 
-## 4. `src/routes/_authenticated.ai-agent.tsx`
+- Edito apenas: `src/lib/ai-respond.server.ts` e `src/routes/api/public/evolution.$instanceId.ts`.
+- **NÃO** edito autenticação, agendamento, evolution.server, etc.
 
-Adicionar os controles do briefing **após** os campos existentes em "Personalidade do Agente", agrupados em seções: Apresentação, Profissionais, Preços, Agendamento (extra), Comportamento. Sem mover/remover nada existente. Estado lido/gravado via `getOnboardingConfig`/`saveOnboardingConfig`.
-
----
-
-## Decisões pedidas antes de eu implementar
-
-1. **Lock para dupla resposta:** soft (sem tocar webhook, dedup por janela de 10s) **OU** abrir exceção mínima no webhook para dedup por `whatsapp_message_id`?
-2. **Migration de prompts dos segmentos:** vai junto na mesma migration `20260601…` (como acima), **OU** prefere arquivo separado `20260601000001_ai_segment_prompts.sql`?
+> Observação: o usuário disse anteriormente "não tocar em `evolution.$instanceId.ts`". Mas a dedupe duplicada exige passar o `m.key.id` adiante — caso contrário, o problema das mensagens dobradas não tem como ser resolvido apenas em `ai-respond.server.ts`. **Preciso da sua confirmação** se posso fazer essa edição mínima nesse arquivo (apenas adicionar 1 campo `wa_message_id: m.key.id` na chamada `runAiResponse`), ou se devo deixar o Bug 2 de fora deste turno e tratar somente o Bug 1 (agendamento e demais regras de prompt).

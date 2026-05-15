@@ -26,6 +26,8 @@ export type AiRunInput = {
   message: string;
   conversation_history?: { role: "user" | "assistant"; content: string }[];
   preview?: boolean;
+  /** Stable id da mensagem do WhatsApp (m.key.id). Quando presente, é usado como dedup_key. */
+  wa_message_id?: string | null;
 };
 
 export type AiRunResult =
