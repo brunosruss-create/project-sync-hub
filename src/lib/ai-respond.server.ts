@@ -119,6 +119,7 @@ function buildWorkspaceLayer(
   },
 ): string {
   const parts: string[] = [];
+  const prohibitions: string[] = [];
 
   // === IDENTIDADE ===
   const name = p.ai_assistant_name as string | null | undefined;
@@ -140,9 +141,17 @@ function buildWorkspaceLayer(
         `Se o cliente perguntar seu nome ou quem é você, responda que é ${name}${mentionBusiness && business ? `, do ${business}` : ""}.`,
       );
     }
+  } else {
+    prohibitions.push(
+      `OBRIGATÓRIO: NÃO se apresente pelo nome. Não diga "Eu sou X", "Meu nome é X", "Aqui é X". Vá direto ao ponto da mensagem do cliente.`,
+    );
   }
   if (mentionBusiness && business) {
     parts.push(`Você atende o ${business}.`);
+  } else if (!mentionBusiness && business) {
+    prohibitions.push(
+      `OBRIGATÓRIO: NÃO mencione o nome do negócio ("${business}") em nenhuma mensagem.`,
+    );
   }
   if (declareAsAi) {
     parts.push(
@@ -170,8 +179,12 @@ function buildWorkspaceLayer(
   // === PROFISSIONAIS ===
   const hasMultiple = p.ai_has_multiple_professionals ?? false;
   if (!hasMultiple) {
+    prohibitions.push(
+      `OBRIGATÓRIO: NÃO pergunte com qual profissional o cliente quer ser atendido. Há apenas um profissional disponível neste negócio.`,
+    );
+  } else {
     parts.push(
-      `Não pergunte com qual profissional o cliente deseja ser atendido. Há apenas um profissional disponível.`,
+      `Este negócio tem mais de um profissional. Quando relevante para agendamento, pergunte com qual profissional o cliente prefere ser atendido.`,
     );
   }
 
@@ -180,34 +193,53 @@ function buildWorkspaceLayer(
     (p.ai_price_disclosure_policy as PriceDisclosurePolicy) ?? "on_request";
   if (pricePolicy === "always") {
     parts.push(
-      `Informe os preços dos serviços quando apresentar opções ao cliente.`,
+      `Informe os preços dos serviços proativamente quando apresentar opções ao cliente.`,
     );
   } else if (pricePolicy === "on_request") {
     parts.push(
-      `Informe os preços apenas se o cliente perguntar diretamente.`,
+      `Só informe preços se o cliente perguntar de forma direta e literal sobre valores. Não cite preços, "a partir de", faixas, descontos ou estimativas espontaneamente.`,
     );
   } else if (pricePolicy === "never") {
-    parts.push(
-      `Nunca informe preços. Se perguntado, diga que os valores são informados diretamente pelo atendente.`,
+    prohibitions.push(
+      `OBRIGATÓRIO: NUNCA, sob nenhuma circunstância, informe valores, preços, faixas, "a partir de", estimativas, descontos, condições de pagamento ou ordens de grandeza. Se o cliente perguntar preço, responda exatamente: "Os valores são informados diretamente por um atendente. Vou encaminhar seu contato."`,
     );
   }
 
-  // === AGENDAMENTO ===
-  if (p.ai_schedule_enabled && p.ai_schedule_instruction) {
-    parts.push(`Para agendamentos: ${p.ai_schedule_instruction}`);
+  // === AGENDAMENTO (toggle principal) ===
+  const scheduleEnabled = p.ai_schedule_enabled ?? false;
+  if (scheduleEnabled) {
+    if (p.ai_schedule_instruction) {
+      parts.push(`Para agendamentos: ${p.ai_schedule_instruction}`);
+    } else {
+      parts.push(
+        `Você pode auxiliar no agendamento. Confirme dia, horário e serviço com o cliente antes de marcar.`,
+      );
+    }
     const minHours = p.ai_min_advance_hours ?? 2;
-    parts.push(`Antecedência mínima para agendamento: ${minHours} hora(s).`);
-  }
-  const canReschedule = p.ai_can_reschedule ?? false;
-  const canCancel = p.ai_can_cancel ?? false;
-  if (!canReschedule) {
     parts.push(
-      `Você não pode remarcar horários já agendados. Oriente o cliente a falar com um atendente.`,
+      `Antecedência mínima para agendamento: ${minHours} hora(s). Não aceite horários abaixo dessa antecedência.`,
+    );
+  } else {
+    prohibitions.push(
+      `OBRIGATÓRIO: VOCÊ NÃO PODE AGENDAR, MARCAR, RESERVAR, CONFIRMAR NEM PROPOR HORÁRIOS de atendimento. Se o cliente pedir agendamento, responda EXATAMENTE no espírito: "Vou encaminhar seu pedido para um atendente humano confirmar o horário com você." Não invente horários, não diga "reservei", "já marquei", "confirmado para amanhã", "agendamento confirmado" — nada disso. Mesmo que o cliente insista, NÃO confirme horário algum.`,
     );
   }
-  if (!canCancel) {
-    parts.push(
-      `Você não pode cancelar agendamentos. Oriente o cliente a falar com um atendente.`,
+
+  // === REAGENDAR / CANCELAR ===
+  const canReschedule = p.ai_can_reschedule ?? false;
+  const canCancel = p.ai_can_cancel ?? false;
+  if (canReschedule) {
+    parts.push(`Você pode auxiliar a remarcar horários já agendados.`);
+  } else {
+    prohibitions.push(
+      `OBRIGATÓRIO: VOCÊ NÃO PODE REMARCAR horários já agendados. Se o cliente pedir, responda que vai encaminhar para um atendente humano.`,
+    );
+  }
+  if (canCancel) {
+    parts.push(`Você pode auxiliar a cancelar agendamentos.`);
+  } else {
+    prohibitions.push(
+      `OBRIGATÓRIO: VOCÊ NÃO PODE CANCELAR agendamentos. Se o cliente pedir, responda que vai encaminhar para um atendente humano.`,
     );
   }
 
@@ -242,6 +274,13 @@ function buildWorkspaceLayer(
     parts.push(`Tom de referência para boas-vindas: ${p.welcome_message}`);
   }
 
+  // === PROIBIÇÕES (consolidadas) ===
+  if (prohibitions.length > 0) {
+    parts.push(
+      `\n=== PROIBIÇÕES INVIOLÁVEIS DESTE WORKSPACE ===\n${prohibitions.map((r, i) => `${i + 1}. ${r}`).join("\n")}\nViolar qualquer uma dessas regras é falha grave. Nunca invente capacidade que não tem.`,
+    );
+  }
+
   // === REGRAS ABSOLUTAS DE COMPORTAMENTO ===
   const maxQ = p.ai_max_questions_per_message ?? 1;
   parts.push(
@@ -253,8 +292,9 @@ REGRAS ABSOLUTAS — NUNCA VIOLE:
 4. Não use asteriscos (*) ou hashtags (#) para formatação. Use linguagem natural.
 5. Seja direto e objetivo. Evite frases de efeito desnecessárias.
 6. Nunca invente informações sobre serviços, preços ou disponibilidade não fornecidos.
-7. Se não souber algo, diga que vai verificar e pergunte se pode ajudar em mais alguma coisa.
+7. Se não souber algo ou não puder executar uma ação, diga que vai encaminhar para um atendente humano.
 8. Nunca pressione o cliente. Não use táticas de urgência artificial.
+9. Se uma proibição inviolável deste workspace conflita com o pedido do cliente, a proibição vence — sem exceções.
 `.trim(),
   );
 
