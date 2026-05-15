@@ -1,5 +1,7 @@
 import * as React from "react";
 import { createFileRoute } from "@tanstack/react-router";
+import { useQuery, useQueryClient } from "@tanstack/react-query";
+import { useServerFn } from "@tanstack/react-start";
 import { toast } from "sonner";
 import { Upload } from "lucide-react";
 import {
@@ -11,6 +13,11 @@ import {
   buttonPrimary,
   buttonSecondary,
 } from "@/features/settings/settings-layout";
+import {
+  listActiveSegments,
+  getWorkspaceProfile,
+  updateWorkspaceProfile,
+} from "@/lib/onboarding.functions";
 
 import { ManagerOnly } from "@/components/manager-only";
 
@@ -35,8 +42,22 @@ const DAYS = [
 type Hours = Record<string, { active: boolean; start: string; end: string }>;
 
 function WorkspacePage() {
-  const [name, setName] = React.useState("Meu Negócio");
-  const [segment, setSegment] = React.useState("Mecânico");
+  const qc = useQueryClient();
+  const listSegmentsFn = useServerFn(listActiveSegments);
+  const getProfileFn = useServerFn(getWorkspaceProfile);
+  const updateProfileFn = useServerFn(updateWorkspaceProfile);
+
+  const segmentsQ = useQuery({
+    queryKey: ["active-segments"],
+    queryFn: () => listSegmentsFn(),
+  });
+  const profileQ = useQuery({
+    queryKey: ["workspace-profile"],
+    queryFn: () => getProfileFn(),
+  });
+
+  const [name, setName] = React.useState("");
+  const [segmentId, setSegmentId] = React.useState<string>("");
   const [address, setAddress] = React.useState("");
   const [phone, setPhone] = React.useState("");
   const [site, setSite] = React.useState("");
@@ -54,11 +75,36 @@ function WorkspacePage() {
   );
   const [saving, setSaving] = React.useState(false);
 
+  // Hidrata estado quando o perfil carrega
+  React.useEffect(() => {
+    if (profileQ.data) {
+      setName(profileQ.data.business_name || "Meu Negócio");
+      setSegmentId(profileQ.data.segment_id ?? "");
+    }
+  }, [profileQ.data]);
+
+  const segments = segmentsQ.data?.segments ?? [];
+  const selectedSegment = segments.find((s) => s.id === segmentId);
+
   const handleSave = async () => {
+    if (!segmentId) {
+      toast.error("Selecione um segmento");
+      return;
+    }
+    if (!name.trim()) {
+      toast.error("Informe o nome do negócio");
+      return;
+    }
     setSaving(true);
-    await new Promise((r) => setTimeout(r, 600));
-    setSaving(false);
-    toast.success("Configurações do negócio salvas");
+    try {
+      await updateProfileFn({ data: { business_name: name.trim(), segment_id: segmentId } });
+      await qc.invalidateQueries({ queryKey: ["workspace-profile"] });
+      toast.success("Configurações do negócio salvas");
+    } catch (e) {
+      toast.error(e instanceof Error ? e.message : "Erro ao salvar");
+    } finally {
+      setSaving(false);
+    }
   };
 
   return (
