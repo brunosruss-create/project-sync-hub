@@ -57,7 +57,7 @@ export const completeOnboarding = createServerFn({ method: "POST" })
       .maybeSingle();
     if (!segment) throw new Error("Segmento inválido");
 
-    // Update profile com defaults do segmento
+    // Update profile com defaults do segmento + ativa IA
     const { error: pErr } = await supabaseAdmin
       .from("profiles")
       .update({
@@ -65,6 +65,7 @@ export const completeOnboarding = createServerFn({ method: "POST" })
         business_name: data.business_name,
         business_description: data.business_description ?? null,
         segment_id: segment.id,
+        ai_enabled: true,
         ai_assistant_name: segment.default_assistant_name ?? "Sofia",
         ai_tone: segment.default_tone ?? "Amigável",
         ai_transfer_keywords:
@@ -116,11 +117,25 @@ export const getWorkspaceAiConfig = createServerFn({ method: "POST" })
     const { data } = await supabaseAdmin
       .from("profiles")
       .select(
-        "ai_enabled,ai_assistant_name,ai_tone,ai_custom_prompt,ai_transfer_keywords,ai_transfer_after_messages,ai_schedule_enabled,ai_schedule_instruction,ai_working_hours,ai_out_of_hours_message,ai_enabled_service_ids,business_name,business_description,segment_id",
+        "ai_enabled,ai_assistant_name,ai_tone,ai_custom_prompt,ai_transfer_keywords,ai_transfer_after_messages,ai_schedule_enabled,ai_schedule_instruction,ai_working_hours,ai_out_of_hours_message,ai_enabled_service_ids,ai_timezone,business_name,business_description,business_timezone,segment_id",
       )
       .eq("id", context.userId)
       .maybeSingle();
-    return { config: data };
+    let segment: {
+      id: string;
+      name: string;
+      icon: string | null;
+      segment_prompt: string;
+    } | null = null;
+    if (data?.segment_id) {
+      const { data: s } = await supabaseAdmin
+        .from("ai_segments")
+        .select("id,name,icon,segment_prompt")
+        .eq("id", data.segment_id)
+        .maybeSingle();
+      segment = s ?? null;
+    }
+    return { config: data, segment };
   });
 
 // ============= UPDATE WORKSPACE AI CONFIG =============
@@ -140,6 +155,7 @@ export const updateWorkspaceAiConfig = createServerFn({ method: "POST" })
         ai_working_hours: z.record(z.string(), z.any()).optional(),
         ai_out_of_hours_message: z.string().max(1000).optional(),
         ai_enabled_service_ids: z.array(z.string().uuid()).max(200).optional(),
+        ai_timezone: z.string().min(1).max(64).optional(),
       })
       .parse(input),
   )
@@ -158,19 +174,35 @@ export const getWorkspaceProfile = createServerFn({ method: "POST" })
   .handler(async ({ context }) => {
     const { data } = await supabaseAdmin
       .from("profiles")
-      .select("business_name,business_description,segment_id")
+      .select(
+        "business_name,business_description,segment_id,business_hours,business_timezone,welcome_message",
+      )
       .eq("id", context.userId)
       .maybeSingle();
     return {
       business_name: data?.business_name ?? "",
       business_description: data?.business_description ?? "",
       segment_id: data?.segment_id ?? null,
+      business_hours: (data?.business_hours as Record<string, unknown> | null) ?? null,
+      business_timezone: data?.business_timezone ?? "America/Sao_Paulo",
+      welcome_message: data?.welcome_message ?? "",
     };
   });
 
+const HoursSchema = z
+  .record(
+    z.string(),
+    z.object({
+      active: z.boolean(),
+      start: z.string().regex(/^\d{2}:\d{2}$/),
+      end: z.string().regex(/^\d{2}:\d{2}$/),
+    }),
+  )
+  .optional();
+
 // ============= UPDATE WORKSPACE PROFILE =============
-// Atualiza apenas nome do negócio. Para trocar segmento e aplicar defaults
-// da IA, use updateWorkspaceSegmentWithDefaults.
+// Salva nome, segmento, horários do negócio, fuso e mensagem de boas-vindas.
+// Para trocar segmento aplicando defaults da IA use updateWorkspaceSegmentWithDefaults.
 export const updateWorkspaceProfile = createServerFn({ method: "POST" })
   .middleware([requireSupabaseAuth])
   .inputValidator((input) =>
@@ -178,6 +210,9 @@ export const updateWorkspaceProfile = createServerFn({ method: "POST" })
       .object({
         business_name: z.string().min(1).max(120),
         segment_id: z.string().uuid(),
+        business_hours: HoursSchema,
+        business_timezone: z.string().min(1).max(64).optional(),
+        welcome_message: z.string().max(2000).optional(),
       })
       .parse(input),
   )
@@ -189,12 +224,20 @@ export const updateWorkspaceProfile = createServerFn({ method: "POST" })
       .eq("is_active", true)
       .maybeSingle();
     if (!seg) throw new Error("Segmento inválido ou inativo");
+    const update: Record<string, unknown> = {
+      business_name: data.business_name,
+      segment_id: data.segment_id,
+    };
+    if (data.business_hours !== undefined) update.business_hours = data.business_hours;
+    if (data.business_timezone !== undefined) {
+      update.business_timezone = data.business_timezone;
+      // mantém ai_timezone alinhado quando o usuário não setou um diferente
+      update.ai_timezone = data.business_timezone;
+    }
+    if (data.welcome_message !== undefined) update.welcome_message = data.welcome_message;
     const { error } = await supabaseAdmin
       .from("profiles")
-      .update({
-        business_name: data.business_name,
-        segment_id: data.segment_id,
-      })
+      .update(update)
       .eq("id", context.userId);
     if (error) throw new Error(error.message);
     return { ok: true };
