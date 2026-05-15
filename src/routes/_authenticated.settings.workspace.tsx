@@ -149,12 +149,27 @@ function WorkspacePage() {
           <input style={inputStyle} value={name} onChange={(e) => setName(e.target.value)} />
         </Field>
         <Field label="Segmento">
-          <select style={inputStyle} value={segment} onChange={(e) => setSegment(e.target.value)}>
-            <option>Mecânico</option>
-            <option>Clínica</option>
-            <option>Dentista</option>
-            <option>Outro</option>
+          <select
+            style={inputStyle}
+            value={segmentId}
+            onChange={(e) => setSegmentId(e.target.value)}
+            disabled={segmentsQ.isLoading}
+          >
+            <option value="" disabled>
+              {segmentsQ.isLoading ? "Carregando…" : "Selecione um segmento"}
+            </option>
+            {segments.map((s) => (
+              <option key={s.id} value={s.id}>
+                {s.icon ? `${s.icon} ` : ""}
+                {s.name}
+              </option>
+            ))}
           </select>
+          {selectedSegment?.description && (
+            <span style={{ fontSize: 11, color: "var(--text-muted)", marginTop: 4 }}>
+              {selectedSegment.description}
+            </span>
+          )}
         </Field>
       </FieldGroup>
 
