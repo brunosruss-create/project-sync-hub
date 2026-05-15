@@ -1,26 +1,50 @@
-## Problema encontrado
+## Problema
 
-A tela mostra que a chave digitada não está salva porque o backend está tentando usar a variável `APP_SUPABASE_SERVICE_ROLE_KEY`, mas o padrão do projeto/Supabase é `SUPABASE_SERVICE_ROLE_KEY`. Quando essa variável não existe, o cliente admin não tem permissão real para gravar em `global_settings`, então a chave continua vazia.
+A lista de modelos no `/super-admin/ia` está desatualizada. Mostra Gemini 1.5 (legado/descontinuado) e 2.0, e não tem nenhum modelo da família **Gemini 3** — incluindo o **Gemini 3.1 Flash-Lite** (último modelo estável e mais barato/rápido) e o **Gemini 3 Flash**, que é o recomendado atual.
+
+## Modelos válidos hoje na API oficial Google (`generativelanguage.googleapis.com/v1beta/.../:generateContent`)
+
+Confirmado em https://ai.google.dev/gemini-api/docs/models — modelos de texto/chat suportados:
+
+| Código (API) | Nome amigável | Status | Quando usar |
+|---|---|---|---|
+| `gemini-3.1-pro-preview` | Gemini 3.1 Pro | Preview | Qualidade máxima, raciocínio complexo |
+| `gemini-3-flash-preview` | Gemini 3 Flash | Preview | **Recomendado** — equilíbrio frontier-class |
+| `gemini-3.1-flash-lite` | Gemini 3.1 Flash-Lite | **Estável** | Mais rápido e barato da família 3 |
+| `gemini-3.1-flash-lite-preview` | Gemini 3.1 Flash-Lite (preview) | Preview | Acesso antecipado a melhorias |
+| `gemini-2.5-pro` | Gemini 2.5 Pro | Estável | Raciocínio profundo (geração anterior) |
+| `gemini-2.5-flash` | Gemini 2.5 Flash | Estável | Custo/performance família 2.5 |
+| `gemini-2.5-flash-lite` | Gemini 2.5 Flash-Lite | Estável | Mais barato família 2.5 |
+
+**Removidos** (deprecados/sem valor):
+- `gemini-2.0-flash` — substituído por 2.5/3.x
+- `gemini-1.5-flash` / `gemini-1.5-pro` — descontinuados pelo Google
 
 ## Plano de correção
 
-1. **Corrigir o cliente admin do Supabase**
-   - Alterar `src/integrations/supabase/client.server.ts` para usar `SUPABASE_SERVICE_ROLE_KEY` como variável principal.
-   - Manter compatibilidade com `APP_SUPABASE_SERVICE_ROLE_KEY` como fallback, caso ela exista.
-   - Usar também `SUPABASE_URL` com fallback para `VITE_SUPABASE_URL`.
+### 1. Atualizar lista de modelos no select
+Arquivo: `src/routes/_authenticated.super-admin.ia.tsx` (linhas 168–172)
 
-2. **Corrigir a validação antes de salvar configurações de IA**
-   - Alterar `src/lib/ai-admin.functions.ts` para validar a presença de `SUPABASE_SERVICE_ROLE_KEY` ou `APP_SUPABASE_SERVICE_ROLE_KEY`.
-   - Melhorar a mensagem de erro para indicar exatamente qual secret está faltando, sem expor nenhum valor.
+Trocar pelas 7 opções acima, agrupadas com `<optgroup>`:
+- **Gemini 3 (mais novos)** — 3.1 Flash-Lite (estável), 3 Flash, 3.1 Pro, 3.1 Flash-Lite preview
+- **Gemini 2.5 (estáveis)** — 2.5 Flash, 2.5 Flash-Lite, 2.5 Pro
 
-3. **Melhorar a confirmação de gravação da chave**
-   - Após salvar, buscar novamente `global_settings` e confirmar se `gemini_api_key` ficou com valor.
-   - Se o Supabase retornar erro de RLS/permissão/constraint, exibir mensagem clara no toast e no status da tela.
+Marcar `gemini-3.1-flash-lite` como **recomendado** (rápido, barato e estável).
 
-4. **Ajuste opcional de banco se necessário**
-   - A migration manual já define `global_settings.key` como `primary key`, então o `upsert(..., { onConflict: 'key' })` está correto.
-   - Se o banco real não tiver essa constraint, será necessário aplicar/rodar o SQL de `supabase/manual/20260519000000_ai_agent.sql` no Supabase.
+### 2. Atualizar default em todo o backend
+Trocar todos os fallbacks `"gemini-2.5-flash"` para `"gemini-3.1-flash-lite"`:
+- `src/routes/_authenticated.super-admin.ia.tsx` linha 77
+- `src/lib/ai-admin.functions.ts` (função `testGeminiConnection`)
+- `src/lib/ai-respond.functions.ts` linha 148
 
-## Resultado esperado
+### 3. Atualizar comentário de custo em `ai-respond.functions.ts`
+Já cita "Gemini 3.1 Flash-Lite" mas o código real usa 2.5-flash. Alinhar tudo em 3.1 Flash-Lite com os preços oficiais ($0.10 input / $0.40 output por 1M tokens, conforme Google).
 
-Depois da correção, ao clicar em **Salvar configurações**, a chave será persistida em `public.global_settings` na linha `gemini_api_key`, e a tela passará a mostrar `✓ Chave salva no banco`.
+### 4. (Opcional) Validar modelo antes de salvar
+Em `updateAiGlobalSettings`, validar com `z.enum([...])` se `gemini_model` é um dos 7 códigos válidos, evitando o usuário salvar um modelo escrito errado.
+
+## Resultado
+
+- O select passa a mostrar apenas modelos válidos hoje na API Gemini, com o **3.1 Flash-Lite como recomendado**.
+- Default do sistema atualizado pra 3.1 Flash-Lite (mais barato e rápido que o 2.5-flash que está hoje).
+- Custos no log batem com o modelo real chamado.

@@ -134,7 +134,7 @@ export const testGeminiConnection = createServerFn({ method: "POST" })
       .in("key", ["gemini_api_key", "gemini_model"]);
     const map = Object.fromEntries((data ?? []).map((r) => [r.key, r.value ?? ""]));
     const apiKey = (map.gemini_api_key ?? "").trim();
-    const model = map.gemini_model || "gemini-2.5-flash";
+    const model = map.gemini_model || "gemini-3.1-flash-lite";
     if (!apiKey) {
       return {
         ok: false,

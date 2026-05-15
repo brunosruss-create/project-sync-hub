@@ -74,7 +74,7 @@ function GeminiTab() {
     if (q.data?.settings) {
       setForm({
         gemini_api_key: "",
-        gemini_model: q.data.settings.gemini_model?.value ?? "gemini-2.5-flash",
+        gemini_model: q.data.settings.gemini_model?.value ?? "gemini-3.1-flash-lite",
         gemini_temperature: q.data.settings.gemini_temperature?.value ?? "0.7",
         gemini_max_tokens: q.data.settings.gemini_max_tokens?.value ?? "1000",
         ai_base_prompt: q.data.settings.ai_base_prompt?.value ?? "",
@@ -165,11 +165,17 @@ function GeminiTab() {
             value={form.gemini_model ?? ""}
             onChange={(e) => setForm({ ...form, gemini_model: e.target.value })}
           >
-            <option value="gemini-2.5-flash">Gemini 2.5 Flash (recomendado — rápido e barato)</option>
-            <option value="gemini-2.5-pro">Gemini 2.5 Pro (qualidade máxima)</option>
-            <option value="gemini-2.0-flash">Gemini 2.0 Flash</option>
-            <option value="gemini-1.5-flash">Gemini 1.5 Flash (legado)</option>
-            <option value="gemini-1.5-pro">Gemini 1.5 Pro (legado)</option>
+            <optgroup label="Gemini 3 (mais novos)">
+              <option value="gemini-3.1-flash-lite">Gemini 3.1 Flash-Lite (recomendado — estável, rápido e barato)</option>
+              <option value="gemini-3-flash-preview">Gemini 3 Flash (preview — frontier-class)</option>
+              <option value="gemini-3.1-pro-preview">Gemini 3.1 Pro (preview — qualidade máxima)</option>
+              <option value="gemini-3.1-flash-lite-preview">Gemini 3.1 Flash-Lite (preview)</option>
+            </optgroup>
+            <optgroup label="Gemini 2.5 (estáveis)">
+              <option value="gemini-2.5-flash">Gemini 2.5 Flash</option>
+              <option value="gemini-2.5-flash-lite">Gemini 2.5 Flash-Lite</option>
+              <option value="gemini-2.5-pro">Gemini 2.5 Pro</option>
+            </optgroup>
           </select>
         </Field>
         <div className="grid gap-3" style={{ gridTemplateColumns: "1fr 1fr" }}>
