@@ -139,8 +139,18 @@ function GeminiTab() {
             style={adminInput}
             value={form.gemini_api_key ?? ""}
             onChange={(e) => setForm({ ...form, gemini_api_key: e.target.value })}
-            placeholder="AIzaSy…"
+            placeholder={savedKeyValue ? "Deixe vazio para manter a chave atual" : "AIzaSy…"}
+            autoComplete="off"
           />
+          <div
+            style={{
+              marginTop: 6,
+              fontSize: 11,
+              color: savedKeyValue ? "#10B981" : "#F59E0B",
+            }}
+          >
+            {savedKeyHint}
+          </div>
         </Field>
         <Field label="Modelo">
           <select
