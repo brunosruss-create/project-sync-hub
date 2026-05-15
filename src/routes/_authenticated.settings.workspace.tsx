@@ -297,6 +297,60 @@ function WorkspacePage() {
           />
         </Field>
       </FieldGroup>
+
+      {confirmSwitch && (
+        <div
+          onClick={() => !saving && setConfirmSwitch(null)}
+          style={{
+            position: "fixed",
+            inset: 0,
+            background: "rgba(0,0,0,0.5)",
+            zIndex: 60,
+            display: "flex",
+            alignItems: "center",
+            justifyContent: "center",
+            padding: 16,
+          }}
+        >
+          <div
+            onClick={(e) => e.stopPropagation()}
+            style={{
+              background: "var(--bg-surface)",
+              border: "1px solid var(--border)",
+              borderRadius: 12,
+              maxWidth: 460,
+              width: "100%",
+              padding: 20,
+            }}
+          >
+            <h3 style={{ fontSize: 16, fontWeight: 600, marginBottom: 8 }}>
+              Trocar para “{confirmSwitch.name}”?
+            </h3>
+            <p style={{ fontSize: 13, color: "var(--text-muted)", lineHeight: 1.5 }}>
+              Os defaults da IA (nome do assistente, tom de voz, palavras-chave de
+              transferência e número de mensagens antes de transferir) serão
+              substituídos pelos do novo segmento. Suas customizações atuais serão
+              sobrescritas.
+            </p>
+            <div className="flex justify-end gap-2" style={{ marginTop: 20 }}>
+              <button
+                style={buttonSecondary}
+                disabled={saving}
+                onClick={() => setConfirmSwitch(null)}
+              >
+                Cancelar
+              </button>
+              <button
+                style={buttonPrimary}
+                disabled={saving}
+                onClick={() => persist(true)}
+              >
+                {saving ? "Aplicando…" : "Sim, trocar segmento"}
+              </button>
+            </div>
+          </div>
+        </div>
+      )}
     </SettingsLayout>
   );
 }
