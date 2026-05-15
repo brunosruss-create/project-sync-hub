@@ -82,15 +82,31 @@ function WorkspacePage() {
 
   // Hidrata estado quando o perfil carrega
   React.useEffect(() => {
-    if (profileQ.data) {
-      setName(profileQ.data.business_name || "Meu Negócio");
-      setSegmentId(profileQ.data.segment_id ?? "");
+    const p = profileQ.data as
+      | {
+          business_name?: string;
+          segment_id?: string | null;
+          business_hours?: Hours | null;
+          business_timezone?: string;
+          welcome_message?: string;
+        }
+      | undefined;
+    if (!p) return;
+    setName(p.business_name || "Meu Negócio");
+    setSegmentId(p.segment_id ?? "");
+    if (p.business_hours && typeof p.business_hours === "object") {
+      setHours((prev) => ({ ...prev, ...p.business_hours }));
+    }
+    if (p.business_timezone) setTz(p.business_timezone);
+    if (typeof p.welcome_message === "string" && p.welcome_message.length > 0) {
+      setWelcome(p.welcome_message);
     }
   }, [profileQ.data]);
 
   const segments = segmentsQ.data?.segments ?? [];
   const selectedSegment = segments.find((s) => s.id === segmentId);
-  const currentSegmentId = profileQ.data?.segment_id ?? null;
+  const currentSegmentId =
+    (profileQ.data as { segment_id?: string | null } | undefined)?.segment_id ?? null;
   const segmentChanged = !!currentSegmentId && segmentId !== currentSegmentId;
 
   const persist = async (applyDefaults: boolean) => {
@@ -100,11 +116,17 @@ function WorkspacePage() {
         await updateSegmentDefaultsFn({
           data: { business_name: name.trim(), segment_id: segmentId },
         });
-      } else {
-        await updateProfileFn({
-          data: { business_name: name.trim(), segment_id: segmentId },
-        });
       }
+      // Sempre salva nome + horários + fuso + boas-vindas
+      await updateProfileFn({
+        data: {
+          business_name: name.trim(),
+          segment_id: segmentId,
+          business_hours: hours,
+          business_timezone: tz,
+          welcome_message: welcome,
+        },
+      });
       await Promise.all([
         qc.invalidateQueries({ queryKey: ["workspace-profile"] }),
         qc.invalidateQueries({ queryKey: ["workspace-ai-config"] }),
