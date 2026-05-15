@@ -135,6 +135,22 @@ function AIAgentPage() {
       (cAny.business_timezone as string | undefined) ||
       "America/Sao_Paulo";
     setTimezone(tz);
+    // Novos campos comportamentais
+    setIntroduceByName((cAny.ai_introduce_by_name as boolean | undefined) ?? true);
+    setDeclareAsAi((cAny.ai_declare_as_ai as boolean | undefined) ?? false);
+    setMentionBusiness((cAny.ai_mention_business_name as boolean | undefined) ?? true);
+    setMultipleProfs((cAny.ai_has_multiple_professionals as boolean | undefined) ?? false);
+    setPricePolicy(
+      ((cAny.ai_price_disclosure_policy as
+        | "always"
+        | "on_request"
+        | "never"
+        | undefined) ?? "on_request"),
+    );
+    setCanReschedule((cAny.ai_can_reschedule as boolean | undefined) ?? false);
+    setCanCancel((cAny.ai_can_cancel as boolean | undefined) ?? false);
+    setMinAdvanceHours((cAny.ai_min_advance_hours as number | undefined) ?? 2);
+    setMaxQuestions((cAny.ai_max_questions_per_message as number | undefined) ?? 1);
     setHydrated(true);
   }, [configQ.data, hydrated]);
 
@@ -154,6 +170,15 @@ function AIAgentPage() {
           ai_out_of_hours_message: offHoursMsg,
           ai_enabled_service_ids: enabledServices,
           ai_timezone: timezone,
+          ai_introduce_by_name: introduceByName,
+          ai_declare_as_ai: declareAsAi,
+          ai_mention_business_name: mentionBusiness,
+          ai_has_multiple_professionals: multipleProfs,
+          ai_price_disclosure_policy: pricePolicy,
+          ai_can_reschedule: canReschedule,
+          ai_can_cancel: canCancel,
+          ai_min_advance_hours: minAdvanceHours,
+          ai_max_questions_per_message: maxQuestions,
         },
       }),
     onSuccess: () => {
