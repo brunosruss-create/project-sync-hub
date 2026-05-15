@@ -1409,7 +1409,7 @@ function DetailPanel({
             />
           )}
           <DataRow
-            label="Agente"
+            label="Profissional"
             value={
               agent ? (
                 <span className="inline-flex items-center" style={{ gap: 6 }}>
