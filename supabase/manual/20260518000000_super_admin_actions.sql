@@ -35,6 +35,7 @@ alter table public.audit_logs enable row level security;
 -- Apenas super admin pode ler audit_logs via RPC. Sem policies para anon/auth — service role bypassa.
 
 -- 4) admin_list_users: recriada incluindo is_blocked
+drop function if exists public.admin_list_users();
 create or replace function public.admin_list_users()
 returns table (
   user_id uuid,
