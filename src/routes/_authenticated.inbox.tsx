@@ -44,12 +44,22 @@ type Filter = "all" | "mine" | "unassigned";
 function InboxPage() {
   const { user } = useAuth();
   const { workspaceOwnerId } = useWorkspaceOwnerId();
-  const { isAgent } = useRole();
+  const { isAgent, loading: roleLoading } = useRole();
   const [contacts, setContacts] = React.useState<Contact[]>([]);
   const [isLoadingContacts, setIsLoadingContacts] = React.useState(true);
   const [loadError, setLoadError] = React.useState<string | null>(null);
   const [activeId, setActiveId] = React.useState<string | null>(null);
-  const [filter, setFilter] = React.useState<Filter>(isAgent ? "mine" : "all");
+  const [filter, setFilter] = React.useState<Filter>("all");
+  const filterInitialized = React.useRef(false);
+
+  // Quando o role real carrega (manager/agent), define o filtro padrão UMA vez.
+  // Sem isso, no refresh o useRole devolve "agent" enquanto carrega e o filter
+  // cristaliza em "mine", escondendo conversas do manager.
+  React.useEffect(() => {
+    if (roleLoading || filterInitialized.current) return;
+    filterInitialized.current = true;
+    if (isAgent) setFilter("mine");
+  }, [roleLoading, isAgent]);
   const [query, setQuery] = React.useState("");
   const [openContact, setOpenContact] = React.useState<Contact | null>(null);
   const [whatsappStatus, setWhatsappStatus] = React.useState<"connected" | "disconnected" | "loading">("loading");
