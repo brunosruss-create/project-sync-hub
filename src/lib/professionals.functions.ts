@@ -45,7 +45,7 @@ export const listProfessionals = createServerFn({ method: "POST" })
   .middleware([requireSupabaseAuth])
   .handler(async ({ context }): Promise<Professional[]> => {
     const { supabase } = context;
-    const ownerId = await getOwnerId(supabase);
+    const ownerId = await getOwnerId(supabase, userId);
     const { data, error } = await supabase
       .from("professionals")
       .select("*")
@@ -72,7 +72,7 @@ export const createProfessional = createServerFn({ method: "POST" })
   .handler(async ({ data, context }): Promise<Professional> => {
     const { supabase, userId } = context;
     await assertManager(supabase, userId);
-    const ownerId = await getOwnerId(supabase);
+    const ownerId = await getOwnerId(supabase, userId);
     if (ownerId !== userId) {
       throw new Error("Apenas o dono do workspace pode cadastrar profissionais.");
     }
@@ -113,7 +113,7 @@ export const updateProfessional = createServerFn({ method: "POST" })
   .handler(async ({ data, context }): Promise<Professional> => {
     const { supabase, userId } = context;
     await assertManager(supabase, userId);
-    const ownerId = await getOwnerId(supabase);
+    const ownerId = await getOwnerId(supabase, userId);
     const { id, ...patch } = data;
     const { data: row, error } = await supabase
       .from("professionals")
@@ -134,7 +134,7 @@ export const deleteProfessional = createServerFn({ method: "POST" })
   .handler(async ({ data, context }) => {
     const { supabase, userId } = context;
     await assertManager(supabase, userId);
-    const ownerId = await getOwnerId(supabase);
+    const ownerId = await getOwnerId(supabase, userId);
     const { error } = await supabase
       .from("professionals")
       .delete()
