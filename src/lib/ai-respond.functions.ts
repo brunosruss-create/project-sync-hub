@@ -43,9 +43,9 @@ function buildWorkspaceLayer(p: any): string {
   return parts.join("\n");
 }
 
-// Custo aproximado Gemini 1.5 flash: $0.075 / 1M input, $0.30 / 1M output (cents)
+// Custo aproximado Gemini 3.1 Flash-Lite: $0.25 / 1M input, $1.50 / 1M output (cents)
 function estimateCostCents(input: number, output: number) {
-  const cents = (input / 1_000_000) * 7.5 + (output / 1_000_000) * 30;
+  const cents = (input / 1_000_000) * 25 + (output / 1_000_000) * 150;
   return Math.max(1, Math.round(cents));
 }
 
@@ -145,7 +145,7 @@ export const aiRespond = createServerFn({ method: "POST" })
       .join("\n\n---\n\n");
 
     // 6) Chamar Gemini
-    const model = g.gemini_model || "gemini-1.5-flash";
+    const model = g.gemini_model || "gemini-3.1-flash-lite";
     const url = `https://generativelanguage.googleapis.com/v1beta/models/${model}:generateContent?key=${g.gemini_api_key}`;
     const contents = [
       ...data.conversation_history.map((m) => ({
