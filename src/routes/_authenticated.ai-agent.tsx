@@ -93,6 +93,7 @@ function AIAgentPage() {
   const [enabledServices, setEnabledServices] = React.useState<string[]>([]);
   const [hours, setHours] = React.useState<WorkingHours>(DEFAULT_HOURS);
   const [offHoursMsg, setOffHoursMsg] = React.useState("");
+  const [timezone, setTimezone] = React.useState("America/Sao_Paulo");
   const [tester, setTester] = React.useState(false);
   const [hydrated, setHydrated] = React.useState(false);
 
@@ -113,9 +114,14 @@ function AIAgentPage() {
     const wh = (c.ai_working_hours ?? null) as WorkingHours | null;
     setHours(wh ? { ...DEFAULT_HOURS, ...wh } : DEFAULT_HOURS);
     setOffHoursMsg(c.ai_out_of_hours_message ?? "");
-    // ai_enabled_service_ids — coluna nova, ignora se não vier
-    const ids = (c as Record<string, unknown>).ai_enabled_service_ids;
+    const cAny = c as Record<string, unknown>;
+    const ids = cAny.ai_enabled_service_ids;
     if (Array.isArray(ids)) setEnabledServices(ids as string[]);
+    const tz =
+      (cAny.ai_timezone as string | undefined) ||
+      (cAny.business_timezone as string | undefined) ||
+      "America/Sao_Paulo";
+    setTimezone(tz);
     setHydrated(true);
   }, [configQ.data, hydrated]);
 
@@ -134,6 +140,7 @@ function AIAgentPage() {
           ai_working_hours: hours,
           ai_out_of_hours_message: offHoursMsg,
           ai_enabled_service_ids: enabledServices,
+          ai_timezone: timezone,
         },
       }),
     onSuccess: () => {
