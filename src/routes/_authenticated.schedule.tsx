@@ -1907,18 +1907,27 @@ function AppointmentModal({
               </Field>
             </div>
 
-            <Field label="Agente" required>
-              <select
-                value={agentId}
-                onChange={(e) => setAgentId(e.target.value)}
-                style={inputStyle}
-              >
-                {agents.map((a) => (
-                  <option key={a.id} value={a.id}>
-                    {a.name}
-                  </option>
-                ))}
-              </select>
+            <Field label="Profissional" required>
+              {agents.length === 0 ? (
+                <div style={{ fontSize: 12, color: "var(--text-muted)" }}>
+                  Nenhum profissional cadastrado.{" "}
+                  <Link to="/settings/professionals" style={{ color: "var(--brand-400)" }}>
+                    Cadastrar agora
+                  </Link>
+                </div>
+              ) : (
+                <select
+                  value={agentId}
+                  onChange={(e) => setAgentId(e.target.value)}
+                  style={inputStyle}
+                >
+                  {agents.map((a) => (
+                    <option key={a.id} value={a.id}>
+                      {a.name}
+                    </option>
+                  ))}
+                </select>
+              )}
             </Field>
 
             <Field label="Observações">
