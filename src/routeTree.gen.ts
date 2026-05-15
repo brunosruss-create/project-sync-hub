@@ -32,6 +32,7 @@ import { Route as AuthenticatedSettingsWorkspaceRouteImport } from './routes/_au
 import { Route as AuthenticatedSettingsWhatsappRouteImport } from './routes/_authenticated.settings.whatsapp'
 import { Route as AuthenticatedSettingsTeamRouteImport } from './routes/_authenticated.settings.team'
 import { Route as AuthenticatedSettingsProfileRouteImport } from './routes/_authenticated.settings.profile'
+import { Route as AuthenticatedSettingsProfessionalsRouteImport } from './routes/_authenticated.settings.professionals'
 import { Route as AuthenticatedSettingsBillingRouteImport } from './routes/_authenticated.settings.billing'
 import { Route as ApiPublicEvolutionInstanceIdRouteImport } from './routes/api/public/evolution.$instanceId'
 
@@ -157,6 +158,12 @@ const AuthenticatedSettingsProfileRoute =
     path: '/settings/profile',
     getParentRoute: () => AuthenticatedRoute,
   } as any)
+const AuthenticatedSettingsProfessionalsRoute =
+  AuthenticatedSettingsProfessionalsRouteImport.update({
+    id: '/settings/professionals',
+    path: '/settings/professionals',
+    getParentRoute: () => AuthenticatedRoute,
+  } as any)
 const AuthenticatedSettingsBillingRoute =
   AuthenticatedSettingsBillingRouteImport.update({
     id: '/settings/billing',
@@ -186,6 +193,7 @@ export interface FileRoutesByFullPath {
   '/super-admin': typeof AuthenticatedSuperAdminRouteWithChildren
   '/auth/callback': typeof AuthCallbackRoute
   '/settings/billing': typeof AuthenticatedSettingsBillingRoute
+  '/settings/professionals': typeof AuthenticatedSettingsProfessionalsRoute
   '/settings/profile': typeof AuthenticatedSettingsProfileRoute
   '/settings/team': typeof AuthenticatedSettingsTeamRoute
   '/settings/whatsapp': typeof AuthenticatedSettingsWhatsappRoute
@@ -212,6 +220,7 @@ export interface FileRoutesByTo {
   '/super-admin': typeof AuthenticatedSuperAdminRouteWithChildren
   '/auth/callback': typeof AuthCallbackRoute
   '/settings/billing': typeof AuthenticatedSettingsBillingRoute
+  '/settings/professionals': typeof AuthenticatedSettingsProfessionalsRoute
   '/settings/profile': typeof AuthenticatedSettingsProfileRoute
   '/settings/team': typeof AuthenticatedSettingsTeamRoute
   '/settings/whatsapp': typeof AuthenticatedSettingsWhatsappRoute
@@ -240,6 +249,7 @@ export interface FileRoutesById {
   '/_authenticated/super-admin': typeof AuthenticatedSuperAdminRouteWithChildren
   '/auth/callback': typeof AuthCallbackRoute
   '/_authenticated/settings/billing': typeof AuthenticatedSettingsBillingRoute
+  '/_authenticated/settings/professionals': typeof AuthenticatedSettingsProfessionalsRoute
   '/_authenticated/settings/profile': typeof AuthenticatedSettingsProfileRoute
   '/_authenticated/settings/team': typeof AuthenticatedSettingsTeamRoute
   '/_authenticated/settings/whatsapp': typeof AuthenticatedSettingsWhatsappRoute
@@ -268,6 +278,7 @@ export interface FileRouteTypes {
     | '/super-admin'
     | '/auth/callback'
     | '/settings/billing'
+    | '/settings/professionals'
     | '/settings/profile'
     | '/settings/team'
     | '/settings/whatsapp'
@@ -294,6 +305,7 @@ export interface FileRouteTypes {
     | '/super-admin'
     | '/auth/callback'
     | '/settings/billing'
+    | '/settings/professionals'
     | '/settings/profile'
     | '/settings/team'
     | '/settings/whatsapp'
@@ -321,6 +333,7 @@ export interface FileRouteTypes {
     | '/_authenticated/super-admin'
     | '/auth/callback'
     | '/_authenticated/settings/billing'
+    | '/_authenticated/settings/professionals'
     | '/_authenticated/settings/profile'
     | '/_authenticated/settings/team'
     | '/_authenticated/settings/whatsapp'
@@ -506,6 +519,13 @@ declare module '@tanstack/react-router' {
       preLoaderRoute: typeof AuthenticatedSettingsProfileRouteImport
       parentRoute: typeof AuthenticatedRoute
     }
+    '/_authenticated/settings/professionals': {
+      id: '/_authenticated/settings/professionals'
+      path: '/settings/professionals'
+      fullPath: '/settings/professionals'
+      preLoaderRoute: typeof AuthenticatedSettingsProfessionalsRouteImport
+      parentRoute: typeof AuthenticatedRoute
+    }
     '/_authenticated/settings/billing': {
       id: '/_authenticated/settings/billing'
       path: '/settings/billing'
@@ -554,6 +574,7 @@ interface AuthenticatedRouteChildren {
   AuthenticatedServicesRoute: typeof AuthenticatedServicesRoute
   AuthenticatedSuperAdminRoute: typeof AuthenticatedSuperAdminRouteWithChildren
   AuthenticatedSettingsBillingRoute: typeof AuthenticatedSettingsBillingRoute
+  AuthenticatedSettingsProfessionalsRoute: typeof AuthenticatedSettingsProfessionalsRoute
   AuthenticatedSettingsProfileRoute: typeof AuthenticatedSettingsProfileRoute
   AuthenticatedSettingsTeamRoute: typeof AuthenticatedSettingsTeamRoute
   AuthenticatedSettingsWhatsappRoute: typeof AuthenticatedSettingsWhatsappRoute
@@ -570,6 +591,8 @@ const AuthenticatedRouteChildren: AuthenticatedRouteChildren = {
   AuthenticatedServicesRoute: AuthenticatedServicesRoute,
   AuthenticatedSuperAdminRoute: AuthenticatedSuperAdminRouteWithChildren,
   AuthenticatedSettingsBillingRoute: AuthenticatedSettingsBillingRoute,
+  AuthenticatedSettingsProfessionalsRoute:
+    AuthenticatedSettingsProfessionalsRoute,
   AuthenticatedSettingsProfileRoute: AuthenticatedSettingsProfileRoute,
   AuthenticatedSettingsTeamRoute: AuthenticatedSettingsTeamRoute,
   AuthenticatedSettingsWhatsappRoute: AuthenticatedSettingsWhatsappRoute,
@@ -593,13 +616,3 @@ const rootRouteChildren: RootRouteChildren = {
 export const routeTree = rootRouteImport
   ._addFileChildren(rootRouteChildren)
   ._addFileTypes<FileRouteTypes>()
-
-import type { getRouter } from './router.tsx'
-import type { startInstance } from './start.ts'
-declare module '@tanstack/react-start' {
-  interface Register {
-    ssr: true
-    router: Awaited<ReturnType<typeof getRouter>>
-    config: Awaited<ReturnType<typeof startInstance.getOptions>>
-  }
-}

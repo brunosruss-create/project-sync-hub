@@ -12,12 +12,15 @@ import {
   type Service,
 } from "@/features/services/data";
 import {
-  MOCK_AGENTS,
   toDateInput,
   fromDateTimeInput,
   formatDateBR,
   parseDateBR,
 } from "@/features/schedule/data";
+import { useServerFn } from "@tanstack/react-start";
+import { useQuery } from "@tanstack/react-query";
+import { Link } from "@tanstack/react-router";
+import { listProfessionals } from "@/lib/professionals.functions";
 
 interface BusyAppt {
   id: string;
@@ -89,7 +92,18 @@ export function ScheduleModal({
   const [selected, setSelected] = React.useState<Set<string>>(new Set());
   const [date, setDate] = React.useState<string>(toDateInput(new Date()));
   const [time, setTime] = React.useState<string>("09:00");
-  const [agentId, setAgentId] = React.useState<string>(MOCK_AGENTS[0]?.id ?? "");
+  const fetchProfessionals = useServerFn(listProfessionals);
+  const profQ = useQuery({
+    queryKey: ["professionals"],
+    queryFn: () => fetchProfessionals(),
+    enabled: open,
+    staleTime: 30_000,
+  });
+  const professionals = profQ.data ?? [];
+  const [agentId, setAgentId] = React.useState<string>("");
+  React.useEffect(() => {
+    if (!agentId && professionals.length > 0) setAgentId(professionals[0].id);
+  }, [professionals, agentId]);
   const [notes, setNotes] = React.useState("");
   const [notifyWa, setNotifyWa] = React.useState(true);
   const [submitting, setSubmitting] = React.useState(false);

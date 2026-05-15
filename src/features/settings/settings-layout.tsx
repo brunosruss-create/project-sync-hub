@@ -6,15 +6,23 @@ import {
   Users,
   MessageCircle,
   CreditCard,
+  Briefcase,
 } from "lucide-react";
 
-const items = [
-  { label: "Perfil", to: "/settings/profile", icon: UserIcon },
-  { label: "Negócio", to: "/settings/workspace", icon: Building2 },
-  { label: "Equipe", to: "/settings/team", icon: Users },
-  { label: "WhatsApp", to: "/settings/whatsapp", icon: MessageCircle },
-  { label: "Planos & Cobrança", to: "/settings/billing", icon: CreditCard },
-] as const;
+type SidebarEntry =
+  | { kind: "section"; label: string }
+  | { kind: "item"; label: string; to: string; icon: React.ComponentType<{ size?: number }> };
+
+const items: SidebarEntry[] = [
+  { kind: "section", label: "Acesso ao sistema" },
+  { kind: "item", label: "Perfil", to: "/settings/profile", icon: UserIcon },
+  { kind: "item", label: "Negócio", to: "/settings/workspace", icon: Building2 },
+  { kind: "item", label: "Equipe", to: "/settings/team", icon: Users },
+  { kind: "section", label: "Agenda" },
+  { kind: "item", label: "Profissionais", to: "/settings/professionals", icon: Briefcase },
+  { kind: "item", label: "WhatsApp", to: "/settings/whatsapp", icon: MessageCircle },
+  { kind: "item", label: "Planos & Cobrança", to: "/settings/billing", icon: CreditCard },
+];
 
 export function SettingsLayout({
   title,
@@ -52,7 +60,26 @@ export function SettingsLayout({
           Configurações
         </div>
         <ul className="flex flex-col" style={{ gap: 2 }}>
-          {items.map((it) => {
+          {items.map((it, idx) => {
+            if (it.kind === "section") {
+              return (
+                <li
+                  key={`sec-${idx}`}
+                  style={{
+                    fontSize: 10,
+                    fontWeight: 600,
+                    textTransform: "uppercase",
+                    letterSpacing: "0.06em",
+                    color: "var(--text-muted)",
+                    padding: idx === 0 ? "4px 8px 4px" : "12px 8px 4px",
+                    marginTop: idx === 0 ? 0 : 6,
+                    borderTop: idx === 0 ? "none" : "1px solid var(--border)",
+                  }}
+                >
+                  {it.label}
+                </li>
+              );
+            }
             const active = path === it.to;
             const Icon = it.icon;
             return (

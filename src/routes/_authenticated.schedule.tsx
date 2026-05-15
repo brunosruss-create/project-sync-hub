@@ -15,11 +15,13 @@ import {
 } from "lucide-react";
 import { notify as nfy } from "@/lib/notify";
 import { supabase } from "@/integrations/supabase/client";
+import { useServerFn } from "@tanstack/react-start";
+import { useQuery } from "@tanstack/react-query";
+import { listProfessionals } from "@/lib/professionals.functions";
 import { EmptyState } from "@/components/empty-state";
 import {
   HOUR_END,
   HOUR_START,
-  MOCK_AGENTS,
   MOCK_APPOINTMENTS,
   MOCK_CONTACTS,
   MONTHS_PT,
@@ -49,6 +51,13 @@ import {
   toDateInput,
 } from "@/features/schedule/data";
 
+function nameToColor(name: string): string {
+  let hash = 0;
+  for (let i = 0; i < name.length; i++) hash = name.charCodeAt(i) + ((hash << 5) - hash);
+  const hue = Math.abs(hash) % 360;
+  return `hsl(${hue}, 55%, 45%)`;
+}
+
 export const Route = createFileRoute("/_authenticated/schedule")({
   component: SchedulePage,
 });
@@ -62,10 +71,26 @@ function SchedulePage() {
   
   const [contacts, setContacts] = React.useState<ContactCard[]>(MOCK_CONTACTS);
   const [services, setServices] = React.useState<Service[]>(SEED_SERVICES);
-  const [agents] = React.useState<Agent[]>(MOCK_AGENTS);
-  const [agentFilter, setAgentFilter] = React.useState<Set<string>>(
-    new Set(MOCK_AGENTS.map((a) => a.id)),
+
+  const fetchProfessionals = useServerFn(listProfessionals);
+  const profQ = useQuery({
+    queryKey: ["professionals"],
+    queryFn: () => fetchProfessionals(),
+    staleTime: 30_000,
+  });
+  const agents = React.useMemo<Agent[]>(
+    () =>
+      (profQ.data ?? []).map((p) => ({
+        id: p.id,
+        name: p.name,
+        color: p.avatar_color || nameToColor(p.name),
+      })),
+    [profQ.data],
   );
+  const [agentFilter, setAgentFilter] = React.useState<Set<string>>(new Set());
+  React.useEffect(() => {
+    setAgentFilter(new Set(agents.map((a) => a.id)));
+  }, [agents]);
   const [filterOpen, setFilterOpen] = React.useState(false);
   const [editing, setEditing] = React.useState<
     { mode: "create"; preset?: Partial<Appointment> } | { mode: "edit"; appt: Appointment } | null
@@ -95,7 +120,7 @@ function SchedulePage() {
     id: r.id,
     contact_id: r.contact_id ?? "",
     service_id: r.service_id ?? "",
-    agent_id: r.agent_id ?? "",
+    agent_id: r.professional_id ?? r.agent_id ?? "",
     starts_at: new Date(r.starts_at),
     ends_at: new Date(r.ends_at),
     status: (r.status ?? "scheduled") as AppointmentStatus,
@@ -107,7 +132,7 @@ function SchedulePage() {
     const [{ data: appts, error: apptErr }, { data: cts }, { data: svc }] = await Promise.all([
       supabase
         .from("appointments")
-        .select("id,contact_id,service_id,agent_id,starts_at,ends_at,status,notes,notify_whatsapp"),
+        .select("id,contact_id,service_id,agent_id,professional_id,starts_at,ends_at,status,notes,notify_whatsapp"),
       supabase.from("contacts").select("id,name,phone,tags,priority,kanban_column,last_message,last_message_at,is_unread,assigned_agent_id"),
       supabase
         .from("services")
@@ -226,6 +251,7 @@ function SchedulePage() {
       contact_id: draft.contact_id || null,
       service_id: draft.service_id || null,
       agent_id: draft.agent_id || null,
+      professional_id: draft.agent_id || null,
       starts_at: draft.starts_at.toISOString(),
       ends_at: draft.ends_at.toISOString(),
       status: draft.status,
@@ -286,7 +312,7 @@ function SchedulePage() {
           </h1>
           <p style={{ marginTop: 2, fontSize: 12, color: "var(--text-muted)" }}>
             {filtered.length} agendamento{filtered.length === 1 ? "" : "s"} ·{" "}
-            {agentFilter.size} de {agents.length} agentes
+            {agentFilter.size} de {agents.length} profissionais
           </p>
         </div>
 
@@ -310,7 +336,7 @@ function SchedulePage() {
               }}
             >
               <Filter size={14} />
-              Agentes
+              Profissionais
             </button>
             {filterOpen && (
               <div
@@ -1383,7 +1409,7 @@ function DetailPanel({
             />
           )}
           <DataRow
-            label="Agente"
+            label="Profissional"
             value={
               agent ? (
                 <span className="inline-flex items-center" style={{ gap: 6 }}>
@@ -1881,18 +1907,27 @@ function AppointmentModal({
               </Field>
             </div>
 
-            <Field label="Agente" required>
-              <select
-                value={agentId}
-                onChange={(e) => setAgentId(e.target.value)}
-                style={inputStyle}
-              >
-                {agents.map((a) => (
-                  <option key={a.id} value={a.id}>
-                    {a.name}
-                  </option>
-                ))}
-              </select>
+            <Field label="Profissional" required>
+              {agents.length === 0 ? (
+                <div style={{ fontSize: 12, color: "var(--text-muted)" }}>
+                  Nenhum profissional cadastrado.{" "}
+                  <Link to="/settings/professionals" style={{ color: "var(--brand-400)" }}>
+                    Cadastrar agora
+                  </Link>
+                </div>
+              ) : (
+                <select
+                  value={agentId}
+                  onChange={(e) => setAgentId(e.target.value)}
+                  style={inputStyle}
+                >
+                  {agents.map((a) => (
+                    <option key={a.id} value={a.id}>
+                      {a.name}
+                    </option>
+                  ))}
+                </select>
+              )}
             </Field>
 
             <Field label="Observações">
