@@ -16,15 +16,18 @@ export type Professional = {
   created_at: string;
 };
 
-async function getOwnerId(supabase: any): Promise<string> {
-  const { data, error } = await supabase.rpc("get_my_workspace_owner");
+async function getOwnerId(supabase: any, userId: string): Promise<string> {
+  const { data, error } = await supabase
+    .from("workspace_members")
+    .select("workspace_owner_id")
+    .eq("member_user_id", userId)
+    .eq("active", true)
+    .limit(1)
+    .maybeSingle();
   if (error) {
-    throw new Error(
-      `Falha ao identificar workspace (${error.message}). Verifique se a migration de profissionais foi aplicada no Supabase.`,
-    );
+    throw new Error(`Falha ao identificar workspace: ${error.message}`);
   }
-  if (!data) throw new Error("workspace owner não encontrado");
-  return data as string;
+  return (data?.workspace_owner_id as string) ?? userId;
 }
 
 async function assertManager(supabase: any, userId: string) {
@@ -41,8 +44,8 @@ async function assertManager(supabase: any, userId: string) {
 export const listProfessionals = createServerFn({ method: "POST" })
   .middleware([requireSupabaseAuth])
   .handler(async ({ context }): Promise<Professional[]> => {
-    const { supabase } = context;
-    const ownerId = await getOwnerId(supabase);
+    const { supabase, userId } = context;
+    const ownerId = await getOwnerId(supabase, userId);
     const { data, error } = await supabase
       .from("professionals")
       .select("*")
@@ -69,7 +72,7 @@ export const createProfessional = createServerFn({ method: "POST" })
   .handler(async ({ data, context }): Promise<Professional> => {
     const { supabase, userId } = context;
     await assertManager(supabase, userId);
-    const ownerId = await getOwnerId(supabase);
+    const ownerId = await getOwnerId(supabase, userId);
     if (ownerId !== userId) {
       throw new Error("Apenas o dono do workspace pode cadastrar profissionais.");
     }
@@ -110,7 +113,7 @@ export const updateProfessional = createServerFn({ method: "POST" })
   .handler(async ({ data, context }): Promise<Professional> => {
     const { supabase, userId } = context;
     await assertManager(supabase, userId);
-    const ownerId = await getOwnerId(supabase);
+    const ownerId = await getOwnerId(supabase, userId);
     const { id, ...patch } = data;
     const { data: row, error } = await supabase
       .from("professionals")
@@ -131,7 +134,7 @@ export const deleteProfessional = createServerFn({ method: "POST" })
   .handler(async ({ data, context }) => {
     const { supabase, userId } = context;
     await assertManager(supabase, userId);
-    const ownerId = await getOwnerId(supabase);
+    const ownerId = await getOwnerId(supabase, userId);
     const { error } = await supabase
       .from("professionals")
       .delete()
