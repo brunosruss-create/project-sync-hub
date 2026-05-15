@@ -18,7 +18,12 @@ export type Professional = {
 
 async function getOwnerId(supabase: any): Promise<string> {
   const { data, error } = await supabase.rpc("get_my_workspace_owner");
-  if (error || !data) throw new Error(error?.message || "workspace owner não encontrado");
+  if (error) {
+    throw new Error(
+      `Falha ao identificar workspace (${error.message}). Verifique se a migration de profissionais foi aplicada no Supabase.`,
+    );
+  }
+  if (!data) throw new Error("workspace owner não encontrado");
   return data as string;
 }
 
@@ -105,12 +110,13 @@ export const updateProfessional = createServerFn({ method: "POST" })
   .handler(async ({ data, context }): Promise<Professional> => {
     const { supabase, userId } = context;
     await assertManager(supabase, userId);
+    const ownerId = await getOwnerId(supabase);
     const { id, ...patch } = data;
     const { data: row, error } = await supabase
       .from("professionals")
       .update(patch)
       .eq("id", id)
-      .eq("owner_user_id", userId)
+      .eq("owner_user_id", ownerId)
       .select("*")
       .single();
     if (error || !row) throw new Error(error?.message || "Falha ao atualizar");
@@ -125,11 +131,12 @@ export const deleteProfessional = createServerFn({ method: "POST" })
   .handler(async ({ data, context }) => {
     const { supabase, userId } = context;
     await assertManager(supabase, userId);
+    const ownerId = await getOwnerId(supabase);
     const { error } = await supabase
       .from("professionals")
       .delete()
       .eq("id", data.id)
-      .eq("owner_user_id", userId);
+      .eq("owner_user_id", ownerId);
     if (error) throw new Error(error.message);
     return { ok: true };
   });

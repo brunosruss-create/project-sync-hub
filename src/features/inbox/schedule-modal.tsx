@@ -589,11 +589,15 @@ export function ScheduleModal({
           {/* Agent */}
           <FieldGroup label="Profissional" icon={<User size={12} />}>
             <select value={agentId} onChange={(e) => setAgentId(e.target.value)} style={inputStyle}>
-              {MOCK_AGENTS.map((a) => (
-                <option key={a.id} value={a.id}>
-                  {a.name}
-                </option>
-              ))}
+              {professionals.length === 0 ? (
+                <option value="">Nenhum profissional cadastrado</option>
+              ) : (
+                professionals.map((a) => (
+                  <option key={a.id} value={a.id}>
+                    {a.name}
+                  </option>
+                ))
+              )}
             </select>
           </FieldGroup>
 
