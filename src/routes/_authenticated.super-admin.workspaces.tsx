@@ -4,6 +4,7 @@ import { useQuery } from "@tanstack/react-query";
 import { Search, Eye, PauseCircle, Trash2 } from "lucide-react";
 import { toast } from "sonner";
 import { supabase } from "@/integrations/supabase/client";
+import { InspectWorkspaceDrawer } from "@/features/super-admin/inspect-workspace-drawer";
 import {
   adminCard,
   adminInput,
@@ -28,6 +29,7 @@ type Workspace = {
 function WorkspacesAdmin() {
   const [search, setSearch] = React.useState("");
   const [status, setStatus] = React.useState<"all" | "active" | "inactive">("all");
+  const [inspectId, setInspectId] = React.useState<string | null>(null);
 
   const { data: items = [], isLoading, error } = useQuery({
     queryKey: ["admin", "workspaces"],
@@ -135,13 +137,13 @@ function WorkspacesAdmin() {
                     </Td>
                     <Td>
                       <div className="flex items-center gap-1">
-                        <button style={adminBtnGhost} onClick={() => toast(`Detalhes de ${w.owner_email ?? w.workspace_owner_id}`)}>
+                        <button style={adminBtnGhost} onClick={() => setInspectId(w.workspace_owner_id)}>
                           <Eye size={12} />
                         </button>
-                        <button style={adminBtnGhost} onClick={() => toast("Suspender ainda não implementado")}>
+                        <button style={adminBtnGhost} onClick={() => toast("Use o drawer → Configurações para suspender")}>
                           <PauseCircle size={12} />
                         </button>
-                        <button style={adminBtnDanger} onClick={() => toast("Excluir ainda não implementado")}>
+                        <button style={adminBtnDanger} onClick={() => toast("Use o drawer → Configurações para deletar")}>
                           <Trash2 size={12} />
                         </button>
                       </div>
@@ -153,6 +155,7 @@ function WorkspacesAdmin() {
           </table>
         </div>
       )}
+      <InspectWorkspaceDrawer ownerId={inspectId} onClose={() => setInspectId(null)} />
     </div>
   );
 }

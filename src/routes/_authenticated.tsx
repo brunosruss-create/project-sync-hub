@@ -1,6 +1,8 @@
 import { createFileRoute, Outlet, useNavigate } from "@tanstack/react-router";
 import * as React from "react";
+import { toast } from "sonner";
 import { useAuth } from "@/hooks/use-auth";
+import { supabase } from "@/integrations/supabase/client";
 import { AppSidebar } from "@/components/app-sidebar";
 import { AppTopbar } from "@/components/app-topbar";
 import { CommandPalette } from "@/components/command-palette";
@@ -10,12 +12,33 @@ export const Route = createFileRoute("/_authenticated")({
 });
 
 function AuthenticatedLayout() {
-  const { user, loading } = useAuth();
+  const { user, loading, signOut } = useAuth();
   const navigate = useNavigate();
 
   React.useEffect(() => {
     if (!loading && !user) navigate({ to: "/login" });
   }, [loading, user, navigate]);
+
+  React.useEffect(() => {
+    if (!user) return;
+    let cancelled = false;
+    (async () => {
+      const { data } = await supabase
+        .from("profiles")
+        .select("is_blocked")
+        .eq("id", user.id)
+        .maybeSingle();
+      if (cancelled) return;
+      if (data?.is_blocked) {
+        toast.error("Sua conta foi bloqueada por um administrador.");
+        await signOut();
+        navigate({ to: "/login" });
+      }
+    })();
+    return () => {
+      cancelled = true;
+    };
+  }, [user, signOut, navigate]);
 
   if (loading || !user) {
     return (
