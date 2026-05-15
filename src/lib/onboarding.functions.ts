@@ -161,6 +161,19 @@ export const updateWorkspaceAiConfig = createServerFn({ method: "POST" })
         ai_out_of_hours_message: z.string().max(1000).optional(),
         ai_enabled_service_ids: z.array(z.string().uuid()).max(200).optional(),
         ai_timezone: z.string().min(1).max(64).optional(),
+        // Comportamento (novos)
+        ai_introduce_by_name: z.boolean().optional(),
+        ai_declare_as_ai: z.boolean().optional(),
+        ai_mention_business_name: z.boolean().optional(),
+        ai_has_multiple_professionals: z.boolean().optional(),
+        ai_price_disclosure_policy: z
+          .enum(["always", "on_request", "never"])
+          .optional(),
+        ai_can_reschedule: z.boolean().optional(),
+        ai_can_cancel: z.boolean().optional(),
+        ai_min_advance_hours: z.number().int().min(0).max(720).optional(),
+        ai_required_fields: z.array(z.string().max(64)).max(40).optional(),
+        ai_max_questions_per_message: z.number().int().min(1).max(5).optional(),
       })
       .parse(input),
   )
