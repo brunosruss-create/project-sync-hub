@@ -68,7 +68,7 @@ function GeminiTab() {
     if (q.data?.settings) {
       setForm({
         gemini_api_key: q.data.settings.gemini_api_key?.value ?? "",
-        gemini_model: q.data.settings.gemini_model?.value ?? "gemini-1.5-flash",
+        gemini_model: q.data.settings.gemini_model?.value ?? "gemini-3.1-flash-lite",
         gemini_temperature: q.data.settings.gemini_temperature?.value ?? "0.7",
         gemini_max_tokens: q.data.settings.gemini_max_tokens?.value ?? "1000",
         ai_base_prompt: q.data.settings.ai_base_prompt?.value ?? "",
