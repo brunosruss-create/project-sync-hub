@@ -15,11 +15,13 @@ import {
 } from "lucide-react";
 import { notify as nfy } from "@/lib/notify";
 import { supabase } from "@/integrations/supabase/client";
+import { useServerFn } from "@tanstack/react-start";
+import { useQuery } from "@tanstack/react-query";
+import { listProfessionals } from "@/lib/professionals.functions";
 import { EmptyState } from "@/components/empty-state";
 import {
   HOUR_END,
   HOUR_START,
-  MOCK_AGENTS,
   MOCK_APPOINTMENTS,
   MOCK_CONTACTS,
   MONTHS_PT,
@@ -48,6 +50,13 @@ import {
   timeSlots,
   toDateInput,
 } from "@/features/schedule/data";
+
+function nameToColor(name: string): string {
+  let hash = 0;
+  for (let i = 0; i < name.length; i++) hash = name.charCodeAt(i) + ((hash << 5) - hash);
+  const hue = Math.abs(hash) % 360;
+  return `hsl(${hue}, 55%, 45%)`;
+}
 
 export const Route = createFileRoute("/_authenticated/schedule")({
   component: SchedulePage,
