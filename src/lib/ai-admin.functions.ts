@@ -53,9 +53,12 @@ export const updateAiGlobalSettings = createServerFn({ method: "POST" })
   )
   .handler(async ({ data, context }) => {
     await assertSuperAdmin(context.userId);
-    if (!process.env.APP_SUPABASE_SERVICE_ROLE_KEY) {
+    const hasServiceRole =
+      !!process.env.APP_SUPABASE_SERVICE_ROLE_KEY ||
+      !!process.env.SUPABASE_SERVICE_ROLE_KEY;
+    if (!hasServiceRole) {
       throw new Error(
-        "Servidor sem APP_SUPABASE_SERVICE_ROLE_KEY — peça ao admin do projeto para configurar essa secret.",
+        "Servidor sem SUPABASE_SERVICE_ROLE_KEY/APP_SUPABASE_SERVICE_ROLE_KEY — configure essa secret no projeto.",
       );
     }
     const rows = Object.entries(data)
@@ -65,7 +68,7 @@ export const updateAiGlobalSettings = createServerFn({ method: "POST" })
         value: String(value),
         updated_at: new Date().toISOString(),
       }));
-    if (rows.length === 0) return { ok: true, saved: 0 };
+    if (rows.length === 0) return { ok: true, saved: 0, verified: {} as Record<string, number> };
     console.log(
       "[updateAiGlobalSettings] upserting keys:",
       rows.map((r) => `${r.key}(${r.value.length}ch)`).join(", "),
@@ -76,13 +79,48 @@ export const updateAiGlobalSettings = createServerFn({ method: "POST" })
       .select("key,value");
     if (error) {
       console.error("[updateAiGlobalSettings] upsert error:", error);
-      throw new Error(`${error.code ?? ""} ${error.message}`.trim());
+      throw new Error(
+        `Falha ao salvar (${error.code ?? "?"}): ${error.message}. ` +
+          `Detalhes: ${error.details ?? ""} / Hint: ${error.hint ?? ""}`,
+      );
+    }
+    // Re-le o que está REALMENTE no banco depois do upsert para confirmar persistência
+    const { data: verifyRows, error: verifyErr } = await supabaseAdmin
+      .from("global_settings")
+      .select("key,value")
+      .in(
+        "key",
+        rows.map((r) => r.key),
+      );
+    if (verifyErr) {
+      console.error("[updateAiGlobalSettings] verify error:", verifyErr);
+    }
+    const verified: Record<string, number> = {};
+    for (const r of verifyRows ?? []) {
+      verified[r.key] = (r.value ?? "").length;
     }
     console.log(
-      "[updateAiGlobalSettings] upsert ok, rows returned:",
+      "[updateAiGlobalSettings] upsert ok | returned:",
       (result ?? []).map((r) => `${r.key}=${(r.value ?? "").length}ch`).join(", "),
+      "| verified-after-read:",
+      Object.entries(verified)
+        .map(([k, n]) => `${k}=${n}ch`)
+        .join(", "),
     );
-    return { ok: true, saved: rows.length };
+    // Detecta a falha silenciosa: sent N chars, banco tem 0 chars
+    const silentlyLost = rows.filter(
+      (r) => (verified[r.key] ?? 0) === 0 && r.value.length > 0,
+    );
+    if (silentlyLost.length > 0) {
+      throw new Error(
+        `Upsert reportou sucesso mas o banco voltou vazio para: ${silentlyLost
+          .map((r) => r.key)
+          .join(", ")}. ` +
+          `Provável causa: a SUPABASE_SERVICE_ROLE_KEY configurada não é válida (RLS bloqueando). ` +
+          `Verifique no Supabase → Settings → API se a chave service_role bate com a secret APP_SUPABASE_SERVICE_ROLE_KEY.`,
+      );
+    }
+    return { ok: true, saved: rows.length, verified };
   });
 
 // ============= TEST GEMINI =============
