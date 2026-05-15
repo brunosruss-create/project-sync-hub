@@ -1,40 +1,29 @@
-## Diagnóstico
+## Contexto
 
-A tela mostra "✕ API key não configurada" porque o backend (`testGeminiConnection`) lê a chave do banco `global_settings.gemini_api_key` e recebe vazio. O input mascarado na tela não significa que está salvo — pode ser apenas texto digitado pendente de save. Além disso, o modelo padrão `gemini-3.1-flash-lite` **não existe** na API REST direta do Google (`generativelanguage.googleapis.com/v1beta`), o que causaria 404 mesmo após a chave ser salva.
+O projeto usa Supabase diretamente (não Lovable Cloud secrets). A chave do Gemini é salva na tabela `global_settings` via `updateAiGlobalSettings` (server function com `supabaseAdmin`). A resposta atual de `getAiGlobalSettings` mostra `gemini_api_key.value = ""`, então a chave não está sendo persistida — apesar de outras colunas (`gemini_model`, prompt) estarem.
 
-## Plano (apenas 2 ajustes cirúrgicos, sem quebrar nada)
+## Investigação (read-only, antes de qualquer fix)
 
-### 1. Mensagens de erro mais claras + log do que veio do banco
-Em `src/lib/ai-admin.functions.ts` → `testGeminiConnection`:
-- Distinguir 3 estados:
-  - chave nunca salva no DB → "API key não foi salva no banco. Clique em **Salvar configurações** antes de testar."
-  - chave salva mas Google retorna 401/403 → "Chave inválida ou sem permissão (HTTP 401/403)."
-  - chave OK mas modelo inválido (404) → "Modelo `<x>` não disponível na sua conta Google."
-- Mostrar no payload o tamanho da chave lida (`apiKey.length`) para confirmar que chegou.
+1. **Conferir o estado real da tabela `global_settings`** via Supabase:
+   - Listar todas as linhas com `key IN ('gemini_api_key','gemini_model','gemini_temperature','gemini_max_tokens','ai_base_prompt')` para ver `value`, `updated_at`.
+   - Verificar se há constraint `UNIQUE(key)` (necessária para o `upsert` funcionar como update).
+   - Verificar políticas RLS da tabela e se `supabaseAdmin` (service role) realmente bypassa.
+2. **Testar o save end-to-end** chamando `updateAiGlobalSettings` com uma chave de teste e logando o retorno do `upsert` (capturar `error`).
+3. **Confirmar com o usuário** se ao clicar em "Salvar configurações" aparece o toast verde "Configurações salvas". Se não, o erro está sendo silenciado.
 
-### 2. Corrigir lista de modelos para os ids reais da API REST do Google
-Em `src/routes/_authenticated.super-admin.ia.tsx` (dropdown) e `src/lib/ai-admin.functions.ts` / `src/lib/ai-respond.functions.ts` (fallback):
+## Possíveis correções (escolher após investigação)
 
-Trocar default de `gemini-3.1-flash-lite` por um id que **realmente existe** na API direta:
-- `gemini-2.5-flash` (recomendado — barato, rápido, multimodal)
-- `gemini-2.5-pro` (qualidade máxima)
-- `gemini-2.0-flash`
-- `gemini-1.5-flash` (legado, ainda funciona)
-- `gemini-1.5-pro` (legado)
+- **Se faltar UNIQUE constraint**: criar migração `ALTER TABLE global_settings ADD CONSTRAINT global_settings_key_unique UNIQUE (key);` e ajustar o upsert para `.upsert(rows, { onConflict: 'key' })`.
+- **Se RLS estiver bloqueando**: como já usamos `supabaseAdmin` (service role) o RLS deveria ser ignorado; se não for, revisar qual cliente está sendo importado em `client.server.ts`.
+- **Se o save funciona mas a leitura mostra vazio**: pode ser cache do TanStack Query — invalidar `["ai-globals"]` após o save.
+- **Melhorar feedback no UI**: mostrar no card de "Credenciais" um indicador "✓ Chave salva (••••1234)" lendo os últimos 4 caracteres do banco, para o usuário ter certeza visual de que a chave está persistida.
 
-Remover as opções `gemini-3.1-*` e `gemini-3-flash` do dropdown (são marcas Vertex/preview, não funcionam via `generativelanguage.googleapis.com`). Atualizar o fallback default para `gemini-2.5-flash`.
+## Detalhes técnicos
 
-### 3. Verificação após as mudanças
-Pedir para você:
-1. Colar a chave no campo
-2. Clicar em **Salvar configurações** (toast verde "Configurações salvas")
-3. Só então clicar em **Testar agora**
-4. Se ainda falhar, o erro novo vai dizer exatamente onde — chave ausente vs. chave inválida vs. modelo inválido.
+Arquivos envolvidos:
+- `src/lib/ai-admin.functions.ts` — `updateAiGlobalSettings` (linhas 41-67) faz `supabaseAdmin.from("global_settings").upsert(rows)` sem `onConflict`. Isso é provavelmente o bug raiz: sem constraint única, o upsert vira insert e pode estar falhando silenciosamente em uma duplicata ou criando linhas órfãs.
+- `src/routes/_authenticated.super-admin.ia.tsx` — fluxo do save (linhas 81-88). O `try/catch` mostra toast de erro, então se aparece toast verde o servidor retornou ok.
 
-## Arquivos alterados
-- `src/lib/ai-admin.functions.ts` (mensagens do test + default do modelo)
-- `src/lib/ai-respond.functions.ts` (default do modelo)
-- `src/routes/_authenticated.super-admin.ia.tsx` (dropdown de modelos + default)
+## Próximo passo imediato
 
-## Não tocado
-- Fluxo de save, kanban, chat, agenda, super admin de workspaces/usuários, RLS, schema do DB.
+Antes de codar, eu preciso rodar uma query SELECT direto na tabela `global_settings` para ver o que está lá. Posso fazer isso pelas ferramentas de banco do Supabase. Você confirma que posso prosseguir com a investigação?
