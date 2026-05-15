@@ -1,34 +1,46 @@
-## Causa do erro
+## Causa provável
 
-A página `/settings/professionals` mostra "workspace owner não encontrado" porque a migration **`supabase/manual/20260516000000_professionals.sql` não foi rodada** no Supabase. Sem ela:
+A migration rodou (tabela `professionals` criada), mas a página continua mostrando "workspace owner não encontrado". Isso vem de `getOwnerId()` em `src/lib/professionals.functions.ts`, que chama `supabase.rpc("get_my_workspace_owner")`.
 
-- A tabela `public.professionals` não existe.
-- A coluna `appointments.professional_id` não existe.
-- As políticas RLS de profissionais não existem.
+A função `get_my_workspace_owner()` existe no banco e usa `coalesce(..., auth.uid())`, então em teoria sempre devolve algo. Como ela continua falhando para esse manager, o problema mais provável é uma das duas:
 
-O código do servidor (`listProfessionals`) chama `get_my_workspace_owner()` via RPC e, como o ambiente do banco está inconsistente com o que o código espera, a chamada falha e cai no fallback de erro genérico.
+1. A função foi recriada por uma migration mais recente sem `grant execute ... to authenticated`, ou
+2. O retorno está chegando como `null` no cliente PostgREST por causa do nome de coluna na resposta da RPC.
 
-## Passos
+Em ambos os casos a correção sem risco é **parar de depender da RPC** nesse arquivo e derivar o `owner_user_id` direto da tabela `workspace_members` (que o usuário consegue ler pela política existente). Se mesmo assim não houver linha, faz fallback para `auth.uid()` (o próprio manager).
 
-### 1. Rodar a migration no Supabase (ação do usuário)
+## Fix (escopo cirúrgico, 1 arquivo só)
 
-Abrir o **SQL Editor** do Supabase do projeto e colar/executar o conteúdo de `supabase/manual/20260516000000_professionals.sql` (já enviado no chat anterior). É idempotente — pode rodar com segurança.
+Editar **apenas** `src/lib/professionals.functions.ts`:
 
-Após rodar, recarregar a página `/settings/professionals`. O estado vazio deve aparecer sem o banner vermelho.
+- Trocar a implementação de `getOwnerId(supabase)` por uma que recebe `userId` e consulta `workspace_members` direto:
 
-### 2. Pequenas correções no `src/lib/professionals.functions.ts`
+  ```ts
+  async function getOwnerId(supabase: any, userId: string): Promise<string> {
+    const { data, error } = await supabase
+      .from("workspace_members")
+      .select("workspace_owner_id")
+      .eq("member_user_id", userId)
+      .eq("active", true)
+      .limit(1)
+      .maybeSingle();
+    if (error) {
+      throw new Error(`Falha ao identificar workspace: ${error.message}`);
+    }
+    return (data?.workspace_owner_id as string) ?? userId;
+  }
+  ```
 
-- Mensagem de erro mais clara em `getOwnerId` quando a RPC falha (mencionar que pode faltar a migration).
-- Trocar os filtros `eq("owner_user_id", userId)` em `updateProfessional` e `deleteProfessional` por `eq("owner_user_id", ownerId)` (usando `getOwnerId`) — mais consistente com `listProfessionals` e à prova de manager-não-owner no futuro.
-- Sem mudanças em UI ou em outras rotas.
+- Atualizar as 4 chamadas no mesmo arquivo (`listProfessionals`, `createProfessional`, `updateProfessional`, `deleteProfessional`) para passar o `userId` que já está disponível em `context`.
 
-### 3. Validação
+## Não vou tocar
 
-- Página `/settings/professionals` carrega sem erro.
-- Botão "Adicionar primeiro profissional" abre modal e cria o registro.
-- Profissional criado aparece na Agenda no filtro "Profissionais".
+- Nenhum outro arquivo do projeto.
+- Schema/SQL no Supabase (a tabela e RLS já estão corretas).
+- UI da página de profissionais.
+- Inbox, Agenda, Equipe, WhatsApp, Serviços, Auth.
 
-## Não muda
+## Validação
 
-- Esquema SQL (a migration entregue já está correta).
-- Inbox, Kanban, Equipe, WhatsApp, Serviços, Auth.
+- Recarregar `/settings/professionals` → o banner vermelho some, aparece o estado vazio.
+- "Adicionar primeiro profissional" cria um registro normalmente.
