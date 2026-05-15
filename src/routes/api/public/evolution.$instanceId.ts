@@ -388,6 +388,82 @@ export const Route = createFileRoute("/api/public/evolution/$instanceId")({
                     code: (msgErr as any).code,
                   });
                 }
+
+                // ───── Disparo da IA (texto, sem humano atribuído) ─────
+                const humanInControl =
+                  !!assignedAgentId ||
+                  (kanbanColumn && !["waiting", "scheduled"].includes(kanbanColumn));
+                if (mediaType === "text" && caption.trim() && !humanInControl) {
+                  try {
+                    const { data: history } = await supabaseAdmin
+                      .from("messages")
+                      .select("direction,content,created_at")
+                      .eq("contact_id", contactId)
+                      .order("created_at", { ascending: false })
+                      .limit(20);
+                    const conversation_history = (history ?? [])
+                      .reverse()
+                      .filter((h) => h.content && String(h.content).trim().length > 0)
+                      .map((h) => ({
+                        role: h.direction === "inbound" ? ("user" as const) : ("assistant" as const),
+                        content: String(h.content).slice(0, 8000),
+                      }))
+                      .slice(-20);
+                    // remove a mensagem atual do histórico (já vai como `message`)
+                    if (conversation_history.length > 0) conversation_history.pop();
+
+                    const ai = await runAiResponse({
+                      workspace_owner_id: row.owner_user_id,
+                      contact_id: contactId,
+                      message: caption,
+                      conversation_history,
+                    });
+
+                    if (ai.action === "send_message" || ai.action === "send_out_of_hours") {
+                      const responseText = ai.response?.trim();
+                      if (responseText) {
+                        let waMessageId: string | null = null;
+                        try {
+                          const r: any = await evo.sendText(row.instance_name as string, {
+                            number: phone,
+                            text: responseText,
+                          });
+                          waMessageId = r?.key?.id ?? r?.messageId ?? null;
+                        } catch (e: any) {
+                          console.error("[evolution ai] sendText falhou:", e?.message ?? e);
+                        }
+                        await supabaseAdmin.from("messages").insert({
+                          owner_user_id: row.owner_user_id,
+                          contact_id: contactId,
+                          direction: "outbound",
+                          content: responseText,
+                          message_type: "text",
+                          status: "sent",
+                          whatsapp_message_id: waMessageId,
+                          is_ai: true,
+                        });
+                        await supabaseAdmin
+                          .from("contacts")
+                          .update({
+                            last_message: responseText,
+                            last_message_at: new Date().toISOString(),
+                            last_direction: "outbound",
+                          })
+                          .eq("id", contactId);
+                      }
+                    } else if (ai.action === "transfer_to_human") {
+                      // não responde — deixa em waiting/unread para um humano assumir
+                      await supabaseAdmin
+                        .from("contacts")
+                        .update({ kanban_column: "waiting", is_unread: true })
+                        .eq("id", contactId);
+                    } else {
+                      console.log("[evolution ai] skipped", ai);
+                    }
+                  } catch (e: any) {
+                    console.error("[evolution ai] erro:", e?.message ?? e);
+                  }
+                }
               } else {
                 console.error("[evolution upsert] no contactId after upsert", { phone });
               }
