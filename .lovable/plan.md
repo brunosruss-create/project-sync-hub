@@ -1,89 +1,55 @@
 ## Diagnóstico
 
-1. **A IA realmente está desativada no banco para o workspace testado**
-   - O snapshot de rede mostra o perfil do usuário com `ai_enabled: false`.
-   - Por isso o teste retorna `(Pulado: IA desativada)` antes mesmo de montar o prompt final.
-   - A migração criada para ativar IA globalmente tem timestamp anterior à migração principal de IA (`202605160...` antes de `202605190...`), então ela pode não ter sido aplicada na ordem correta ou pode ter sido sobrescrita pelo default antigo `false`.
+A IA só responde no botão "Testar agente" porque é o único lugar do código que chama `aiRespond`. Conferi os arquivos:
 
-2. **O prompt do segmento não aparece no workspace por design atual, mas deveria ser usado em runtime**
-   - O Super Admin salva `ai_segments.segment_prompt`.
-   - O endpoint `aiRespond` busca esse prompt via `profile.segment_id` e monta as 3 camadas: prompt global + prompt do segmento + prompt do workspace.
-   - Porém como `ai_enabled` está `false`, o fluxo para antes disso. Visualmente, o workspace também só mostra `ai_custom_prompt`, então parece que o prompt do segmento não refletiu.
+- `src/lib/ai-respond.functions.ts` — define o serverFn `aiRespond`.
+- `src/routes/_authenticated.ai-agent.tsx` — único consumidor (modal de teste).
+- `src/routes/api/public/evolution.$instanceId.ts` — webhook do WhatsApp. Recebe `messages.upsert`, salva contato + mensagem inbound, mas **nunca chama a IA nem envia resposta**.
 
-3. **Horário de funcionamento em Configurações > Negócio é cosmético hoje**
-   - `settings/workspace` mantém `hours`, `tz` e `welcome` apenas em estado local.
-   - O `getWorkspaceProfile` só lê `business_name`, `business_description`, `segment_id`.
-   - O `updateWorkspaceProfile` só salva `business_name` e `segment_id`.
-   - Por isso o sistema mostra “salvo”, mas ao recarregar volta para 08:00–18:00 padrão.
+Resultado: mensagem de cliente real entra no inbox, mas nada dispara o Gemini nem o `sendText` da Evolution. Por isso só o teste “funciona”.
 
-4. **Fuso horário não é funcional para a IA**
-   - `aiRespond` usa `new Date()` e `getHours()` no timezone do servidor, não no fuso selecionado no workspace.
-   - Não existe coluna persistida de timezone no fluxo atual da IA.
-   - Resultado: mesmo que a UI mostre `America/Sao_Paulo`, a regra de horário pode ser avaliada no horário do servidor.
+Além disso, `aiRespond` usa `requireSupabaseAuth` como middleware — ele não pode ser chamado de um webhook público sem sessão de usuário. Precisa ter a lógica disponível em uma função interna chamável pelo servidor.
 
-## Plano de correção
+## Plano
 
-### 1. Criar uma migração nova e posterior às migrações atuais
-- Adicionar/persistir em `profiles`:
-  - `business_hours jsonb`
-  - `business_timezone text default 'America/Sao_Paulo'`
-  - `welcome_message text`
-  - `ai_timezone text default 'America/Sao_Paulo'`
-  - garantir `ai_enabled_service_ids uuid[]` se ainda não existir
-- Corrigir definitivamente IA global:
-  - `alter column ai_enabled set default true`
-  - backfill: `update profiles set ai_enabled = true where ai_enabled is distinct from true`
-- Backfill de horários:
-  - `business_hours`: segunda a sábado 08:00–18:00, domingo fechado
-  - `ai_working_hours`: manter valor existente; se nulo, preencher padrão
-  - `ai_timezone`: usar `business_timezone` quando existir
+### 1. Extrair o núcleo da IA para uma função server-only reutilizável
+- Criar `src/lib/ai-respond.server.ts` exportando `runAiResponse({ workspace_owner_id, contact_id, message, conversation_history, preview })` com toda a lógica que hoje está dentro do `.handler` do `aiRespond`:
+  - busca de `global_settings`, `profiles`, `ai_segments`
+  - checagem `ai_enabled`, horário (`isWithinHours` com timezone)
+  - palavras-chave de transferência
+  - chamada ao Gemini
+  - inserção em `ai_usage_logs`
+- Refatorar `aiRespond` (serverFn autenticado) para apenas validar input e chamar `runAiResponse`. Comportamento do teste continua idêntico.
 
-### 2. Fazer Configurações > Negócio persistir horários, fuso e boas-vindas
-- Atualizar `getWorkspaceProfile` para retornar:
-  - `business_hours`
-  - `business_timezone`
-  - `welcome_message`
-  - opcionalmente dados básicos da IA para invalidar/mostrar vínculo
-- Atualizar `updateWorkspaceProfile` para salvar:
-  - nome
-  - segmento
-  - horários
-  - fuso
-  - mensagem de boas-vindas
-- Ajustar a UI para hidratar esses valores reais do banco, em vez de sempre iniciar com o padrão.
+### 2. Disparar a IA no webhook quando chega mensagem do cliente
+Em `src/routes/api/public/evolution.$instanceId.ts`, no bloco `messages.upsert`, depois de inserir a mensagem inbound com sucesso:
 
-### 3. Ao trocar segmento, aplicar defaults de IA e garantir IA ativa
-- Atualizar `completeOnboarding` e `updateWorkspaceSegmentWithDefaults` para também gravar:
-  - `ai_enabled: true`
-  - `ai_assistant_name`
-  - `ai_tone`
-  - `ai_transfer_keywords`
-  - `ai_transfer_after_messages`
-- Manter `segment_prompt` no `ai_segments` como camada do Super Admin, sem copiar para `profiles`, para que alterações futuras no Super Admin reflitam automaticamente em todos os workspaces daquele segmento.
+- Pular se `mediaType !== "text"` (Gemini hoje só recebe texto) ou `caption` vazio.
+- Pular se a coluna do contato já indica handoff humano (`kanban_column` em `in_progress`/`transferred`/etc — usar a mesma regra que já bloqueia atribuição automática). Ler isso do `contacts` no mesmo round-trip do upsert.
+- Buscar histórico recente: últimas N mensagens (ex.: 20) desse `contact_id`, ordenadas asc, mapeadas para `{ role: 'user' | 'assistant', content }` usando `direction` (`inbound` → user, `outbound` → assistant).
+- Chamar `runAiResponse({ workspace_owner_id: row.owner_user_id, contact_id, message: caption, conversation_history })`.
+- Tratar o resultado:
+  - `send_message` ou `send_out_of_hours`: enviar via `evo.sendText(row.instance_name, { number: phone, text: response })`. Inserir em `messages` como `direction: 'outbound'`, `status: 'sent'`, `whatsapp_message_id` retornado pela Evolution. Atualizar `contacts.last_message`/`last_message_at`.
+  - `transfer_to_human`: NÃO responder; mover `contacts.kanban_column` para `waiting`/`in_progress` (mesma coluna usada no fluxo manual de transferência) e marcar `is_unread = true` para um humano assumir. Logar em `ai_usage_logs` (já feito pelo runner).
+  - `skip` / `error`: não enviar nada; apenas logar.
+- Tudo dentro de `try/catch` — falha da IA NUNCA pode quebrar o webhook (precisa retornar 200 para a Evolution).
 
-### 4. Tornar o prompt do segmento visível no workspace
-- Atualizar `getWorkspaceAiConfig` para retornar os dados do segmento atual:
-  - nome do segmento
-  - `segment_prompt`
-- Na página Agente IA, mostrar uma área somente leitura como “Prompt do segmento aplicado pelo Super Admin”.
-- Manter “Instruções específicas” como campo do workspace (`ai_custom_prompt`), deixando claro na interface que ele é uma camada adicional.
+### 3. Marcar mensagens enviadas pela IA
+- Adicionar coluna opcional `is_ai` boolean na tabela `messages` via nova migração `supabase/manual/2026053…_messages_is_ai.sql` (`add column if not exists is_ai boolean not null default false`).
+- Setar `is_ai: true` no insert outbound disparado pela IA.
+- Não muda nada na UI agora; serve para auditoria e para evitar reenvios em loop (filtra histórico se quiser).
 
-### 5. Corrigir teste e execução da IA com fuso horário real
-- Atualizar `aiRespond` para buscar `business_timezone`/`ai_timezone`.
-- Substituir `getHours()` local por cálculo via `Intl.DateTimeFormat(..., { timeZone })`.
-- A avaliação do horário da IA deve usar:
-  - `ai_working_hours`
-  - `ai_timezone`, caindo para `business_timezone`, caindo para `America/Sao_Paulo`
-- Assim São Paulo deixa de ser cosmético e passa a controlar de verdade se a IA responde ou manda mensagem fora do horário.
+### 4. Validação manual após implementar
+- Enviar mensagem do WhatsApp real → verificar:
+  - aparece no inbox
+  - aparece resposta da IA logo depois (mesma resposta do botão "Testar")
+  - log em `ai_usage_logs` com `action='send_message'`
+  - fora do horário: cliente recebe `ai_out_of_hours_message`
+  - palavra "humano": IA não responde, conversa vai para fila humana
+- Conferir que o "Testar agente" continua funcionando (nada de regressão).
 
-### 6. Ajustar Agente IA para salvar e exibir timezone
-- Incluir `ai_timezone` no formulário da página Agente IA.
-- Salvar `ai_timezone` junto com `ai_working_hours`.
-- Após salvar, reidratar corretamente sem voltar para defaults.
-
-### 7. Validação final
-- Confirmar que o perfil do workspace fica com `ai_enabled=true`.
-- Confirmar que trocar segmento atualiza assistente/tom/palavras e mantém o prompt do segmento vindo do Super Admin.
-- Confirmar que horários de Configurações > Negócio persistem após salvar/recarregar.
-- Confirmar que o teste da IA deixa de retornar “IA desativada”.
-- Confirmar que a regra de horário usa `America/Sao_Paulo` de fato.
+### Arquivos afetados
+- novo: `src/lib/ai-respond.server.ts`
+- novo: `supabase/manual/2026053…_messages_is_ai.sql`
+- editado: `src/lib/ai-respond.functions.ts` (passa a delegar para o server helper)
+- editado: `src/routes/api/public/evolution.$instanceId.ts` (gatilho da IA + envio outbound)
