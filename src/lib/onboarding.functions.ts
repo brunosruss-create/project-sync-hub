@@ -116,7 +116,7 @@ export const getWorkspaceAiConfig = createServerFn({ method: "POST" })
     const { data } = await supabaseAdmin
       .from("profiles")
       .select(
-        "ai_enabled,ai_assistant_name,ai_tone,ai_custom_prompt,ai_transfer_keywords,ai_transfer_after_messages,ai_schedule_enabled,ai_schedule_instruction,ai_working_hours,ai_out_of_hours_message,business_name,business_description,segment_id",
+        "ai_enabled,ai_assistant_name,ai_tone,ai_custom_prompt,ai_transfer_keywords,ai_transfer_after_messages,ai_schedule_enabled,ai_schedule_instruction,ai_working_hours,ai_out_of_hours_message,ai_enabled_service_ids,business_name,business_description,segment_id",
       )
       .eq("id", context.userId)
       .maybeSingle();
@@ -139,6 +139,7 @@ export const updateWorkspaceAiConfig = createServerFn({ method: "POST" })
         ai_schedule_instruction: z.string().max(2000).optional().nullable(),
         ai_working_hours: z.record(z.string(), z.any()).optional(),
         ai_out_of_hours_message: z.string().max(1000).optional(),
+        ai_enabled_service_ids: z.array(z.string().uuid()).max(200).optional(),
       })
       .parse(input),
   )
