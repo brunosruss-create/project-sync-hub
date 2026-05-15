@@ -426,6 +426,7 @@ export const Route = createFileRoute("/api/public/evolution/$instanceId")({
                       contact_id: contactId,
                       message: caption,
                       conversation_history,
+                      wa_message_id: m?.key?.id ?? null,
                     });
 
                     if (ai.action === "send_message" || ai.action === "send_out_of_hours") {
