@@ -132,7 +132,7 @@ function SchedulePage() {
     const [{ data: appts, error: apptErr }, { data: cts }, { data: svc }] = await Promise.all([
       supabase
         .from("appointments")
-        .select("id,contact_id,service_id,agent_id,starts_at,ends_at,status,notes,notify_whatsapp"),
+        .select("id,contact_id,service_id,agent_id,professional_id,starts_at,ends_at,status,notes,notify_whatsapp"),
       supabase.from("contacts").select("id,name,phone,tags,priority,kanban_column,last_message,last_message_at,is_unread,assigned_agent_id"),
       supabase
         .from("services")
