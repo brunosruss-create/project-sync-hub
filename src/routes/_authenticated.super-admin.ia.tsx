@@ -62,7 +62,7 @@ function GeminiTab() {
   const fetchFn = useServerFn(getAiGlobalSettings);
   const updateFn = useServerFn(updateAiGlobalSettings);
   const testFn = useServerFn(testGeminiConnection);
-  const q = useQuery({ queryKey: ["ai-globals"], queryFn: () => fetchFn({ data: {} }) });
+  const q = useQuery({ queryKey: ["ai-globals"], queryFn: () => fetchFn() });
   const [form, setForm] = React.useState<Record<string, string>>({});
   React.useEffect(() => {
     if (q.data?.settings) {
@@ -90,7 +90,7 @@ function GeminiTab() {
     setTesting(true);
     setStatus(null);
     try {
-      const r = await testFn({ data: {} });
+      const r = await testFn();
       setStatus({ ok: r.ok, msg: r.ok ? `Conectado (${r.model})` : r.error ?? "Erro" });
     } finally {
       setTesting(false);
@@ -213,7 +213,7 @@ function SegmentsTab() {
   const listFn = useServerFn(listAiSegments);
   const toggleFn = useServerFn(toggleAiSegment);
   const upsertFn = useServerFn(upsertAiSegment);
-  const q = useQuery({ queryKey: ["ai-segments"], queryFn: () => listFn({ data: {} }) });
+  const q = useQuery({ queryKey: ["ai-segments"], queryFn: () => listFn() });
   const [editing, setEditing] = React.useState<any>(null);
 
   if (q.isLoading) return <p style={{ fontSize: 13, opacity: 0.6 }}>Carregando…</p>;
@@ -390,7 +390,7 @@ function SegmentEditor({
 
 function UsageTab() {
   const fn = useServerFn(getAiUsageMetrics);
-  const q = useQuery({ queryKey: ["ai-usage"], queryFn: () => fn({ data: {} }) });
+  const q = useQuery({ queryKey: ["ai-usage"], queryFn: () => fn() });
   if (q.isLoading) return <p style={{ fontSize: 13, opacity: 0.6 }}>Carregando…</p>;
   const m = q.data;
   if (!m) return null;
