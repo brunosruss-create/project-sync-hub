@@ -150,3 +150,50 @@ export const updateWorkspaceAiConfig = createServerFn({ method: "POST" })
     if (error) throw new Error(error.message);
     return { ok: true };
   });
+
+// ============= GET WORKSPACE PROFILE (settings/workspace page) =============
+export const getWorkspaceProfile = createServerFn({ method: "POST" })
+  .middleware([requireSupabaseAuth])
+  .handler(async ({ context }) => {
+    const { data } = await supabaseAdmin
+      .from("profiles")
+      .select("business_name,business_description,segment_id")
+      .eq("id", context.userId)
+      .maybeSingle();
+    return {
+      business_name: data?.business_name ?? "",
+      business_description: data?.business_description ?? "",
+      segment_id: data?.segment_id ?? null,
+    };
+  });
+
+// ============= UPDATE WORKSPACE PROFILE =============
+export const updateWorkspaceProfile = createServerFn({ method: "POST" })
+  .middleware([requireSupabaseAuth])
+  .inputValidator((input) =>
+    z
+      .object({
+        business_name: z.string().min(1).max(120),
+        segment_id: z.string().uuid(),
+      })
+      .parse(input),
+  )
+  .handler(async ({ data, context }) => {
+    // valida segmento ativo
+    const { data: seg } = await supabaseAdmin
+      .from("ai_segments")
+      .select("id")
+      .eq("id", data.segment_id)
+      .eq("is_active", true)
+      .maybeSingle();
+    if (!seg) throw new Error("Segmento inválido ou inativo");
+    const { error } = await supabaseAdmin
+      .from("profiles")
+      .update({
+        business_name: data.business_name,
+        segment_id: data.segment_id,
+      })
+      .eq("id", context.userId);
+    if (error) throw new Error(error.message);
+    return { ok: true };
+  });
