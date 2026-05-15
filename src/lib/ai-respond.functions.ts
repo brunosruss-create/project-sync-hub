@@ -8,25 +8,28 @@ type WorkingHours = Record<
   { enabled: boolean; start: string; end: string }
 >;
 
-const DAY_KEYS = [
-  "sunday",
-  "monday",
-  "tuesday",
-  "wednesday",
-  "thursday",
-  "friday",
-  "saturday",
-] as const;
-
-function isWithinHours(hours: WorkingHours | null | undefined): boolean {
+function isWithinHours(
+  hours: WorkingHours | null | undefined,
+  timezone: string,
+): boolean {
   if (!hours) return true;
-  const now = new Date();
-  const day = DAY_KEYS[now.getDay()];
-  const cfg = hours[day];
+  // Calcula dia/hora no fuso configurado pelo workspace
+  const fmt = new Intl.DateTimeFormat("en-US", {
+    timeZone: timezone || "America/Sao_Paulo",
+    weekday: "long",
+    hour: "2-digit",
+    minute: "2-digit",
+    hour12: false,
+  });
+  const parts = fmt.formatToParts(new Date());
+  const weekday = (parts.find((p) => p.type === "weekday")?.value ?? "").toLowerCase();
+  const hh = parseInt(parts.find((p) => p.type === "hour")?.value ?? "0", 10);
+  const mm = parseInt(parts.find((p) => p.type === "minute")?.value ?? "0", 10);
+  const cfg = hours[weekday];
   if (!cfg || !cfg.enabled) return false;
   const [sh, sm] = (cfg.start ?? "00:00").split(":").map(Number);
   const [eh, em] = (cfg.end ?? "23:59").split(":").map(Number);
-  const minutes = now.getHours() * 60 + now.getMinutes();
+  const minutes = (hh % 24) * 60 + mm;
   return minutes >= sh * 60 + sm && minutes <= eh * 60 + em;
 }
 
@@ -105,7 +108,11 @@ export const aiRespond = createServerFn({ method: "POST" })
       : { data: null };
 
     // 3) Horário
-    if (!isWithinHours(profile.ai_working_hours as WorkingHours)) {
+    const tz =
+      (profile.ai_timezone as string | null) ||
+      (profile.business_timezone as string | null) ||
+      "America/Sao_Paulo";
+    if (!isWithinHours(profile.ai_working_hours as WorkingHours, tz)) {
       const out = profile.ai_out_of_hours_message ?? "Estamos fora do horário de atendimento.";
       if (!data.preview) {
         await supabaseAdmin.from("ai_usage_logs").insert({

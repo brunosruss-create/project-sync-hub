@@ -93,6 +93,7 @@ function AIAgentPage() {
   const [enabledServices, setEnabledServices] = React.useState<string[]>([]);
   const [hours, setHours] = React.useState<WorkingHours>(DEFAULT_HOURS);
   const [offHoursMsg, setOffHoursMsg] = React.useState("");
+  const [timezone, setTimezone] = React.useState("America/Sao_Paulo");
   const [tester, setTester] = React.useState(false);
   const [hydrated, setHydrated] = React.useState(false);
 
@@ -113,9 +114,14 @@ function AIAgentPage() {
     const wh = (c.ai_working_hours ?? null) as WorkingHours | null;
     setHours(wh ? { ...DEFAULT_HOURS, ...wh } : DEFAULT_HOURS);
     setOffHoursMsg(c.ai_out_of_hours_message ?? "");
-    // ai_enabled_service_ids — coluna nova, ignora se não vier
-    const ids = (c as Record<string, unknown>).ai_enabled_service_ids;
+    const cAny = c as Record<string, unknown>;
+    const ids = cAny.ai_enabled_service_ids;
     if (Array.isArray(ids)) setEnabledServices(ids as string[]);
+    const tz =
+      (cAny.ai_timezone as string | undefined) ||
+      (cAny.business_timezone as string | undefined) ||
+      "America/Sao_Paulo";
+    setTimezone(tz);
     setHydrated(true);
   }, [configQ.data, hydrated]);
 
@@ -134,6 +140,7 @@ function AIAgentPage() {
           ai_working_hours: hours,
           ai_out_of_hours_message: offHoursMsg,
           ai_enabled_service_ids: enabledServices,
+          ai_timezone: timezone,
         },
       }),
     onSuccess: () => {
@@ -279,8 +286,35 @@ function AIAgentPage() {
                 onChange={(e) => setPrompt(e.target.value)}
                 placeholder="Use para regras específicas do seu negócio. O prompt base e o do segmento são aplicados automaticamente."
               />
-            </Field>
+          </Field>
           </div>
+          {configQ.data?.segment?.segment_prompt && (
+            <div style={{ marginTop: 16 }}>
+              <Field
+                label={`Prompt do segmento (${configQ.data.segment.icon ?? ""} ${configQ.data.segment.name}) — aplicado pelo Super Admin`}
+              >
+                <textarea
+                  readOnly
+                  value={configQ.data.segment.segment_prompt}
+                  style={{
+                    ...input,
+                    height: 140,
+                    padding: 12,
+                    fontFamily: "var(--font-mono, ui-monospace, monospace)",
+                    fontSize: 12,
+                    lineHeight: 1.6,
+                    background: "var(--bg-overlay)",
+                    color: "var(--text-muted)",
+                    cursor: "default",
+                    resize: "vertical",
+                  }}
+                />
+              </Field>
+              <div style={{ fontSize: 11, color: "var(--text-muted)", marginTop: 6 }}>
+                Esse prompt é gerenciado em Super Admin → IA → Segmentos e se aplica a todos os workspaces deste segmento.
+              </div>
+            </div>
+          )}
           <div className="flex justify-end" style={{ marginTop: 12 }}>
             <button
               style={btnSecondary}
@@ -493,6 +527,24 @@ function AIAgentPage() {
                 </React.Fragment>
               );
             })}
+          </div>
+
+          <div style={{ marginTop: 16 }}>
+            <Field label="Fuso horário">
+              <select
+                style={input}
+                value={timezone}
+                onChange={(e) => setTimezone(e.target.value)}
+              >
+                <option value="America/Sao_Paulo">America/Sao_Paulo (GMT-3)</option>
+                <option value="America/Manaus">America/Manaus (GMT-4)</option>
+                <option value="America/Belem">America/Belem (GMT-3)</option>
+                <option value="America/Fortaleza">America/Fortaleza (GMT-3)</option>
+                <option value="America/Recife">America/Recife (GMT-3)</option>
+                <option value="America/Cuiaba">America/Cuiaba (GMT-4)</option>
+                <option value="America/Rio_Branco">America/Rio_Branco (GMT-5)</option>
+              </select>
+            </Field>
           </div>
 
           <div style={{ marginTop: 16 }}>
