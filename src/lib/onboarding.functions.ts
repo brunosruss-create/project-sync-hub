@@ -3,6 +3,11 @@ import { z } from "zod";
 import { requireSupabaseAuth } from "@/integrations/supabase/auth-middleware";
 import { supabaseAdmin } from "@/integrations/supabase/client.server";
 
+export type BusinessHours = Record<
+  string,
+  { active: boolean; start: string; end: string }
+>;
+
 // ============= LIST PUBLIC ACTIVE SEGMENTS (onboarding) =============
 export const listActiveSegments = createServerFn({ method: "POST" })
   .middleware([requireSupabaseAuth])
@@ -183,7 +188,7 @@ export const getWorkspaceProfile = createServerFn({ method: "POST" })
       business_name: data?.business_name ?? "",
       business_description: data?.business_description ?? "",
       segment_id: data?.segment_id ?? null,
-      business_hours: (data?.business_hours as Record<string, unknown> | null) ?? null,
+      business_hours: (data?.business_hours as BusinessHours | null) ?? null,
       business_timezone: data?.business_timezone ?? "America/Sao_Paulo",
       welcome_message: data?.welcome_message ?? "",
     };
@@ -272,6 +277,7 @@ export const updateWorkspaceSegmentWithDefaults = createServerFn({ method: "POST
       .update({
         business_name: data.business_name,
         segment_id: segment.id,
+        ai_enabled: true,
         ai_assistant_name: segment.default_assistant_name ?? "Sofia",
         ai_tone: segment.default_tone ?? "Amigável",
         ai_transfer_keywords:
