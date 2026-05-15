@@ -13,22 +13,25 @@ import {
   X,
   Menu,
 } from "lucide-react";
+import { useRole } from "@/hooks/use-role";
 
-const items = [
-  { label: "Dashboard", to: "/dashboard", icon: LayoutDashboard },
-  { label: "Conversas", to: "/inbox", icon: MessageSquare },
-  { label: "Agenda", to: "/schedule", icon: Calendar },
-  { label: "Serviços", to: "/services", icon: Wrench },
-  { label: "Agente IA", to: "/ai-agent", icon: Bot },
-  { label: "Contatos", to: "/contacts", icon: Users },
-  { label: "Relatórios", to: "/reports", icon: BarChart3 },
-  { label: "Configurações", to: "/settings/profile", icon: Settings },
-  { label: "Super Admin", to: "/super-admin/workspaces", icon: Shield },
+const ALL_ITEMS = [
+  { label: "Dashboard", to: "/dashboard", icon: LayoutDashboard, agentVisible: false },
+  { label: "Conversas", to: "/inbox", icon: MessageSquare, agentVisible: true },
+  { label: "Agenda", to: "/schedule", icon: Calendar, agentVisible: true },
+  { label: "Serviços", to: "/services", icon: Wrench, agentVisible: false },
+  { label: "Agente IA", to: "/ai-agent", icon: Bot, agentVisible: false },
+  { label: "Contatos", to: "/contacts", icon: Users, agentVisible: true },
+  { label: "Relatórios", to: "/reports", icon: BarChart3, agentVisible: false },
+  { label: "Configurações", to: "/settings/profile", icon: Settings, agentVisible: true },
+  { label: "Super Admin", to: "/super-admin/workspaces", icon: Shield, agentVisible: false },
 ] as const;
 
 export function MobileSidebarTrigger() {
   const [open, setOpen] = React.useState(false);
   const path = useRouterState({ select: (s) => s.location.pathname });
+  const { isAgent } = useRole();
+  const items = isAgent ? ALL_ITEMS.filter((i) => i.agentVisible) : ALL_ITEMS;
 
   React.useEffect(() => {
     setOpen(false);
