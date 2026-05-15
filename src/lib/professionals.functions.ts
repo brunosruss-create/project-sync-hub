@@ -44,7 +44,7 @@ async function assertManager(supabase: any, userId: string) {
 export const listProfessionals = createServerFn({ method: "POST" })
   .middleware([requireSupabaseAuth])
   .handler(async ({ context }): Promise<Professional[]> => {
-    const { supabase } = context;
+    const { supabase, userId } = context;
     const ownerId = await getOwnerId(supabase, userId);
     const { data, error } = await supabase
       .from("professionals")
