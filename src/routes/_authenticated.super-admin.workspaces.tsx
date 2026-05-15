@@ -155,6 +155,7 @@ function WorkspacesAdmin() {
           </table>
         </div>
       )}
+      <InspectWorkspaceDrawer ownerId={inspectId} onClose={() => setInspectId(null)} />
     </div>
   );
 }
