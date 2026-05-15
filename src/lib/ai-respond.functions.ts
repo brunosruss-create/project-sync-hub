@@ -21,6 +21,7 @@ export const aiRespond = createServerFn({ method: "POST" })
           .max(50)
           .default([]),
         preview: z.boolean().optional(),
+        wa_message_id: z.string().max(200).nullish(),
       })
       .parse(input),
   )
