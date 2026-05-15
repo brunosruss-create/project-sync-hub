@@ -5,7 +5,9 @@ import {
   normalizeQRCodeImage,
   tryFetchProfilePicture,
   downloadInboundMedia,
+  evo,
 } from "@/lib/evolution.server";
+import { runAiResponse } from "@/lib/ai-respond.server";
 
 type MediaKind = "image" | "audio" | "video" | "document";
 
