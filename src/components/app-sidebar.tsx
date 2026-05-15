@@ -15,6 +15,7 @@ import {
 import { useAuth } from "@/hooks/use-auth";
 import { useProfile } from "@/hooks/use-profile";
 import { useRole } from "@/hooks/use-role";
+import { useIsSuperAdmin } from "@/hooks/use-is-super-admin";
 
 const ALL_ITEMS = [
   { label: "Dashboard", to: "/dashboard", icon: LayoutDashboard, agentVisible: false },
@@ -33,7 +34,10 @@ export function AppSidebar() {
   const { user } = useAuth();
   const { data: profile } = useProfile();
   const { isAgent } = useRole();
-  const items = isAgent ? ALL_ITEMS.filter((i) => i.agentVisible) : ALL_ITEMS;
+  const { isSuperAdmin } = useIsSuperAdmin();
+  const items = (isAgent ? ALL_ITEMS.filter((i) => i.agentVisible) : ALL_ITEMS).filter(
+    (i) => i.label !== "Super Admin" || isSuperAdmin,
+  );
 
   const name =
     profile?.full_name ||

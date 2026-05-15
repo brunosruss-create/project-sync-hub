@@ -16,8 +16,8 @@ import {
   Shield,
   LogOut,
 } from "lucide-react";
-import { supabase } from "@/integrations/supabase/client";
 import { useAuth } from "@/hooks/use-auth";
+import { useIsSuperAdmin } from "@/hooks/use-is-super-admin";
 
 export const Route = createFileRoute("/_authenticated/super-admin")({
   component: SuperAdminLayout,
@@ -34,34 +34,21 @@ function SuperAdminLayout() {
   const { user } = useAuth();
   const navigate = useNavigate();
   const path = useRouterState({ select: (s) => s.location.pathname });
-  const [checking, setChecking] = React.useState(true);
-  const [allowed, setAllowed] = React.useState(false);
+  const { isSuperAdmin, loading: checking } = useIsSuperAdmin();
+  const [denied, setDenied] = React.useState(false);
 
   React.useEffect(() => {
-    let cancel = false;
-    (async () => {
-      if (!user) return;
-      const { data } = await supabase
-        .from("profiles")
-        .select("role")
-        .eq("id", user.id)
-        .maybeSingle();
-      if (cancel) return;
-      const role = (data as { role?: string } | null)?.role;
-      if (role === "super_admin") {
-        setAllowed(true);
-      } else {
-        toast.error("Acesso negado", {
-          description: "Você não tem permissão para acessar o painel admin.",
-        });
-        navigate({ to: "/dashboard" });
-      }
-      setChecking(false);
-    })();
-    return () => {
-      cancel = true;
-    };
-  }, [user, navigate]);
+    if (checking) return;
+    if (!isSuperAdmin && !denied) {
+      setDenied(true);
+      toast.error("Acesso negado", {
+        description: "Você não tem permissão para acessar o painel admin.",
+      });
+      navigate({ to: "/dashboard" });
+    }
+  }, [checking, isSuperAdmin, denied, navigate]);
+
+  const allowed = isSuperAdmin;
 
   if (checking) {
     return (
