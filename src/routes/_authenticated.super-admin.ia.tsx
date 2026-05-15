@@ -90,10 +90,17 @@ function GeminiTab() {
       // Não sobrescreve a chave com vazio (deixar em branco = manter a atual)
       if (!payload.gemini_api_key) delete payload.gemini_api_key;
       const r = await updateFn({ data: payload });
-      toast.success(`Configurações salvas (${r.saved} campos atualizados)`);
+      const verifiedStr = r.verified
+        ? Object.entries(r.verified)
+            .map(([k, n]) => `${k}=${n}ch`)
+            .join(", ")
+        : "";
+      toast.success(
+        `Configurações salvas (${r.saved} campos). Banco confirmou: ${verifiedStr || "—"}`,
+      );
       await qc.invalidateQueries({ queryKey: ["ai-globals"] });
     } catch (e) {
-      toast.error(e instanceof Error ? e.message : "Erro ao salvar");
+      toast.error(e instanceof Error ? e.message : "Erro ao salvar", { duration: 10000 });
     }
   };
   const test = async () => {
