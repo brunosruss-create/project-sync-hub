@@ -43,7 +43,7 @@ export const getWorkspaceDetail = createServerFn({ method: "POST" })
     z.object({ ownerId: z.string().uuid() }).parse(input),
   )
   .handler(async ({ data, context }) => {
-    await assertSuperAdmin(context.userId, context.user.email ?? null);
+    await assertSuperAdmin(context.userId);
     const ownerId = data.ownerId;
 
     const [
@@ -193,7 +193,7 @@ export const setUserRole = createServerFn({ method: "POST" })
       .parse(input),
   )
   .handler(async ({ data, context }) => {
-    await assertSuperAdmin(context.userId, context.user.email ?? null);
+    await assertSuperAdmin(context.userId);
     if (data.userId === context.userId && data.role !== "super_admin") {
       throw new Error("Você não pode rebaixar o próprio super admin.");
     }
@@ -223,7 +223,7 @@ export const setUserBlocked = createServerFn({ method: "POST" })
     z.object({ userId: z.string().uuid(), blocked: z.boolean() }).parse(input),
   )
   .handler(async ({ data, context }) => {
-    await assertSuperAdmin(context.userId, context.user.email ?? null);
+    await assertSuperAdmin(context.userId);
     if (data.userId === context.userId && data.blocked) {
       throw new Error("Você não pode bloquear a si mesmo.");
     }
@@ -250,7 +250,7 @@ export const resetUserPassword = createServerFn({ method: "POST" })
   .middleware([requireSupabaseAuth])
   .inputValidator((input) => z.object({ userId: z.string().uuid() }).parse(input))
   .handler(async ({ data, context }) => {
-    await assertSuperAdmin(context.userId, context.user.email ?? null);
+    await assertSuperAdmin(context.userId);
 
     const { data: u } = await supabaseAdmin.auth.admin.getUserById(data.userId);
     const email = u?.user?.email;
@@ -280,7 +280,7 @@ export const setWorkspacePlan = createServerFn({ method: "POST" })
       .parse(input),
   )
   .handler(async ({ data, context }) => {
-    await assertSuperAdmin(context.userId, context.user.email ?? null);
+    await assertSuperAdmin(context.userId);
 
     const { error } = await supabaseAdmin
       .from("profiles")
@@ -304,7 +304,7 @@ export const suspendWorkspace = createServerFn({ method: "POST" })
   .middleware([requireSupabaseAuth])
   .inputValidator((input) => z.object({ ownerId: z.string().uuid() }).parse(input))
   .handler(async ({ data, context }) => {
-    await assertSuperAdmin(context.userId, context.user.email ?? null);
+    await assertSuperAdmin(context.userId);
     if (data.ownerId === context.userId) {
       throw new Error("Você não pode suspender o próprio workspace.");
     }
@@ -342,7 +342,7 @@ export const deleteWorkspace = createServerFn({ method: "POST" })
       .parse(input),
   )
   .handler(async ({ data, context }) => {
-    await assertSuperAdmin(context.userId, context.user.email ?? null);
+    await assertSuperAdmin(context.userId);
     if (data.ownerId === context.userId) {
       throw new Error("Você não pode deletar o próprio workspace.");
     }
