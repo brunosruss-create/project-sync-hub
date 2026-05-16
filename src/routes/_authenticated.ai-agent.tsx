@@ -691,7 +691,14 @@ function AIAgentPage() {
               />
               Enviar mensagem fora do horário
             </label>
-            {/* Mensagem fora do horário é configurada em Configurações → Negócio */}
+            <Field label="Mensagem fora do horário">
+              <textarea
+                style={{ ...input, height: 80, padding: 10, resize: "vertical" }}
+                value={offHoursMsg}
+                disabled={!offHoursEnabled}
+                onChange={(e) => setOffHoursMsg(e.target.value)}
+              />
+            </Field>
           </div>
         </Card>
       </Section>
