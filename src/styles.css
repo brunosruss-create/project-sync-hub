@@ -237,7 +237,3 @@
   50% { height: 100%; }
 }
 
-/* Force 24h time inputs (hide AM/PM when browser locale is en-US) */
-input[type="time"]::-webkit-datetime-edit-ampm-field {
-  display: none;
-}
