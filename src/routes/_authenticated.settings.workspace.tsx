@@ -284,9 +284,11 @@ function WorkspacePage() {
                   {d.label}
                 </label>
                 <input
-                  type="time"
-                  lang="pt-BR"
-                  step={60}
+                  type="text"
+                  inputMode="numeric"
+                  pattern="^([01][0-9]|2[0-3]):[0-5][0-9]$"
+                  placeholder="00:00"
+                  maxLength={5}
                   value={h.start}
                   disabled={!h.active}
                   onChange={(e) =>
@@ -296,9 +298,11 @@ function WorkspacePage() {
                 />
                 <span style={{ fontSize: 12, color: "var(--text-muted)" }}>até</span>
                 <input
-                  type="time"
-                  lang="pt-BR"
-                  step={60}
+                  type="text"
+                  inputMode="numeric"
+                  pattern="^([01][0-9]|2[0-3]):[0-5][0-9]$"
+                  placeholder="23:00"
+                  maxLength={5}
                   value={h.end}
                   disabled={!h.active}
                   onChange={(e) => setHours({ ...hours, [d.key]: { ...h, end: e.target.value } })}

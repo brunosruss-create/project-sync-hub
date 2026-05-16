@@ -630,9 +630,11 @@ function AIAgentPage() {
                     {d.label}
                   </label>
                   <input
-                    type="time"
-                    lang="pt-BR"
-                    step={60}
+                    type="text"
+                    inputMode="numeric"
+                    pattern="^([01][0-9]|2[0-3]):[0-5][0-9]$"
+                    placeholder="00:00"
+                    maxLength={5}
                     value={h.start}
                     disabled={!h.enabled}
                     onChange={(e) =>
@@ -641,9 +643,11 @@ function AIAgentPage() {
                     style={{ ...input, height: 32 }}
                   />
                   <input
-                    type="time"
-                    lang="pt-BR"
-                    step={60}
+                    type="text"
+                    inputMode="numeric"
+                    pattern="^([01][0-9]|2[0-3]):[0-5][0-9]$"
+                    placeholder="23:00"
+                    maxLength={5}
                     value={h.end}
                     disabled={!h.enabled}
                     onChange={(e) =>
