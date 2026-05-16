@@ -161,7 +161,7 @@ export const getWorkspaceAiConfig = createServerFn({ method: "POST" })
         ? {
             ...data,
             ai_out_of_hours_enabled:
-              outOfHoursToggle?.ai_out_of_hours_enabled ?? true,
+              readOutOfHoursEnabled(data, outOfHoursToggle?.ai_out_of_hours_enabled),
           }
         : data,
       segment,
@@ -208,6 +208,22 @@ export const updateWorkspaceAiConfig = createServerFn({ method: "POST" })
       .from("profiles")
       .update(data)
       .eq("id", context.userId);
+    if (error && "ai_out_of_hours_enabled" in data) {
+      const { ai_out_of_hours_enabled, ...fallbackData } = data;
+      const { error: fallbackError } = await supabaseAdmin
+        .from("profiles")
+        .update({
+          ...fallbackData,
+          ai_working_hours: mergeOutOfHoursMarker(
+            data.ai_working_hours,
+            ai_out_of_hours_enabled ?? true,
+          ),
+        })
+        .eq("id", context.userId);
+      if (!fallbackError && error.message.includes("ai_out_of_hours_enabled")) {
+        return { ok: true };
+      }
+    }
     if (error) throw new Error(error.message);
     return { ok: true };
   });
@@ -235,7 +251,7 @@ export const getWorkspaceProfile = createServerFn({ method: "POST" })
       business_hours: (data?.business_hours as BusinessHours | null) ?? null,
       business_timezone: data?.business_timezone ?? "America/Sao_Paulo",
       welcome_message: data?.welcome_message ?? "",
-      ai_out_of_hours_enabled: outOfHoursToggle?.ai_out_of_hours_enabled ?? true,
+      ai_out_of_hours_enabled: readOutOfHoursEnabled(data, outOfHoursToggle?.ai_out_of_hours_enabled),
       business_address: data?.business_address ?? "",
       business_phone: data?.business_phone ?? "",
       business_website: data?.business_website ?? "",
@@ -305,6 +321,27 @@ export const updateWorkspaceProfile = createServerFn({ method: "POST" })
       .from("profiles")
       .update(update)
       .eq("id", context.userId);
+    if (error && "ai_out_of_hours_enabled" in update) {
+      const { ai_out_of_hours_enabled, ...fallbackUpdate } = update;
+      const { data: current } = await supabaseAdmin
+        .from("profiles")
+        .select("ai_working_hours")
+        .eq("id", context.userId)
+        .maybeSingle();
+      const { error: fallbackError } = await supabaseAdmin
+        .from("profiles")
+        .update({
+          ...fallbackUpdate,
+          ai_working_hours: mergeOutOfHoursMarker(
+            current?.ai_working_hours,
+            Boolean(ai_out_of_hours_enabled),
+          ),
+        })
+        .eq("id", context.userId);
+      if (!fallbackError && error.message.includes("ai_out_of_hours_enabled")) {
+        return { ok: true };
+      }
+    }
     if (error) throw new Error(error.message);
     return { ok: true };
   });
