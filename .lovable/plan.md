@@ -1,27 +1,49 @@
-Diagnóstico confirmado:
-- O formato visual 24h está correto.
-- A decisão de “fora do horário” acontece no servidor em `src/lib/ai-respond.server.ts`.
-- Os logs mostram que o servidor já está usando `America/Sao_Paulo`, não o horário do PC.
-- O problema observado foi a configuração efetiva da IA: no log, sexta estava com `endMin:1200` = `20:00`, por isso às 21:22 Brasília a IA respondeu fora do horário mesmo a tela mostrando `23:00`.
+## Diagnóstico (com base nos logs reais)
 
-Plano de correção:
-1. Ajustar somente a lógica de horário efetivo da IA em `src/lib/ai-respond.server.ts`:
-   - Normalizar horários antes da comparação.
-   - Continuar usando `America/Sao_Paulo` por padrão.
-   - Evitar fallback para horário local do servidor/PC quando o timezone estiver ausente ou inválido.
+Os logs do servidor às 21:48 (Brasília) mostram **DUAS chamadas paralelas** da IA para a mesma mensagem do usuário, separadas por 69ms:
 
-2. Garantir prioridade correta entre horários:
-   - Se `ai_working_hours` estiver salvo, usar ele.
-   - Se não estiver salvo, usar `business_hours`.
-   - Se a IA tiver horários antigos `20:00` mas o negócio estiver atualizado para `23:00`, alinhar a configuração efetiva para não continuar respondendo com dado antigo invisível para o usuário.
+```
+00:48:36.873 [ai hours] check {source:"business_hours"}     ← passou (dentro do horário)
+00:48:36.804 [ai hours] check {source:"business_hours"}     ← rejeitou
+00:48:36.804 [ai hours] fora do intervalo {nowMin:1308, startMin:480, endMin:1080}
+```
 
-3. Melhorar logs de diagnóstico sem mudar comportamento visual:
-   - Registrar `timezone`, dia, hora atual calculada em Brasília, horário de início/fim e fonte usada (`ai_working_hours` ou `business_hours`).
-   - Isso confirma rapidamente se o problema é dado salvo, timezone inválido ou comparação.
+Isso explica exatamente o print: **uma resposta "Olá! Como posso te ajudar hoje?" + uma resposta "fora do horário"**, ambas no mesmo minuto. O Evolution está reentregando o mesmo webhook em paralelo, e o dedup atual (que só grava em `ai_usage_logs` *depois* de processar) deixa as duas chamadas passarem pela janela de corrida.
 
-4. Não mexer em layout, aparência, campos visuais ou outras partes do sistema.
+Além disso, os logs revelam o segundo problema: o `business_hours` salvo para sexta é **8:00–18:00** (`endMin:1080`), não 23:00 como o usuário acredita ter configurado. Por isso às 21:48 a IA responde "fora do horário" — o dado salvo no banco realmente diz que está fechado.
 
-Validação após implementar:
-- Testar com sexta/sábado até `23:00`.
-- Confirmar nos logs que `endMin` vira `1380`.
-- Confirmar que às 21h/22h Brasília a IA não retorna mais `send_out_of_hours`.
+Resumindo, são **dois bugs diferentes** que estavam sendo tratados como um:
+
+1. **Race condition no webhook** → produz a resposta dupla (uma normal + uma "fora do horário").
+2. **Horário salvo errado** → produz a mensagem "fora do horário" mesmo às 21h, porque `business_hours.fri.end = "18:00"` no banco.
+
+## Plano de correção
+
+### 1. Eliminar a race do webhook (`src/routes/api/public/evolution.$instanceId.ts`)
+
+- Antes de chamar `runAiResponse`, fazer um **insert atômico** num registro de lock por `whatsapp_message_id` (na própria tabela `ai_usage_logs` com action `"lock"` ou numa tabela `ai_message_locks` com unique constraint em `(workspace_owner_id, wa_message_id)`).
+- Se o insert falhar por conflito de unicidade, **abortar a iteração** sem chamar a IA nem enviar texto.
+- Garante que duas entregas paralelas do mesmo `m.key.id` resultem em apenas UMA resposta.
+
+### 2. Conferir o que a tela de Configurações realmente está salvando
+
+- Abrir `src/routes/_authenticated.settings.workspace.tsx` e verificar o payload enviado em `business_hours` no save.
+- Comparar com o que está no banco (`profiles.business_hours` do owner).
+- Se a UI mostra 23:00 mas o banco tem 18:00, o bug está no save (provavelmente no parser do input de texto `HH:mm` que substituiu o `<input type="time">` — pode estar lendo um state desatualizado, ou só salvando alguns dias).
+- Corrigir o save para que o valor exibido na UI seja exatamente o gravado.
+
+### 3. Logar a fonte e o conteúdo dos horários efetivos
+
+- No `[ai hours] check` adicionar `effectiveHours` resumido (ex: `{fri:"08:00-23:00"}`) para confirmar visualmente nos logs que o que a IA leu bate com o que a UI mostra.
+- Sem isso, qualquer divergência futura volta a ser invisível.
+
+### 4. Validação
+
+- Enviar uma mensagem e confirmar nos logs apenas **um** `[ai hours] check` por mensagem.
+- Conferir no banco que `business_hours.fri.end` é `"23:00"` depois de salvar 23:00 na tela.
+- Confirmar que às 22h o WhatsApp recebe **apenas uma** resposta da IA, e que ela não é "fora do horário".
+
+### O que NÃO será mexido
+
+- Nada de layout, formato 24h dos inputs, design, ou outras telas.
+- Apenas: lock anti-duplicata, save do `business_hours` e logs de diagnóstico.
