@@ -1,21 +1,27 @@
-## Diagnóstico
+Diagnóstico confirmado:
+- O formato visual 24h está correto.
+- A decisão de “fora do horário” acontece no servidor em `src/lib/ai-respond.server.ts`.
+- Os logs mostram que o servidor já está usando `America/Sao_Paulo`, não o horário do PC.
+- O problema observado foi a configuração efetiva da IA: no log, sexta estava com `endMin:1200` = `20:00`, por isso às 21:22 Brasília a IA respondeu fora do horário mesmo a tela mostrando `23:00`.
 
-O `<input type="time">` herda o formato (12h AM/PM vs 24h) do **locale do navegador/SO**, não do código. Os valores enviados pelo `onChange` (`e.target.value`) sempre vêm em `HH:mm` 24h — então **o bug visual não afeta o que é salvo no banco**. O `endMin: 1200` (=20:00) que aparece nos logs é o valor real salvo, e a função `isWithinHours` está correta.
+Plano de correção:
+1. Ajustar somente a lógica de horário efetivo da IA em `src/lib/ai-respond.server.ts`:
+   - Normalizar horários antes da comparação.
+   - Continuar usando `America/Sao_Paulo` por padrão.
+   - Evitar fallback para horário local do servidor/PC quando o timezone estiver ausente ou inválido.
 
-Mesmo assim, o display em AM/PM confunde o usuário ao configurar (ele pensou que tinha salvo 23:00 quando salvou outra coisa). A correção é forçar o navegador a renderizar 24h.
+2. Garantir prioridade correta entre horários:
+   - Se `ai_working_hours` estiver salvo, usar ele.
+   - Se não estiver salvo, usar `business_hours`.
+   - Se a IA tiver horários antigos `20:00` mas o negócio estiver atualizado para `23:00`, alinhar a configuração efetiva para não continuar respondendo com dado antigo invisível para o usuário.
 
-## Mudanças
+3. Melhorar logs de diagnóstico sem mudar comportamento visual:
+   - Registrar `timezone`, dia, hora atual calculada em Brasília, horário de início/fim e fonte usada (`ai_working_hours` ou `business_hours`).
+   - Isso confirma rapidamente se o problema é dado salvo, timezone inválido ou comparação.
 
-1. **`src/routes/_authenticated.ai-agent.tsx`** (linhas 632–648): adicionar `lang="pt-BR"` e `step={60}` nos dois `<input type="time">`.
-2. **`src/routes/_authenticated.settings.workspace.tsx`** (linhas 287, 297): mesmo ajuste nos dois inputs.
-3. Opcional: adicionar uma regra CSS global em `src/styles.css` escondendo `::-webkit-datetime-edit-ampm-field` como fallback para navegadores que ignoram `lang`.
+4. Não mexer em layout, aparência, campos visuais ou outras partes do sistema.
 
-## Verificação
-
-- Abrir `/ai-agent` e `/settings/workspace` e confirmar que os horários aparecem `08:00`, `23:00` (sem AM/PM).
-- Editar Sex para 23:00, salvar, e checar logs: `endMin` deve virar `1380`.
-- Mandar mensagem de teste às 22:00 → IA deve responder normalmente.
-
-## Nota técnica
-
-Não há mudança em lógica de horário, parsing, fuso ou backend. Apenas atributos HTML/CSS de apresentação dos inputs.
+Validação após implementar:
+- Testar com sexta/sábado até `23:00`.
+- Confirmar nos logs que `endMin` vira `1380`.
+- Confirmar que às 21h/22h Brasília a IA não retorna mais `send_out_of_hours`.
