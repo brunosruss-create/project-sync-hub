@@ -460,13 +460,24 @@ export async function runAiResponse(input: AiRunInput): Promise<AiRunResult> {
   const withinAny =
     sourceResults.length === 0 || sourceResults.some((s) => s.within);
   if (!withinAny) {
-    const fallbackOutEnabled = aiHours?.__out_of_hours?.enabled;
-    const outEnabled =
-      profile.ai_out_of_hours_enabled ??
-      (typeof fallbackOutEnabled === "boolean" ? fallbackOutEnabled : true);
+    // SEGURANCA: a mensagem fora do horario so e enviada quando o usuario
+    // optou EXPLICITAMENTE por ativar. Se nao houver coluna nem marcador
+    // no JSON, assumimos FALSE para evitar spam quando o workspace nao
+    // configurou nada (caso comum em ambientes antigos).
+    const columnValue =
+      typeof profile.ai_out_of_hours_enabled === "boolean"
+        ? profile.ai_out_of_hours_enabled
+        : null;
+    const jsonFallback =
+      typeof aiHours?.__out_of_hours?.enabled === "boolean"
+        ? aiHours.__out_of_hours.enabled
+        : null;
+    const outEnabled = columnValue ?? jsonFallback ?? false;
     console.log("[ai hours] decision", {
       tz,
       sourceResults,
+      column_value: columnValue,
+      json_fallback: jsonFallback,
       ai_out_of_hours_enabled: outEnabled,
       action: outEnabled ? "send_out_of_hours" : "skip_out_of_hours_disabled",
     });
