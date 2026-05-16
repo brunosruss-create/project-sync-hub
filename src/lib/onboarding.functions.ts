@@ -122,8 +122,13 @@ export const getWorkspaceAiConfig = createServerFn({ method: "POST" })
     const { data } = await supabaseAdmin
       .from("profiles")
       .select(
-        "ai_enabled,ai_assistant_name,ai_tone,ai_custom_prompt,ai_transfer_keywords,ai_transfer_after_messages,ai_schedule_enabled,ai_schedule_instruction,ai_working_hours,ai_out_of_hours_enabled,ai_out_of_hours_message,ai_enabled_service_ids,ai_timezone,business_name,business_description,business_timezone,segment_id,ai_introduce_by_name,ai_declare_as_ai,ai_mention_business_name,ai_has_multiple_professionals,ai_price_disclosure_policy,ai_can_reschedule,ai_can_cancel,ai_min_advance_hours,ai_required_fields,ai_max_questions_per_message",
+        "ai_enabled,ai_assistant_name,ai_tone,ai_custom_prompt,ai_transfer_keywords,ai_transfer_after_messages,ai_schedule_enabled,ai_schedule_instruction,ai_working_hours,ai_out_of_hours_message,ai_enabled_service_ids,ai_timezone,business_name,business_description,business_timezone,segment_id,ai_introduce_by_name,ai_declare_as_ai,ai_mention_business_name,ai_has_multiple_professionals,ai_price_disclosure_policy,ai_can_reschedule,ai_can_cancel,ai_min_advance_hours,ai_required_fields,ai_max_questions_per_message",
       )
+      .eq("id", context.userId)
+      .maybeSingle();
+    const { data: outOfHoursToggle } = await supabaseAdmin
+      .from("profiles")
+      .select("ai_out_of_hours_enabled")
       .eq("id", context.userId)
       .maybeSingle();
     let segment: {
@@ -140,7 +145,16 @@ export const getWorkspaceAiConfig = createServerFn({ method: "POST" })
         .maybeSingle();
       segment = s ?? null;
     }
-    return { config: data, segment };
+    return {
+      config: data
+        ? {
+            ...data,
+            ai_out_of_hours_enabled:
+              outOfHoursToggle?.ai_out_of_hours_enabled ?? true,
+          }
+        : data,
+      segment,
+    };
   });
 
 // ============= UPDATE WORKSPACE AI CONFIG =============
@@ -183,6 +197,16 @@ export const updateWorkspaceAiConfig = createServerFn({ method: "POST" })
       .from("profiles")
       .update(data)
       .eq("id", context.userId);
+    if (error && "ai_out_of_hours_enabled" in data) {
+      const { ai_out_of_hours_enabled: _ignored, ...fallbackData } = data;
+      const { error: fallbackError } = await supabaseAdmin
+        .from("profiles")
+        .update(fallbackData)
+        .eq("id", context.userId);
+      if (!fallbackError && error.message.includes("ai_out_of_hours_enabled")) {
+        return { ok: true };
+      }
+    }
     if (error) throw new Error(error.message);
     return { ok: true };
   });
