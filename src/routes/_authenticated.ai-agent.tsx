@@ -682,10 +682,19 @@ function AIAgentPage() {
           </div>
 
           <div style={{ marginTop: 16 }}>
+            <label className="flex items-center gap-2" style={{ fontSize: 13, marginBottom: 12 }}>
+              <input
+                type="checkbox"
+                checked={offHoursEnabled}
+                onChange={(e) => setOffHoursEnabled(e.target.checked)}
+              />
+              Enviar mensagem fora do horário
+            </label>
             <Field label="Mensagem fora do horário">
               <textarea
                 style={{ ...input, height: 80, padding: 10, resize: "vertical" }}
                 value={offHoursMsg}
+                disabled={!offHoursEnabled}
                 onChange={(e) => setOffHoursMsg(e.target.value)}
               />
             </Field>
