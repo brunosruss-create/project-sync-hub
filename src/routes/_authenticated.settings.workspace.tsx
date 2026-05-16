@@ -64,7 +64,7 @@ function WorkspacePage() {
   const [phone, setPhone] = React.useState("");
   const [site, setSite] = React.useState("");
   const [tz, setTz] = React.useState("America/Sao_Paulo");
-  const [offHoursEnabled, setOffHoursEnabled] = React.useState(true);
+  const [offHoursEnabled, setOffHoursEnabled] = React.useState(false);
   const [welcome, setWelcome] = React.useState(
     "Olá! Bem-vindo(a). Em instantes um atendente irá responder.",
   );
