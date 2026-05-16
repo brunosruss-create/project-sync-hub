@@ -11,7 +11,9 @@ export type BusinessHours = Record<
 function readOutOfHoursEnabled(row: any, direct?: boolean | null): boolean {
   if (typeof direct === "boolean") return direct;
   const marker = row?.ai_working_hours?.__out_of_hours?.enabled;
-  return typeof marker === "boolean" ? marker : true;
+  // Default seguro: false. Se o usuario nunca configurou explicitamente,
+  // NAO enviamos a mensagem fora do horario (evita spam).
+  return typeof marker === "boolean" ? marker : false;
 }
 
 function mergeOutOfHoursMarker(hours: unknown, enabled: boolean) {
