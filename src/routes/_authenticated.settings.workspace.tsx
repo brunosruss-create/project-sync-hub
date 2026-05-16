@@ -285,6 +285,8 @@ function WorkspacePage() {
                 </label>
                 <input
                   type="time"
+                  lang="pt-BR"
+                  step={60}
                   value={h.start}
                   disabled={!h.active}
                   onChange={(e) =>
@@ -295,6 +297,8 @@ function WorkspacePage() {
                 <span style={{ fontSize: 12, color: "var(--text-muted)" }}>até</span>
                 <input
                   type="time"
+                  lang="pt-BR"
+                  step={60}
                   value={h.end}
                   disabled={!h.active}
                   onChange={(e) => setHours({ ...hours, [d.key]: { ...h, end: e.target.value } })}
