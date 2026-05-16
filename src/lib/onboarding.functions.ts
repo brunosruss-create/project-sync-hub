@@ -8,6 +8,17 @@ export type BusinessHours = Record<
   { active: boolean; start: string; end: string }
 >;
 
+function readOutOfHoursEnabled(row: any, direct?: boolean | null): boolean {
+  if (typeof direct === "boolean") return direct;
+  const marker = row?.ai_working_hours?.__out_of_hours?.enabled;
+  return typeof marker === "boolean" ? marker : true;
+}
+
+function mergeOutOfHoursMarker(hours: unknown, enabled: boolean) {
+  const base = hours && typeof hours === "object" && !Array.isArray(hours) ? hours : {};
+  return { ...base, __out_of_hours: { enabled } };
+}
+
 // ============= LIST PUBLIC ACTIVE SEGMENTS (onboarding) =============
 export const listActiveSegments = createServerFn({ method: "POST" })
   .middleware([requireSupabaseAuth])
