@@ -106,7 +106,7 @@ function WorkspacePage() {
     if (typeof p.welcome_message === "string" && p.welcome_message.length > 0) {
       setWelcome(p.welcome_message);
     }
-    setOffHoursEnabled(p.ai_out_of_hours_enabled ?? true);
+    setOffHoursEnabled(p.ai_out_of_hours_enabled ?? false);
     if (typeof p.business_address === "string") setAddress(p.business_address);
     if (typeof p.business_phone === "string") setPhone(p.business_phone);
     if (typeof p.business_website === "string") setSite(p.business_website);
