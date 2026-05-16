@@ -424,16 +424,36 @@ export async function runAiResponse(input: AiRunInput): Promise<AiRunResult> {
       }
     | null;
 
-  const tz =
+  // Sempre validar timezone — se inválido, força Brasília (nunca cai no fuso do servidor).
+  const rawTz =
     (profile.ai_timezone as string | null) ||
     (profile.business_timezone as string | null) ||
     "America/Sao_Paulo";
+  let tz = "America/Sao_Paulo";
+  try {
+    new Intl.DateTimeFormat("en-US", { timeZone: rawTz });
+    tz = rawTz;
+  } catch {
+    console.log("[ai hours] timezone inválido, usando America/Sao_Paulo", { rawTz });
+  }
   const aiHours = profile.ai_working_hours as WorkingHours | null;
   const bizHours = profile.business_hours as WorkingHours | null;
+  // Workspace (business_hours) é a fonte de verdade. ai_working_hours só é
+  // usado como fallback quando o negócio ainda não configurou horários.
   const effectiveHours =
-    aiHours && typeof aiHours === "object" && Object.keys(aiHours).length > 0
-      ? aiHours
-      : bizHours;
+    bizHours && typeof bizHours === "object" && Object.keys(bizHours).length > 0
+      ? bizHours
+      : aiHours;
+  const source =
+    bizHours && typeof bizHours === "object" && Object.keys(bizHours).length > 0
+      ? "business_hours"
+      : "ai_working_hours";
+  console.log("[ai hours] check", {
+    tz,
+    source,
+    has_ai_hours: !!aiHours,
+    has_biz_hours: !!bizHours,
+  });
   if (!isWithinHours(effectiveHours, tz)) {
     const out = profile.ai_out_of_hours_message ?? "Estamos fora do horário de atendimento.";
     if (!data.preview) {
