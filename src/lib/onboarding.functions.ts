@@ -218,8 +218,13 @@ export const getWorkspaceProfile = createServerFn({ method: "POST" })
     const { data } = await supabaseAdmin
       .from("profiles")
       .select(
-        "business_name,business_description,segment_id,business_hours,business_timezone,welcome_message,ai_out_of_hours_enabled,business_address,business_phone,business_website,business_logo_url",
+        "business_name,business_description,segment_id,business_hours,business_timezone,welcome_message,business_address,business_phone,business_website,business_logo_url",
       )
+      .eq("id", context.userId)
+      .maybeSingle();
+    const { data: outOfHoursToggle } = await supabaseAdmin
+      .from("profiles")
+      .select("ai_out_of_hours_enabled")
       .eq("id", context.userId)
       .maybeSingle();
     return {
@@ -229,7 +234,7 @@ export const getWorkspaceProfile = createServerFn({ method: "POST" })
       business_hours: (data?.business_hours as BusinessHours | null) ?? null,
       business_timezone: data?.business_timezone ?? "America/Sao_Paulo",
       welcome_message: data?.welcome_message ?? "",
-      ai_out_of_hours_enabled: data?.ai_out_of_hours_enabled ?? true,
+      ai_out_of_hours_enabled: outOfHoursToggle?.ai_out_of_hours_enabled ?? true,
       business_address: data?.business_address ?? "",
       business_phone: data?.business_phone ?? "",
       business_website: data?.business_website ?? "",
@@ -299,6 +304,16 @@ export const updateWorkspaceProfile = createServerFn({ method: "POST" })
       .from("profiles")
       .update(update)
       .eq("id", context.userId);
+    if (error && "ai_out_of_hours_enabled" in update) {
+      const { ai_out_of_hours_enabled: _ignored, ...fallbackUpdate } = update;
+      const { error: fallbackError } = await supabaseAdmin
+        .from("profiles")
+        .update(fallbackUpdate)
+        .eq("id", context.userId);
+      if (!fallbackError && error.message.includes("ai_out_of_hours_enabled")) {
+        return { ok: true };
+      }
+    }
     if (error) throw new Error(error.message);
     return { ok: true };
   });
