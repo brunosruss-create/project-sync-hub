@@ -237,6 +237,7 @@ export const updateWorkspaceProfile = createServerFn({ method: "POST" })
         business_hours: HoursSchema,
         business_timezone: z.string().min(1).max(64).optional(),
         welcome_message: z.string().max(2000).optional(),
+        ai_out_of_hours_enabled: z.boolean().optional(),
         business_address: z.string().max(300).optional(),
         business_phone: z.string().max(40).optional(),
         business_website: z.string().max(300).optional(),
@@ -263,6 +264,9 @@ export const updateWorkspaceProfile = createServerFn({ method: "POST" })
       update.ai_timezone = data.business_timezone;
     }
     if (data.welcome_message !== undefined) update.welcome_message = data.welcome_message;
+    if (data.ai_out_of_hours_enabled !== undefined) {
+      update.ai_out_of_hours_enabled = data.ai_out_of_hours_enabled;
+    }
     if (data.business_address !== undefined) update.business_address = data.business_address;
     if (data.business_phone !== undefined) update.business_phone = data.business_phone;
     if (data.business_website !== undefined) update.business_website = data.business_website;
