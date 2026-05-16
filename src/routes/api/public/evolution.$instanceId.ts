@@ -403,6 +403,56 @@ export const Route = createFileRoute("/api/public/evolution/$instanceId")({
                   humanInControl,
                 });
                 if (mediaType === "text" && caption.trim() && !humanInControl) {
+                  // ───── Mensagem de boas-vindas (primeiro contato) ─────
+                  try {
+                    const { data: profileWelcome } = await supabaseAdmin
+                      .from("profiles")
+                      .select("welcome_message,welcome_message_enabled")
+                      .eq("id", row.owner_user_id)
+                      .maybeSingle();
+                    const welcomeText = (profileWelcome as any)?.welcome_message?.trim?.();
+                    const welcomeEnabled =
+                      (profileWelcome as any)?.welcome_message_enabled === true;
+                    if (welcomeEnabled && welcomeText) {
+                      const { count: outboundCount } = await supabaseAdmin
+                        .from("messages")
+                        .select("id", { count: "exact", head: true })
+                        .eq("contact_id", contactId)
+                        .eq("direction", "outbound");
+                      if ((outboundCount ?? 0) === 0) {
+                        let waMessageId: string | null = null;
+                        try {
+                          const r: any = await evo.sendText(row.instance_name as string, {
+                            number: phone,
+                            text: welcomeText,
+                          });
+                          waMessageId = r?.key?.id ?? r?.messageId ?? null;
+                        } catch (e: any) {
+                          console.error("[evolution welcome] sendText falhou:", e?.message ?? e);
+                        }
+                        await supabaseAdmin.from("messages").insert({
+                          owner_user_id: row.owner_user_id,
+                          contact_id: contactId,
+                          direction: "outbound",
+                          content: welcomeText,
+                          message_type: "text",
+                          status: "sent",
+                          whatsapp_message_id: waMessageId,
+                          is_ai: true,
+                        });
+                        await supabaseAdmin
+                          .from("contacts")
+                          .update({
+                            last_message: welcomeText,
+                            last_message_at: new Date().toISOString(),
+                            last_direction: "outbound",
+                          })
+                          .eq("id", contactId);
+                      }
+                    }
+                  } catch (e: any) {
+                    console.error("[evolution welcome] erro:", e?.message ?? e);
+                  }
                   try {
                     const { data: history } = await supabaseAdmin
                       .from("messages")
