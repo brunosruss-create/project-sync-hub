@@ -120,7 +120,16 @@
   }
 
   html,
+  body,
+  #root {
+    height: 100%;
+    margin: 0;
+    padding: 0;
+  }
+
+  html,
   body {
+    overflow: hidden;
     background-color: var(--bg-base);
     color: var(--text-primary);
     font-family: var(--font-sans);
