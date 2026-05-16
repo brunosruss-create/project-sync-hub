@@ -1,41 +1,62 @@
-Minha opinião: adicionar apenas um botão para “desativar mensagem fora do horário” ajuda a testar, mas não resolve a causa raiz sozinho. Pelos logs, a mensagem está saindo do próprio fluxo da IA (`send_out_of_hours`) e a duplicidade vem porque duas entradas/processamentos chegam quase juntas. Então o melhor é fazer um ajuste pequeno, mas definitivo: permitir desligar o envio dessa mensagem e registrar claramente qual fonte de horário decidiu bloquear.
+O bug real está claro:
 
-Plano cirúrgico:
+- O switch grande desliga `ai_enabled`, então ele desliga a IA inteira.
+- A mensagem fora do horário depende de `ai_out_of_hours_enabled`, mas essa coluna não existe no banco publicado.
+- Sem a coluna, o backend cai no fallback antigo e assume `true`; por isso a IA desliga, mas a mensagem fora do horário continua saindo.
 
-1. Criar um controle único para a mensagem fora do horário
-- Adicionar no perfil um campo booleano, por exemplo `ai_out_of_hours_enabled`, padrão `true`.
-- Esse campo controla somente se a IA deve enviar a mensagem “fora do horário”.
-- Não mexe na IA inteira, nem em boas-vindas, nem em atendimento normal.
+Plano de correção, com risco mínimo:
 
-2. Mostrar esse controle nas duas telas
-- Em Configurações do Negócio: opção “Enviar mensagem fora do horário”.
-- Em Configuração da IA: a mesma opção, lendo e salvando o mesmo campo.
-- Assim, se desativar em qualquer uma das telas, a resposta automática fora do horário para de ser enviada.
+1. Criar a coluna real da configuração
 
-3. Alterar o disparo no servidor
-- Quando estiver fora do horário:
-  - se `ai_out_of_hours_enabled = true`: mantém o comportamento atual e envia a mensagem.
-  - se `ai_out_of_hours_enabled = false`: não envia nada e registra `skip`/motivo interno.
-- Isso permite testar se a mensagem vem realmente desse ponto da IA.
+Adicionar somente schema:
 
-4. Melhorar logs sem mudar comportamento extra
-- Logar qual fonte bloqueou: `business_hours`, `ai_working_hours`, ou ambas.
-- Logar o horário atual em Brasília, início/fim usados e se a mensagem estava ativada/desativada.
-- Isso vai mostrar exatamente qual configuração está causando conflito.
+```sql
+ALTER TABLE public.profiles
+ADD COLUMN IF NOT EXISTS ai_out_of_hours_enabled boolean DEFAULT false;
+```
 
-5. Ajuste recomendado para evitar conflito permanente
-- Como existem dois campos de horário (`business_hours` e `ai_working_hours`), manter as duas telas salvas separadamente é a fonte do problema.
-- A correção final mais limpa é a IA usar somente `ai_working_hours` para decidir se responde fora do horário, e deixar `business_hours` apenas como horário informativo do negócio.
-- Se quiser máxima segurança agora, faço primeiro o toggle + logs. Depois, com o diagnóstico confirmado, unificamos a regra.
+Não vou colocar `UPDATE` dentro da migration, porque migration deve ser só estrutura.
 
-Arquivos envolvidos:
-- `supabase/manual/...`: migration para adicionar `ai_out_of_hours_enabled`.
-- `src/lib/onboarding.functions.ts`: carregar/salvar o novo campo nas duas telas.
-- `src/routes/_authenticated.settings.workspace.tsx`: exibir o controle em Configurações do Negócio.
-- `src/routes/_authenticated.ai-agent.tsx`: exibir o controle em Configuração da IA.
-- `src/lib/ai-respond.server.ts`: respeitar o controle e melhorar logs do horário.
+2. Corrigir a decisão no backend
+
+Em `src/lib/ai-respond.server.ts`:
+
+- Se `ai_out_of_hours_enabled` existir, usar esse valor.
+- Se ainda não existir, aceitar apenas fallback JSON explícito.
+- Se não existir coluna nem fallback explícito, assumir `false`, nunca `true`.
+
+Resultado: workspace antigo sem configuração explícita para de mandar a mensagem fora do horário.
+
+3. Salvar o toggle certo sem mexer na IA
+
+Em `src/lib/onboarding.functions.ts`:
+
+- Quando salvar “Enviar mensagem fora do horário”, gravar `ai_out_of_hours_enabled`.
+- Também manter `ai_working_hours.__out_of_hours.enabled` sincronizado por compatibilidade.
+- Não alterar `ai_enabled` nesse fluxo além do que a tela já faz quando o usuário mexe no switch principal.
+
+4. Ajustar a UI para evitar confusão
+
+Em `/ai-agent`:
+
+- Deixar o switch grande explicitamente como “IA ativa/pausada”.
+- Deixar “Enviar mensagem fora do horário” separado como controle exclusivo dessa mensagem.
+- Não mudar layout amplo nem fluxo principal.
+
+5. Não tocar no core
+
+Não vou alterar:
+
+- Webhook Evolution.
+- Conexão de múltiplas instâncias.
+- Prompt/Gemini.
+- Resposta normal da IA.
+- Transferência para humano.
+- Dedup.
+- Cálculo de horário/timezone.
 
 Resultado esperado:
-- Você consegue desligar só a mensagem fora do horário sem desligar a IA.
-- Se ela continuar chegando mesmo desligada, saberemos que vem de outro lugar fora desse fluxo.
-- Se parar, confirmamos que o conflito está no check de horário da IA e seguimos para unificar a origem dos horários.
+
+- A IA pode ficar ligada normalmente.
+- O checkbox de fora do horário desliga só a mensagem fora do horário.
+- A mensagem não será enviada por padrão quando a configuração estiver ausente.

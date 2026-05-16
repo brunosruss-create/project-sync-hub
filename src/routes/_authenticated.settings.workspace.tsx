@@ -64,7 +64,7 @@ function WorkspacePage() {
   const [phone, setPhone] = React.useState("");
   const [site, setSite] = React.useState("");
   const [tz, setTz] = React.useState("America/Sao_Paulo");
-  const [offHoursEnabled, setOffHoursEnabled] = React.useState(true);
+  const [offHoursEnabled, setOffHoursEnabled] = React.useState(false);
   const [welcome, setWelcome] = React.useState(
     "Olá! Bem-vindo(a). Em instantes um atendente irá responder.",
   );
@@ -106,7 +106,7 @@ function WorkspacePage() {
     if (typeof p.welcome_message === "string" && p.welcome_message.length > 0) {
       setWelcome(p.welcome_message);
     }
-    setOffHoursEnabled(p.ai_out_of_hours_enabled ?? true);
+    setOffHoursEnabled(p.ai_out_of_hours_enabled ?? false);
     if (typeof p.business_address === "string") setAddress(p.business_address);
     if (typeof p.business_phone === "string") setPhone(p.business_phone);
     if (typeof p.business_website === "string") setSite(p.business_website);

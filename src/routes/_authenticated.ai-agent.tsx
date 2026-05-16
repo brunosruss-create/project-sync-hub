@@ -127,7 +127,7 @@ function AIAgentPage() {
     setScheduleInstr(c.ai_schedule_instruction ?? "");
     const wh = (c.ai_working_hours ?? null) as WorkingHours | null;
     setHours(wh ? { ...DEFAULT_HOURS, ...wh } : DEFAULT_HOURS);
-    setOffHoursEnabled(c.ai_out_of_hours_enabled ?? true);
+    setOffHoursEnabled(c.ai_out_of_hours_enabled ?? false);
     setOffHoursMsg(c.ai_out_of_hours_message ?? "");
     const cAny = c as Record<string, unknown>;
     const ids = cAny.ai_enabled_service_ids;

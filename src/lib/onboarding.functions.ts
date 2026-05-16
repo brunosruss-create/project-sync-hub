@@ -11,7 +11,9 @@ export type BusinessHours = Record<
 function readOutOfHoursEnabled(row: any, direct?: boolean | null): boolean {
   if (typeof direct === "boolean") return direct;
   const marker = row?.ai_working_hours?.__out_of_hours?.enabled;
-  return typeof marker === "boolean" ? marker : true;
+  // Default seguro: false. Se o usuario nunca configurou explicitamente,
+  // NAO enviamos a mensagem fora do horario (evita spam).
+  return typeof marker === "boolean" ? marker : false;
 }
 
 function mergeOutOfHoursMarker(hours: unknown, enabled: boolean) {
@@ -204,21 +206,27 @@ export const updateWorkspaceAiConfig = createServerFn({ method: "POST" })
       .parse(input),
   )
   .handler(async ({ data, context }) => {
+    // Se o usuario mexeu no toggle "fora do horario", garantimos que tanto
+    // a coluna real quanto o marcador no JSON ai_working_hours fiquem
+    // sincronizados. Isso protege contra o caso da coluna nao existir
+    // ainda no banco (fallback) e contra divergencias entre as 2 telas.
+    const payload: Record<string, unknown> = { ...data };
+    if (typeof data.ai_out_of_hours_enabled === "boolean") {
+      payload.ai_working_hours = mergeOutOfHoursMarker(
+        data.ai_working_hours ?? null,
+        data.ai_out_of_hours_enabled,
+      );
+    }
     const { error } = await supabaseAdmin
       .from("profiles")
-      .update(data)
+      .update(payload)
       .eq("id", context.userId);
-    if (error && "ai_out_of_hours_enabled" in data) {
-      const { ai_out_of_hours_enabled, ...fallbackData } = data;
+    if (error && "ai_out_of_hours_enabled" in payload) {
+      // Coluna nao existe no banco -> grava apenas no JSON.
+      const { ai_out_of_hours_enabled: _omit, ...fallbackData } = payload;
       const { error: fallbackError } = await supabaseAdmin
         .from("profiles")
-        .update({
-          ...fallbackData,
-          ai_working_hours: mergeOutOfHoursMarker(
-            data.ai_working_hours,
-            ai_out_of_hours_enabled ?? true,
-          ),
-        })
+        .update(fallbackData)
         .eq("id", context.userId);
       if (!fallbackError && error.message.includes("ai_out_of_hours_enabled")) {
         return { ok: true };
@@ -312,6 +320,18 @@ export const updateWorkspaceProfile = createServerFn({ method: "POST" })
     if (data.welcome_message !== undefined) update.welcome_message = data.welcome_message;
     if (data.ai_out_of_hours_enabled !== undefined) {
       update.ai_out_of_hours_enabled = data.ai_out_of_hours_enabled;
+      // Sincroniza tambem o marcador no JSON ai_working_hours, garantindo
+      // que se a coluna nao existir/estiver dessincronizada, o backend
+      // consiga ler o valor correto pelo fallback.
+      const { data: current } = await supabaseAdmin
+        .from("profiles")
+        .select("ai_working_hours")
+        .eq("id", context.userId)
+        .maybeSingle();
+      update.ai_working_hours = mergeOutOfHoursMarker(
+        current?.ai_working_hours,
+        data.ai_out_of_hours_enabled,
+      );
     }
     if (data.business_address !== undefined) update.business_address = data.business_address;
     if (data.business_phone !== undefined) update.business_phone = data.business_phone;
@@ -322,21 +342,11 @@ export const updateWorkspaceProfile = createServerFn({ method: "POST" })
       .update(update)
       .eq("id", context.userId);
     if (error && "ai_out_of_hours_enabled" in update) {
-      const { ai_out_of_hours_enabled, ...fallbackUpdate } = update;
-      const { data: current } = await supabaseAdmin
-        .from("profiles")
-        .select("ai_working_hours")
-        .eq("id", context.userId)
-        .maybeSingle();
+      // Coluna ainda nao existe -> remove e tenta de novo. O JSON ja foi setado acima.
+      const { ai_out_of_hours_enabled: _omit, ...fallbackUpdate } = update;
       const { error: fallbackError } = await supabaseAdmin
         .from("profiles")
-        .update({
-          ...fallbackUpdate,
-          ai_working_hours: mergeOutOfHoursMarker(
-            current?.ai_working_hours,
-            Boolean(ai_out_of_hours_enabled),
-          ),
-        })
+        .update(fallbackUpdate)
         .eq("id", context.userId);
       if (!fallbackError && error.message.includes("ai_out_of_hours_enabled")) {
         return { ok: true };
