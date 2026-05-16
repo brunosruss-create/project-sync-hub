@@ -247,11 +247,19 @@ export const getWorkspaceProfile = createServerFn({ method: "POST" })
       )
       .eq("id", context.userId)
       .maybeSingle();
-    const { data: outOfHoursToggle } = await supabaseAdmin
-      .from("profiles")
-      .select("ai_out_of_hours_enabled")
-      .eq("id", context.userId)
-      .maybeSingle();
+    // welcome_message_enabled e uma coluna nova; lemos em select separado
+    // para tolerar o caso da migration ainda nao ter rodado.
+    let welcomeEnabled = false;
+    {
+      const { data: row, error } = await supabaseAdmin
+        .from("profiles")
+        .select("welcome_message_enabled")
+        .eq("id", context.userId)
+        .maybeSingle();
+      if (!error && row && typeof (row as any).welcome_message_enabled === "boolean") {
+        welcomeEnabled = (row as any).welcome_message_enabled;
+      }
+    }
     return {
       business_name: data?.business_name ?? "",
       business_description: data?.business_description ?? "",
@@ -259,7 +267,7 @@ export const getWorkspaceProfile = createServerFn({ method: "POST" })
       business_hours: (data?.business_hours as BusinessHours | null) ?? null,
       business_timezone: data?.business_timezone ?? "America/Sao_Paulo",
       welcome_message: data?.welcome_message ?? "",
-      ai_out_of_hours_enabled: readOutOfHoursEnabled(data, outOfHoursToggle?.ai_out_of_hours_enabled),
+      welcome_message_enabled: welcomeEnabled,
       business_address: data?.business_address ?? "",
       business_phone: data?.business_phone ?? "",
       business_website: data?.business_website ?? "",
@@ -291,7 +299,7 @@ export const updateWorkspaceProfile = createServerFn({ method: "POST" })
         business_hours: HoursSchema,
         business_timezone: z.string().min(1).max(64).optional(),
         welcome_message: z.string().max(2000).optional(),
-        ai_out_of_hours_enabled: z.boolean().optional(),
+        welcome_message_enabled: z.boolean().optional(),
         business_address: z.string().max(300).optional(),
         business_phone: z.string().max(40).optional(),
         business_website: z.string().max(300).optional(),
@@ -318,20 +326,8 @@ export const updateWorkspaceProfile = createServerFn({ method: "POST" })
       update.ai_timezone = data.business_timezone;
     }
     if (data.welcome_message !== undefined) update.welcome_message = data.welcome_message;
-    if (data.ai_out_of_hours_enabled !== undefined) {
-      update.ai_out_of_hours_enabled = data.ai_out_of_hours_enabled;
-      // Sincroniza tambem o marcador no JSON ai_working_hours, garantindo
-      // que se a coluna nao existir/estiver dessincronizada, o backend
-      // consiga ler o valor correto pelo fallback.
-      const { data: current } = await supabaseAdmin
-        .from("profiles")
-        .select("ai_working_hours")
-        .eq("id", context.userId)
-        .maybeSingle();
-      update.ai_working_hours = mergeOutOfHoursMarker(
-        current?.ai_working_hours,
-        data.ai_out_of_hours_enabled,
-      );
+    if (data.welcome_message_enabled !== undefined) {
+      update.welcome_message_enabled = data.welcome_message_enabled;
     }
     if (data.business_address !== undefined) update.business_address = data.business_address;
     if (data.business_phone !== undefined) update.business_phone = data.business_phone;
@@ -341,14 +337,14 @@ export const updateWorkspaceProfile = createServerFn({ method: "POST" })
       .from("profiles")
       .update(update)
       .eq("id", context.userId);
-    if (error && "ai_out_of_hours_enabled" in update) {
-      // Coluna ainda nao existe -> remove e tenta de novo. O JSON ja foi setado acima.
-      const { ai_out_of_hours_enabled: _omit, ...fallbackUpdate } = update;
+    if (error && "welcome_message_enabled" in update) {
+      // Coluna ainda nao existe -> remove e tenta de novo sem ela.
+      const { welcome_message_enabled: _omit, ...fallbackUpdate } = update;
       const { error: fallbackError } = await supabaseAdmin
         .from("profiles")
         .update(fallbackUpdate)
         .eq("id", context.userId);
-      if (!fallbackError && error.message.includes("ai_out_of_hours_enabled")) {
+      if (!fallbackError && error.message.includes("welcome_message_enabled")) {
         return { ok: true };
       }
     }
