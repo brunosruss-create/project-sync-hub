@@ -453,9 +453,32 @@ export async function runAiResponse(input: AiRunInput): Promise<AiRunResult> {
     tz,
     sources: sources.map((s) => s.name),
   });
+  const sourceResults = sources.map((s) => ({
+    name: s.name,
+    within: isWithinHours(s.hours, tz),
+  }));
   const withinAny =
-    sources.length === 0 || sources.some((s) => isWithinHours(s.hours, tz));
+    sourceResults.length === 0 || sourceResults.some((s) => s.within);
   if (!withinAny) {
+    const outEnabled = profile.ai_out_of_hours_enabled ?? true;
+    console.log("[ai hours] decision", {
+      tz,
+      sourceResults,
+      ai_out_of_hours_enabled: outEnabled,
+      action: outEnabled ? "send_out_of_hours" : "skip_out_of_hours_disabled",
+    });
+    if (!outEnabled) {
+      if (!data.preview) {
+        await supabaseAdmin.from("ai_usage_logs").insert({
+          workspace_owner_id: data.workspace_owner_id,
+          segment_id: segment?.id ?? null,
+          contact_id: data.contact_id ?? null,
+          action: "skip_out_of_hours_disabled",
+          dedup_key: dedupKey,
+        });
+      }
+      return { action: "skip", reason: "out_of_hours_disabled" };
+    }
     const out = profile.ai_out_of_hours_message ?? "Estamos fora do horário de atendimento.";
     if (!data.preview) {
       await supabaseAdmin.from("ai_usage_logs").insert({
