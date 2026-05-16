@@ -206,21 +206,27 @@ export const updateWorkspaceAiConfig = createServerFn({ method: "POST" })
       .parse(input),
   )
   .handler(async ({ data, context }) => {
+    // Se o usuario mexeu no toggle "fora do horario", garantimos que tanto
+    // a coluna real quanto o marcador no JSON ai_working_hours fiquem
+    // sincronizados. Isso protege contra o caso da coluna nao existir
+    // ainda no banco (fallback) e contra divergencias entre as 2 telas.
+    const payload: Record<string, unknown> = { ...data };
+    if (typeof data.ai_out_of_hours_enabled === "boolean") {
+      payload.ai_working_hours = mergeOutOfHoursMarker(
+        data.ai_working_hours ?? null,
+        data.ai_out_of_hours_enabled,
+      );
+    }
     const { error } = await supabaseAdmin
       .from("profiles")
-      .update(data)
+      .update(payload)
       .eq("id", context.userId);
-    if (error && "ai_out_of_hours_enabled" in data) {
-      const { ai_out_of_hours_enabled, ...fallbackData } = data;
+    if (error && "ai_out_of_hours_enabled" in payload) {
+      // Coluna nao existe no banco -> grava apenas no JSON.
+      const { ai_out_of_hours_enabled, ...fallbackData } = payload;
       const { error: fallbackError } = await supabaseAdmin
         .from("profiles")
-        .update({
-          ...fallbackData,
-          ai_working_hours: mergeOutOfHoursMarker(
-            data.ai_working_hours,
-            ai_out_of_hours_enabled ?? true,
-          ),
-        })
+        .update(fallbackData)
         .eq("id", context.userId);
       if (!fallbackError && error.message.includes("ai_out_of_hours_enabled")) {
         return { ok: true };
