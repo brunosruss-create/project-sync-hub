@@ -328,6 +328,14 @@ function WorkspacePage() {
             <option value="America/Belem">America/Belem (GMT-3)</option>
           </select>
         </Field>
+        <label className="flex items-center gap-2" style={{ fontSize: 13 }}>
+          <input
+            type="checkbox"
+            checked={offHoursEnabled}
+            onChange={(e) => setOffHoursEnabled(e.target.checked)}
+          />
+          Enviar mensagem fora do horário
+        </label>
       </FieldGroup>
 
       <FieldGroup label="Mensagem de boas-vindas">
