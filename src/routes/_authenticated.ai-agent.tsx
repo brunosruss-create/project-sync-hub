@@ -631,6 +631,8 @@ function AIAgentPage() {
                   </label>
                   <input
                     type="time"
+                    lang="pt-BR"
+                    step={60}
                     value={h.start}
                     disabled={!h.enabled}
                     onChange={(e) =>
@@ -640,6 +642,8 @@ function AIAgentPage() {
                   />
                   <input
                     type="time"
+                    lang="pt-BR"
+                    step={60}
                     value={h.end}
                     disabled={!h.enabled}
                     onChange={(e) =>

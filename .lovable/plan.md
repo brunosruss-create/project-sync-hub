@@ -1,44 +1,21 @@
 ## Diagnóstico
 
-O problema está no cálculo de horário em `src/lib/ai-respond.server.ts`.
+O `<input type="time">` herda o formato (12h AM/PM vs 24h) do **locale do navegador/SO**, não do código. Os valores enviados pelo `onChange` (`e.target.value`) sempre vêm em `HH:mm` 24h — então **o bug visual não afeta o que é salvo no banco**. O `endMin: 1200` (=20:00) que aparece nos logs é o valor real salvo, e a função `isWithinHours` está correta.
 
-A tela de Configuração da IA salva os dias como:
+Mesmo assim, o display em AM/PM confunde o usuário ao configurar (ele pensou que tinha salvo 23:00 quando salvou outra coisa). A correção é forçar o navegador a renderizar 24h.
 
-```text
-monday, tuesday, wednesday, thursday, friday, saturday, sunday
-```
+## Mudanças
 
-Mas a função `isWithinHours()` usa `Intl.DateTimeFormat(... weekday: "long")`. Em runtime, isso pode retornar variações como `Monday`/`segunda-feira` dependendo do ambiente/locale, e o código procura essa string diretamente dentro de `ai_working_hours`. Quando a chave não bate, ele cai aqui:
+1. **`src/routes/_authenticated.ai-agent.tsx`** (linhas 632–648): adicionar `lang="pt-BR"` e `step={60}` nos dois `<input type="time">`.
+2. **`src/routes/_authenticated.settings.workspace.tsx`** (linhas 287, 297): mesmo ajuste nos dois inputs.
+3. Opcional: adicionar uma regra CSS global em `src/styles.css` escondendo `::-webkit-datetime-edit-ampm-field` como fallback para navegadores que ignoram `lang`.
 
-```ts
-if (!cfg || !cfg.enabled) return false;
-```
+## Verificação
 
-Resultado: mesmo com sexta/sábado até `23:00`, o sistema pode não encontrar `friday`/`saturday` corretamente e manda a mensagem de fora do horário.
+- Abrir `/ai-agent` e `/settings/workspace` e confirmar que os horários aparecem `08:00`, `23:00` (sem AM/PM).
+- Editar Sex para 23:00, salvar, e checar logs: `endMin` deve virar `1380`.
+- Mandar mensagem de teste às 22:00 → IA deve responder normalmente.
 
-Também existe uma segunda inconsistência: Configuração do Negócio usa chaves curtas (`mon`, `tue`, etc.) com campo `active`; Configuração da IA usa chaves longas (`monday`, `tuesday`, etc.) com campo `enabled`. Hoje o respondedor da IA só entende o formato da IA.
+## Nota técnica
 
-## Plano de correção
-
-1. **Blindar o cálculo de horário da IA** em `src/lib/ai-respond.server.ts`:
-   - trocar a detecção por nome de dia para um índice numérico confiável;
-   - mapear o dia atual diretamente para `sunday/monday/...`;
-   - aceitar também `mon/tue/...` como fallback;
-   - aceitar tanto `enabled` quanto `active` para compatibilidade;
-   - tratar horários no formato `HH:mm` de forma segura.
-
-2. **Corrigir limite final do horário**:
-   - manter `23:00` como válido até `23:00` inclusive;
-   - evitar falso “fora do horário” por parse incorreto de hora, timezone ou chave de dia.
-
-3. **Opcionalmente alinhar fallback com horário do negócio**:
-   - se `ai_working_hours` estiver vazio/nulo, usar `business_hours` antes de considerar sempre aberto;
-   - isso faz Configuração do Negócio e Configuração da IA trabalharem juntas sem quebrar quem já configurou horário específico da IA.
-
-4. **Adicionar logs mínimos de diagnóstico** quando cair fora do horário:
-   - dia resolvido;
-   - hora atual em minutos;
-   - timezone usado;
-   - configuração encontrada para o dia.
-
-Isso deixa o comportamento cirúrgico: se a IA está configurada até `11:00 PM`, ela só responderá “fora do horário” depois desse limite real no fuso selecionado.
+Não há mudança em lógica de horário, parsing, fuso ou backend. Apenas atributos HTML/CSS de apresentação dos inputs.
