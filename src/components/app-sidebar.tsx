@@ -52,6 +52,7 @@ export function AppSidebar() {
       className="hidden md:flex flex-col shrink-0"
       style={{
         width: 240,
+        height: "100vh",
         background: "var(--bg-surface)",
         borderRight: "1px solid var(--border)",
       }}
