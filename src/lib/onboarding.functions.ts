@@ -223,7 +223,7 @@ export const updateWorkspaceAiConfig = createServerFn({ method: "POST" })
       .eq("id", context.userId);
     if (error && "ai_out_of_hours_enabled" in payload) {
       // Coluna nao existe no banco -> grava apenas no JSON.
-      const { ai_out_of_hours_enabled, ...fallbackData } = payload;
+      const { ai_out_of_hours_enabled: _omit, ...fallbackData } = payload;
       const { error: fallbackError } = await supabaseAdmin
         .from("profiles")
         .update(fallbackData)
