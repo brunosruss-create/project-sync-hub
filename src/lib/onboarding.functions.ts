@@ -320,6 +320,18 @@ export const updateWorkspaceProfile = createServerFn({ method: "POST" })
     if (data.welcome_message !== undefined) update.welcome_message = data.welcome_message;
     if (data.ai_out_of_hours_enabled !== undefined) {
       update.ai_out_of_hours_enabled = data.ai_out_of_hours_enabled;
+      // Sincroniza tambem o marcador no JSON ai_working_hours, garantindo
+      // que se a coluna nao existir/estiver dessincronizada, o backend
+      // consiga ler o valor correto pelo fallback.
+      const { data: current } = await supabaseAdmin
+        .from("profiles")
+        .select("ai_working_hours")
+        .eq("id", context.userId)
+        .maybeSingle();
+      update.ai_working_hours = mergeOutOfHoursMarker(
+        current?.ai_working_hours,
+        data.ai_out_of_hours_enabled,
+      );
     }
     if (data.business_address !== undefined) update.business_address = data.business_address;
     if (data.business_phone !== undefined) update.business_phone = data.business_phone;
@@ -330,21 +342,11 @@ export const updateWorkspaceProfile = createServerFn({ method: "POST" })
       .update(update)
       .eq("id", context.userId);
     if (error && "ai_out_of_hours_enabled" in update) {
-      const { ai_out_of_hours_enabled, ...fallbackUpdate } = update;
-      const { data: current } = await supabaseAdmin
-        .from("profiles")
-        .select("ai_working_hours")
-        .eq("id", context.userId)
-        .maybeSingle();
+      // Coluna ainda nao existe -> remove e tenta de novo. O JSON ja foi setado acima.
+      const { ai_out_of_hours_enabled: _omit, ...fallbackUpdate } = update;
       const { error: fallbackError } = await supabaseAdmin
         .from("profiles")
-        .update({
-          ...fallbackUpdate,
-          ai_working_hours: mergeOutOfHoursMarker(
-            current?.ai_working_hours,
-            Boolean(ai_out_of_hours_enabled),
-          ),
-        })
+        .update(fallbackUpdate)
         .eq("id", context.userId);
       if (!fallbackError && error.message.includes("ai_out_of_hours_enabled")) {
         return { ok: true };
