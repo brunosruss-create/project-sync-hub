@@ -438,23 +438,24 @@ export async function runAiResponse(input: AiRunInput): Promise<AiRunResult> {
   }
   const aiHours = profile.ai_working_hours as WorkingHours | null;
   const bizHours = profile.business_hours as WorkingHours | null;
-  // Workspace (business_hours) é a fonte de verdade. ai_working_hours só é
-  // usado como fallback quando o negócio ainda não configurou horários.
-  const effectiveHours =
-    bizHours && typeof bizHours === "object" && Object.keys(bizHours).length > 0
-      ? bizHours
-      : aiHours;
-  const source =
-    bizHours && typeof bizHours === "object" && Object.keys(bizHours).length > 0
-      ? "business_hours"
-      : "ai_working_hours";
+  // Existem duas telas de configuração (Negócio e IA) que salvam em campos
+  // separados e com chaves diferentes (ex: "fri" vs "friday"). Para evitar
+  // que uma sobrescreva a outra, consideramos atendendo se QUALQUER uma das
+  // configurações preenchidas indicar que estamos no horário.
+  const sources: { name: string; hours: WorkingHours }[] = [];
+  if (bizHours && typeof bizHours === "object" && Object.keys(bizHours).length > 0) {
+    sources.push({ name: "business_hours", hours: bizHours });
+  }
+  if (aiHours && typeof aiHours === "object" && Object.keys(aiHours).length > 0) {
+    sources.push({ name: "ai_working_hours", hours: aiHours });
+  }
   console.log("[ai hours] check", {
     tz,
-    source,
-    has_ai_hours: !!aiHours,
-    has_biz_hours: !!bizHours,
+    sources: sources.map((s) => s.name),
   });
-  if (!isWithinHours(effectiveHours, tz)) {
+  const withinAny =
+    sources.length === 0 || sources.some((s) => isWithinHours(s.hours, tz));
+  if (!withinAny) {
     const out = profile.ai_out_of_hours_message ?? "Estamos fora do horário de atendimento.";
     if (!data.preview) {
       await supabaseAdmin.from("ai_usage_logs").insert({
