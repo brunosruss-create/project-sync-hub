@@ -92,6 +92,7 @@ function AIAgentPage() {
   const [scheduleInstr, setScheduleInstr] = React.useState("");
   const [enabledServices, setEnabledServices] = React.useState<string[]>([]);
   const [hours, setHours] = React.useState<WorkingHours>(DEFAULT_HOURS);
+  const [offHoursEnabled, setOffHoursEnabled] = React.useState(true);
   const [offHoursMsg, setOffHoursMsg] = React.useState("");
   const [timezone, setTimezone] = React.useState("America/Sao_Paulo");
   const [tester, setTester] = React.useState(false);
@@ -126,6 +127,7 @@ function AIAgentPage() {
     setScheduleInstr(c.ai_schedule_instruction ?? "");
     const wh = (c.ai_working_hours ?? null) as WorkingHours | null;
     setHours(wh ? { ...DEFAULT_HOURS, ...wh } : DEFAULT_HOURS);
+    setOffHoursEnabled(c.ai_out_of_hours_enabled ?? true);
     setOffHoursMsg(c.ai_out_of_hours_message ?? "");
     const cAny = c as Record<string, unknown>;
     const ids = cAny.ai_enabled_service_ids;
@@ -167,6 +169,7 @@ function AIAgentPage() {
           ai_schedule_enabled: autoSchedule,
           ai_schedule_instruction: scheduleInstr || null,
           ai_working_hours: hours,
+          ai_out_of_hours_enabled: offHoursEnabled,
           ai_out_of_hours_message: offHoursMsg,
           ai_enabled_service_ids: enabledServices,
           ai_timezone: timezone,
