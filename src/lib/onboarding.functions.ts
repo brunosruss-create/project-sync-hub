@@ -8,6 +8,17 @@ export type BusinessHours = Record<
   { active: boolean; start: string; end: string }
 >;
 
+function readOutOfHoursEnabled(row: any, direct?: boolean | null): boolean {
+  if (typeof direct === "boolean") return direct;
+  const marker = row?.ai_working_hours?.__out_of_hours?.enabled;
+  return typeof marker === "boolean" ? marker : true;
+}
+
+function mergeOutOfHoursMarker(hours: unknown, enabled: boolean) {
+  const base = hours && typeof hours === "object" && !Array.isArray(hours) ? hours : {};
+  return { ...base, __out_of_hours: { enabled } };
+}
+
 // ============= LIST PUBLIC ACTIVE SEGMENTS (onboarding) =============
 export const listActiveSegments = createServerFn({ method: "POST" })
   .middleware([requireSupabaseAuth])
@@ -126,6 +137,11 @@ export const getWorkspaceAiConfig = createServerFn({ method: "POST" })
       )
       .eq("id", context.userId)
       .maybeSingle();
+    const { data: outOfHoursToggle } = await supabaseAdmin
+      .from("profiles")
+      .select("ai_out_of_hours_enabled")
+      .eq("id", context.userId)
+      .maybeSingle();
     let segment: {
       id: string;
       name: string;
@@ -140,7 +156,16 @@ export const getWorkspaceAiConfig = createServerFn({ method: "POST" })
         .maybeSingle();
       segment = s ?? null;
     }
-    return { config: data, segment };
+    return {
+      config: data
+        ? {
+            ...data,
+            ai_out_of_hours_enabled:
+              readOutOfHoursEnabled(data, outOfHoursToggle?.ai_out_of_hours_enabled),
+          }
+        : data,
+      segment,
+    };
   });
 
 // ============= UPDATE WORKSPACE AI CONFIG =============
@@ -158,6 +183,7 @@ export const updateWorkspaceAiConfig = createServerFn({ method: "POST" })
         ai_schedule_enabled: z.boolean().optional(),
         ai_schedule_instruction: z.string().max(2000).optional().nullable(),
         ai_working_hours: z.record(z.string(), z.any()).optional(),
+        ai_out_of_hours_enabled: z.boolean().optional(),
         ai_out_of_hours_message: z.string().max(1000).optional(),
         ai_enabled_service_ids: z.array(z.string().uuid()).max(200).optional(),
         ai_timezone: z.string().min(1).max(64).optional(),
@@ -182,6 +208,22 @@ export const updateWorkspaceAiConfig = createServerFn({ method: "POST" })
       .from("profiles")
       .update(data)
       .eq("id", context.userId);
+    if (error && "ai_out_of_hours_enabled" in data) {
+      const { ai_out_of_hours_enabled, ...fallbackData } = data;
+      const { error: fallbackError } = await supabaseAdmin
+        .from("profiles")
+        .update({
+          ...fallbackData,
+          ai_working_hours: mergeOutOfHoursMarker(
+            data.ai_working_hours,
+            ai_out_of_hours_enabled ?? true,
+          ),
+        })
+        .eq("id", context.userId);
+      if (!fallbackError && error.message.includes("ai_out_of_hours_enabled")) {
+        return { ok: true };
+      }
+    }
     if (error) throw new Error(error.message);
     return { ok: true };
   });
@@ -193,8 +235,13 @@ export const getWorkspaceProfile = createServerFn({ method: "POST" })
     const { data } = await supabaseAdmin
       .from("profiles")
       .select(
-        "business_name,business_description,segment_id,business_hours,business_timezone,welcome_message,business_address,business_phone,business_website,business_logo_url",
+        "business_name,business_description,segment_id,business_hours,business_timezone,welcome_message,ai_working_hours,business_address,business_phone,business_website,business_logo_url",
       )
+      .eq("id", context.userId)
+      .maybeSingle();
+    const { data: outOfHoursToggle } = await supabaseAdmin
+      .from("profiles")
+      .select("ai_out_of_hours_enabled")
       .eq("id", context.userId)
       .maybeSingle();
     return {
@@ -204,6 +251,7 @@ export const getWorkspaceProfile = createServerFn({ method: "POST" })
       business_hours: (data?.business_hours as BusinessHours | null) ?? null,
       business_timezone: data?.business_timezone ?? "America/Sao_Paulo",
       welcome_message: data?.welcome_message ?? "",
+      ai_out_of_hours_enabled: readOutOfHoursEnabled(data, outOfHoursToggle?.ai_out_of_hours_enabled),
       business_address: data?.business_address ?? "",
       business_phone: data?.business_phone ?? "",
       business_website: data?.business_website ?? "",
@@ -235,6 +283,7 @@ export const updateWorkspaceProfile = createServerFn({ method: "POST" })
         business_hours: HoursSchema,
         business_timezone: z.string().min(1).max(64).optional(),
         welcome_message: z.string().max(2000).optional(),
+        ai_out_of_hours_enabled: z.boolean().optional(),
         business_address: z.string().max(300).optional(),
         business_phone: z.string().max(40).optional(),
         business_website: z.string().max(300).optional(),
@@ -261,6 +310,9 @@ export const updateWorkspaceProfile = createServerFn({ method: "POST" })
       update.ai_timezone = data.business_timezone;
     }
     if (data.welcome_message !== undefined) update.welcome_message = data.welcome_message;
+    if (data.ai_out_of_hours_enabled !== undefined) {
+      update.ai_out_of_hours_enabled = data.ai_out_of_hours_enabled;
+    }
     if (data.business_address !== undefined) update.business_address = data.business_address;
     if (data.business_phone !== undefined) update.business_phone = data.business_phone;
     if (data.business_website !== undefined) update.business_website = data.business_website;
@@ -269,6 +321,27 @@ export const updateWorkspaceProfile = createServerFn({ method: "POST" })
       .from("profiles")
       .update(update)
       .eq("id", context.userId);
+    if (error && "ai_out_of_hours_enabled" in update) {
+      const { ai_out_of_hours_enabled, ...fallbackUpdate } = update;
+      const { data: current } = await supabaseAdmin
+        .from("profiles")
+        .select("ai_working_hours")
+        .eq("id", context.userId)
+        .maybeSingle();
+      const { error: fallbackError } = await supabaseAdmin
+        .from("profiles")
+        .update({
+          ...fallbackUpdate,
+          ai_working_hours: mergeOutOfHoursMarker(
+            current?.ai_working_hours,
+            Boolean(ai_out_of_hours_enabled),
+          ),
+        })
+        .eq("id", context.userId);
+      if (!fallbackError && error.message.includes("ai_out_of_hours_enabled")) {
+        return { ok: true };
+      }
+    }
     if (error) throw new Error(error.message);
     return { ok: true };
   });

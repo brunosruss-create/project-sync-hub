@@ -64,6 +64,7 @@ function WorkspacePage() {
   const [phone, setPhone] = React.useState("");
   const [site, setSite] = React.useState("");
   const [tz, setTz] = React.useState("America/Sao_Paulo");
+  const [offHoursEnabled, setOffHoursEnabled] = React.useState(true);
   const [welcome, setWelcome] = React.useState(
     "Olá! Bem-vindo(a). Em instantes um atendente irá responder.",
   );
@@ -89,6 +90,7 @@ function WorkspacePage() {
           business_hours?: Hours | null;
           business_timezone?: string;
           welcome_message?: string;
+          ai_out_of_hours_enabled?: boolean;
           business_address?: string;
           business_phone?: string;
           business_website?: string;
@@ -104,6 +106,7 @@ function WorkspacePage() {
     if (typeof p.welcome_message === "string" && p.welcome_message.length > 0) {
       setWelcome(p.welcome_message);
     }
+    setOffHoursEnabled(p.ai_out_of_hours_enabled ?? true);
     if (typeof p.business_address === "string") setAddress(p.business_address);
     if (typeof p.business_phone === "string") setPhone(p.business_phone);
     if (typeof p.business_website === "string") setSite(p.business_website);
@@ -131,6 +134,7 @@ function WorkspacePage() {
           business_hours: hours,
           business_timezone: tz,
           welcome_message: welcome,
+          ai_out_of_hours_enabled: offHoursEnabled,
           business_address: address.trim(),
           business_phone: phone.trim(),
           business_website: site.trim(),
@@ -324,6 +328,14 @@ function WorkspacePage() {
             <option value="America/Belem">America/Belem (GMT-3)</option>
           </select>
         </Field>
+        <label className="flex items-center gap-2" style={{ fontSize: 13 }}>
+          <input
+            type="checkbox"
+            checked={offHoursEnabled}
+            onChange={(e) => setOffHoursEnabled(e.target.checked)}
+          />
+          Enviar mensagem fora do horário
+        </label>
       </FieldGroup>
 
       <FieldGroup label="Mensagem de boas-vindas">
