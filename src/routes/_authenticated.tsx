@@ -52,7 +52,7 @@ function AuthenticatedLayout() {
   }
 
   return (
-    <div className="flex min-h-screen w-full" style={{ background: "var(--bg-base)" }}>
+    <div className="flex h-screen w-full overflow-hidden" style={{ background: "var(--bg-base)" }}>
       <AppSidebar />
       <div className="flex-1 flex flex-col min-w-0">
         <AppTopbar />
