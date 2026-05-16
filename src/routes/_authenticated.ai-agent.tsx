@@ -186,6 +186,7 @@ function AIAgentPage() {
       }),
     onSuccess: () => {
       qc.invalidateQueries({ queryKey: ["workspace-ai-config"] });
+      qc.invalidateQueries({ queryKey: ["workspace-profile"] });
       toast.success("Configuração do agente salva");
     },
     onError: (e) => toast.error(e instanceof Error ? e.message : "Erro ao salvar"),
