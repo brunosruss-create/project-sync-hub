@@ -1,49 +1,41 @@
-## Diagnóstico (com base nos logs reais)
+Minha opinião: adicionar apenas um botão para “desativar mensagem fora do horário” ajuda a testar, mas não resolve a causa raiz sozinho. Pelos logs, a mensagem está saindo do próprio fluxo da IA (`send_out_of_hours`) e a duplicidade vem porque duas entradas/processamentos chegam quase juntas. Então o melhor é fazer um ajuste pequeno, mas definitivo: permitir desligar o envio dessa mensagem e registrar claramente qual fonte de horário decidiu bloquear.
 
-Os logs do servidor às 21:48 (Brasília) mostram **DUAS chamadas paralelas** da IA para a mesma mensagem do usuário, separadas por 69ms:
+Plano cirúrgico:
 
-```
-00:48:36.873 [ai hours] check {source:"business_hours"}     ← passou (dentro do horário)
-00:48:36.804 [ai hours] check {source:"business_hours"}     ← rejeitou
-00:48:36.804 [ai hours] fora do intervalo {nowMin:1308, startMin:480, endMin:1080}
-```
+1. Criar um controle único para a mensagem fora do horário
+- Adicionar no perfil um campo booleano, por exemplo `ai_out_of_hours_enabled`, padrão `true`.
+- Esse campo controla somente se a IA deve enviar a mensagem “fora do horário”.
+- Não mexe na IA inteira, nem em boas-vindas, nem em atendimento normal.
 
-Isso explica exatamente o print: **uma resposta "Olá! Como posso te ajudar hoje?" + uma resposta "fora do horário"**, ambas no mesmo minuto. O Evolution está reentregando o mesmo webhook em paralelo, e o dedup atual (que só grava em `ai_usage_logs` *depois* de processar) deixa as duas chamadas passarem pela janela de corrida.
+2. Mostrar esse controle nas duas telas
+- Em Configurações do Negócio: opção “Enviar mensagem fora do horário”.
+- Em Configuração da IA: a mesma opção, lendo e salvando o mesmo campo.
+- Assim, se desativar em qualquer uma das telas, a resposta automática fora do horário para de ser enviada.
 
-Além disso, os logs revelam o segundo problema: o `business_hours` salvo para sexta é **8:00–18:00** (`endMin:1080`), não 23:00 como o usuário acredita ter configurado. Por isso às 21:48 a IA responde "fora do horário" — o dado salvo no banco realmente diz que está fechado.
+3. Alterar o disparo no servidor
+- Quando estiver fora do horário:
+  - se `ai_out_of_hours_enabled = true`: mantém o comportamento atual e envia a mensagem.
+  - se `ai_out_of_hours_enabled = false`: não envia nada e registra `skip`/motivo interno.
+- Isso permite testar se a mensagem vem realmente desse ponto da IA.
 
-Resumindo, são **dois bugs diferentes** que estavam sendo tratados como um:
+4. Melhorar logs sem mudar comportamento extra
+- Logar qual fonte bloqueou: `business_hours`, `ai_working_hours`, ou ambas.
+- Logar o horário atual em Brasília, início/fim usados e se a mensagem estava ativada/desativada.
+- Isso vai mostrar exatamente qual configuração está causando conflito.
 
-1. **Race condition no webhook** → produz a resposta dupla (uma normal + uma "fora do horário").
-2. **Horário salvo errado** → produz a mensagem "fora do horário" mesmo às 21h, porque `business_hours.fri.end = "18:00"` no banco.
+5. Ajuste recomendado para evitar conflito permanente
+- Como existem dois campos de horário (`business_hours` e `ai_working_hours`), manter as duas telas salvas separadamente é a fonte do problema.
+- A correção final mais limpa é a IA usar somente `ai_working_hours` para decidir se responde fora do horário, e deixar `business_hours` apenas como horário informativo do negócio.
+- Se quiser máxima segurança agora, faço primeiro o toggle + logs. Depois, com o diagnóstico confirmado, unificamos a regra.
 
-## Plano de correção
+Arquivos envolvidos:
+- `supabase/manual/...`: migration para adicionar `ai_out_of_hours_enabled`.
+- `src/lib/onboarding.functions.ts`: carregar/salvar o novo campo nas duas telas.
+- `src/routes/_authenticated.settings.workspace.tsx`: exibir o controle em Configurações do Negócio.
+- `src/routes/_authenticated.ai-agent.tsx`: exibir o controle em Configuração da IA.
+- `src/lib/ai-respond.server.ts`: respeitar o controle e melhorar logs do horário.
 
-### 1. Eliminar a race do webhook (`src/routes/api/public/evolution.$instanceId.ts`)
-
-- Antes de chamar `runAiResponse`, fazer um **insert atômico** num registro de lock por `whatsapp_message_id` (na própria tabela `ai_usage_logs` com action `"lock"` ou numa tabela `ai_message_locks` com unique constraint em `(workspace_owner_id, wa_message_id)`).
-- Se o insert falhar por conflito de unicidade, **abortar a iteração** sem chamar a IA nem enviar texto.
-- Garante que duas entregas paralelas do mesmo `m.key.id` resultem em apenas UMA resposta.
-
-### 2. Conferir o que a tela de Configurações realmente está salvando
-
-- Abrir `src/routes/_authenticated.settings.workspace.tsx` e verificar o payload enviado em `business_hours` no save.
-- Comparar com o que está no banco (`profiles.business_hours` do owner).
-- Se a UI mostra 23:00 mas o banco tem 18:00, o bug está no save (provavelmente no parser do input de texto `HH:mm` que substituiu o `<input type="time">` — pode estar lendo um state desatualizado, ou só salvando alguns dias).
-- Corrigir o save para que o valor exibido na UI seja exatamente o gravado.
-
-### 3. Logar a fonte e o conteúdo dos horários efetivos
-
-- No `[ai hours] check` adicionar `effectiveHours` resumido (ex: `{fri:"08:00-23:00"}`) para confirmar visualmente nos logs que o que a IA leu bate com o que a UI mostra.
-- Sem isso, qualquer divergência futura volta a ser invisível.
-
-### 4. Validação
-
-- Enviar uma mensagem e confirmar nos logs apenas **um** `[ai hours] check` por mensagem.
-- Conferir no banco que `business_hours.fri.end` é `"23:00"` depois de salvar 23:00 na tela.
-- Confirmar que às 22h o WhatsApp recebe **apenas uma** resposta da IA, e que ela não é "fora do horário".
-
-### O que NÃO será mexido
-
-- Nada de layout, formato 24h dos inputs, design, ou outras telas.
-- Apenas: lock anti-duplicata, save do `business_hours` e logs de diagnóstico.
+Resultado esperado:
+- Você consegue desligar só a mensagem fora do horário sem desligar a IA.
+- Se ela continuar chegando mesmo desligada, saberemos que vem de outro lugar fora desse fluxo.
+- Se parar, confirmamos que o conflito está no check de horário da IA e seguimos para unificar a origem dos horários.
