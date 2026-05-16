@@ -460,7 +460,10 @@ export async function runAiResponse(input: AiRunInput): Promise<AiRunResult> {
   const withinAny =
     sourceResults.length === 0 || sourceResults.some((s) => s.within);
   if (!withinAny) {
-    const outEnabled = profile.ai_out_of_hours_enabled ?? true;
+    const fallbackOutEnabled = aiHours?.__out_of_hours?.enabled;
+    const outEnabled =
+      profile.ai_out_of_hours_enabled ??
+      (typeof fallbackOutEnabled === "boolean" ? fallbackOutEnabled : true);
     console.log("[ai hours] decision", {
       tz,
       sourceResults,
