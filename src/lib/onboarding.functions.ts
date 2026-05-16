@@ -197,16 +197,6 @@ export const updateWorkspaceAiConfig = createServerFn({ method: "POST" })
       .from("profiles")
       .update(data)
       .eq("id", context.userId);
-    if (error && "ai_out_of_hours_enabled" in data) {
-      const { ai_out_of_hours_enabled: _ignored, ...fallbackData } = data;
-      const { error: fallbackError } = await supabaseAdmin
-        .from("profiles")
-        .update(fallbackData)
-        .eq("id", context.userId);
-      if (!fallbackError && error.message.includes("ai_out_of_hours_enabled")) {
-        return { ok: true };
-      }
-    }
     if (error) throw new Error(error.message);
     return { ok: true };
   });
@@ -304,16 +294,6 @@ export const updateWorkspaceProfile = createServerFn({ method: "POST" })
       .from("profiles")
       .update(update)
       .eq("id", context.userId);
-    if (error && "ai_out_of_hours_enabled" in update) {
-      const { ai_out_of_hours_enabled: _ignored, ...fallbackUpdate } = update;
-      const { error: fallbackError } = await supabaseAdmin
-        .from("profiles")
-        .update(fallbackUpdate)
-        .eq("id", context.userId);
-      if (!fallbackError && error.message.includes("ai_out_of_hours_enabled")) {
-        return { ok: true };
-      }
-    }
     if (error) throw new Error(error.message);
     return { ok: true };
   });
