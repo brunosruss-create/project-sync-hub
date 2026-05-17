@@ -1783,7 +1783,7 @@ function AppointmentModal({
       return;
     }
     const draft: Appointment = {
-      id: initial?.id ?? `ap-${Date.now()}`,
+      id: initial?.id ?? (typeof crypto !== "undefined" && crypto.randomUUID ? crypto.randomUUID() : `${Date.now()}-${Math.random().toString(36).slice(2)}`),
       contact_id: cid,
       service_id: serviceId,
       agent_id: agentId,

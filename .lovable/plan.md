@@ -1,71 +1,65 @@
-## Plano — 3 correções
+# Diagnóstico
 
-### 1. Cancelamento libera o slot na agenda
-Hoje o agendamento cancelado continua ocupando o horário visualmente e bloqueando a detecção de conflito.
+Ao clicar em "Novo Agendamento" na agenda e salvar, aparece:
 
-- `src/routes/_authenticated.schedule.tsx`
-  - No `upsert`, ignorar conflitos com `status === "cancelled"`.
-  - Derivar `visibleItems = items.filter(a => a.status !== "cancelled")` e passar esse array para `WeekView`, `DayView`, `MonthView` e `AgendaList`.
-  - Mantém `items` completo internamente (não quebra o modal de detalhes nem o histórico).
+> Falha ao salvar: invalid input syntax for type uuid: "ap-1779051139566"
 
-### 2. Histórico do lead registra todas as ações
-Hoje o "Histórico" mostra o estado atual do appointment (só 1 linha), não as ações.
+## Causa raiz
 
-Criar tabela `appointment_events` (created / rescheduled / cancelled) e exibir como timeline.
+`src/routes/_authenticated.schedule.tsx` (linha 1786), no formulário `AppointmentForm`:
 
-- Nova migration: `supabase/manual/20260609000000_appointment_events.sql` (SQL colado no chat).
-- `src/lib/appointments.functions.ts`: dentro de `notifyAppointmentChange`, gravar uma linha em `appointment_events` (kind + starts_at antigo/novo) antes do envio do WhatsApp. Assim cobre create + reschedule + cancel disparados pela agenda.
-- `src/routes/_authenticated.schedule.tsx`: passar o `previous.starts_at` para a server fn quando for `rescheduled`, para registrar o de/para.
-- `src/features/inbox/conversation-panel.tsx` → `HistoryTab`: buscar `appointment_events` JOIN com `appointments` + `services`, renderizar uma linha por evento com badge ("Agendado", "Reagendado", "Cancelado") e horário formatado em pt-BR.
-
-### 3. Horário da mensagem WhatsApp bate com o da agenda
-A agenda usa `Date.getHours()` (tz do navegador). O servidor formata com `business_timezone`. Quando os dois divergem → diferença de horas (ex.: agenda 08:00, mensagem 06:00).
-
-Solução: tratar o horário escolhido sempre no `business_timezone`, ignorando o tz do navegador.
-
-- Novo helper `src/features/schedule/tz.ts`:
-  - `zonedToUtc(year, month, day, hour, minute, tz): Date` — converte H/M no tz do negócio para o instante UTC correto.
-  - `utcToZonedFields(d: Date, tz): { y, mo, da, h, mi }` — extrai os campos wall-clock no tz do negócio.
-  - `makeLocalLikeDate(fields)` — cria `new Date(y,mo,da,h,mi)` para que `getHours()` reflita o tz do negócio mesmo no navegador.
-- `src/routes/_authenticated.schedule.tsx`:
-  - Obter `tz` via `useProfile()` (com fallback `America/Sao_Paulo`).
-  - No `mapAppt`: armazenar `starts_at` / `ends_at` como "fake-local Date" reproduzindo as horas do `business_timezone` (mantém todo o grid/`getHours()` funcionando sem mexer nos cálculos de layout).
-  - No `upsert`: ao enviar `toISOString()`, converter de volta usando `zonedToUtc` para que o instante UTC gravado corresponda ao H/M escolhido no tz do negócio.
-  - No modal `AppointmentForm`: idem — `baseDate.getHours()` continua valendo porque `mapAppt` já normalizou.
-
-Com isso a agenda e a mensagem mostram exatamente o mesmo H:M.
-
-## Detalhes técnicos
-
-### SQL (será colado aberto no chat)
-```sql
-create table if not exists public.appointment_events (
-  id uuid primary key default gen_random_uuid(),
-  appointment_id uuid not null references public.appointments(id) on delete cascade,
-  owner_user_id uuid not null references auth.users(id) on delete cascade,
-  contact_id uuid references public.contacts(id) on delete set null,
-  kind text not null check (kind in ('created','rescheduled','cancelled')),
-  starts_at timestamptz,        -- novo horário (created/rescheduled) ou horário cancelado
-  previous_starts_at timestamptz, -- só em rescheduled
-  created_at timestamptz not null default now()
-);
-create index if not exists appointment_events_contact_idx
-  on public.appointment_events(contact_id, created_at desc);
-create index if not exists appointment_events_owner_idx
-  on public.appointment_events(owner_user_id, created_at desc);
-alter table public.appointment_events enable row level security;
-drop policy if exists "ws members read appointment_events" on public.appointment_events;
-create policy "ws members read appointment_events"
-  on public.appointment_events for select to authenticated
-  using (owner_user_id = public.get_my_workspace_owner());
+```ts
+const draft: Appointment = {
+  id: initial?.id ?? `ap-${Date.now()}`,
+  ...
+};
 ```
-(insert via service role no server fn — sem policy de insert para o usuário.)
 
-### Restrições
-- Sem libs externas de data.
-- Sem mexer em auth/schema fora da nova tabela.
-- Sem regressão nas funções existentes do schedule grid.
+Para agendamentos novos, é gerado um ID temporário no formato `ap-<timestamp>` e enviado para o `upsert` em `public.appointments`, cuja coluna `id` é `uuid`. O Postgres rejeita o valor e o agendamento nunca é criado.
 
-## Riscos
-- Refator de tz pode quebrar comparações de data (`sameDay`, ordenação). Mitigado por manter Dates "fake-local" consistentes — todas as comparações continuam valendo.
-- Conflito: filtrar cancelled libera o slot mas não impede que histórico/relatórios contem cancelados (ok, eles vêm do banco direto).
+Como consequência, **nada do fluxo posterior funciona**:
+- `notifyAppointmentChange` valida `appointmentId: z.string().uuid()` (em `src/lib/appointments.functions.ts`), então mesmo se o insert passasse, a notificação WhatsApp seria rejeitada com erro de validação Zod.
+- O evento `appointment_events` (histórico do lead) também não é gravado porque depende da mesma função.
+- A confirmação por WhatsApp (`sendBookingConfirmation`) nunca dispara.
+
+O resto do formulário (contato, serviço, agente, horários, fuso) está integrado corretamente ao core — o único bloqueio é o ID inválido.
+
+# Correção (mínima, sem regressão)
+
+## Arquivo único: `src/routes/_authenticated.schedule.tsx`
+
+**1. Linha 1786** — gerar UUID válido para novos agendamentos:
+
+```ts
+id: initial?.id ?? (crypto.randomUUID?.() ?? `${Date.now()}-${Math.random().toString(36).slice(2)}`),
+```
+
+Usa `crypto.randomUUID()` (disponível no browser moderno e SSR Node 19+). O fallback existe apenas por segurança de tipos; na prática `crypto.randomUUID` está presente nos ambientes-alvo.
+
+Isso garante:
+- `appointments.id` recebe um uuid válido → insert no Supabase funciona
+- `notifyAppointmentChange({ appointmentId: draft.id })` passa na validação Zod
+- WhatsApp de confirmação dispara
+- Evento `created` é registrado em `appointment_events` → histórico do lead aparece
+- Realtime channel (`appointments-rt`) recebe o INSERT e o card renderiza para outros clientes
+
+## Verificações que NÃO precisam mudar
+
+Já estão corretos:
+- `payload.owner_user_id` é preenchido via `useWorkspaceOwnerId()`
+- `starts_at` / `ends_at` são convertidos com `zonedLocalToUtc(..., tz)` antes do envio
+- Detecção de conflito ignora `status === 'cancelled'`
+- `notifyChangeFn` é chamado com `kind: "created"` após upsert bem-sucedido
+
+# Como validar após aplicar
+
+1. Abrir `/schedule` → "Novo Agendamento" → preencher contato, serviço, agente, horário → Salvar.
+2. Toast: "Agendamento criado."
+3. Card aparece no grid no horário escolhido.
+4. Se `notify_whatsapp` estiver ativo: cliente recebe a mensagem de confirmação com data/hora batendo com o slot da agenda.
+5. Abrir o lead na Inbox → aba "Histórico" → evento "created" registrado com serviço e horário.
+
+# Escopo
+
+- 1 arquivo, 1 linha alterada.
+- Sem mudanças de schema, auth, libs externas, ou qualquer outro fluxo.
