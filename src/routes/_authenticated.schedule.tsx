@@ -328,12 +328,7 @@ function SchedulePage() {
     setItems((prev) => prev.map((a) => (a.id === id ? { ...a, status } : a)));
     nfy.success(`Status: ${STATUS_LABEL[status]}`);
     await supabase.from("appointments").update({ status }).eq("id", id);
-    if (
-      status === "cancelled" &&
-      before &&
-      before.status !== "cancelled" &&
-      before.notify_whatsapp
-    ) {
+    if (status === "cancelled" && before && before.status !== "cancelled") {
       void notifyChangeFn({ data: { appointmentId: id, kind: "cancelled" } }).catch(
         (e) => console.warn("[schedule] notify cancel falhou:", e),
       );
