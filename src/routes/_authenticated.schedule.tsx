@@ -958,7 +958,7 @@ function EventBlock({
   const startMin =
     a.starts_at.getHours() * 60 + a.starts_at.getMinutes() - HOUR_START * 60;
   const dur = (a.ends_at.getTime() - a.starts_at.getTime()) / 60_000;
-  const top = Math.max(0, startMin * PX_PER_MIN);
+  const top = Math.max(0, GRID_TOP_PAD + startMin * PX_PER_MIN);
   const height = Math.max(22, dur * PX_PER_MIN - 2);
   const past = isPast(a.ends_at);
 
