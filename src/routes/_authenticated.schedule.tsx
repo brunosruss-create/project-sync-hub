@@ -19,6 +19,7 @@ import { useServerFn } from "@tanstack/react-start";
 import { useQuery } from "@tanstack/react-query";
 import { listProfessionals } from "@/lib/professionals.functions";
 import { notifyAppointmentChange } from "@/lib/appointments.functions";
+import { useWorkspaceOwnerId } from "@/hooks/use-workspace-owner";
 import { EmptyState } from "@/components/empty-state";
 import {
   HOUR_END,
@@ -41,8 +42,10 @@ import {
   addDays,
   addMinutes,
   formatHM,
+  formatDateBR,
   fromDateTimeInput,
   isPast,
+  parseDateBR,
   overlap,
   sameDay,
   startOfDay,
@@ -232,6 +235,7 @@ function SchedulePage() {
   const open = openId ? items.find((i) => i.id === openId) ?? null : null;
 
   const notifyChangeFn = useServerFn(notifyAppointmentChange);
+  const { workspaceOwnerId } = useWorkspaceOwnerId();
 
   const upsert = async (draft: Appointment) => {
     // overlap detection
@@ -248,9 +252,8 @@ function SchedulePage() {
       exists ? prev.map((a) => (a.id === draft.id ? draft : a)) : [...prev, draft],
     );
     setEditing(null);
-    nfy.success(exists ? "Agendamento atualizado." : "Agendamento criado.");
 
-    const { error } = await supabase.from("appointments").upsert({
+    const payload: Record<string, unknown> = {
       id: draft.id,
       contact_id: draft.contact_id || null,
       service_id: draft.service_id || null,
@@ -261,11 +264,22 @@ function SchedulePage() {
       status: draft.status,
       notes: draft.notes,
       notify_whatsapp: draft.notify_whatsapp,
-    });
+    };
+    if (workspaceOwnerId) payload.owner_user_id = workspaceOwnerId;
+
+    const { error } = await supabase.from("appointments").upsert(payload);
     if (error) {
-      console.warn("[schedule] persistência ignorada:", error.message);
-      return true;
+      console.warn("[schedule] upsert falhou:", error.message);
+      nfy.error(`Falha ao salvar: ${error.message}`);
+      // reverte UI otimista
+      setItems((prev) =>
+        exists
+          ? prev.map((a) => (a.id === draft.id ? previous! : a))
+          : prev.filter((a) => a.id !== draft.id),
+      );
+      return false;
     }
+    nfy.success(exists ? "Agendamento atualizado." : "Agendamento criado.");
     if (draft.notify_whatsapp) {
       const rescheduled =
         exists && previous!.starts_at.getTime() !== draft.starts_at.getTime();
@@ -1675,6 +1689,7 @@ function AppointmentModal({
   );
   const [agentId, setAgentId] = React.useState(initial?.agent_id ?? agents[0]?.id ?? "");
   const [date, setDate] = React.useState(toDateInput(baseDate));
+  const [dateText, setDateText] = React.useState(formatDateBR(toDateInput(baseDate)));
   const [time, setTime] = React.useState(baseHM);
   const [notes, setNotes] = React.useState(initial?.notes ?? "");
   const [notify, setNotify] = React.useState(initial?.notify_whatsapp ?? true);
@@ -1922,9 +1937,31 @@ function AppointmentModal({
             <div style={{ display: "grid", gridTemplateColumns: "1fr 1fr", gap: 12 }}>
               <Field label="Data" required>
                 <input
-                  type="date"
-                  value={date}
-                  onChange={(e) => setDate(e.target.value)}
+                  type="text"
+                  inputMode="numeric"
+                  placeholder="dd/mm/aaaa"
+                  value={dateText}
+                  onChange={(e) => {
+                    const raw = e.target.value.replace(/[^\d/]/g, "").slice(0, 10);
+                    let masked = raw;
+                    const d = raw.replace(/\D/g, "");
+                    if (d.length > 4) masked = `${d.slice(0, 2)}/${d.slice(2, 4)}/${d.slice(4, 8)}`;
+                    else if (d.length > 2) masked = `${d.slice(0, 2)}/${d.slice(2)}`;
+                    else masked = d;
+                    setDateText(masked);
+                    const iso = parseDateBR(masked);
+                    if (iso) setDate(iso);
+                  }}
+                  onBlur={() => {
+                    // resincroniza a máscara com o estado ISO válido
+                    const iso = parseDateBR(dateText);
+                    if (iso) {
+                      setDate(iso);
+                      setDateText(formatDateBR(iso));
+                    } else {
+                      setDateText(formatDateBR(date));
+                    }
+                  }}
                   style={inputStyle}
                 />
               </Field>
