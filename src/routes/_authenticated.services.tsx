@@ -652,7 +652,7 @@ function ServiceModal({
       description: description.trim(),
       price_cents: cents,
       duration_minutes: minutes,
-      emoji,
+      
       color,
       status,
       created_at: initial?.created_at ?? new Date(),
