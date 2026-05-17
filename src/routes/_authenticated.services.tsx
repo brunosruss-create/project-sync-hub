@@ -387,20 +387,16 @@ function ServiceCard({
       {/* Header */}
       <div className="flex items-start" style={{ gap: 10 }}>
         <div
+          aria-hidden
           style={{
-            width: 36,
+            width: 10,
             height: 36,
-            borderRadius: 8,
-            background: `color-mix(in oklab, ${accent} 14%, var(--bg-overlay))`,
-            display: "inline-flex",
-            alignItems: "center",
-            justifyContent: "center",
-            fontSize: 18,
+            borderRadius: 4,
+            background: accent,
             flexShrink: 0,
           }}
-        >
-          {service.emoji}
-        </div>
+        />
+
         <div className="min-w-0" style={{ paddingRight: 64 }}>
           <div
             className="truncate"
