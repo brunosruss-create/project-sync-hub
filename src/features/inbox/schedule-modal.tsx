@@ -715,53 +715,79 @@ export function ScheduleModal({
 
           {/* Services */}
           <FieldGroup label="Serviços" hint={`${selectedServices.length} selecionado(s) · ${formatDuration(totalMin)} · ${formatCurrencyBRL(totalCents)}`}>
-            <div className="flex flex-col" style={{ gap: 6, maxHeight: 200, overflowY: "auto" }}>
-              {services.map((s) => {
-                const on = selected.has(s.id);
-                return (
-                  <button
-                    key={s.id}
-                    type="button"
-                    onClick={() => toggle(s.id)}
-                    className="flex items-center w-full"
-                    style={{
-                      gap: 10,
-                      padding: "8px 10px",
-                      borderRadius: 6,
-                      border: on
-                        ? "1px solid color-mix(in oklab, var(--brand-400) 60%, transparent)"
-                        : "1px solid var(--border)",
-                      background: on
-                        ? "color-mix(in oklab, var(--brand-400) 10%, var(--bg-surface))"
-                        : "var(--bg-base)",
-                      textAlign: "left",
-                    }}
-                  >
-                    <span
-                      className="inline-flex items-center justify-center shrink-0"
+            {services.length === 0 ? (
+              <div
+                style={{
+                  padding: "12px 10px",
+                  borderRadius: 6,
+                  border: "1px dashed var(--border-strong)",
+                  background: "var(--bg-base)",
+                  fontSize: 12,
+                  color: "var(--text-muted)",
+                  display: "flex",
+                  flexDirection: "column",
+                  gap: 6,
+                  alignItems: "flex-start",
+                }}
+              >
+                <span>Nenhum serviço ativo no catálogo.</span>
+                <Link
+                  to="/services"
+                  onClick={onClose}
+                  style={{ color: "var(--brand-400)", fontWeight: 500, fontSize: 12 }}
+                >
+                  + Cadastrar serviço
+                </Link>
+              </div>
+            ) : (
+              <div className="flex flex-col" style={{ gap: 6, maxHeight: 200, overflowY: "auto" }}>
+                {services.map((s) => {
+                  const on = selected.has(s.id);
+                  return (
+                    <button
+                      key={s.id}
+                      type="button"
+                      onClick={() => toggle(s.id)}
+                      className="flex items-center w-full"
                       style={{
-                        width: 16,
-                        height: 16,
-                        borderRadius: 4,
-                        border: "1.5px solid",
-                        borderColor: on ? "var(--brand-400)" : "var(--border-strong)",
-                        background: on ? "var(--brand-400)" : "transparent",
-                        color: "#fff",
+                        gap: 10,
+                        padding: "8px 10px",
+                        borderRadius: 6,
+                        border: on
+                          ? "1px solid color-mix(in oklab, var(--brand-400) 60%, transparent)"
+                          : "1px solid var(--border)",
+                        background: on
+                          ? "color-mix(in oklab, var(--brand-400) 10%, var(--bg-surface))"
+                          : "var(--bg-base)",
+                        textAlign: "left",
                       }}
                     >
-                      {on && <Check size={10} />}
-                    </span>
-                    <div className="flex-1 min-w-0">
-                      <div style={{ fontSize: 13, fontWeight: 500, color: "var(--text-primary)" }}>{s.name}</div>
-                      <div style={{ fontSize: 11, color: "var(--text-muted)" }}>{formatDuration(s.duration_minutes)}</div>
-                    </div>
-                    <div className="font-mono" style={{ fontSize: 12, color: "var(--text-primary)" }}>
-                      {formatCurrencyBRL(s.price_cents)}
-                    </div>
-                  </button>
-                );
-              })}
-            </div>
+                      <span
+                        className="inline-flex items-center justify-center shrink-0"
+                        style={{
+                          width: 16,
+                          height: 16,
+                          borderRadius: 4,
+                          border: "1.5px solid",
+                          borderColor: on ? "var(--brand-400)" : "var(--border-strong)",
+                          background: on ? "var(--brand-400)" : "transparent",
+                          color: "#fff",
+                        }}
+                      >
+                        {on && <Check size={10} />}
+                      </span>
+                      <div className="flex-1 min-w-0">
+                        <div style={{ fontSize: 13, fontWeight: 500, color: "var(--text-primary)" }}>{s.name}</div>
+                        <div style={{ fontSize: 11, color: "var(--text-muted)" }}>{formatDuration(s.duration_minutes)}</div>
+                      </div>
+                      <div className="font-mono" style={{ fontSize: 12, color: "var(--text-primary)" }}>
+                        {formatCurrencyBRL(s.price_cents)}
+                      </div>
+                    </button>
+                  );
+                })}
+              </div>
+            )}
           </FieldGroup>
 
           {/* Date */}
