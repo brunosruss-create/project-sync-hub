@@ -33,6 +33,7 @@ import { ScheduleModal } from "./schedule-modal";
 import { MessageActions } from "./message-actions";
 import { ForwardModal, type ForwardSource } from "./forward-modal";
 import { TransferConversationModal } from "./transfer-conversation-modal";
+import { AudioPlayerWithMe } from "@/components/chat/AudioPlayer";
 import {
   SEED_SERVICES,
   formatCurrencyBRL,
