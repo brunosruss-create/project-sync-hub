@@ -1,6 +1,8 @@
 import { supabaseAdmin } from "@/integrations/supabase/client.server";
 import { createAppointmentFromAI } from "@/lib/booking-confirmation.server";
 import { getBookingUrl } from "@/lib/booking-url";
+import { MESSAGE_DEFAULTS } from "@/lib/message-defaults";
+import { renderTemplate } from "@/lib/message-templates";
 
 type DayCfg = {
   enabled?: boolean;
@@ -495,7 +497,13 @@ export async function runAiResponse(input: AiRunInput): Promise<AiRunResult> {
       }
       return { action: "skip", reason: "out_of_hours_disabled" };
     }
-    const out = profile.ai_out_of_hours_message ?? "Estamos fora do horário de atendimento.";
+    const rawOut =
+      (typeof profile.ai_out_of_hours_message === "string" && profile.ai_out_of_hours_message.trim())
+        ? profile.ai_out_of_hours_message
+        : MESSAGE_DEFAULTS.out_of_hours.default;
+    const out = renderTemplate(rawOut, {
+      negocio: (profile as any).business_name ?? "nosso estabelecimento",
+    });
     if (!data.preview) {
       await supabaseAdmin.from("ai_usage_logs").insert({
         workspace_owner_id: data.workspace_owner_id,
@@ -514,6 +522,23 @@ export async function runAiResponse(input: AiRunInput): Promise<AiRunResult> {
   ].map((s) => s.toLowerCase());
   const lower = data.message.toLowerCase();
   if (allKws.some((kw) => kw && lower.includes(kw))) {
+    const transferEnabled =
+      typeof (profile as any).msg_transfer_enabled === "boolean"
+        ? (profile as any).msg_transfer_enabled
+        : true;
+    if (!transferEnabled) {
+      // Apenas marca a transferência interna, sem mensagem ao cliente.
+      if (!data.preview) {
+        await supabaseAdmin.from("ai_usage_logs").insert({
+          workspace_owner_id: data.workspace_owner_id,
+          segment_id: segment?.id ?? null,
+          contact_id: data.contact_id ?? null,
+          action: "transfer_to_human",
+          dedup_key: dedupKey,
+        });
+      }
+      return { action: "skip", reason: "transfer_message_disabled" };
+    }
     if (!data.preview) {
       await supabaseAdmin.from("ai_usage_logs").insert({
         workspace_owner_id: data.workspace_owner_id,
@@ -523,10 +548,17 @@ export async function runAiResponse(input: AiRunInput): Promise<AiRunResult> {
         dedup_key: dedupKey,
       });
     }
+    const rawTransfer =
+      typeof (profile as any).msg_transfer_text === "string" &&
+      (profile as any).msg_transfer_text.trim()
+        ? (profile as any).msg_transfer_text
+        : MESSAGE_DEFAULTS.transfer.default;
+    const transferMsg = renderTemplate(rawTransfer, {
+      cliente: (data as any).contact_name ?? "",
+    });
     return {
       action: "transfer_to_human",
-      response:
-        "Entendi! Vou passar você para um atendente humano agora. Aguarde um momento.",
+      response: transferMsg,
     };
   }
 
