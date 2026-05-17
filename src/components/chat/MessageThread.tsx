@@ -377,7 +377,10 @@ export function MessageThread({
             row.type === "sep" ? (
               <DateSeparator key={row.key} date={row.date} />
             ) : (
-              <MessageBubble key={row.m.id} m={row.m} />
+              <MessageBubble
+                key={row.m.id}
+                m={{ ...row.m, contactName: contact.name, contactAvatar: contact.avatar ?? null }}
+              />
             ),
           )
         )}
