@@ -56,6 +56,7 @@ import {
 } from "@/features/schedule/data";
 import { utcToZonedLocal, zonedLocalToUtc } from "@/features/schedule/tz";
 import { useProfile } from "@/hooks/use-profile";
+import { ScheduleModal } from "@/features/inbox/schedule-modal";
 
 function nameToColor(name: string): string {
   let hash = 0;
