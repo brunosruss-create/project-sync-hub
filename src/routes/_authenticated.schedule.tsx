@@ -819,87 +819,101 @@ function WeekView({
 
   return (
     <div style={{ height: "100%", display: "flex", flexDirection: "column", overflow: "hidden" }}>
-      {/* day header */}
-      <div className="flex" style={{ borderBottom: "1px solid var(--border)" }}>
-        <div style={{ width: TIME_COL_W, flexShrink: 0 }} />
-        {days.map((d, i) => {
-          const isToday = sameDay(d, new Date());
-          return (
-            <div
-              key={i}
-              className="flex flex-col items-center justify-center"
-              style={{
-                flex: 1,
-                padding: "8px 4px",
-                gap: 2,
-                borderLeft: i === 0 ? "none" : "1px solid var(--border)",
-              }}
-            >
-              <span
-                style={{
-                  fontSize: 10,
-                  color: "var(--text-muted)",
-                  textTransform: "uppercase",
-                  letterSpacing: "0.05em",
-                }}
-              >
-                {WEEKDAYS_PT[i]}
-              </span>
-              <span
-                style={{
-                  fontSize: 14,
-                  fontWeight: 600,
-                  color: isToday ? "#fff" : "var(--text-primary)",
-                  background: isToday ? "var(--brand-400)" : "transparent",
-                  width: 24,
-                  height: 24,
-                  borderRadius: 999,
-                  display: "inline-flex",
-                  alignItems: "center",
-                  justifyContent: "center",
-                }}
-              >
-                {d.getDate()}
-              </span>
-            </div>
-          );
-        })}
-      </div>
-      {/* grid */}
-      <div className="flex" style={{ flex: 1, overflow: "auto" }}>
-        <TimeColumn />
-        <div className="flex" style={{ flex: 1 }}>
+      {/* scroll container compartilhado por header e grid — garante alinhamento */}
+      <div style={{ flex: 1, overflow: "auto" }}>
+        {/* day header (sticky) */}
+        <div
+          className="flex"
+          style={{
+            position: "sticky",
+            top: 0,
+            zIndex: 4,
+            background: "var(--bg-surface)",
+            borderBottom: "1px solid var(--border-strong)",
+            boxShadow: "0 1px 0 var(--border)",
+          }}
+        >
+          <div style={{ width: TIME_COL_W, flexShrink: 0, borderRight: "1px solid var(--border)" }} />
           {days.map((d, i) => {
-            const dayItems = items.filter((a) => sameDay(a.starts_at, d));
+            const isToday = sameDay(d, new Date());
             return (
               <div
                 key={i}
+                className="flex flex-col items-center justify-center"
                 style={{
                   flex: 1,
-                  position: "relative",
+                  padding: "8px 4px",
+                  gap: 2,
                   borderLeft: i === 0 ? "none" : "1px solid var(--border)",
                 }}
-                onClick={(e) => {
-                  const rect = (e.currentTarget as HTMLDivElement).getBoundingClientRect();
-                  const y = e.clientY - rect.top;
-                  const minutes = Math.max(
-                    0,
-                    Math.round((y - GRID_TOP_PAD) / PX_PER_MIN / SLOT_MIN) * SLOT_MIN,
-                  );
-                  const starts = startOfDay(d);
-                  starts.setMinutes(minutes + HOUR_START * 60);
-                  onSlotClick(starts);
-                }}
               >
-                <HourGrid height={height}>
-                  {dayItems.map((a) => (
-                    <EventBlock key={a.id} a={a} ctx={ctx} onOpen={onOpen} left={3} right={3} compact />
-                  ))}
-                  <NowLine date={d} />
-                </HourGrid>
+                <span
+                  style={{
+                    fontSize: 10,
+                    color: "var(--text-muted)",
+                    textTransform: "uppercase",
+                    letterSpacing: "0.05em",
+                  }}
+                >
+                  {WEEKDAYS_PT[i]}
+                </span>
+                <span
+                  style={{
+                    fontSize: 14,
+                    fontWeight: 600,
+                    color: isToday ? "#fff" : "var(--text-primary)",
+                    background: isToday ? "var(--brand-400)" : "transparent",
+                    width: 24,
+                    height: 24,
+                    borderRadius: 999,
+                    display: "inline-flex",
+                    alignItems: "center",
+                    justifyContent: "center",
+                    boxShadow: isToday ? "0 2px 6px color-mix(in oklab, var(--brand-400) 40%, transparent)" : "none",
+                  }}
+                >
+                  {d.getDate()}
+                </span>
               </div>
             );
           })}
+        </div>
+        {/* grid */}
+        <div className="flex">
+          <TimeColumn />
+          <div className="flex" style={{ flex: 1 }}>
+            {days.map((d, i) => {
+              const dayItems = items.filter((a) => sameDay(a.starts_at, d));
+              return (
+                <div
+                  key={i}
+                  style={{
+                    flex: 1,
+                    position: "relative",
+                    borderLeft: i === 0 ? "none" : "1px solid var(--border)",
+                  }}
+                  onClick={(e) => {
+                    const rect = (e.currentTarget as HTMLDivElement).getBoundingClientRect();
+                    const y = e.clientY - rect.top;
+                    const minutes = Math.max(
+                      0,
+                      Math.round((y - GRID_TOP_PAD) / PX_PER_MIN / SLOT_MIN) * SLOT_MIN,
+                    );
+                    const starts = startOfDay(d);
+                    starts.setMinutes(minutes + HOUR_START * 60);
+                    onSlotClick(starts);
+                  }}
+                >
+                  <HourGrid height={height}>
+                    {dayItems.map((a) => (
+                      <EventBlock key={a.id} a={a} ctx={ctx} onOpen={onOpen} left={3} right={3} compact />
+                    ))}
+                    <NowLine date={d} />
+                  </HourGrid>
+                </div>
+              );
+            })}
+          </div>
         </div>
       </div>
     </div>
