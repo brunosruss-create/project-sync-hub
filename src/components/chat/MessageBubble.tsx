@@ -78,10 +78,8 @@ export function MessageBubble({ m }: { m: ChatMessage }) {
           color,
           borderRadius: radius,
           padding: "8px 12px",
-          boxShadow: outbound
-            ? "none"
-            : "0 1px 1px rgba(0,0,0,0.04)",
-          border: outbound ? "none" : "1px solid var(--border)",
+          boxShadow: outbound ? "none" : "0 1px 1px rgba(0,0,0,0.04)",
+          border,
           fontSize: 13.5,
           lineHeight: 1.4,
           wordBreak: "break-word",
