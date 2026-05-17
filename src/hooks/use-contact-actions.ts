@@ -42,11 +42,7 @@ export function useContactActions() {
       id: string,
       data: { name?: string; email?: string | null; notes?: string | null },
     ) => {
-      const patch = {
-        ...data,
-        updated_at: new Date().toISOString(),
-      };
-      const error = await update(id, patch);
+      const error = await update(id, data);
       if (error) {
         toast.error(error.message ?? "Erro ao salvar contato");
         return false;
