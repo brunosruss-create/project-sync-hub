@@ -235,6 +235,7 @@ function SchedulePage() {
   const open = openId ? items.find((i) => i.id === openId) ?? null : null;
 
   const notifyChangeFn = useServerFn(notifyAppointmentChange);
+  const { workspaceOwnerId } = useWorkspaceOwnerId();
 
   const upsert = async (draft: Appointment) => {
     // overlap detection
@@ -251,9 +252,8 @@ function SchedulePage() {
       exists ? prev.map((a) => (a.id === draft.id ? draft : a)) : [...prev, draft],
     );
     setEditing(null);
-    nfy.success(exists ? "Agendamento atualizado." : "Agendamento criado.");
 
-    const { error } = await supabase.from("appointments").upsert({
+    const payload: Record<string, unknown> = {
       id: draft.id,
       contact_id: draft.contact_id || null,
       service_id: draft.service_id || null,
@@ -264,11 +264,22 @@ function SchedulePage() {
       status: draft.status,
       notes: draft.notes,
       notify_whatsapp: draft.notify_whatsapp,
-    });
+    };
+    if (workspaceOwnerId) payload.owner_user_id = workspaceOwnerId;
+
+    const { error } = await supabase.from("appointments").upsert(payload);
     if (error) {
-      console.warn("[schedule] persistência ignorada:", error.message);
-      return true;
+      console.warn("[schedule] upsert falhou:", error.message);
+      nfy.error(`Falha ao salvar: ${error.message}`);
+      // reverte UI otimista
+      setItems((prev) =>
+        exists
+          ? prev.map((a) => (a.id === draft.id ? previous! : a))
+          : prev.filter((a) => a.id !== draft.id),
+      );
+      return false;
     }
+    nfy.success(exists ? "Agendamento atualizado." : "Agendamento criado.");
     if (draft.notify_whatsapp) {
       const rescheduled =
         exists && previous!.starts_at.getTime() !== draft.starts_at.getTime();
