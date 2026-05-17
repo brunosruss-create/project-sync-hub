@@ -243,7 +243,7 @@ export const getWorkspaceProfile = createServerFn({ method: "POST" })
     const { data } = await supabaseAdmin
       .from("profiles")
       .select(
-        "business_name,business_description,segment_id,business_hours,business_timezone,welcome_message,ai_working_hours,business_address,business_phone,business_website,business_logo_url,booking_slug,booking_enabled,booking_title,booking_description,booking_service_ids",
+        "business_name,business_description,segment_id,business_hours,business_timezone,welcome_message,ai_working_hours,business_address,business_phone,business_website,business_logo_url,business_cep,business_street,business_address_number,business_address_complement,business_neighborhood,business_city,business_state,booking_slug,booking_enabled,booking_title,booking_description,booking_service_ids",
       )
       .eq("id", context.userId)
       .maybeSingle();
