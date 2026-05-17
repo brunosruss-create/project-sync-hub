@@ -77,7 +77,7 @@ function SchedulePage() {
   const [items, setItems] = React.useState<Appointment[]>([]);
   
   const [contacts, setContacts] = React.useState<ContactCard[]>(MOCK_CONTACTS);
-  const [services, setServices] = React.useState<Service[]>(SEED_SERVICES);
+  const [services, setServices] = React.useState<Service[]>([]);
 
   const fetchProfessionals = useServerFn(listProfessionals);
   const profQ = useQuery({
@@ -171,21 +171,19 @@ function SchedulePage() {
         })),
       );
     }
-    if (svc && svc.length > 0) {
-      setServices(
-        svc.map((s: any) => ({
-          id: s.id,
-          category_id: s.category_id ?? "",
-          name: s.name,
-          description: s.description ?? "",
-          price_cents: s.price_cents ?? 0,
-          duration_minutes: s.duration_minutes ?? 30,
-          color: s.color ?? "#25C880",
-          status: (s.status ?? "active") as Service["status"],
-          created_at: s.created_at ? new Date(s.created_at) : new Date(),
-        })),
-      );
-    }
+    setServices(
+      (svc ?? []).map((s: any) => ({
+        id: s.id,
+        category_id: s.category_id ?? "",
+        name: s.name,
+        description: s.description ?? "",
+        price_cents: s.price_cents ?? 0,
+        duration_minutes: s.duration_minutes ?? 30,
+        color: s.color ?? "#25C880",
+        status: (s.status ?? "active") as Service["status"],
+        created_at: s.created_at ? new Date(s.created_at) : new Date(),
+      })),
+    );
     
   }, [mapAppt]);
 
@@ -229,16 +227,17 @@ function SchedulePage() {
     };
   }, [reload, mapAppt]);
 
-  // Filtra por agente (select único): "all" mostra todos.
-  const filtered = React.useMemo(
-    () =>
-      items.filter(
-        (a) =>
-          a.status !== "cancelled" &&
-          (agentFilter === "all" || a.agent_id === agentFilter),
-      ),
-    [items, agentFilter],
-  );
+  // Filtra por agente (select único): "all" mostra todos; "unassigned" mostra
+  // appointments sem vínculo (legado / criados antes do cadastro do profissional).
+  const filtered = React.useMemo(() => {
+    const knownIds = new Set(agents.map((g) => g.id));
+    return items.filter((a) => {
+      if (a.status === "cancelled") return false;
+      if (agentFilter === "all") return true;
+      if (agentFilter === "unassigned") return !a.agent_id || !knownIds.has(a.agent_id);
+      return a.agent_id === agentFilter;
+    });
+  }, [items, agentFilter, agents]);
 
   const open = openId ? items.find((i) => i.id === openId) ?? null : null;
 
@@ -400,6 +399,7 @@ function SchedulePage() {
               }}
             >
               <option value="all">Todos os profissionais</option>
+              <option value="unassigned">Sem profissional</option>
               {agents.map((a) => (
                 <option key={a.id} value={a.id}>
                   {a.name}
@@ -951,6 +951,7 @@ function EventBlock({
         left,
         right,
         height,
+        boxSizing: "border-box",
         textAlign: "left",
         padding: compact ? "3px 5px" : "5px 7px",
         borderRadius: 6,

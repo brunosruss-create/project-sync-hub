@@ -74,7 +74,8 @@ export function ScheduleModal({
 
   const [services, setServices] = React.useState<Service[]>([]);
 
-  // Carrega serviços reais do banco (fallback para SEED apenas se DB vazio).
+  // Carrega serviços reais do banco. Sem fallback para SEED — se o usuário
+  // apagou os serviços, o modal precisa refletir o catálogo real (vazio).
   React.useEffect(() => {
     if (!open) return;
     let cancelled = false;
@@ -85,12 +86,13 @@ export function ScheduleModal({
         .eq("status", "active")
         .order("created_at", { ascending: true });
       if (cancelled) return;
-      if (error || !data || data.length === 0) {
-        setServices(SEED_SERVICES.filter((s) => s.status === "active"));
+      if (error) {
+        console.warn("[schedule-modal] services fetch:", error.message);
+        setServices([]);
         return;
       }
       setServices(
-        data.map((s: any) => ({
+        (data ?? []).map((s: any) => ({
           id: s.id,
           category_id: s.category_id ?? "",
           name: s.name,
