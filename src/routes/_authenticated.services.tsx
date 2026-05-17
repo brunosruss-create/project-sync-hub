@@ -55,53 +55,59 @@ function ServicesPage() {
     return () => window.removeEventListener("zf:new-service", onNew);
   }, []);
 
-  // Try to hydrate from supabase, fallback to seeds.
+  // Hidrata do supabase. Só quando o workspaceOwnerId está disponível para
+  // garantir que filtramos pelos dados do dono certo.
+  const [hydrated, setHydrated] = React.useState(false);
   React.useEffect(() => {
+    if (!workspaceOwnerId) return;
     let cancelled = false;
     (async () => {
-      const [{ data: cats }, { data: svc }] = await Promise.all([
+      const [{ data: cats }, { data: svc, error: svcErr }] = await Promise.all([
         supabase
           .from("service_categories")
-          .select("id,name,color")
+          .select("id,name,color,owner_user_id")
+          .or(`owner_user_id.is.null,owner_user_id.eq.${workspaceOwnerId}`)
           .order("created_at", { ascending: true }),
         supabase
           .from("services")
           .select(
             "id,category_id,name,description,price_cents,duration_minutes,emoji,color,status,created_at",
           )
+          .eq("owner_user_id", workspaceOwnerId)
           .order("created_at", { ascending: true }),
       ]);
       if (cancelled) return;
+      if (svcErr) {
+        console.warn("[services] erro ao ler:", svcErr.message);
+        notify.error(`Falha ao carregar serviços: ${svcErr.message}`);
+      }
       if (cats && cats.length > 0) {
         setCategories(
           cats.map((c: any) => ({ id: c.id, name: c.name, color: c.color ?? "#25C880" })),
         );
       }
-      if (svc) {
-        // Hidrata SEMPRE com o que veio do banco (inclusive lista vazia),
-        // para não confundir SEED com dados persistidos. Os SEEDs ficam
-        // só como placeholder até o primeiro fetch concluir.
-        setServices(
-          svc.map((s: any) => ({
-            id: s.id,
-            category_id: s.category_id ?? "",
-            name: s.name,
-            description: s.description ?? "",
-            price_cents: s.price_cents ?? 0,
-            duration_minutes: s.duration_minutes ?? 30,
-            emoji: s.emoji ?? "🔧",
-            color: s.color ?? "#25C880",
-            status: (s.status ?? "active") as ServiceStatus,
-            created_at: s.created_at ? new Date(s.created_at) : new Date(),
-          })),
-        );
-      }
-      
+      // Substitui SEMPRE pelo que veio do banco (mesmo lista vazia) — assim
+      // SEEDs locais não confundem o usuário fingindo que existem serviços.
+      setServices(
+        (svc ?? []).map((s: any) => ({
+          id: s.id,
+          category_id: s.category_id ?? "",
+          name: s.name,
+          description: s.description ?? "",
+          price_cents: s.price_cents ?? 0,
+          duration_minutes: s.duration_minutes ?? 30,
+          emoji: s.emoji ?? "🔧",
+          color: s.color ?? "#25C880",
+          status: (s.status ?? "active") as ServiceStatus,
+          created_at: s.created_at ? new Date(s.created_at) : new Date(),
+        })),
+      );
+      setHydrated(true);
     })();
     return () => {
       cancelled = true;
     };
-  }, []);
+  }, [workspaceOwnerId]);
 
   const filtered = React.useMemo(() => {
     return services.filter((s) => {
@@ -116,24 +122,18 @@ function ServicesPage() {
       }
       return true;
     });
-  }, [services, activeCat, query]);
-
-  const counts = React.useMemo(() => {
-    const m: Record<string, number> = { all: services.length };
-    for (const c of categories) m[c.id] = 0;
-    for (const s of services) m[s.category_id] = (m[s.category_id] ?? 0) + 1;
-    return m;
-  }, [services, categories]);
+  // eslint-disable-next-line react-hooks/exhaustive-deps
+  }, [services, activeCat, query, hydrated]);
 
   const upsertService = async (draft: Service) => {
-    const exists = services.some((s) => s.id === draft.id);
-    setServices((prev) =>
-      exists ? prev.map((s) => (s.id === draft.id ? draft : s)) : [...prev, draft],
-    );
-    setEditing(null);
-    notify.success(exists ? "Serviço atualizado." : "Serviço criado.");
+    if (!workspaceOwnerId) {
+      notify.error("Carregando sua conta… tente novamente em instantes.");
+      return;
+    }
+    const exists = services.some((s) => s.id === draft.id) && isUuid(draft.id);
 
     const payload: Record<string, unknown> = {
+      owner_user_id: workspaceOwnerId,
       category_id: draft.category_id && isUuid(draft.category_id) ? draft.category_id : null,
       name: draft.name,
       description: draft.description,
@@ -143,52 +143,61 @@ function ServicesPage() {
       color: draft.color,
       status: draft.status,
     };
-    // Garante que o serviço fica associado ao dono do workspace, o mesmo
-    // owner_user_id que o link público de agendamento usa pra filtrar.
-    if (workspaceOwnerId) payload.owner_user_id = workspaceOwnerId;
-    const query = exists && isUuid(draft.id)
-      ? supabase.from("services").upsert({ id: draft.id, ...payload }).select("id,created_at").single()
+    const query = exists
+      ? supabase.from("services").update(payload).eq("id", draft.id).select("id,created_at").single()
       : supabase.from("services").insert(payload).select("id,created_at").single();
     const { data, error } = await query;
     if (error) {
-      console.warn("[services] persistência ignorada:", error.message);
+      console.error("[services] falha ao salvar:", error);
+      notify.error(`Não foi possível salvar: ${error.message}`);
       return;
     }
-    if (data?.id && data.id !== draft.id) {
-      setServices((prev) => prev.map((s) => (s.id === draft.id ? { ...s, id: data.id, created_at: data.created_at ? new Date(data.created_at) : s.created_at } : s)));
-    }
+    const finalId = data?.id ?? draft.id;
+    const created_at = data?.created_at ? new Date(data.created_at) : draft.created_at;
+    setServices((prev) => {
+      const without = prev.filter((s) => s.id !== draft.id && s.id !== finalId);
+      return [...without, { ...draft, id: finalId, created_at }];
+    });
+    setEditing(null);
+    notify.success(exists ? "Serviço atualizado." : "Serviço criado.");
   };
 
   const archiveService = async (id: string) => {
-    setServices((prev) =>
-      prev.map((s) => (s.id === id ? { ...s, status: "inactive" as const } : s)),
-    );
-    notify.success("Serviço arquivado.");
+    if (!isUuid(id)) {
+      // Item local (seed) — só remove da UI.
+      setServices((prev) => prev.filter((s) => s.id !== id));
+      return;
+    }
     const { error } = await supabase
       .from("services")
       .update({ status: "inactive" })
       .eq("id", id);
-    if (error) console.warn("[services] persistência ignorada:", error.message);
+    if (error) {
+      console.error("[services] falha ao arquivar:", error);
+      notify.error(`Não foi possível arquivar: ${error.message}`);
+      return;
+    }
+    setServices((prev) =>
+      prev.map((s) => (s.id === id ? { ...s, status: "inactive" as const } : s)),
+    );
+    notify.success("Serviço arquivado.");
   };
 
   const addCategory = async (name: string, color: string): Promise<Category> => {
-    const cat: Category = {
-      id: `cat-${Date.now()}`,
-      name,
-      color,
-    };
-    setCategories((prev) => [...prev, cat]);
+    const tempId = `cat-${Date.now()}`;
     const { data, error } = await supabase
       .from("service_categories")
-      .insert({ name, color })
+      .insert({ name, color, owner_user_id: workspaceOwnerId ?? undefined })
       .select("id")
       .single();
-    if (!error && data?.id) {
-      setCategories((prev) =>
-        prev.map((c) => (c.id === cat.id ? { ...c, id: data.id } : c)),
-      );
-      return { ...cat, id: data.id };
+    if (error || !data?.id) {
+      notify.error(`Não foi possível criar categoria: ${error?.message ?? "erro"}`);
+      const cat: Category = { id: tempId, name, color };
+      setCategories((prev) => [...prev, cat]);
+      return cat;
     }
+    const cat: Category = { id: data.id, name, color };
+    setCategories((prev) => [...prev, cat]);
     return cat;
   };
 
