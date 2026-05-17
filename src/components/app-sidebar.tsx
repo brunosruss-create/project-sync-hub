@@ -11,6 +11,7 @@ import {
   Calendar,
   Bot,
   Shield,
+  Columns3,
 } from "lucide-react";
 import { useAuth } from "@/hooks/use-auth";
 import { useProfile } from "@/hooks/use-profile";
@@ -19,7 +20,8 @@ import { useIsSuperAdmin } from "@/hooks/use-is-super-admin";
 
 const ALL_ITEMS = [
   { label: "Dashboard", to: "/dashboard", icon: LayoutDashboard, agentVisible: false },
-  { label: "Conversas", to: "/inbox", icon: MessageSquare, agentVisible: true },
+  { label: "Conversas", to: "/conversations-chat", icon: MessageSquare, agentVisible: true },
+  { label: "Kanban", to: "/inbox", icon: Columns3, agentVisible: true },
   { label: "Agenda", to: "/schedule", icon: Calendar, agentVisible: true },
   { label: "Serviços", to: "/services", icon: Wrench, agentVisible: false },
   { label: "Agente IA", to: "/ai-agent", icon: Bot, agentVisible: false },
