@@ -344,6 +344,8 @@ function InboxPage() {
     };
   }, [workspaceOwnerId]);
 
+  const actions = useContactActions();
+
   const handleMenuAction = React.useCallback(async (a: CardMenuAction) => {
     const c = a.contact;
     if (a.type === "assign") {
@@ -363,57 +365,18 @@ function InboxPage() {
       return;
     }
     if (a.type === "toggle-urgent") {
-      const next: "normal" | "urgent" = c.priority === "urgent" ? "normal" : "urgent";
-      setContacts((prev) => prev.map((x) => (x.id === c.id ? { ...x, priority: next } : x)));
-      const { error } = await supabase
-        .from("contacts")
-        .update({ priority: next })
-        .eq("id", c.id);
-      if (error) {
-        notify.error(error.message ?? "Falha ao atualizar prioridade.");
-        setContacts((prev) => prev.map((x) => (x.id === c.id ? { ...x, priority: c.priority } : x)));
-      } else {
-        notify.success(next === "urgent" ? "Marcado como urgente" : "Urgência removida");
-      }
+      await actions.toggleUrgent(c.id, c.priority);
       return;
     }
     if (a.type === "move") {
-      const col = a.column;
-      setContacts((prev) => prev.map((x) => (x.id === c.id ? { ...x, kanban_column: col } : x)));
-      const { error } = await supabase
-        .from("contacts")
-        .update({ kanban_column: col })
-        .eq("id", c.id);
-      if (error) {
-        notify.error(error.message ?? "Falha ao mover.");
-        setContacts((prev) => prev.map((x) => (x.id === c.id ? { ...x, kanban_column: c.kanban_column } : x)));
-      } else {
-        notify.success(`Movido para ${columns.find((cc) => cc.slug === col)?.label ?? col}`);
-      }
+      await actions.moveToColumn(c.id, a.column);
       return;
     }
     if (a.type === "archive") {
-      setContacts((prev) => prev.filter((x) => x.id !== c.id));
-      let { error } = await supabase
-        .from("contacts")
-        .update({ archived_at: new Date().toISOString() })
-        .eq("id", c.id);
-      if (error && /archived_at/i.test(error.message ?? "")) {
-        const retry = await supabase
-          .from("contacts")
-          .update({ kanban_column: "archived" })
-          .eq("id", c.id);
-        error = retry.error;
-      }
-      if (error) {
-        notify.error(error.message ?? "Falha ao arquivar.");
-        setContacts((prev) => [...prev, c].sort((x, y) => y.lastMessageAt.getTime() - x.lastMessageAt.getTime()));
-      } else {
-        notify.success(`"${c.name}" arquivado`);
-      }
+      await actions.archiveContact(c.id);
       return;
     }
-  }, []);
+  }, [actions]);
 
   // Título da aba com total de não lidas
   React.useEffect(() => {
