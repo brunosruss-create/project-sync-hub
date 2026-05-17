@@ -8,7 +8,7 @@ import {
   type Service,
   type ServiceStatus,
   PRESET_COLORS,
-  PRESET_COLORS as _PRESET_COLORS_UNUSED,
+  
   SEED_CATEGORIES,
   SEED_SERVICES,
   STATUS_COLOR,
