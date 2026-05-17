@@ -72,11 +72,11 @@ export const MESSAGE_DEFAULTS: Record<MessageKey, MessageMeta> = {
       profissional: "Carla",
     },
     default:
-      "Olá {{cliente}}! ✅\n\n" +
+      "Olá {{cliente}}!\n\n" +
       "Seu agendamento em *{{negocio}}* foi confirmado:\n\n" +
-      "📅 *{{data}} às {{hora}}*\n" +
-      "💼 {{servico}}\n" +
-      "👤 {{profissional}}\n\n" +
+      "*{{data}} às {{hora}}*\n" +
+      "{{servico}}\n" +
+      "{{profissional}}\n\n" +
       "Até lá! 😊",
   },
   booking_rescheduled: {
@@ -101,11 +101,11 @@ export const MESSAGE_DEFAULTS: Record<MessageKey, MessageMeta> = {
       profissional: "Carla",
     },
     default:
-      "Olá {{cliente}}! 🔄\n\n" +
+      "Olá {{cliente}}!\n\n" +
       "Seu agendamento em *{{negocio}}* foi *reagendado*:\n\n" +
-      "📅 *{{data}} às {{hora}}*\n" +
-      "💼 {{servico}}\n" +
-      "👤 {{profissional}}\n\n" +
+      "*{{data}} às {{hora}}*\n" +
+      "{{servico}}\n" +
+      "{{profissional}}\n\n" +
       "Até lá! 😊",
   },
   booking_cancelled: {
@@ -130,9 +130,9 @@ export const MESSAGE_DEFAULTS: Record<MessageKey, MessageMeta> = {
     default:
       "Olá {{cliente}}.\n\n" +
       "Seu agendamento em *{{negocio}}* foi *cancelado*:\n\n" +
-      "📅 {{data}} às {{hora}}\n" +
-      "💼 {{servico}}\n\n" +
-      "Caso queira remarcar, é só responder esta mensagem. 🙏",
+      "{{data}} às {{hora}}\n" +
+      "{{servico}}\n\n" +
+      "Caso queira remarcar, é só responder esta mensagem.",
   },
 };
 
