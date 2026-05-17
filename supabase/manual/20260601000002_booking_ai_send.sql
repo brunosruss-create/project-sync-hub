@@ -3,3 +3,5 @@
 -- comportamento atual de quem já habilitou o link.
 alter table public.profiles
   add column if not exists booking_ai_send boolean default true;
+
+notify pgrst, 'reload schema';
