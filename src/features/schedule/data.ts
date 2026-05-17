@@ -61,8 +61,8 @@ export type { ContactCard, Service, Category };
 
 export const HOUR_START = 8;
 export const HOUR_END = 20;
-export const SLOT_MIN = 30; // grid slot resolution
-export const PX_PER_MIN = 1.4; // ~ 42px per 30min
+export const SLOT_MIN = 15; // grid slot resolution
+export const PX_PER_MIN = 1.4; // ~ 21px per 15min (84px/h)
 
 export function startOfDay(d: Date) {
   const x = new Date(d);
