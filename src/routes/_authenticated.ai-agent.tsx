@@ -110,6 +110,7 @@ function AIAgentPage() {
   const [canCancel, setCanCancel] = React.useState(false);
   const [minAdvanceHours, setMinAdvanceHours] = React.useState(2);
   const [maxQuestions, setMaxQuestions] = React.useState(1);
+  const [shareContactInfo, setShareContactInfo] = React.useState(true);
 
   // Hidrata form quando config chega
   React.useEffect(() => {
@@ -153,6 +154,7 @@ function AIAgentPage() {
     setCanCancel((cAny.ai_can_cancel as boolean | undefined) ?? false);
     setMinAdvanceHours((cAny.ai_min_advance_hours as number | undefined) ?? 2);
     setMaxQuestions((cAny.ai_max_questions_per_message as number | undefined) ?? 1);
+    setShareContactInfo((cAny.ai_can_share_contact_info as boolean | undefined) ?? true);
     setHydrated(true);
   }, [configQ.data, hydrated]);
 
@@ -182,6 +184,7 @@ function AIAgentPage() {
           ai_can_cancel: canCancel,
           ai_min_advance_hours: minAdvanceHours,
           ai_max_questions_per_message: maxQuestions,
+          ai_can_share_contact_info: shareContactInfo,
         },
       }),
     onSuccess: () => {
@@ -393,6 +396,12 @@ function AIAgentPage() {
             value={multipleProfs}
             onChange={setMultipleProfs}
             hint="Se desligado, a IA não pergunta com qual profissional o cliente quer ser atendido."
+          />
+          <ToggleRow
+            label="A IA pode informar endereço, site e telefone quando perguntada?"
+            value={shareContactInfo}
+            onChange={setShareContactInfo}
+            hint="Quando ligado, a IA usa os dados de Configurações → Negócio para responder perguntas tipo 'onde fica?', 'qual o telefone?', 'tem site?'. Desligue se preferir que esses dados não sejam divulgados pelo WhatsApp."
           />
           <div style={{ marginTop: 12 }}>
             <Field label="Quando a IA pode informar preços?">

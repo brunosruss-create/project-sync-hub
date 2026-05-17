@@ -60,7 +60,15 @@ function WorkspacePage() {
 
   const [name, setName] = React.useState("");
   const [segmentId, setSegmentId] = React.useState<string>("");
-  const [address, setAddress] = React.useState("");
+  const [cep, setCep] = React.useState("");
+  const [street, setStreet] = React.useState("");
+  const [number, setNumber] = React.useState("");
+  const [complement, setComplement] = React.useState("");
+  const [neighborhood, setNeighborhood] = React.useState("");
+  const [city, setCity] = React.useState("");
+  const [stateUf, setStateUf] = React.useState("");
+  const [cepLoading, setCepLoading] = React.useState(false);
+  const [cepError, setCepError] = React.useState<string | null>(null);
   const [phone, setPhone] = React.useState("");
   const [site, setSite] = React.useState("");
   const [tz, setTz] = React.useState("America/Sao_Paulo");
@@ -94,6 +102,13 @@ function WorkspacePage() {
           business_address?: string;
           business_phone?: string;
           business_website?: string;
+          business_cep?: string;
+          business_street?: string;
+          business_address_number?: string;
+          business_address_complement?: string;
+          business_neighborhood?: string;
+          business_city?: string;
+          business_state?: string;
         }
       | undefined;
     if (!p) return;
@@ -107,10 +122,56 @@ function WorkspacePage() {
       setWelcome(p.welcome_message);
     }
     setWelcomeEnabled(p.welcome_message_enabled ?? false);
-    if (typeof p.business_address === "string") setAddress(p.business_address);
+    // Fallback: se business_street vazio mas business_address legado preenchido, usa.
+    const streetFromNew = p.business_street ?? "";
+    setStreet(streetFromNew || p.business_address || "");
+    setCep(p.business_cep ?? "");
+    setNumber(p.business_address_number ?? "");
+    setComplement(p.business_address_complement ?? "");
+    setNeighborhood(p.business_neighborhood ?? "");
+    setCity(p.business_city ?? "");
+    setStateUf(p.business_state ?? "");
     if (typeof p.business_phone === "string") setPhone(p.business_phone);
     if (typeof p.business_website === "string") setSite(p.business_website);
   }, [profileQ.data]);
+
+  // ViaCEP lookup quando CEP completa 8 dígitos
+  const lookupCep = React.useCallback(async (raw: string) => {
+    const clean = raw.replace(/\D/g, "");
+    if (clean.length !== 8) return;
+    setCepLoading(true);
+    setCepError(null);
+    try {
+      const res = await fetch(`https://viacep.com.br/ws/${clean}/json/`);
+      const json = (await res.json()) as {
+        erro?: boolean;
+        logradouro?: string;
+        bairro?: string;
+        localidade?: string;
+        uf?: string;
+      };
+      if (json.erro) {
+        setCepError("CEP não encontrado");
+        return;
+      }
+      if (json.logradouro) setStreet(json.logradouro);
+      if (json.bairro) setNeighborhood(json.bairro);
+      if (json.localidade) setCity(json.localidade);
+      if (json.uf) setStateUf(json.uf);
+    } catch {
+      setCepError("Falha ao buscar CEP");
+    } finally {
+      setCepLoading(false);
+    }
+  }, []);
+
+  const handleCepChange = (v: string) => {
+    const digits = v.replace(/\D/g, "").slice(0, 8);
+    const masked = digits.length > 5 ? `${digits.slice(0, 5)}-${digits.slice(5)}` : digits;
+    setCep(masked);
+    setCepError(null);
+    if (digits.length === 8) void lookupCep(digits);
+  };
 
   const segments = segmentsQ.data?.segments ?? [];
   const selectedSegment = segments.find((s) => s.id === segmentId);
@@ -135,7 +196,26 @@ function WorkspacePage() {
           business_timezone: tz,
           welcome_message: welcome,
           welcome_message_enabled: welcomeEnabled,
-          business_address: address.trim(),
+          business_cep: cep.trim(),
+          business_street: street.trim(),
+          business_address_number: number.trim(),
+          business_address_complement: complement.trim(),
+          business_neighborhood: neighborhood.trim(),
+          business_city: city.trim(),
+          business_state: stateUf.trim().toUpperCase(),
+          // Mantém business_address legado sincronizado como string concatenada
+          // para retrocompatibilidade com integrações antigas.
+          business_address: [
+            street.trim(),
+            number.trim() && `, ${number.trim()}`,
+            complement.trim() && ` — ${complement.trim()}`,
+            neighborhood.trim() && ` — ${neighborhood.trim()}`,
+            city.trim() && `, ${city.trim()}`,
+            stateUf.trim() && `/${stateUf.trim().toUpperCase()}`,
+            cep.trim() && ` — CEP ${cep.trim()}`,
+          ]
+            .filter(Boolean)
+            .join(""),
           business_phone: phone.trim(),
           business_website: site.trim(),
         },
@@ -240,9 +320,83 @@ function WorkspacePage() {
       </FieldGroup>
 
       <FieldGroup label="Contato">
-        <Field label="Endereço">
-          <input style={inputStyle} value={address} onChange={(e) => setAddress(e.target.value)} />
+        <div
+          style={{
+            padding: "10px 12px",
+            borderRadius: 8,
+            background: "color-mix(in oklab, var(--brand-400) 8%, transparent)",
+            border: "1px solid color-mix(in oklab, var(--brand-400) 20%, transparent)",
+            fontSize: 12,
+            color: "var(--text-primary)",
+            lineHeight: 1.5,
+          }}
+        >
+          💡 Esses dados podem ser informados pela IA quando o cliente perguntar
+          (endereço, site, telefone). Mantenha-os atualizados — você controla se a
+          IA pode divulgá-los em <strong>Agente IA → Comportamento</strong>.
+        </div>
+
+        <Field label="CEP" hint={cepError ?? (cepLoading ? "Buscando endereço…" : undefined)}>
+          <input
+            style={inputStyle}
+            value={cep}
+            onChange={(e) => handleCepChange(e.target.value)}
+            placeholder="00000-000"
+            inputMode="numeric"
+            maxLength={9}
+          />
         </Field>
+        <Field label="Rua / Logradouro">
+          <input
+            style={inputStyle}
+            value={street}
+            onChange={(e) => setStreet(e.target.value)}
+            placeholder="Ex.: Av. Paulista"
+          />
+        </Field>
+        <div className="grid gap-3" style={{ gridTemplateColumns: "1fr 2fr" }}>
+          <Field label="Número">
+            <input
+              style={inputStyle}
+              value={number}
+              onChange={(e) => setNumber(e.target.value)}
+              placeholder="123"
+            />
+          </Field>
+          <Field label="Complemento">
+            <input
+              style={inputStyle}
+              value={complement}
+              onChange={(e) => setComplement(e.target.value)}
+              placeholder="Ex.: Torre 2, Sala 33"
+            />
+          </Field>
+        </div>
+        <div className="grid gap-3" style={{ gridTemplateColumns: "2fr 2fr 1fr" }}>
+          <Field label="Bairro">
+            <input
+              style={inputStyle}
+              value={neighborhood}
+              onChange={(e) => setNeighborhood(e.target.value)}
+            />
+          </Field>
+          <Field label="Cidade">
+            <input
+              style={inputStyle}
+              value={city}
+              onChange={(e) => setCity(e.target.value)}
+            />
+          </Field>
+          <Field label="UF">
+            <input
+              style={inputStyle}
+              value={stateUf}
+              onChange={(e) => setStateUf(e.target.value.toUpperCase().slice(0, 2))}
+              maxLength={2}
+              placeholder="SP"
+            />
+          </Field>
+        </div>
         <Field label="Telefone comercial">
           <input style={inputStyle} value={phone} onChange={(e) => setPhone(e.target.value)} />
         </Field>

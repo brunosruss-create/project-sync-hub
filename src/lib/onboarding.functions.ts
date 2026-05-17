@@ -135,7 +135,7 @@ export const getWorkspaceAiConfig = createServerFn({ method: "POST" })
     const { data } = await supabaseAdmin
       .from("profiles")
       .select(
-        "ai_enabled,ai_assistant_name,ai_tone,ai_custom_prompt,ai_transfer_keywords,ai_transfer_after_messages,ai_schedule_enabled,ai_schedule_instruction,ai_working_hours,ai_out_of_hours_message,ai_enabled_service_ids,ai_timezone,business_name,business_description,business_timezone,segment_id,ai_introduce_by_name,ai_declare_as_ai,ai_mention_business_name,ai_has_multiple_professionals,ai_price_disclosure_policy,ai_can_reschedule,ai_can_cancel,ai_min_advance_hours,ai_required_fields,ai_max_questions_per_message",
+        "ai_enabled,ai_assistant_name,ai_tone,ai_custom_prompt,ai_transfer_keywords,ai_transfer_after_messages,ai_schedule_enabled,ai_schedule_instruction,ai_working_hours,ai_out_of_hours_message,ai_enabled_service_ids,ai_timezone,business_name,business_description,business_timezone,segment_id,ai_introduce_by_name,ai_declare_as_ai,ai_mention_business_name,ai_has_multiple_professionals,ai_price_disclosure_policy,ai_can_reschedule,ai_can_cancel,ai_min_advance_hours,ai_required_fields,ai_max_questions_per_message,ai_can_share_contact_info",
       )
       .eq("id", context.userId)
       .maybeSingle();
@@ -202,6 +202,7 @@ export const updateWorkspaceAiConfig = createServerFn({ method: "POST" })
         ai_min_advance_hours: z.number().int().min(0).max(720).optional(),
         ai_required_fields: z.array(z.string().max(64)).max(40).optional(),
         ai_max_questions_per_message: z.number().int().min(1).max(5).optional(),
+        ai_can_share_contact_info: z.boolean().optional(),
       })
       .parse(input),
   )
@@ -243,7 +244,7 @@ export const getWorkspaceProfile = createServerFn({ method: "POST" })
     const { data } = await supabaseAdmin
       .from("profiles")
       .select(
-        "business_name,business_description,segment_id,business_hours,business_timezone,welcome_message,ai_working_hours,business_address,business_phone,business_website,business_logo_url,booking_slug,booking_enabled,booking_title,booking_description,booking_service_ids",
+        "business_name,business_description,segment_id,business_hours,business_timezone,welcome_message,ai_working_hours,business_address,business_phone,business_website,business_logo_url,business_cep,business_street,business_address_number,business_address_complement,business_neighborhood,business_city,business_state,booking_slug,booking_enabled,booking_title,booking_description,booking_service_ids",
       )
       .eq("id", context.userId)
       .maybeSingle();
@@ -272,6 +273,13 @@ export const getWorkspaceProfile = createServerFn({ method: "POST" })
       business_phone: data?.business_phone ?? "",
       business_website: data?.business_website ?? "",
       business_logo_url: data?.business_logo_url ?? "",
+      business_cep: (data as any)?.business_cep ?? "",
+      business_street: (data as any)?.business_street ?? "",
+      business_address_number: (data as any)?.business_address_number ?? "",
+      business_address_complement: (data as any)?.business_address_complement ?? "",
+      business_neighborhood: (data as any)?.business_neighborhood ?? "",
+      business_city: (data as any)?.business_city ?? "",
+      business_state: (data as any)?.business_state ?? "",
       booking_slug: (data as any)?.booking_slug ?? null,
       booking_enabled: (data as any)?.booking_enabled ?? false,
       booking_title: (data as any)?.booking_title ?? "",
@@ -363,10 +371,17 @@ export const updateWorkspaceProfile = createServerFn({ method: "POST" })
         business_timezone: z.string().min(1).max(64).optional(),
         welcome_message: z.string().max(2000).optional(),
         welcome_message_enabled: z.boolean().optional(),
-        business_address: z.string().max(300).optional(),
+        business_address: z.string().max(500).optional(),
         business_phone: z.string().max(40).optional(),
         business_website: z.string().max(300).optional(),
         business_logo_url: z.string().max(500).optional(),
+        business_cep: z.string().max(20).optional(),
+        business_street: z.string().max(200).optional(),
+        business_address_number: z.string().max(20).optional(),
+        business_address_complement: z.string().max(120).optional(),
+        business_neighborhood: z.string().max(120).optional(),
+        business_city: z.string().max(120).optional(),
+        business_state: z.string().max(4).optional(),
       })
       .parse(input),
   )
@@ -396,6 +411,13 @@ export const updateWorkspaceProfile = createServerFn({ method: "POST" })
     if (data.business_phone !== undefined) update.business_phone = data.business_phone;
     if (data.business_website !== undefined) update.business_website = data.business_website;
     if (data.business_logo_url !== undefined) update.business_logo_url = data.business_logo_url;
+    if (data.business_cep !== undefined) update.business_cep = data.business_cep;
+    if (data.business_street !== undefined) update.business_street = data.business_street;
+    if (data.business_address_number !== undefined) update.business_address_number = data.business_address_number;
+    if (data.business_address_complement !== undefined) update.business_address_complement = data.business_address_complement;
+    if (data.business_neighborhood !== undefined) update.business_neighborhood = data.business_neighborhood;
+    if (data.business_city !== undefined) update.business_city = data.business_city;
+    if (data.business_state !== undefined) update.business_state = data.business_state;
     const { error } = await supabaseAdmin
       .from("profiles")
       .update(update)
