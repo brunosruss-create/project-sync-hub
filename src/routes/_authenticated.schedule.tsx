@@ -121,18 +121,25 @@ function SchedulePage() {
     };
   }, []);
 
+  // tz do negócio (fallback SP) — usado para normalizar Dates como "phantom
+  // local" para que a UI da agenda mostre o mesmo wall-clock que a mensagem WA.
+  const profileQ = useProfile();
+  const tz =
+    ((profileQ.data as unknown as { business_timezone?: string } | null)
+      ?.business_timezone as string | undefined) || "America/Sao_Paulo";
+
   // Hydrate from supabase + realtime + cross-tab events
   const mapAppt = React.useCallback((r: any): Appointment => ({
     id: r.id,
     contact_id: r.contact_id ?? "",
     service_id: r.service_id ?? "",
     agent_id: r.professional_id ?? r.agent_id ?? "",
-    starts_at: new Date(r.starts_at),
-    ends_at: new Date(r.ends_at),
+    starts_at: utcToZonedLocal(new Date(r.starts_at), tz),
+    ends_at: utcToZonedLocal(new Date(r.ends_at), tz),
     status: (r.status ?? "scheduled") as AppointmentStatus,
     notes: r.notes ?? "",
     notify_whatsapp: !!r.notify_whatsapp,
-  }), []);
+  }), [tz]);
 
   const reload = React.useCallback(async () => {
     const [{ data: appts, error: apptErr }, { data: cts }, { data: svc }] = await Promise.all([
