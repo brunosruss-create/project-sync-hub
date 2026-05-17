@@ -13,7 +13,6 @@ export interface Service {
   description: string;
   price_cents: number;
   duration_minutes: number;
-  emoji: string;
   color: string;
   status: ServiceStatus;
   created_at: Date;
@@ -28,11 +27,6 @@ export const PRESET_COLORS = [
   "#EC4899",
   "#14B8A6",
   "#64748B",
-];
-
-export const PRESET_EMOJIS = [
-  "🔧", "⚙️", "🛠️", "🚗", "🦷", "💉", "🩺", "💆",
-  "✂️", "💅", "💇", "🧴", "🏥", "🐾", "📐", "💡",
 ];
 
 export const SEED_CATEGORIES: Category[] = [
