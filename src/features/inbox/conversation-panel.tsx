@@ -595,8 +595,7 @@ export function ConversationPanel({
                         <React.Fragment key={m.id}>
                           {showSep && <DateSeparator date={m.created_at} />}
                           <MessageBubble
-                        key={m.id}
-                        m={m}
+                            m={m}
                         displayStatus={getVisualMessageStatus(m)}
                         contactName={contact.name}
                         contactAvatar={contact.avatar}
