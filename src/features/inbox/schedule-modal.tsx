@@ -614,10 +614,10 @@ export function ScheduleModal({
         >
           <div>
             <div style={{ fontSize: 11, color: "var(--text-muted)", textTransform: "uppercase", letterSpacing: "0.04em" }}>
-              📅 Novo agendamento
+              📅 {initial ? "Editar agendamento" : "Novo agendamento"}
             </div>
             <div style={{ fontSize: 14, fontWeight: 600, color: "var(--text-primary)", marginTop: 2 }}>
-              {contact.name}
+              {contact?.name ?? pickedContact?.name ?? "Selecione um contato"}
             </div>
           </div>
           <button
