@@ -847,6 +847,11 @@ function MessageBubble({
       >
         <MessageChevron isMe={isMe} bubbleBg={audioBg} message={m} onReply={onReply} onReact={onReact} onDelete={onDelete} onForward={onForward} />
         {m.quoted_preview && <QuotedPreview preview={m.quoted_preview} isMe={isMe} />}
+        {m.is_ai && isMe && (
+          <div className="inline-flex items-center" style={{ gap: 4, fontSize: 10, fontWeight: 600, background: "color-mix(in oklab, var(--brand-400) 20%, transparent)", color: "var(--brand-400)", padding: "1px 6px", borderRadius: 999, marginBottom: 4, textTransform: "uppercase", letterSpacing: "0.04em" }}>
+            <Bot size={10} /> IA
+          </div>
+        )}
         <AudioPlayerWithMe
           src={m.media_url}
           contactName={contactName}
@@ -898,6 +903,11 @@ function MessageBubble({
     >
       <MessageChevron isMe={isMe} bubbleBg={bubbleBg} message={m} onReply={onReply} onReact={onReact} onEdit={onStartEdit} onDelete={onDelete} onForward={onForward} />
       {m.quoted_preview && <QuotedPreview preview={m.quoted_preview} isMe={isMe} />}
+      {m.is_ai && isMe && (
+        <div className="inline-flex items-center" style={{ gap: 4, fontSize: 10, fontWeight: 600, background: "color-mix(in oklab, var(--brand-400) 20%, transparent)", color: "var(--brand-400)", padding: "1px 6px", borderRadius: 999, marginBottom: 4, textTransform: "uppercase", letterSpacing: "0.04em" }}>
+          <Bot size={10} /> IA
+        </div>
+      )}
       {m.media_url && m.message_type === "image" && (
         <a href={m.media_url} target="_blank" rel="noreferrer" style={{ display: "block", marginBottom: m.content ? 6 : 0 }}>
           <img
