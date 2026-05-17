@@ -13,9 +13,6 @@ import {
   CalendarPlus,
   FileText,
   Download,
-  Play,
-  Pause,
-  Mic,
   ChevronDown,
   Trash2,
 } from "lucide-react";
