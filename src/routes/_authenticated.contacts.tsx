@@ -47,6 +47,19 @@ function ContactsPage() {
   // Hydrate from Supabase, fallback to mocks
   React.useEffect(() => {
     let cancelled = false;
+    const mapRow = (r: any): ContactCard => ({
+      id: r.id,
+      name: r.name,
+      phone: r.phone,
+      avatar: r.avatar_url,
+      lastMessage: r.last_message ?? "",
+      lastMessageAt: r.last_message_at ? new Date(r.last_message_at) : new Date(),
+      assignedAgent: r.assigned_agent_id ?? null,
+      tags: Array.isArray(r.tags) ? r.tags : [],
+      isUnread: !!r.is_unread,
+      priority: r.priority === "urgent" ? "urgent" : "normal",
+      kanban_column: (r.kanban_column ?? "waiting") as KanbanColumnId,
+    });
     (async () => {
       const { data, error } = await supabase
         .from("contacts")
@@ -58,26 +71,39 @@ function ContactsPage() {
       if (error || !data || data.length === 0) {
         setContacts(MOCK_CONTACTS);
       } else {
-        setContacts(
-          data.map((r: any) => ({
-            id: r.id,
-            name: r.name,
-            phone: r.phone,
-            avatar: r.avatar_url,
-            lastMessage: r.last_message ?? "",
-            lastMessageAt: r.last_message_at ? new Date(r.last_message_at) : new Date(),
-            assignedAgent: r.assigned_agent_id ?? null,
-            tags: Array.isArray(r.tags) ? r.tags : [],
-            isUnread: !!r.is_unread,
-            priority: r.priority === "urgent" ? "urgent" : "normal",
-            kanban_column: (r.kanban_column ?? "waiting") as KanbanColumnId,
-          })),
-        );
+        setContacts(data.map(mapRow));
       }
       setLoading(false);
     })();
+
+    // Sync local quando useContactActions emite mudanças
+    const onContactUpdated = (e: Event) => {
+      const detail = (e as CustomEvent<{ id: string; patch: any }>).detail;
+      if (!detail?.id) return;
+      const { id, patch } = detail;
+      setContacts((prev) => prev.map((c) => (c.id === id ? { ...c, ...patch } : c)));
+      setOpenContact((cur) => (cur && cur.id === id ? { ...cur, ...patch } : cur));
+    };
+    window.addEventListener("zf:contact-updated", onContactUpdated as EventListener);
+
+    // Realtime: mudanças vindas de outras abas/dispositivos
+    const channel = supabase
+      .channel("contacts-page-realtime")
+      .on(
+        "postgres_changes",
+        { event: "UPDATE", schema: "public", table: "contacts" },
+        (payload) => {
+          const row = mapRow(payload.new as any);
+          setContacts((prev) => prev.map((c) => (c.id === row.id ? { ...c, ...row } : c)));
+          setOpenContact((cur) => (cur && cur.id === row.id ? { ...cur, ...row } : cur));
+        },
+      )
+      .subscribe();
+
     return () => {
       cancelled = true;
+      window.removeEventListener("zf:contact-updated", onContactUpdated as EventListener);
+      void supabase.removeChannel(channel);
     };
   }, []);
 
