@@ -1,5 +1,6 @@
 import { createFileRoute } from "@tanstack/react-router";
 import { supabaseAdmin } from "@/integrations/supabase/client.server";
+import { renderTemplate } from "@/lib/message-templates";
 import {
   extractQRCode,
   normalizeQRCodeImage,
@@ -421,7 +422,7 @@ export const Route = createFileRoute("/api/public/evolution/$instanceId")({
                         .eq("direction", "outbound");
                       if ((outboundCount ?? 0) === 0) {
                         const welcomeText = renderTemplate(rawWelcome, {
-                          cliente: contactName ?? "",
+                          cliente: pushName ?? "",
                           negocio:
                             (profileWelcome as any)?.business_name ??
                             "nosso estabelecimento",
