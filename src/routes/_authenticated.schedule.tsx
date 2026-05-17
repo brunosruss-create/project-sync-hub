@@ -1936,9 +1936,31 @@ function AppointmentModal({
             <div style={{ display: "grid", gridTemplateColumns: "1fr 1fr", gap: 12 }}>
               <Field label="Data" required>
                 <input
-                  type="date"
-                  value={date}
-                  onChange={(e) => setDate(e.target.value)}
+                  type="text"
+                  inputMode="numeric"
+                  placeholder="dd/mm/aaaa"
+                  value={dateText}
+                  onChange={(e) => {
+                    const raw = e.target.value.replace(/[^\d/]/g, "").slice(0, 10);
+                    let masked = raw;
+                    const d = raw.replace(/\D/g, "");
+                    if (d.length > 4) masked = `${d.slice(0, 2)}/${d.slice(2, 4)}/${d.slice(4, 8)}`;
+                    else if (d.length > 2) masked = `${d.slice(0, 2)}/${d.slice(2)}`;
+                    else masked = d;
+                    setDateText(masked);
+                    const iso = parseDateBR(masked);
+                    if (iso) setDate(iso);
+                  }}
+                  onBlur={() => {
+                    // resincroniza a máscara com o estado ISO válido
+                    const iso = parseDateBR(dateText);
+                    if (iso) {
+                      setDate(iso);
+                      setDateText(formatDateBR(iso));
+                    } else {
+                      setDateText(formatDateBR(date));
+                    }
+                  }}
                   style={inputStyle}
                 />
               </Field>
