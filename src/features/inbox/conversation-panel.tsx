@@ -388,11 +388,6 @@ export function ConversationPanel({
     await sendAudioFn({ data: { contactId: contact.id, url, quoted } });
   };
 
-  const menuAction = (label: string) => {
-    setMenuOpen(false);
-    toast.info(`${label} — em breve.`);
-  };
-
   return (
     <>
       {open && (
