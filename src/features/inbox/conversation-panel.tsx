@@ -697,6 +697,7 @@ export function ConversationPanel({
                       : null
                   }
                   onCancelReply={() => setReplyingTo(null)}
+                  bookingUrl={bookingUrl}
                 />
               </>
             ) : (
