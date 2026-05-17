@@ -190,9 +190,17 @@ function InboxPage() {
         (payload) => {
           const row = mapRow(payload.new as any);
           setContacts((prev) => {
+            if (row.is_blocked || row.is_archived) {
+              return prev.filter((c) => c.id !== row.id);
+            }
             const exists = prev.some((c) => c.id === row.id);
             const next = exists ? prev.map((c) => (c.id === row.id ? row : c)) : [row, ...prev];
             return next.sort((a, b) => b.lastMessageAt.getTime() - a.lastMessageAt.getTime());
+          });
+          setOpenContact((cur) => {
+            if (!cur || cur.id !== row.id) return cur;
+            if (row.is_blocked || row.is_archived) return null;
+            return { ...cur, ...row };
           });
         },
       )
@@ -215,11 +223,15 @@ function InboxPage() {
       if (!detail?.id) return;
       const { id, patch } = detail;
       setContacts((prev) => {
-        // Remove se foi arquivado ou bloqueado
         if (patch.is_archived || patch.is_blocked) {
           return prev.filter((c) => c.id !== id);
         }
         return prev.map((c) => (c.id === id ? { ...c, ...patch } as Contact : c));
+      });
+      setOpenContact((cur) => {
+        if (!cur || cur.id !== id) return cur;
+        if (patch.is_archived || patch.is_blocked) return null;
+        return { ...cur, ...patch } as Contact;
       });
     };
     window.addEventListener("zf:contact-updated", onContactUpdated as EventListener);
