@@ -407,19 +407,25 @@ export const Route = createFileRoute("/api/public/evolution/$instanceId")({
                   try {
                     const { data: profileWelcome } = await supabaseAdmin
                       .from("profiles")
-                      .select("welcome_message,welcome_message_enabled")
+                      .select("welcome_message,welcome_message_enabled,business_name")
                       .eq("id", row.owner_user_id)
                       .maybeSingle();
-                    const welcomeText = (profileWelcome as any)?.welcome_message?.trim?.();
+                    const rawWelcome = (profileWelcome as any)?.welcome_message?.trim?.();
                     const welcomeEnabled =
                       (profileWelcome as any)?.welcome_message_enabled === true;
-                    if (welcomeEnabled && welcomeText) {
+                    if (welcomeEnabled && rawWelcome) {
                       const { count: outboundCount } = await supabaseAdmin
                         .from("messages")
                         .select("id", { count: "exact", head: true })
                         .eq("contact_id", contactId)
                         .eq("direction", "outbound");
                       if ((outboundCount ?? 0) === 0) {
+                        const welcomeText = renderTemplate(rawWelcome, {
+                          cliente: contactName ?? "",
+                          negocio:
+                            (profileWelcome as any)?.business_name ??
+                            "nosso estabelecimento",
+                        });
                         let waMessageId: string | null = null;
                         try {
                           const r: any = await evo.sendText(row.instance_name as string, {
