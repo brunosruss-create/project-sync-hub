@@ -846,7 +846,7 @@ export function ScheduleModal({
                 display: "grid",
                 gridTemplateColumns: "repeat(6, 1fr)",
                 gap: 4,
-                maxHeight: 140,
+                maxHeight: 180,
                 overflowY: "auto",
               }}
             >
