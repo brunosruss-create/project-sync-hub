@@ -202,6 +202,7 @@ export const updateWorkspaceAiConfig = createServerFn({ method: "POST" })
         ai_min_advance_hours: z.number().int().min(0).max(720).optional(),
         ai_required_fields: z.array(z.string().max(64)).max(40).optional(),
         ai_max_questions_per_message: z.number().int().min(1).max(5).optional(),
+        ai_can_share_contact_info: z.boolean().optional(),
       })
       .parse(input),
   )
