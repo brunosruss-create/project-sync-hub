@@ -1,76 +1,71 @@
-# Plano de correção — Agenda + Notificações WhatsApp
+## Plano — 3 correções
 
-Dois bugs isolados. Sem mexer em schema, auth, libs externas ou outras rotas.
+### 1. Cancelamento libera o slot na agenda
+Hoje o agendamento cancelado continua ocupando o horário visualmente e bloqueando a detecção de conflito.
 
----
+- `src/routes/_authenticated.schedule.tsx`
+  - No `upsert`, ignorar conflitos com `status === "cancelled"`.
+  - Derivar `visibleItems = items.filter(a => a.status !== "cancelled")` e passar esse array para `WeekView`, `DayView`, `MonthView` e `AgendaList`.
+  - Mantém `items` completo internamente (não quebra o modal de detalhes nem o histórico).
 
-## Issue 1 — Grid da agenda (visual)
+### 2. Histórico do lead registra todas as ações
+Hoje o "Histórico" mostra o estado atual do appointment (só 1 linha), não as ações.
 
-Arquivo: `src/routes/_authenticated.schedule.tsx`
+Criar tabela `appointment_events` (created / rescheduled / cancelled) e exibir como timeline.
 
-### Causas
+- Nova migration: `supabase/manual/20260609000000_appointment_events.sql` (SQL colado no chat).
+- `src/lib/appointments.functions.ts`: dentro de `notifyAppointmentChange`, gravar uma linha em `appointment_events` (kind + starts_at antigo/novo) antes do envio do WhatsApp. Assim cobre create + reschedule + cancel disparados pela agenda.
+- `src/routes/_authenticated.schedule.tsx`: passar o `previous.starts_at` para a server fn quando for `rescheduled`, para registrar o de/para.
+- `src/features/inbox/conversation-panel.tsx` → `HistoryTab`: buscar `appointment_events` JOIN com `appointments` + `services`, renderizar uma linha por evento com badge ("Agendado", "Reagendado", "Cancelado") e horário formatado em pt-BR.
 
-1. **08:00 cortado**: em `TimeColumn` (linha ~719), o label do primeiro horário usa `top: i*HOUR_HEIGHT - 6`. Para `i=0` resulta em `top: -6px` → cortado pelo `overflow: hidden`/scroll do container pai.
-2. **Headers desalinhados das colunas**: na `WeekView` (linha ~815), o header (`day header`) **não** tem `overflow: auto`, mas o grid abaixo tem `overflow: auto`. Quando aparece a scrollbar vertical no grid, as 7 colunas do grid encolhem mas o header continua usando 100% da largura → as datas deslocam para a direita em relação às colunas.
-3. **Polimento**: a linha de hora cheia + a dashed da meia-hora estão coladas na borda; o header não tem leve separação visual.
+### 3. Horário da mensagem WhatsApp bate com o da agenda
+A agenda usa `Date.getHours()` (tz do navegador). O servidor formata com `business_timezone`. Quando os dois divergem → diferença de horas (ex.: agenda 08:00, mensagem 06:00).
 
-### Fix
+Solução: tratar o horário escolhido sempre no `business_timezone`, ignorando o tz do navegador.
 
-Em `TimeColumn` (~719):
-- Adicionar `paddingTop: 8` ao container (ou trocar `top: i*HOUR_HEIGHT - 6` por `top: i*HOUR_HEIGHT`) e adicionar `marginTop: 8` à área da grid para que o label de `HOUR_START` fique inteiramente visível.
-- Aplicar o mesmo `paddingTop` em `HourGrid` (ou aumentar `height` em +8) para manter o alinhamento entre labels e linhas.
+- Novo helper `src/features/schedule/tz.ts`:
+  - `zonedToUtc(year, month, day, hour, minute, tz): Date` — converte H/M no tz do negócio para o instante UTC correto.
+  - `utcToZonedFields(d: Date, tz): { y, mo, da, h, mi }` — extrai os campos wall-clock no tz do negócio.
+  - `makeLocalLikeDate(fields)` — cria `new Date(y,mo,da,h,mi)` para que `getHours()` reflita o tz do negócio mesmo no navegador.
+- `src/routes/_authenticated.schedule.tsx`:
+  - Obter `tz` via `useProfile()` (com fallback `America/Sao_Paulo`).
+  - No `mapAppt`: armazenar `starts_at` / `ends_at` como "fake-local Date" reproduzindo as horas do `business_timezone` (mantém todo o grid/`getHours()` funcionando sem mexer nos cálculos de layout).
+  - No `upsert`: ao enviar `toISOString()`, converter de volta usando `zonedToUtc` para que o instante UTC gravado corresponda ao H/M escolhido no tz do negócio.
+  - No modal `AppointmentForm`: idem — `baseDate.getHours()` continua valendo porque `mapAppt` já normalizou.
 
-Em `WeekView` header (~817):
-- Reservar espaço da scrollbar: adicionar `paddingRight: var(--scrollbar-w, 0px)` no header e calcular dinamicamente com `useRef` + `ResizeObserver` no container `flex: 1; overflow: auto` (medir `offsetWidth - clientWidth`). Alternativa simples e robusta: dar ao header `overflow-y: scroll` com `visibility: hidden` na scrollbar via `scrollbar-gutter: stable` (suportado nos browsers alvo) **OU** envolver header+grid no mesmo container scrollável (header sticky `position: sticky; top: 0; z-index: 4; background: var(--bg-surface)`) — preferir esta segunda, que elimina a divergência por construção.
+Com isso a agenda e a mensagem mostram exatamente o mesmo H:M.
 
-Refatoração mínima recomendada (sticky header):
-- Mover a área de scroll para um único `<div style={{ flex: 1, overflow: 'auto' }}>` envolvendo header + grid.
-- Tornar a linha do header `position: sticky; top: 0` com `background: var(--bg-surface)` e `borderBottom`.
-- Resultado: header e colunas compartilham o mesmo eixo horizontal, scrollbar não afeta mais o alinhamento.
+## Detalhes técnicos
 
-Polimento visual:
-- `HourGrid`: trocar `borderTop: 1px solid var(--border)` da primeira linha por nenhuma borda (apenas a partir de `i>=1`) para não duplicar com header.
-- Aumentar contraste sutil das linhas de hora cheia (`var(--border-strong)`) e manter dashed sutil (`opacity: 0.4`) na meia-hora.
-- `TimeColumn`: aumentar `width` para 60, label com `letterSpacing: 0.02em` e alinhamento `textAlign: 'right'`.
-- Linha de hoje no header: já existe pill; adicionar leve `boxShadow` ao pill.
+### SQL (será colado aberto no chat)
+```sql
+create table if not exists public.appointment_events (
+  id uuid primary key default gen_random_uuid(),
+  appointment_id uuid not null references public.appointments(id) on delete cascade,
+  owner_user_id uuid not null references auth.users(id) on delete cascade,
+  contact_id uuid references public.contacts(id) on delete set null,
+  kind text not null check (kind in ('created','rescheduled','cancelled')),
+  starts_at timestamptz,        -- novo horário (created/rescheduled) ou horário cancelado
+  previous_starts_at timestamptz, -- só em rescheduled
+  created_at timestamptz not null default now()
+);
+create index if not exists appointment_events_contact_idx
+  on public.appointment_events(contact_id, created_at desc);
+create index if not exists appointment_events_owner_idx
+  on public.appointment_events(owner_user_id, created_at desc);
+alter table public.appointment_events enable row level security;
+drop policy if exists "ws members read appointment_events" on public.appointment_events;
+create policy "ws members read appointment_events"
+  on public.appointment_events for select to authenticated
+  using (owner_user_id = public.get_my_workspace_owner());
+```
+(insert via service role no server fn — sem policy de insert para o usuário.)
 
-Sem mudar `HOUR_START/HOUR_END/PX_PER_MIN/SLOT_MIN` em `src/features/schedule/data.ts`.
+### Restrições
+- Sem libs externas de data.
+- Sem mexer em auth/schema fora da nova tabela.
+- Sem regressão nas funções existentes do schedule grid.
 
----
-
-## Issue 2 — Horário errado nas mensagens WhatsApp
-
-Arquivo: `src/lib/booking-confirmation.server.ts`
-
-### Análise
-
-- `formatDateBR`/`formatTimeBR` já passam `timeZone: tz` para `Intl.DateTimeFormat` (linhas ~38–67). Conceitualmente está correto.
-- As 3 funções `sendBooking*` já derivam `tz = profile.business_timezone || "America/Sao_Paulo"`.
-- O caller `src/lib/appointments.functions.ts` carrega `business_timezone` do `profiles` e monta `profileLite` corretamente.
-- Sintoma "08:00 vira 06:00" (−2h) indica um dos casos:
-  a) `appt.starts_at` retornado pelo Supabase chega como string **sem `Z`** (formato `"2026-…T11:00:00"`) — `new Date(...)` interpreta como **local** do runtime (UTC no Worker), e o `Intl` com `America/Sao_Paulo` aplica −3h em cima → desalinha.
-  b) `business_timezone` do workspace está salvo como algo diferente de SP (ex.: `"UTC"` ou `"Etc/GMT+2"`) — caller passa, mas valor está errado no DB. Fora do escopo de código.
-
-A causa (a) é a única que conseguimos corrigir de forma defensiva sem libs externas.
-
-### Fix
-
-1. Em `booking-confirmation.server.ts`, criar helper interno `toUtcDate(iso: string): Date` que **garante** parsing como UTC quando a string vier sem offset:
-   - Se `iso` casar `/Z$|[+-]\d{2}:?\d{2}$/` → `new Date(iso)`.
-   - Senão → `new Date(iso.replace(' ', 'T') + 'Z')`.
-2. Usar `toUtcDate(iso)` dentro de `formatDateBR` e `formatTimeBR` antes de passar ao `Intl.DateTimeFormat`.
-3. Manter `timeZone: tz` explícito; manter fallback `"America/Sao_Paulo"` nas 3 funções `sendBooking*` (já presente — apenas confirmar).
-4. Não tocar em `renderTemplate` nem em `appointments.functions.ts` (a query já seleciona `starts_at` e o profile já entrega `business_timezone`).
-
-### Verificação manual após o fix
-- Criar agendamento 08:00 horário local SP → mensagem deve mostrar `08:00`.
-- Reagendar para 14:30 → mensagem `14:30`.
-- Cancelar → mensagem com a mesma hora exibida na agenda.
-
----
-
-## Restrições respeitadas
-- Sem libs de data novas.
-- Sem trocar o grid por FullCalendar/react-big-calendar.
-- Sem mudanças em schema, RLS, auth ou outras features.
-- Edits limitados a `src/routes/_authenticated.schedule.tsx` e `src/lib/booking-confirmation.server.ts`.
+## Riscos
+- Refator de tz pode quebrar comparações de data (`sameDay`, ordenação). Mitigado por manter Dates "fake-local" consistentes — todas as comparações continuam valendo.
+- Conflito: filtrar cancelled libera o slot mas não impede que histórico/relatórios contem cancelados (ok, eles vêm do banco direto).
