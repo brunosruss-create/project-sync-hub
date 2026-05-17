@@ -22,6 +22,7 @@ import { Route as AuthenticatedScheduleRouteImport } from './routes/_authenticat
 import { Route as AuthenticatedReportsRouteImport } from './routes/_authenticated.reports'
 import { Route as AuthenticatedInboxRouteImport } from './routes/_authenticated.inbox'
 import { Route as AuthenticatedDashboardRouteImport } from './routes/_authenticated.dashboard'
+import { Route as AuthenticatedConversationsChatRouteImport } from './routes/_authenticated.conversations-chat'
 import { Route as AuthenticatedContactsRouteImport } from './routes/_authenticated.contacts'
 import { Route as AuthenticatedAiAgentRouteImport } from './routes/_authenticated.ai-agent'
 import { Route as AuthenticatedSuperAdminWorkspacesRouteImport } from './routes/_authenticated.super-admin.workspaces'
@@ -101,6 +102,12 @@ const AuthenticatedDashboardRoute = AuthenticatedDashboardRouteImport.update({
   path: '/dashboard',
   getParentRoute: () => AuthenticatedRoute,
 } as any)
+const AuthenticatedConversationsChatRoute =
+  AuthenticatedConversationsChatRouteImport.update({
+    id: '/conversations-chat',
+    path: '/conversations-chat',
+    getParentRoute: () => AuthenticatedRoute,
+  } as any)
 const AuthenticatedContactsRoute = AuthenticatedContactsRouteImport.update({
   id: '/contacts',
   path: '/contacts',
@@ -192,6 +199,7 @@ export interface FileRoutesByFullPath {
   '/signup': typeof SignupRoute
   '/ai-agent': typeof AuthenticatedAiAgentRoute
   '/contacts': typeof AuthenticatedContactsRoute
+  '/conversations-chat': typeof AuthenticatedConversationsChatRoute
   '/dashboard': typeof AuthenticatedDashboardRoute
   '/inbox': typeof AuthenticatedInboxRoute
   '/reports': typeof AuthenticatedReportsRoute
@@ -220,6 +228,7 @@ export interface FileRoutesByTo {
   '/signup': typeof SignupRoute
   '/ai-agent': typeof AuthenticatedAiAgentRoute
   '/contacts': typeof AuthenticatedContactsRoute
+  '/conversations-chat': typeof AuthenticatedConversationsChatRoute
   '/dashboard': typeof AuthenticatedDashboardRoute
   '/inbox': typeof AuthenticatedInboxRoute
   '/reports': typeof AuthenticatedReportsRoute
@@ -250,6 +259,7 @@ export interface FileRoutesById {
   '/signup': typeof SignupRoute
   '/_authenticated/ai-agent': typeof AuthenticatedAiAgentRoute
   '/_authenticated/contacts': typeof AuthenticatedContactsRoute
+  '/_authenticated/conversations-chat': typeof AuthenticatedConversationsChatRoute
   '/_authenticated/dashboard': typeof AuthenticatedDashboardRoute
   '/_authenticated/inbox': typeof AuthenticatedInboxRoute
   '/_authenticated/reports': typeof AuthenticatedReportsRoute
@@ -280,6 +290,7 @@ export interface FileRouteTypes {
     | '/signup'
     | '/ai-agent'
     | '/contacts'
+    | '/conversations-chat'
     | '/dashboard'
     | '/inbox'
     | '/reports'
@@ -308,6 +319,7 @@ export interface FileRouteTypes {
     | '/signup'
     | '/ai-agent'
     | '/contacts'
+    | '/conversations-chat'
     | '/dashboard'
     | '/inbox'
     | '/reports'
@@ -337,6 +349,7 @@ export interface FileRouteTypes {
     | '/signup'
     | '/_authenticated/ai-agent'
     | '/_authenticated/contacts'
+    | '/_authenticated/conversations-chat'
     | '/_authenticated/dashboard'
     | '/_authenticated/inbox'
     | '/_authenticated/reports'
@@ -460,6 +473,13 @@ declare module '@tanstack/react-router' {
       path: '/dashboard'
       fullPath: '/dashboard'
       preLoaderRoute: typeof AuthenticatedDashboardRouteImport
+      parentRoute: typeof AuthenticatedRoute
+    }
+    '/_authenticated/conversations-chat': {
+      id: '/_authenticated/conversations-chat'
+      path: '/conversations-chat'
+      fullPath: '/conversations-chat'
+      preLoaderRoute: typeof AuthenticatedConversationsChatRouteImport
       parentRoute: typeof AuthenticatedRoute
     }
     '/_authenticated/contacts': {
@@ -589,6 +609,7 @@ const AuthenticatedSuperAdminRouteWithChildren =
 interface AuthenticatedRouteChildren {
   AuthenticatedAiAgentRoute: typeof AuthenticatedAiAgentRoute
   AuthenticatedContactsRoute: typeof AuthenticatedContactsRoute
+  AuthenticatedConversationsChatRoute: typeof AuthenticatedConversationsChatRoute
   AuthenticatedDashboardRoute: typeof AuthenticatedDashboardRoute
   AuthenticatedInboxRoute: typeof AuthenticatedInboxRoute
   AuthenticatedReportsRoute: typeof AuthenticatedReportsRoute
@@ -606,6 +627,7 @@ interface AuthenticatedRouteChildren {
 const AuthenticatedRouteChildren: AuthenticatedRouteChildren = {
   AuthenticatedAiAgentRoute: AuthenticatedAiAgentRoute,
   AuthenticatedContactsRoute: AuthenticatedContactsRoute,
+  AuthenticatedConversationsChatRoute: AuthenticatedConversationsChatRoute,
   AuthenticatedDashboardRoute: AuthenticatedDashboardRoute,
   AuthenticatedInboxRoute: AuthenticatedInboxRoute,
   AuthenticatedReportsRoute: AuthenticatedReportsRoute,
