@@ -41,6 +41,8 @@ function MessagesPage() {
   const { data: profile } = useProfile();
   const businessName = (profile as { business_name?: string | null } | null | undefined)
     ?.business_name?.trim() || null;
+  const aiEnabled = (profile as { ai_enabled?: boolean | null } | null | undefined)
+    ?.ai_enabled === true;
 
   const q = useQuery({
     queryKey: ["message-templates"],
@@ -125,6 +127,7 @@ function MessagesPage() {
               meta={MESSAGE_DEFAULTS[k]}
               value={draft[k]}
               businessName={businessName}
+              aiEnabled={aiEnabled}
               onChange={(patch) => set(k, patch)}
               onReset={() =>
                 set(k, { text: MESSAGE_DEFAULTS[k].default })
@@ -141,12 +144,14 @@ function MessageCard({
   meta,
   value,
   businessName,
+  aiEnabled,
   onChange,
   onReset,
 }: {
   meta: (typeof MESSAGE_DEFAULTS)[MessageKey];
   value: { enabled: boolean; text: string };
   businessName: string | null;
+  aiEnabled: boolean;
   onChange: (patch: Partial<{ enabled: boolean; text: string }>) => void;
   onReset: () => void;
 }) {
@@ -214,6 +219,22 @@ function MessageCard({
           {value.enabled ? "Ativa" : "Desativada"}
         </label>
       </div>
+
+      {meta.key === "welcome" && aiEnabled && value.enabled && (
+        <div
+          style={{
+            fontSize: 12,
+            color: "var(--text-secondary)",
+            background: "color-mix(in oklab, var(--brand-400) 10%, var(--bg-overlay))",
+            border: "1px solid var(--border)",
+            borderRadius: 8,
+            padding: "8px 10px",
+            marginBottom: 12,
+          }}
+        >
+          💡 A IA está ativa — esta mensagem <strong>não será enviada</strong>. A própria IA faz a saudação usando o nome do assistente e do negócio configurados em <em>Agente IA</em>.
+        </div>
+      )}
 
       <div
         className="grid"

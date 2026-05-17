@@ -408,13 +408,17 @@ export const Route = createFileRoute("/api/public/evolution/$instanceId")({
                   try {
                     const { data: profileWelcome } = await supabaseAdmin
                       .from("profiles")
-                      .select("welcome_message,welcome_message_enabled,business_name")
+                      .select("welcome_message,welcome_message_enabled,business_name,ai_enabled")
                       .eq("id", row.owner_user_id)
                       .maybeSingle();
                     const rawWelcome = (profileWelcome as any)?.welcome_message?.trim?.();
                     const welcomeEnabled =
                       (profileWelcome as any)?.welcome_message_enabled === true;
-                    if (welcomeEnabled && rawWelcome) {
+                    const aiEnabled = (profileWelcome as any)?.ai_enabled === true;
+                    // Quando a IA está ativa, ela mesma faz a saudação (com nome do
+                    // assistente + negócio). Suprimimos o welcome estático para evitar
+                    // duas saudações duplicadas e contraditórias.
+                    if (welcomeEnabled && rawWelcome && !aiEnabled) {
                       const { count: outboundCount } = await supabaseAdmin
                         .from("messages")
                         .select("id", { count: "exact", head: true })
