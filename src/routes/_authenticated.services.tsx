@@ -614,32 +614,6 @@ function MenuItem({
   );
 }
 
-function Meta({
-  icon,
-  label,
-  muted,
-  valueStyle,
-}: {
-  icon: string;
-  label: string;
-  muted?: boolean;
-  valueStyle?: React.CSSProperties;
-}) {
-  return (
-    <div className="flex items-start" style={{ gap: 6, fontSize: 12 }}>
-      <span style={{ width: 16, textAlign: "center", flexShrink: 0 }}>{icon}</span>
-      <span
-        style={{
-          color: muted ? "var(--text-muted)" : "var(--text-primary)",
-          lineHeight: 1.4,
-          ...valueStyle,
-        }}
-      >
-        {label}
-      </span>
-    </div>
-  );
-}
 
 function CategoryPill({
   active,
