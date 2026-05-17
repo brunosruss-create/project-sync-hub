@@ -33,6 +33,13 @@ type AppointmentLite = {
   starts_at: string;
 };
 
+// Garante parse como UTC mesmo quando a string vier sem offset
+// (Postgres timestamptz às vezes serializa "2026-…T11:00:00" sem 'Z').
+function toUtcDate(iso: string): Date {
+  if (/Z$|[+-]\d{2}:?\d{2}$/.test(iso)) return new Date(iso);
+  return new Date(iso.replace(" ", "T") + "Z");
+}
+
 function formatDateBR(iso: string, tz: string): string {
   try {
     return new Intl.DateTimeFormat("pt-BR", {
@@ -41,9 +48,9 @@ function formatDateBR(iso: string, tz: string): string {
       day: "2-digit",
       month: "long",
       year: "numeric",
-    }).format(new Date(iso));
+    }).format(toUtcDate(iso));
   } catch {
-    return new Date(iso).toLocaleDateString("pt-BR");
+    return toUtcDate(iso).toLocaleDateString("pt-BR");
   }
 }
 
@@ -54,9 +61,9 @@ function formatTimeBR(iso: string, tz: string): string {
       hour: "2-digit",
       minute: "2-digit",
       hour12: false,
-    }).format(new Date(iso));
+    }).format(toUtcDate(iso));
   } catch {
-    return new Date(iso).toLocaleTimeString("pt-BR", {
+    return toUtcDate(iso).toLocaleTimeString("pt-BR", {
       hour: "2-digit",
       minute: "2-digit",
     });

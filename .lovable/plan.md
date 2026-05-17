@@ -1,52 +1,76 @@
-## Problemas e correções
+# Plano de correção — Agenda + Notificações WhatsApp
 
-### 1. Data em formato americano (MM/DD/YYYY) no modal de editar/criar agendamento
-**Causa:** o campo usa `<input type="date">` nativo, cuja apresentação visual segue o locale do SO/navegador — não há como forçar pt-BR via atributo. No modal aparece `05/18/2026` porque o navegador está em en-US.
-
-**Correção:** trocar por um `<input type="text" inputMode="numeric">` com máscara `dd/mm/aaaa`, reusando os helpers já existentes `formatDateBR` / `parseDateBR` em `src/features/schedule/data.ts`. O estado interno continua em ISO `yyyy-mm-dd`, apenas a apresentação muda. Validar no `submit` que a data é válida antes de montar `starts_at`.
-
-Arquivo: `src/routes/_authenticated.schedule.tsx` (campo "Data" no modal de agendamento, ~linha 1923).
+Dois bugs isolados. Sem mexer em schema, auth, libs externas ou outras rotas.
 
 ---
 
-### 2 e 3. Reagendamento não persiste no banco e WhatsApp de reagendamento não dispara
-Os dois sintomas têm a **mesma causa raiz**: o `upsert` em `src/routes/_authenticated.schedule.tsx` (linha ~253) está falhando silenciosamente.
+## Issue 1 — Grid da agenda (visual)
 
-Trecho atual:
-```ts
-const { error } = await supabase.from("appointments").upsert({ ... });
-if (error) {
-  console.warn("[schedule] persistência ignorada:", error.message);
-  return true;            // ← engole o erro
-}
-if (draft.notify_whatsapp) { /* dispara notifyChangeFn aqui */ }
-```
+Arquivo: `src/routes/_authenticated.schedule.tsx`
 
-Como o `upsert` falha:
-- a UI atualiza otimisticamente (por isso o card "muda de posição"),
-- o banco **não** é atualizado (por isso volta ao reagendamento anterior ao recarregar),
-- e o bloco de notificação WhatsApp **não roda** (por isso a mensagem de reagendamento nunca chega).
+### Causas
 
-**Causa provável:** o payload do upsert não inclui `owner_user_id`, então:
-- em INSERT a RLS rejeita,
-- em UPDATE, dependendo do papel (agent vs manager), a checagem `owner_user_id = get_my_workspace_owner()` também pode falhar.
+1. **08:00 cortado**: em `TimeColumn` (linha ~719), o label do primeiro horário usa `top: i*HOUR_HEIGHT - 6`. Para `i=0` resulta em `top: -6px` → cortado pelo `overflow: hidden`/scroll do container pai.
+2. **Headers desalinhados das colunas**: na `WeekView` (linha ~815), o header (`day header`) **não** tem `overflow: auto`, mas o grid abaixo tem `overflow: auto`. Quando aparece a scrollbar vertical no grid, as 7 colunas do grid encolhem mas o header continua usando 100% da largura → as datas deslocam para a direita em relação às colunas.
+3. **Polimento**: a linha de hora cheia + a dashed da meia-hora estão coladas na borda; o header não tem leve separação visual.
 
-**Correções:**
+### Fix
 
-a) **Surfacing do erro** — trocar `console.warn` por `nfy.error("Falha ao salvar: " + error.message)` e `return false`, para nunca mais perder esse tipo de bug silenciosamente.
+Em `TimeColumn` (~719):
+- Adicionar `paddingTop: 8` ao container (ou trocar `top: i*HOUR_HEIGHT - 6` por `top: i*HOUR_HEIGHT`) e adicionar `marginTop: 8` à área da grid para que o label de `HOUR_START` fique inteiramente visível.
+- Aplicar o mesmo `paddingTop` em `HourGrid` (ou aumentar `height` em +8) para manter o alinhamento entre labels e linhas.
 
-b) **Incluir `owner_user_id`** no payload do upsert, resolvido via `useWorkspaceOwnerId()` (hook já existe em `src/hooks/use-workspace-owner.tsx`). Mesmo padrão usado nas outras telas.
+Em `WeekView` header (~817):
+- Reservar espaço da scrollbar: adicionar `paddingRight: var(--scrollbar-w, 0px)` no header e calcular dinamicamente com `useRef` + `ResizeObserver` no container `flex: 1; overflow: auto` (medir `offsetWidth - clientWidth`). Alternativa simples e robusta: dar ao header `overflow-y: scroll` com `visibility: hidden` na scrollbar via `scrollbar-gutter: stable` (suportado nos browsers alvo) **OU** envolver header+grid no mesmo container scrollável (header sticky `position: sticky; top: 0; z-index: 4; background: var(--bg-surface)`) — preferir esta segunda, que elimina a divergência por construção.
 
-c) **Disparar a notificação WhatsApp só após o upsert dar OK** — manter a ordem atual já está correta; o ajuste em (a) garante que não chega no bloco de notify quando o save falhou. Importante: a função `notifyAppointmentChange` (em `src/lib/appointments.functions.ts`) já lê `starts_at` do banco, então só funciona se o UPDATE realmente persistir — confirma que (b) é pré-requisito.
+Refatoração mínima recomendada (sticky header):
+- Mover a área de scroll para um único `<div style={{ flex: 1, overflow: 'auto' }}>` envolvendo header + grid.
+- Tornar a linha do header `position: sticky; top: 0` com `background: var(--bg-surface)` e `borderBottom`.
+- Resultado: header e colunas compartilham o mesmo eixo horizontal, scrollbar não afeta mais o alinhamento.
 
-d) **Verificação após o fix** — abrir o console do navegador ao reagendar para confirmar que não há mais warning de upsert, e checar no banco (`select id, starts_at from appointments where id = ...`) que `starts_at` mudou. Se ainda falhar, a mensagem de erro agora visível dirá exatamente qual policy/coluna está rejeitando, e ajustamos a partir dali (provavelmente uma policy de UPDATE em `appointments` que precisa ser revisada via migration).
+Polimento visual:
+- `HourGrid`: trocar `borderTop: 1px solid var(--border)` da primeira linha por nenhuma borda (apenas a partir de `i>=1`) para não duplicar com header.
+- Aumentar contraste sutil das linhas de hora cheia (`var(--border-strong)`) e manter dashed sutil (`opacity: 0.4`) na meia-hora.
+- `TimeColumn`: aumentar `width` para 60, label com `letterSpacing: 0.02em` e alinhamento `textAlign: 'right'`.
+- Linha de hoje no header: já existe pill; adicionar leve `boxShadow` ao pill.
+
+Sem mudar `HOUR_START/HOUR_END/PX_PER_MIN/SLOT_MIN` em `src/features/schedule/data.ts`.
 
 ---
 
-## Arquivos afetados
-- `src/routes/_authenticated.schedule.tsx` — campo de data + função `upsert` (incluir `owner_user_id`, surfacing de erro)
-- possível migration adicional em `supabase/manual/` caso o erro do passo (d) aponte para policy faltando
+## Issue 2 — Horário errado nas mensagens WhatsApp
 
-## Fora de escopo
-- Mudanças no template da mensagem de reagendamento (já corrigido em conversa anterior).
-- Mudanças no modal de criação a partir do Inbox (`schedule-modal.tsx`).
+Arquivo: `src/lib/booking-confirmation.server.ts`
+
+### Análise
+
+- `formatDateBR`/`formatTimeBR` já passam `timeZone: tz` para `Intl.DateTimeFormat` (linhas ~38–67). Conceitualmente está correto.
+- As 3 funções `sendBooking*` já derivam `tz = profile.business_timezone || "America/Sao_Paulo"`.
+- O caller `src/lib/appointments.functions.ts` carrega `business_timezone` do `profiles` e monta `profileLite` corretamente.
+- Sintoma "08:00 vira 06:00" (−2h) indica um dos casos:
+  a) `appt.starts_at` retornado pelo Supabase chega como string **sem `Z`** (formato `"2026-…T11:00:00"`) — `new Date(...)` interpreta como **local** do runtime (UTC no Worker), e o `Intl` com `America/Sao_Paulo` aplica −3h em cima → desalinha.
+  b) `business_timezone` do workspace está salvo como algo diferente de SP (ex.: `"UTC"` ou `"Etc/GMT+2"`) — caller passa, mas valor está errado no DB. Fora do escopo de código.
+
+A causa (a) é a única que conseguimos corrigir de forma defensiva sem libs externas.
+
+### Fix
+
+1. Em `booking-confirmation.server.ts`, criar helper interno `toUtcDate(iso: string): Date` que **garante** parsing como UTC quando a string vier sem offset:
+   - Se `iso` casar `/Z$|[+-]\d{2}:?\d{2}$/` → `new Date(iso)`.
+   - Senão → `new Date(iso.replace(' ', 'T') + 'Z')`.
+2. Usar `toUtcDate(iso)` dentro de `formatDateBR` e `formatTimeBR` antes de passar ao `Intl.DateTimeFormat`.
+3. Manter `timeZone: tz` explícito; manter fallback `"America/Sao_Paulo"` nas 3 funções `sendBooking*` (já presente — apenas confirmar).
+4. Não tocar em `renderTemplate` nem em `appointments.functions.ts` (a query já seleciona `starts_at` e o profile já entrega `business_timezone`).
+
+### Verificação manual após o fix
+- Criar agendamento 08:00 horário local SP → mensagem deve mostrar `08:00`.
+- Reagendar para 14:30 → mensagem `14:30`.
+- Cancelar → mensagem com a mesma hora exibida na agenda.
+
+---
+
+## Restrições respeitadas
+- Sem libs de data novas.
+- Sem trocar o grid por FullCalendar/react-big-calendar.
+- Sem mudanças em schema, RLS, auth ou outras features.
+- Edits limitados a `src/routes/_authenticated.schedule.tsx` e `src/lib/booking-confirmation.server.ts`.
