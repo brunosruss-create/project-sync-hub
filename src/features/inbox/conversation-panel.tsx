@@ -1643,26 +1643,29 @@ function ServicesTab({ onSchedule }: { onSchedule: (serviceIds: string[]) => voi
   );
 }
 
-interface HistoryItem {
+interface HistoryEvent {
   id: string;
-  starts_at: Date;
-  status: string;
-  agent_name: string;
-  services: Array<{ name: string; price_cents: number }>;
-  total_cents: number;
+  kind: "created" | "rescheduled" | "cancelled";
+  created_at: Date;
+  starts_at: Date | null;
+  previous_starts_at: Date | null;
+  service_name: string | null;
 }
 
-const STATUS_PT: Record<string, { label: string; color: string }> = {
-  completed: { label: "Realizado", color: "#25C880" },
+const EVENT_LABEL: Record<HistoryEvent["kind"], { label: string; color: string }> = {
+  created: { label: "Agendado", color: "#3B82F6" },
+  rescheduled: { label: "Reagendado", color: "#F59E0B" },
   cancelled: { label: "Cancelado", color: "#EF4444" },
-  no_show: { label: "Faltou", color: "#F59E0B" },
-  scheduled: { label: "Agendado", color: "#3B82F6" },
-  confirmed: { label: "Confirmado", color: "#3B82F6" },
-  in_progress: { label: "Em andamento", color: "#F59E0B" },
 };
 
+function fmtDT(d: Date) {
+  const dt = d.toLocaleDateString("pt-BR", { day: "2-digit", month: "2-digit", year: "2-digit" });
+  const tm = d.toLocaleTimeString("pt-BR", { hour: "2-digit", minute: "2-digit" });
+  return `${dt} · ${tm}`;
+}
+
 function HistoryTab({ contactId }: { contactId: string }) {
-  const [items, setItems] = React.useState<HistoryItem[]>([]);
+  const [items, setItems] = React.useState<HistoryEvent[]>([]);
   const [loading, setLoading] = React.useState(true);
 
   React.useEffect(() => {
@@ -1670,29 +1673,23 @@ function HistoryTab({ contactId }: { contactId: string }) {
     (async () => {
       setLoading(true);
       const { data, error } = await supabase
-        .from("appointments")
-        .select("id,starts_at,status,agent_id,appointment_services(price_cents,duration_minutes,services(name))")
+        .from("appointment_events")
+        .select("id,kind,created_at,starts_at,previous_starts_at,services(name)")
         .eq("contact_id", contactId)
-        .order("starts_at", { ascending: false });
+        .order("created_at", { ascending: false });
       if (cancelled) return;
       if (error || !data) {
         setItems([]);
       } else {
         setItems(
-          data.map((r: any) => {
-            const svcs = (r.appointment_services ?? []).map((as: any) => ({
-              name: as.services?.name ?? "Serviço",
-              price_cents: as.price_cents ?? 0,
-            }));
-            return {
-              id: r.id,
-              starts_at: new Date(r.starts_at),
-              status: r.status ?? "scheduled",
-              agent_name: r.agent_id ?? "—",
-              services: svcs,
-              total_cents: svcs.reduce((a: number, s: any) => a + (s.price_cents ?? 0), 0),
-            };
-          }),
+          data.map((r: any) => ({
+            id: r.id,
+            kind: r.kind,
+            created_at: new Date(r.created_at),
+            starts_at: r.starts_at ? new Date(r.starts_at) : null,
+            previous_starts_at: r.previous_starts_at ? new Date(r.previous_starts_at) : null,
+            service_name: r.services?.name ?? null,
+          })),
         );
       }
       setLoading(false);
@@ -1718,7 +1715,7 @@ function HistoryTab({ contactId }: { contactId: string }) {
           borderRadius: 8,
         }}
       >
-        Nenhum agendamento anterior para este contato.
+        Nenhum histórico para este contato.
       </div>
     );
   }
@@ -1726,9 +1723,7 @@ function HistoryTab({ contactId }: { contactId: string }) {
   return (
     <div className="flex flex-col" style={{ gap: 10 }}>
       {items.map((it) => {
-        const st = STATUS_PT[it.status] ?? { label: it.status, color: "var(--text-muted)" };
-        const dt = it.starts_at.toLocaleDateString("pt-BR", { day: "2-digit", month: "2-digit", year: "2-digit" });
-        const tm = it.starts_at.toLocaleTimeString("pt-BR", { hour: "2-digit", minute: "2-digit" });
+        const meta = EVENT_LABEL[it.kind];
         return (
           <div
             key={it.id}
@@ -1741,41 +1736,33 @@ function HistoryTab({ contactId }: { contactId: string }) {
           >
             <div className="flex items-center justify-between" style={{ gap: 8 }}>
               <div style={{ fontSize: 13, fontWeight: 600, color: "var(--text-primary)" }}>
-                {dt} · {tm}
+                {fmtDT(it.created_at)}
               </div>
               <span
                 style={{
                   fontSize: 11,
                   padding: "2px 8px",
                   borderRadius: 999,
-                  border: `1px solid ${st.color}`,
-                  color: st.color,
+                  border: `1px solid ${meta.color}`,
+                  color: meta.color,
                 }}
               >
-                {st.label}
+                {meta.label}
               </span>
             </div>
-            {it.services.length > 0 && (
-              <div className="flex flex-wrap" style={{ gap: 4, marginTop: 6 }}>
-                {it.services.map((s, i) => (
-                  <span
-                    key={i}
-                    style={{
-                      fontSize: 11,
-                      padding: "2px 6px",
-                      borderRadius: 4,
-                      background: "var(--bg-overlay)",
-                      color: "var(--text-muted)",
-                    }}
-                  >
-                    {s.name}
-                  </span>
-                ))}
+            {it.kind === "rescheduled" && it.previous_starts_at && it.starts_at && (
+              <div style={{ fontSize: 12, color: "var(--text-muted)", marginTop: 6 }}>
+                {fmtDT(it.previous_starts_at)} → {fmtDT(it.starts_at)}
               </div>
             )}
-            {it.total_cents > 0 && (
-              <div className="font-mono" style={{ marginTop: 6, fontSize: 12, color: "var(--text-primary)" }}>
-                {formatCurrencyBRL(it.total_cents)}
+            {it.kind !== "rescheduled" && it.starts_at && (
+              <div style={{ fontSize: 12, color: "var(--text-muted)", marginTop: 6 }}>
+                Horário: {fmtDT(it.starts_at)}
+              </div>
+            )}
+            {it.service_name && (
+              <div style={{ fontSize: 12, color: "var(--text-muted)", marginTop: 2 }}>
+                Serviço: {it.service_name}
               </div>
             )}
           </div>
