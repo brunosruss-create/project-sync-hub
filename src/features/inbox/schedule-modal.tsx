@@ -957,46 +957,88 @@ export function ScheduleModal({
 
         {/* Footer */}
         <div
-          className="flex items-center justify-end"
+          className="flex items-center justify-between"
           style={{ gap: 8, padding: 12, borderTop: "1px solid var(--border)" }}
         >
-          <button
-            type="button"
-            onClick={onClose}
-            style={{
-              height: 34,
-              padding: "0 14px",
-              borderRadius: 6,
-              border: "1px solid var(--border-strong)",
-              background: "transparent",
-              color: "var(--text-primary)",
-              fontSize: 13,
-              fontWeight: 500,
-            }}
-          >
-            Cancelar
-          </button>
-          <button
-            type="button"
-            onClick={submit}
-            disabled={!canSubmit}
-            className="inline-flex items-center"
-            style={{
-              gap: 6,
-              height: 34,
-              padding: "0 14px",
-              borderRadius: 6,
-              border: "none",
-              background: "var(--brand-400)",
-              color: "#fff",
-              fontSize: 13,
-              fontWeight: 600,
-              opacity: canSubmit ? 1 : 0.5,
-              cursor: canSubmit ? "pointer" : "not-allowed",
-            }}
-          >
-            📅 Confirmar Agendamento
-          </button>
+          <div className="flex items-center" style={{ gap: 6 }}>
+            {initial && (
+              <>
+                <button
+                  type="button"
+                  onClick={handleCancelAppointment}
+                  disabled={submitting}
+                  style={{
+                    height: 34,
+                    padding: "0 10px",
+                    borderRadius: 6,
+                    border: "1px solid var(--border-strong)",
+                    background: "transparent",
+                    color: "var(--text-muted)",
+                    fontSize: 12,
+                    fontWeight: 500,
+                  }}
+                >
+                  Cancelar agendamento
+                </button>
+                <button
+                  type="button"
+                  onClick={handleDeleteAppointment}
+                  disabled={submitting}
+                  aria-label="Excluir"
+                  className="inline-flex items-center justify-center"
+                  style={{
+                    width: 34,
+                    height: 34,
+                    borderRadius: 6,
+                    border: "1px solid var(--border-strong)",
+                    background: "transparent",
+                    color: "var(--danger, #EF4444)",
+                  }}
+                >
+                  <Trash2 size={14} />
+                </button>
+              </>
+            )}
+          </div>
+          <div className="flex items-center" style={{ gap: 8 }}>
+            <button
+              type="button"
+              onClick={onClose}
+              style={{
+                height: 34,
+                padding: "0 14px",
+                borderRadius: 6,
+                border: "1px solid var(--border-strong)",
+                background: "transparent",
+                color: "var(--text-primary)",
+                fontSize: 13,
+                fontWeight: 500,
+              }}
+            >
+              Fechar
+            </button>
+            <button
+              type="button"
+              onClick={submit}
+              disabled={!canSubmit}
+              className="inline-flex items-center"
+              style={{
+                gap: 6,
+                height: 34,
+                padding: "0 14px",
+                borderRadius: 6,
+                border: "none",
+                background: "var(--brand-400)",
+                color: "#fff",
+                fontSize: 13,
+                fontWeight: 600,
+                opacity: canSubmit ? 1 : 0.5,
+                cursor: canSubmit ? "pointer" : "not-allowed",
+              }}
+            >
+              📅 {initial ? "Salvar alterações" : "Confirmar Agendamento"}
+            </button>
+          </div>
         </div>
       </div>
     </div>
