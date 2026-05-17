@@ -617,6 +617,53 @@ function estimateCostCents(input: number, output: number) {
 }
 
 
+type ContactApptRow = {
+  id: string;
+  starts_at: string;
+  ends_at: string;
+  status: string;
+  service_name: string | null;
+  professional_name: string | null;
+};
+
+function buildContactAppointmentsLayer(
+  rows: ContactApptRow[],
+  tz: string,
+): string | null {
+  if (!rows || rows.length === 0) {
+    return [
+      "=== AGENDAMENTOS DESTE CLIENTE ===",
+      "Este cliente NÃO possui nenhum agendamento ativo nem recente nos registros.",
+      "Se ele perguntar 'quando eu tenho consulta marcada?', 'meu horário', 'minha próxima consulta', responda EXATAMENTE com base nesta informação — diga que não há agendamento ativo no sistema e pergunte se ele quer marcar um novo. Não invente datas.",
+    ].join("\n");
+  }
+  const fmtDate = new Intl.DateTimeFormat("pt-BR", {
+    timeZone: tz, weekday: "long", day: "2-digit", month: "long", year: "numeric",
+  });
+  const fmtTime = new Intl.DateTimeFormat("pt-BR", {
+    timeZone: tz, hour: "2-digit", minute: "2-digit", hour12: false,
+  });
+  const lines: string[] = [];
+  lines.push("=== AGENDAMENTOS DESTE CLIENTE (FONTE ÚNICA DE VERDADE) ===");
+  lines.push(
+    "Use APENAS esta lista para responder qualquer pergunta sobre 'minha consulta', 'meu horário', 'quando eu tenho marcado', 'consulta agendada'. Nunca diga que não tem acesso à agenda — você TEM.",
+  );
+  lines.push("");
+  for (const r of rows) {
+    const d = new Date(r.starts_at);
+    const status = r.status === "cancelled" ? " (CANCELADO)" : r.status === "completed" ? " (CONCLUÍDO)" : "";
+    const svc = r.service_name ?? "atendimento";
+    const pro = r.professional_name ? ` com ${r.professional_name}` : "";
+    lines.push(`- [id:${r.id}] ${fmtDate.format(d)} às ${fmtTime.format(d)} — ${svc}${pro}${status}`);
+  }
+  lines.push("");
+  lines.push("REGRAS:");
+  lines.push("1. Ao informar a consulta ao cliente, escreva data e hora em linguagem natural — NUNCA mostre o [id:...] pra ele.");
+  lines.push("2. Os IDs entre colchetes são usados APENAS por você nos blocos RESCHEDULE_JSON / CANCEL_JSON.");
+  lines.push("3. Agendamentos marcados (CANCELADO) ou (CONCLUÍDO) NÃO podem ser reagendados nem cancelados de novo — informe o cliente caso ele tente.");
+  return lines.join("\n");
+}
+
 export async function runAiResponse(input: AiRunInput): Promise<AiRunResult> {
   const data = {
     conversation_history: [],
