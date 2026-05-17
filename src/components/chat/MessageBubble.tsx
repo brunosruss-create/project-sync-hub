@@ -152,7 +152,7 @@ export function MessageBubble({ m }: { m: ChatMessage }) {
             gap: 4,
             marginTop: 4,
             fontSize: 10,
-            color: outbound ? "rgba(255,255,255,0.8)" : "var(--text-muted)",
+            color: "var(--text-muted)",
           }}
         >
           <span>{formatTime(m.created_at)}</span>
