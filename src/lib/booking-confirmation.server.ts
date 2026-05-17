@@ -376,7 +376,7 @@ export async function rescheduleAppointmentFromAI(
   if (newStart.getTime() < Date.now() - 60_000) return { ok: false, reason: "past_date" };
 
   // 1. Busca appointment + serviço + profissional + contato
-  const { data: appt } = await supabaseAdmin
+  const { data: apptRaw } = await supabaseAdmin
     .from("appointments")
     .select(
       "id, contact_id, professional_id, service_id, status, starts_at, ends_at, " +
@@ -387,6 +387,7 @@ export async function rescheduleAppointmentFromAI(
     .eq("id", data.appointment_id)
     .eq("owner_user_id", profile.id)
     .maybeSingle();
+  const appt = apptRaw as any;
   if (!appt) return { ok: false, reason: "appointment_not_found" };
   if (appt.status === "cancelled") return { ok: false, reason: "already_cancelled" };
   // Escopo do contato: se a IA passou contact_id, precisa bater.
