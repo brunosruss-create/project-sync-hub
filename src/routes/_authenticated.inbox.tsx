@@ -196,7 +196,7 @@ function InboxPage() {
           }
           const row = mapRow(raw);
           setContacts((prev) => {
-            if (row.is_blocked || row.is_archived) {
+            if (row.is_archived) {
               return prev.filter((c) => c.id !== row.id);
             }
             const exists = prev.some((c) => c.id === row.id);
@@ -205,7 +205,7 @@ function InboxPage() {
           });
           setOpenContact((cur) => {
             if (!cur || cur.id !== row.id) return cur;
-            if (row.is_blocked || row.is_archived) return null;
+            if (row.is_archived) return null;
             return { ...cur, ...row };
           });
         },
