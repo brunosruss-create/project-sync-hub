@@ -50,14 +50,7 @@ interface Props {
   onSubmitted?: () => void;
 }
 
-const SLOTS: string[] = (() => {
-  const out: string[] = [];
-  for (let h = 8; h < 20; h++) {
-    out.push(`${String(h).padStart(2, "0")}:00`);
-    out.push(`${String(h).padStart(2, "0")}:30`);
-  }
-  return out;
-})();
+const SLOTS: string[] = timeSlots(15);
 
 export function ScheduleModal({
   contact,
