@@ -588,8 +588,13 @@ export function ConversationPanel({
                   style={{ padding: 16, background: "var(--bg-base)" }}
                 >
                   <div className="flex flex-col" style={{ gap: 8 }}>
-                    {messages.map((m) => (
-                      <MessageBubble
+                    {messages.map((m, i) => {
+                      const prev = i > 0 ? messages[i - 1] : null;
+                      const showSep = !prev || !sameDay(prev.created_at, m.created_at);
+                      return (
+                        <React.Fragment key={m.id}>
+                          {showSep && <DateSeparator date={m.created_at} />}
+                          <MessageBubble
                         key={m.id}
                         m={m}
                         displayStatus={getVisualMessageStatus(m)}
@@ -665,8 +670,10 @@ export function ConversationPanel({
                             media_name: msg.media_name ?? null,
                           })
                         }
-                      />
-                    ))}
+                          />
+                        </React.Fragment>
+                      );
+                    })}
                   </div>
                 </div>
 
