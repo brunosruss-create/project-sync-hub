@@ -16,7 +16,7 @@ update public.appointments a
 update public.appointments a
    set professional_id = sub.pid
   from (
-    select owner_user_id, min(id) as pid
+    select owner_user_id, (min(id::text))::uuid as pid
       from public.professionals
      where is_active = true
      group by owner_user_id
