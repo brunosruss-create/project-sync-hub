@@ -266,7 +266,8 @@ export async function createAppointmentFromAI(
   if (Number.isNaN(startsAt.getTime())) return { ok: false, reason: "bad_date" };
   const endsAt = new Date(startsAt.getTime() + serviceRow.duration_minutes * 60_000);
 
-  // 2. Profissional (opcional)
+  // 2. Profissional (opcional). Se a IA não passou um, e existir só 1 ativo,
+  //    atribui automaticamente para manter a agenda consistente.
   let professional: { id: string; name: string } | null = null;
   if (data.professional_id) {
     const { data: pr } = await supabaseAdmin
@@ -276,6 +277,14 @@ export async function createAppointmentFromAI(
       .eq("owner_user_id", profile.id)
       .maybeSingle();
     professional = pr ?? null;
+  } else {
+    const { data: pros } = await supabaseAdmin
+      .from("professionals")
+      .select("id,name")
+      .eq("owner_user_id", profile.id)
+      .eq("is_active", true)
+      .limit(2);
+    if (pros && pros.length === 1) professional = pros[0];
   }
 
   // 3. Contato (upsert por telefone)

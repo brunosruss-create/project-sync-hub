@@ -255,6 +255,16 @@ export const Route = createFileRoute("/api/public/book/$slug")({
             .maybeSingle();
           if (!pr) return json({ error: "professional_not_found" }, 404);
           professional = pr;
+        } else {
+          // Quando o cliente não escolheu, e o workspace tem só 1 profissional
+          // ativo, atribui automaticamente para manter agenda consistente.
+          const { data: pros } = await supabaseAdmin
+            .from("professionals")
+            .select("id,name")
+            .eq("owner_user_id", profile.id)
+            .eq("is_active", true)
+            .limit(2);
+          if (pros && pros.length === 1) professional = pros[0];
         }
 
         const startsAt = new Date(`${input.date}T${input.time}:00`);
