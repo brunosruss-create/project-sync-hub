@@ -1,33 +1,59 @@
+# Notificação WhatsApp em criação, reagendamento e cancelamento via /schedule
+
 ## Diagnóstico
 
-A tela `/services` mostra o serviço criado porque atualiza o estado da interface antes de confirmar o insert no Supabase. Como o SQL retornou **“No rows returned”**, o serviço não foi persistido na tabela `public.services`; por isso o link público `/book/...` continua mostrando “sem serviços ativos”.
+Hoje a confirmação por WhatsApp (`sendBookingConfirmation` em `src/lib/booking-confirmation.server.ts`) só é disparada em dois lugares:
 
-O código atual também ignora o erro de persistência com `console.warn`, então a interface pode parecer que salvou mesmo quando o Supabase recusou o insert por RLS/schema/permissão.
+1. `src/routes/api/public/book.$slug.ts` — quando o cliente agenda pelo link público.
+2. `createAppointmentFromAI` — quando a IA cria pelo WhatsApp.
 
-## Plano de correção
+A tela **Agenda** (`src/routes/_authenticated.schedule.tsx`, função `upsert`, linhas 233–263) só faz `supabase.from("appointments").upsert(...)`. Não chama nada de notificação. Por isso editar/reagendar (e mesmo criar manualmente) **não dispara WhatsApp**, mesmo com o toggle "Notificar cliente via WhatsApp" ligado no modal.
 
-1. **Tornar o salvamento honesto na tela de serviços**
-   - Em `src/routes/_authenticated.services.tsx`, só mostrar “Serviço criado/atualizado” depois do Supabase confirmar.
-   - Se o insert/update falhar, exibir erro visível e não manter o item como se estivesse salvo.
-   - Desabilitar/sinalizar o botão enquanto `workspaceOwnerId` ainda estiver carregando, para evitar salvar sem dono.
+O mesmo vale para `setStatus` (cancelar) e `remove`.
 
-2. **Garantir filtro correto por workspace**
-   - Ajustar a leitura de `/services` para buscar apenas registros com `owner_user_id = workspaceOwnerId`.
-   - Recarregar serviços quando `workspaceOwnerId` ficar disponível.
+## O que vou implementar
 
-3. **Adicionar SQL manual para corrigir a tabela `services`**
-   - Preparar um SQL idempotente para você rodar no Supabase criando/garantindo:
-     - colunas `owner_user_id` e `status`;
-     - índice `(owner_user_id, status)`;
-     - RLS habilitado;
-     - policies de select/insert/update/delete para usuários autenticados usando `public.get_my_workspace_owner()`.
-   - Incluir no chat o SQL completo em bloco `sql`, conforme a regra do projeto.
+### 1. Nova server function: `src/lib/appointments.functions.ts`
 
-4. **Validação esperada após aplicar**
-   - Criar/editar novamente o serviço em `/services`.
-   - Rodar:
-     ```sql
-     select id, name, status, owner_user_id from public.services;
-     ```
-   - O serviço deve aparecer com `status = 'active'` e `owner_user_id = 491da44f-5931-47cc-a9f6-038881c9890b`.
-   - O link público passará a listar o serviço automaticamente.
+`notifyAppointmentChange({ appointmentId, kind })` protegida por `requireSupabaseAuth`. `kind` ∈ `"created" | "rescheduled" | "cancelled"`.
+
+Ela carrega via `supabaseAdmin` (server-side):
+- `appointments` (com `contact_id`, `service_id`, `professional_id`, `starts_at`, `notify_whatsapp`, `owner_user_id`)
+- `profiles` do owner (nome do negócio + timezone + instância)
+- `contacts` (nome + phone)
+- `services` (nome, preço, duração)
+- `professionals` (nome, opcional)
+
+Regras:
+- Aborta silenciosamente se `notify_whatsapp = false`.
+- Aborta silenciosamente se a instância WA não estiver `connected` (mesmo padrão atual).
+- `kind = "created"` → reusa `sendBookingConfirmation` (texto atual de confirmação).
+- `kind = "rescheduled"` → mensagem nova: "Seu agendamento foi *reagendado* para 📅 *<data> às <hora>* — <serviço> · <profissional>".
+- `kind = "cancelled"` → mensagem nova: "Seu agendamento de 📅 *<data> às <hora>* foi *cancelado*."
+
+Erros viram `console.warn` (best-effort, não quebram o fluxo da UI), igual à confirmação atual.
+
+### 2. Chamada a partir de `_authenticated.schedule.tsx`
+
+- Em `upsert` (linhas 233–263): comparar com o item anterior em `items`. Se `exists && previous.starts_at !== draft.starts_at` → `kind = "rescheduled"`. Se `!exists` → `kind = "created"`. Só dispara se `draft.notify_whatsapp` e o upsert no Supabase não der erro.
+- Em `setStatus` (linhas 265–269): se novo status for `"cancelled"` e `appt.notify_whatsapp` → `kind = "cancelled"`.
+- `remove` (linhas 271–276): mantém sem notificação (já está deletado; cancelamento é o caminho correto para notificar).
+
+Disparo via `useServerFn(notifyAppointmentChange)`, em background (`void fn(...)`), para não bloquear o `nfy.success`.
+
+### 3. Sem mudanças em schema/SQL
+
+Tudo reusa colunas existentes (`notify_whatsapp`, `professional_id`, etc.). Nenhuma migration nova.
+
+## Validação após implementar
+
+1. Em `/schedule`, abrir um agendamento existente, mudar horário e salvar → cliente recebe WhatsApp "reagendado".
+2. Criar agendamento novo pela Agenda → cliente recebe confirmação (igual ao link público).
+3. Marcar status como "Cancelado" → cliente recebe aviso de cancelamento.
+4. Com WhatsApp desconectado ou toggle off → nenhuma mensagem, sem erro visível.
+
+## Arquivos afetados
+
+- `src/lib/appointments.functions.ts` (novo)
+- `src/lib/booking-confirmation.server.ts` (exporta helper `sendBookingReschedule` / `sendBookingCancellation` reusando `evo` + formatadores)
+- `src/routes/_authenticated.schedule.tsx` (chamadas em `upsert` e `setStatus`)

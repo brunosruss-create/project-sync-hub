@@ -18,6 +18,7 @@ import { supabase } from "@/integrations/supabase/client";
 import { useServerFn } from "@tanstack/react-start";
 import { useQuery } from "@tanstack/react-query";
 import { listProfessionals } from "@/lib/professionals.functions";
+import { notifyAppointmentChange } from "@/lib/appointments.functions";
 import { EmptyState } from "@/components/empty-state";
 import {
   HOUR_END,
@@ -230,6 +231,8 @@ function SchedulePage() {
 
   const open = openId ? items.find((i) => i.id === openId) ?? null : null;
 
+  const notifyChangeFn = useServerFn(notifyAppointmentChange);
+
   const upsert = async (draft: Appointment) => {
     // overlap detection
     const conflict = items.find(
@@ -239,7 +242,8 @@ function SchedulePage() {
       nfy.error("Horário em conflito com outro agendamento desse agente.");
       return false;
     }
-    const exists = items.some((a) => a.id === draft.id);
+    const previous = items.find((a) => a.id === draft.id) ?? null;
+    const exists = !!previous;
     setItems((prev) =>
       exists ? prev.map((a) => (a.id === draft.id ? draft : a)) : [...prev, draft],
     );
@@ -258,14 +262,42 @@ function SchedulePage() {
       notes: draft.notes,
       notify_whatsapp: draft.notify_whatsapp,
     });
-    if (error) console.warn("[schedule] persistência ignorada:", error.message);
+    if (error) {
+      console.warn("[schedule] persistência ignorada:", error.message);
+      return true;
+    }
+    if (draft.notify_whatsapp) {
+      const rescheduled =
+        exists && previous!.starts_at.getTime() !== draft.starts_at.getTime();
+      const kind: "created" | "rescheduled" | null = !exists
+        ? "created"
+        : rescheduled
+          ? "rescheduled"
+          : null;
+      if (kind) {
+        void notifyChangeFn({ data: { appointmentId: draft.id, kind } }).catch(
+          (e) => console.warn("[schedule] notify falhou:", e),
+        );
+      }
+    }
     return true;
   };
 
   const setStatus = async (id: string, status: AppointmentStatus) => {
+    const before = items.find((a) => a.id === id) ?? null;
     setItems((prev) => prev.map((a) => (a.id === id ? { ...a, status } : a)));
     nfy.success(`Status: ${STATUS_LABEL[status]}`);
     await supabase.from("appointments").update({ status }).eq("id", id);
+    if (
+      status === "cancelled" &&
+      before &&
+      before.status !== "cancelled" &&
+      before.notify_whatsapp
+    ) {
+      void notifyChangeFn({ data: { appointmentId: id, kind: "cancelled" } }).catch(
+        (e) => console.warn("[schedule] notify cancel falhou:", e),
+      );
+    }
   };
 
   const remove = async (id: string) => {

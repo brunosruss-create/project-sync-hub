@@ -68,6 +68,74 @@ export function normalizePhone(raw: string): string {
   return `55${digits}`;
 }
 
+async function getConnectedInstance(ownerId: string): Promise<string | null> {
+  const instanceName = instanceNameForOwner(ownerId);
+  const { data: inst } = await supabaseAdmin
+    .from("whatsapp_instances")
+    .select("status")
+    .eq("instance_name", instanceName)
+    .maybeSingle();
+  if (!inst || inst.status !== "connected") return null;
+  return instanceName;
+}
+
+export async function sendBookingReschedule(args: {
+  profile: ProfileLite;
+  appointment: AppointmentLite;
+  service: ServiceLite;
+  professional: ProfessionalLite;
+  client: ClientLite;
+}) {
+  const { profile, appointment, service, professional, client } = args;
+  try {
+    const instanceName = await getConnectedInstance(profile.id);
+    if (!instanceName) return;
+    const tz = profile.business_timezone || "America/Sao_Paulo";
+    const dateFormatted = formatDateBR(appointment.starts_at, tz);
+    const timeFormatted = formatTimeBR(appointment.starts_at, tz);
+    const professionalName = professional?.name ?? "nosso profissional";
+    const businessName = profile.business_name ?? "nosso estabelecimento";
+    const msg =
+      `Olá ${client.client_name}! 🔄\n\n` +
+      `Seu agendamento em *${businessName}* foi *reagendado*:\n\n` +
+      `📅 *${dateFormatted} às ${timeFormatted}*\n` +
+      `💼 ${service.name}\n` +
+      `👤 ${professionalName}\n\n` +
+      `Até lá! 😊`;
+    const number = normalizePhone(client.client_phone);
+    await evo.sendText(instanceName, { number, text: msg });
+  } catch (e) {
+    console.warn("[booking] reagendamento WhatsApp falhou:", (e as Error)?.message ?? e);
+  }
+}
+
+export async function sendBookingCancellation(args: {
+  profile: ProfileLite;
+  appointment: AppointmentLite;
+  service: ServiceLite;
+  client: ClientLite;
+}) {
+  const { profile, appointment, service, client } = args;
+  try {
+    const instanceName = await getConnectedInstance(profile.id);
+    if (!instanceName) return;
+    const tz = profile.business_timezone || "America/Sao_Paulo";
+    const dateFormatted = formatDateBR(appointment.starts_at, tz);
+    const timeFormatted = formatTimeBR(appointment.starts_at, tz);
+    const businessName = profile.business_name ?? "nosso estabelecimento";
+    const msg =
+      `Olá ${client.client_name}.\n\n` +
+      `Seu agendamento em *${businessName}* foi *cancelado*:\n\n` +
+      `📅 ${dateFormatted} às ${timeFormatted}\n` +
+      `💼 ${service.name}\n\n` +
+      `Caso queira remarcar, é só responder esta mensagem. 🙏`;
+    const number = normalizePhone(client.client_phone);
+    await evo.sendText(instanceName, { number, text: msg });
+  } catch (e) {
+    console.warn("[booking] cancelamento WhatsApp falhou:", (e as Error)?.message ?? e);
+  }
+}
+
 export async function sendBookingConfirmation(args: {
   profile: ProfileLite;
   appointment: AppointmentLite;
