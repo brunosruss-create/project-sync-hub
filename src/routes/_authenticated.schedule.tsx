@@ -94,11 +94,7 @@ function SchedulePage() {
       })),
     [profQ.data],
   );
-  const [agentFilter, setAgentFilter] = React.useState<Set<string>>(new Set());
-  React.useEffect(() => {
-    setAgentFilter(new Set(agents.map((a) => a.id)));
-  }, [agents]);
-  const [filterOpen, setFilterOpen] = React.useState(false);
+  const [agentFilter, setAgentFilter] = React.useState<string>("all");
   const [editing, setEditing] = React.useState<
     { mode: "create"; preset?: Partial<Appointment> } | { mode: "edit"; appt: Appointment } | null
   >(null);
