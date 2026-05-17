@@ -397,6 +397,12 @@ function AIAgentPage() {
             onChange={setMultipleProfs}
             hint="Se desligado, a IA não pergunta com qual profissional o cliente quer ser atendido."
           />
+          <ToggleRow
+            label="A IA pode informar endereço, site e telefone quando perguntada?"
+            value={shareContactInfo}
+            onChange={setShareContactInfo}
+            hint="Quando ligado, a IA usa os dados de Configurações → Negócio para responder perguntas tipo 'onde fica?', 'qual o telefone?', 'tem site?'. Desligue se preferir que esses dados não sejam divulgados pelo WhatsApp."
+          />
           <div style={{ marginTop: 12 }}>
             <Field label="Quando a IA pode informar preços?">
               <select
