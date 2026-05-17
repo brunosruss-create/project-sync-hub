@@ -280,15 +280,26 @@ function buildWorkspaceLayer(
     parts.push(`Sobre o negócio: ${p.business_description}`);
   }
 
-  // === PROFISSIONAIS ===
-  const hasMultiple = p.ai_has_multiple_professionals ?? false;
-  if (!hasMultiple) {
+  // === PROFISSIONAIS (toggle de override) ===
+  // A lista nominal vem em buildProfessionalsLayer (fonte de verdade: tabela professionals).
+  // Aqui só registramos o override do usuário para forçar/suprimir a pergunta de preferência.
+  const forceAskPreference = p.ai_has_multiple_professionals ?? false;
+  const proCount = (p as any).__professionals_count ?? 0;
+  if (proCount === 0) {
     prohibitions.push(
-      `OBRIGATÓRIO: NÃO pergunte com qual profissional o cliente quer ser atendido. Há apenas um profissional disponível neste negócio.`,
+      `OBRIGATÓRIO: NÃO cite nomes próprios de profissionais. Trate o atendimento como genérico do estabelecimento.`,
+    );
+  } else if (proCount === 1) {
+    parts.push(
+      `Há apenas um profissional ativo. Assuma esse profissional implicitamente — NÃO pergunte preferência, NÃO pergunte "qual médico/profissional".`,
+    );
+  } else if (forceAskPreference) {
+    parts.push(
+      `Há mais de um profissional. Se o cliente NÃO mencionou nome e o assunto envolver agendamento, pergunte a preferência. Se o cliente JÁ citou um nome existente na lista, use direto sem perguntar.`,
     );
   } else {
     parts.push(
-      `Este negócio tem mais de um profissional. Quando relevante para agendamento, pergunte com qual profissional o cliente prefere ser atendido.`,
+      `Há mais de um profissional. NÃO pergunte preferência de profissional — só responda sobre um profissional específico se o cliente perguntar por nome.`,
     );
   }
 
@@ -431,9 +442,10 @@ function buildServicesLayer(
       "REGRAS INVIOLÁVEIS:",
       "1. NÃO liste, descreva, sugira ou cite qualquer serviço — nem genérico, nem do ramo, nem do que 'normalmente' um negócio assim faz.",
       "2. NÃO use a descrição do negócio, o segmento, o nome do estabelecimento ou conhecimento geral do ramo para inferir serviços.",
-      "3. Se o cliente perguntar o que vocês fazem / quais serviços / preços / agendar algo, responda no espírito de:",
+      "3. Se — e SOMENTE se — o cliente perguntar QUAIS SERVIÇOS o negócio oferece, O QUE VOCÊS FAZEM, ou PREÇOS, responda no espírito de:",
       "   \"No momento ainda não temos o catálogo de serviços cadastrado por aqui. Vou encaminhar você para um atendente humano que pode te passar todos os detalhes.\"",
-      "4. Em seguida, ofereça encaminhar para um atendente humano.",
+      "4. ESTA regra NÃO se aplica a perguntas sobre profissionais, horários, endereço, telefone ou agendamento — para essas, use os blocos PROFISSIONAIS, AGENDA e DADOS DE CONTATO. A ausência de catálogo NÃO impede responder essas perguntas.",
+      "5. Para agendamento sem serviço específico citado: confirme dia/hora/profissional normalmente; só mencione 'não temos catálogo' se o cliente perguntar QUAL serviço escolher.",
     ].join("\n");
   }
 
@@ -492,10 +504,114 @@ function buildServicesLayer(
   return lines.join("\n");
 }
 
+type ProRow = { id: string; name: string; role: string | null };
+type ApptRow = { professional_id: string | null; starts_at: string; ends_at: string };
+
+function buildProfessionalsLayer(
+  pros: ProRow[],
+  upcoming: ApptRow[],
+  businessHours: WorkingHours | null,
+  tz: string,
+): string | null {
+  if (!pros || pros.length === 0) return null;
+
+  const fmtDate = new Intl.DateTimeFormat("pt-BR", {
+    timeZone: tz,
+    weekday: "short",
+    day: "2-digit",
+    month: "2-digit",
+  });
+  const fmtTime = new Intl.DateTimeFormat("pt-BR", {
+    timeZone: tz,
+    hour: "2-digit",
+    minute: "2-digit",
+    hour12: false,
+  });
+
+  const byPro = new Map<string, ApptRow[]>();
+  for (const a of upcoming) {
+    if (!a.professional_id) continue;
+    const list = byPro.get(a.professional_id) ?? [];
+    list.push(a);
+    byPro.set(a.professional_id, list);
+  }
+
+  const lines: string[] = [];
+  lines.push("=== PROFISSIONAIS ATIVOS (FONTE ÚNICA DE VERDADE) ===");
+  lines.push(
+    "Estes são os ÚNICOS profissionais que atendem neste negócio. Use exatamente estes nomes. Não invente nem cite outros nomes.",
+  );
+  lines.push("");
+
+  // Resumo do horário de funcionamento (todos os profissionais seguem o mesmo).
+  if (businessHours && typeof businessHours === "object") {
+    const dayLabels: Record<string, string> = {
+      monday: "Seg", mon: "Seg",
+      tuesday: "Ter", tue: "Ter",
+      wednesday: "Qua", wed: "Qua",
+      thursday: "Qui", thu: "Qui",
+      friday: "Sex", fri: "Sex",
+      saturday: "Sáb", sat: "Sáb",
+      sunday: "Dom", sun: "Dom",
+    };
+    const openDays: string[] = [];
+    for (const [k, v] of Object.entries(businessHours as Record<string, DayCfg>)) {
+      const enabled = v?.enabled ?? v?.active ?? false;
+      if (enabled && v?.start && v?.end) {
+        const lbl = dayLabels[k.toLowerCase()] ?? k;
+        openDays.push(`${lbl} ${v.start}–${v.end}`);
+      }
+    }
+    if (openDays.length > 0) {
+      lines.push(`Horário de funcionamento do negócio: ${openDays.join(", ")} (fuso ${tz}).`);
+      lines.push("");
+    }
+  }
+
+  for (const p of pros) {
+    const roleStr = p.role && p.role.trim() ? ` (${p.role.trim()})` : "";
+    lines.push(`- ${p.name}${roleStr}`);
+    const appts = (byPro.get(p.id) ?? []).slice(0, 12);
+    if (appts.length === 0) {
+      lines.push(`  Próximos 7 dias: sem compromissos cadastrados.`);
+    } else {
+      lines.push(`  Compromissos já marcados (próximos 7 dias):`);
+      for (const a of appts) {
+        const d = new Date(a.starts_at);
+        const e = new Date(a.ends_at);
+        lines.push(
+          `    • ${fmtDate.format(d)} ${fmtTime.format(d)}–${fmtTime.format(e)}`,
+        );
+      }
+    }
+  }
+
+  lines.push("");
+  lines.push("REGRAS DE USO DESTE BLOCO:");
+  lines.push(
+    "1. Se o cliente perguntar 'qual médico/profissional vocês têm', responda com a lista acima.",
+  );
+  lines.push(
+    "2. Se o cliente citar um nome que ESTÁ na lista, responda direto sobre esse profissional. Use os compromissos acima para indicar janelas livres/ocupadas dentro do horário de funcionamento.",
+  );
+  lines.push(
+    "3. Se o cliente citar um nome que NÃO está na lista, diga educadamente que esse profissional não atende aqui e cite os disponíveis.",
+  );
+  lines.push(
+    "4. Para confirmar horário definitivo, ofereça o link público de agendamento (se houver) — não invente disponibilidade exata, apenas oriente.",
+  );
+  lines.push(
+    "5. NUNCA responda 'não temos catálogo' para perguntas sobre profissionais ou horários — essa resposta é APENAS para perguntas de serviços/preços quando o catálogo está vazio.",
+  );
+
+  return lines.join("\n");
+}
+
 function estimateCostCents(input: number, output: number) {
   const cents = (input / 1_000_000) * 25 + (output / 1_000_000) * 150;
   return Math.max(1, Math.round(cents));
 }
+
 
 export async function runAiResponse(input: AiRunInput): Promise<AiRunResult> {
   const data = {
@@ -589,6 +705,34 @@ export async function runAiResponse(input: AiRunInput): Promise<AiRunResult> {
     ((profile as any).ai_price_disclosure_policy as PriceDisclosurePolicy) ?? "on_request";
 
   const servicesLayer = buildServicesLayer(activeServices ?? [], categoryNameById, pricePolicyForCatalog);
+
+  // ===== PROFISSIONAIS + AGENDA (próximos 7 dias) =====
+  const { data: prosRows } = await supabaseAdmin
+    .from("professionals")
+    .select("id,name,role")
+    .eq("owner_user_id", data.workspace_owner_id)
+    .eq("is_active", true)
+    .order("created_at", { ascending: true });
+  const pros: ProRow[] = (prosRows ?? []) as ProRow[];
+
+  const nowIso = new Date().toISOString();
+  const sevenDaysIso = new Date(Date.now() + 7 * 24 * 60 * 60 * 1000).toISOString();
+  let upcoming: ApptRow[] = [];
+  if (pros.length > 0) {
+    const { data: apptsRows } = await supabaseAdmin
+      .from("appointments")
+      .select("professional_id,starts_at,ends_at,status")
+      .eq("owner_user_id", data.workspace_owner_id)
+      .gte("starts_at", nowIso)
+      .lte("starts_at", sevenDaysIso)
+      .neq("status", "cancelled")
+      .order("starts_at", { ascending: true });
+    upcoming = ((apptsRows ?? []) as any[]).map((r) => ({
+      professional_id: r.professional_id,
+      starts_at: r.starts_at,
+      ends_at: r.ends_at,
+    }));
+  }
 
   // Sempre validar timezone — se inválido, força Brasília (nunca cai no fuso do servidor).
   const rawTz =
@@ -736,6 +880,8 @@ export async function runAiResponse(input: AiRunInput): Promise<AiRunResult> {
     ? `=== LINK PÚBLICO DE AGENDAMENTO ===\nO cliente pode agendar sozinho pelo link: ${bookingUrl}\nQuando o cliente pedir para agendar online, marcar horário, ou perguntar como agendar — ofereça este link de forma natural na conversa. Não invente outros links.\n\nSe, ao longo da conversa, o cliente confirmar TEXTUALMENTE um agendamento (data + hora + serviço + nome + telefone), inclua no FINAL da sua resposta uma única linha com este bloco JSON exato (sem markdown, sem comentário antes ou depois):\nAPPOINTMENT_JSON:{"service_name":"...","starts_at":"YYYY-MM-DDTHH:mm:00-03:00","client_name":"...","client_phone":"...","professional_id":null}\nSó emita esse bloco quando TODOS os campos estiverem confirmados pelo cliente. Nunca invente dados.`
     : null;
 
+  const professionalsLayer = buildProfessionalsLayer(pros, upcoming, bizHours, tz);
+
   const finalPrompt = [
     g.ai_base_prompt,
     segment?.segment_prompt ?? "",
@@ -743,7 +889,9 @@ export async function runAiResponse(input: AiRunInput): Promise<AiRunResult> {
       ...profile,
       segment_default_required_fields: segment?.default_required_fields ?? [],
       __is_first_message: isFirstMessage,
+      __professionals_count: pros.length,
     }),
+    professionalsLayer,
     servicesLayer,
     bookingLayer,
   ]
