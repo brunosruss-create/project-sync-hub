@@ -11,6 +11,7 @@ import {
 const InputSchema = z.object({
   appointmentId: z.string().uuid(),
   kind: z.enum(["created", "rescheduled", "cancelled"]),
+  previousStartsAt: z.string().datetime().optional(),
 });
 
 export const notifyAppointmentChange = createServerFn({ method: "POST" })
