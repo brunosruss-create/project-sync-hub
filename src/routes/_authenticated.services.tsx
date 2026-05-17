@@ -365,6 +365,7 @@ function ServicesPage() {
         <ServiceModal
           initial={editing.mode === "edit" ? editing.service : null}
           categories={categories}
+          descriptionExample={descriptionExample}
           onClose={() => setEditing(null)}
           onSubmit={upsertService}
           onAddCategory={addCategory}
@@ -766,12 +767,14 @@ function EmptyState({ onCreate }: { onCreate: () => void }) {
 function ServiceModal({
   initial,
   categories,
+  descriptionExample,
   onClose,
   onSubmit,
   onAddCategory,
 }: {
   initial: Service | null;
   categories: Category[];
+  descriptionExample: string;
   onClose: () => void;
   onSubmit: (s: Service) => void;
   onAddCategory: (name: string, color: string) => Promise<Category>;
@@ -984,7 +987,7 @@ function ServiceModal({
               <textarea
                 value={description}
                 onChange={(e) => setDescription(e.target.value.slice(0, 500))}
-                placeholder="Ex.: Limpeza de pele profunda com extração de cravos, aplicação de máscara calmante e finalização com protetor solar. Duração aproximada de 1h."
+                placeholder={`Ex.: ${descriptionExample}`}
                 rows={3}
                 style={{
                   ...inputStyle,
