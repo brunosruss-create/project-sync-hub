@@ -15,6 +15,7 @@ import {
   Download,
   ChevronDown,
   Trash2,
+  Bot,
 } from "lucide-react";
 import { Composer } from "./composer";
 import { type ContactCard as Contact, formatRelative, formatPhone, initials } from "./data";
@@ -31,6 +32,7 @@ import { MessageActions } from "./message-actions";
 import { ForwardModal, type ForwardSource } from "./forward-modal";
 import { TransferConversationModal } from "./transfer-conversation-modal";
 import { AudioPlayerWithMe } from "@/components/chat/AudioPlayer";
+import { DateSeparator } from "@/components/chat/DateSeparator";
 import {
   SEED_SERVICES,
   formatCurrencyBRL,
@@ -63,6 +65,15 @@ interface Message {
   reactions?: Array<{ emoji: string; from: string }> | null;
   deleted_at?: string | null;
   edited_at?: string | null;
+  is_ai?: boolean;
+}
+
+function sameDay(a: Date, b: Date) {
+  return (
+    a.getFullYear() === b.getFullYear() &&
+    a.getMonth() === b.getMonth() &&
+    a.getDate() === b.getDate()
+  );
 }
 
 const MAX_CHARS = 4096;
@@ -179,7 +190,7 @@ export function ConversationPanel({
     (async () => {
       const { data, error } = await supabase
         .from("messages")
-        .select("id,direction,content,message_type,status,created_at,media_url,media_mime,media_name,whatsapp_message_id,quoted_preview,reactions,deleted_at,edited_at")
+        .select("id,direction,content,message_type,status,created_at,media_url,media_mime,media_name,whatsapp_message_id,quoted_preview,reactions,deleted_at,edited_at,is_ai")
         .eq("contact_id", contact.id)
         .order("created_at", { ascending: true });
       if (cancelled) return;
@@ -202,6 +213,7 @@ export function ConversationPanel({
             reactions: r.reactions ?? [],
             deleted_at: r.deleted_at ?? null,
             edited_at: r.edited_at ?? null,
+            is_ai: !!r.is_ai,
           })),
         );
       }
@@ -239,6 +251,7 @@ export function ConversationPanel({
                     reactions: r.reactions ?? [],
                     deleted_at: r.deleted_at ?? null,
                     edited_at: r.edited_at ?? null,
+                    is_ai: !!r.is_ai,
                   },
                 ],
           );
@@ -575,10 +588,14 @@ export function ConversationPanel({
                   style={{ padding: 16, background: "var(--bg-base)" }}
                 >
                   <div className="flex flex-col" style={{ gap: 8 }}>
-                    {messages.map((m) => (
-                      <MessageBubble
-                        key={m.id}
-                        m={m}
+                    {messages.map((m, i) => {
+                      const prev = i > 0 ? messages[i - 1] : null;
+                      const showSep = !prev || !sameDay(prev.created_at, m.created_at);
+                      return (
+                        <React.Fragment key={m.id}>
+                          {showSep && <DateSeparator date={m.created_at} />}
+                          <MessageBubble
+                            m={m}
                         displayStatus={getVisualMessageStatus(m)}
                         contactName={contact.name}
                         contactAvatar={contact.avatar}
@@ -652,8 +669,10 @@ export function ConversationPanel({
                             media_name: msg.media_name ?? null,
                           })
                         }
-                      />
-                    ))}
+                          />
+                        </React.Fragment>
+                      );
+                    })}
                   </div>
                 </div>
 
@@ -828,6 +847,11 @@ function MessageBubble({
       >
         <MessageChevron isMe={isMe} bubbleBg={audioBg} message={m} onReply={onReply} onReact={onReact} onDelete={onDelete} onForward={onForward} />
         {m.quoted_preview && <QuotedPreview preview={m.quoted_preview} isMe={isMe} />}
+        {m.is_ai && isMe && (
+          <div className="inline-flex items-center" style={{ gap: 4, fontSize: 10, fontWeight: 600, background: "color-mix(in oklab, var(--brand-400) 20%, transparent)", color: "var(--brand-400)", padding: "1px 6px", borderRadius: 999, marginBottom: 4, textTransform: "uppercase", letterSpacing: "0.04em" }}>
+            <Bot size={10} /> IA
+          </div>
+        )}
         <AudioPlayerWithMe
           src={m.media_url}
           contactName={contactName}
@@ -879,6 +903,11 @@ function MessageBubble({
     >
       <MessageChevron isMe={isMe} bubbleBg={bubbleBg} message={m} onReply={onReply} onReact={onReact} onEdit={onStartEdit} onDelete={onDelete} onForward={onForward} />
       {m.quoted_preview && <QuotedPreview preview={m.quoted_preview} isMe={isMe} />}
+      {m.is_ai && isMe && (
+        <div className="inline-flex items-center" style={{ gap: 4, fontSize: 10, fontWeight: 600, background: "color-mix(in oklab, var(--brand-400) 20%, transparent)", color: "var(--brand-400)", padding: "1px 6px", borderRadius: 999, marginBottom: 4, textTransform: "uppercase", letterSpacing: "0.04em" }}>
+          <Bot size={10} /> IA
+        </div>
+      )}
       {m.media_url && m.message_type === "image" && (
         <a href={m.media_url} target="_blank" rel="noreferrer" style={{ display: "block", marginBottom: m.content ? 6 : 0 }}>
           <img
