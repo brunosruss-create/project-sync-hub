@@ -49,6 +49,8 @@ export function ContactCard({ contact, onClick, isOverlay, isSelected }: Props) 
   const unread = contact.unreadCount ?? 0;
   const showBadge = unread > 0;
 
+  const isBlocked = !!contact.is_blocked;
+
   const style: React.CSSProperties = {
     width: "100%",
     background: isSelected ? "color-mix(in oklab, var(--brand-400) 6%, var(--bg-surface))" : "var(--bg-surface)",
@@ -57,11 +59,11 @@ export function ContactCard({ contact, onClick, isOverlay, isSelected }: Props) 
     padding: 12,
     position: "relative",
     cursor: isOverlay ? "grabbing" : "grab",
-    opacity: isDragging && !isOverlay ? 0 : 1,
+    opacity: isDragging && !isOverlay ? 0 : isBlocked ? 0.7 : 1,
     transform: CSS.Translate.toString(transform),
     transition: isOverlay
       ? undefined
-      : "transform 150ms var(--ease-default), border-color 150ms, background 150ms, box-shadow 150ms",
+      : "transform 150ms var(--ease-default), border-color 150ms, background 150ms, box-shadow 150ms, opacity 150ms",
     ...(isOverlay
       ? {
           opacity: 0.92,
