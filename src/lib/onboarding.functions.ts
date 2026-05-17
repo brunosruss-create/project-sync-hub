@@ -370,10 +370,17 @@ export const updateWorkspaceProfile = createServerFn({ method: "POST" })
         business_timezone: z.string().min(1).max(64).optional(),
         welcome_message: z.string().max(2000).optional(),
         welcome_message_enabled: z.boolean().optional(),
-        business_address: z.string().max(300).optional(),
+        business_address: z.string().max(500).optional(),
         business_phone: z.string().max(40).optional(),
         business_website: z.string().max(300).optional(),
         business_logo_url: z.string().max(500).optional(),
+        business_cep: z.string().max(20).optional(),
+        business_street: z.string().max(200).optional(),
+        business_address_number: z.string().max(20).optional(),
+        business_address_complement: z.string().max(120).optional(),
+        business_neighborhood: z.string().max(120).optional(),
+        business_city: z.string().max(120).optional(),
+        business_state: z.string().max(4).optional(),
       })
       .parse(input),
   )
