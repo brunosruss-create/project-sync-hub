@@ -56,6 +56,7 @@ import {
 } from "@/features/schedule/data";
 import { utcToZonedLocal, zonedLocalToUtc } from "@/features/schedule/tz";
 import { useProfile } from "@/hooks/use-profile";
+import { ScheduleModal } from "@/features/inbox/schedule-modal";
 
 function nameToColor(name: string): string {
   let hash = 0;
@@ -566,28 +567,21 @@ function SchedulePage() {
       </div>
 
       {editing && (
-        <AppointmentModal
-          initial={editing.mode === "edit" ? editing.appt : null}
-          preset={editing.mode === "create" ? editing.preset : undefined}
-          contacts={contacts}
-          services={services}
-          agents={agents}
+        <ScheduleModal
+          open
           onClose={() => setEditing(null)}
-          onSubmit={upsert}
-          onAddContact={(name, phone) => {
-            const c: ContactCard = {
-              id: `c-${Date.now()}`,
-              name,
-              phone,
-              tags: [],
-              priority: "normal",
-              kanban_column: "waiting",
-              lastMessage: "",
-              lastMessageAt: new Date(),
-              isUnread: false,
-            };
-            setContacts((prev) => [...prev, c]);
-            return c;
+          initial={editing.mode === "edit" ? editing.appt : null}
+          preset={
+            editing.mode === "create"
+              ? {
+                  starts_at: editing.preset?.starts_at,
+                  agent_id: editing.preset?.agent_id,
+                }
+              : undefined
+          }
+          onSubmitted={() => {
+            setEditing(null);
+            void reload();
           }}
         />
       )}
