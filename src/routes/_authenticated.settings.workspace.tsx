@@ -196,7 +196,26 @@ function WorkspacePage() {
           business_timezone: tz,
           welcome_message: welcome,
           welcome_message_enabled: welcomeEnabled,
-          business_address: address.trim(),
+          business_cep: cep.trim(),
+          business_street: street.trim(),
+          business_address_number: number.trim(),
+          business_address_complement: complement.trim(),
+          business_neighborhood: neighborhood.trim(),
+          business_city: city.trim(),
+          business_state: stateUf.trim().toUpperCase(),
+          // Mantém business_address legado sincronizado como string concatenada
+          // para retrocompatibilidade com integrações antigas.
+          business_address: [
+            street.trim(),
+            number.trim() && `, ${number.trim()}`,
+            complement.trim() && ` — ${complement.trim()}`,
+            neighborhood.trim() && ` — ${neighborhood.trim()}`,
+            city.trim() && `, ${city.trim()}`,
+            stateUf.trim() && `/${stateUf.trim().toUpperCase()}`,
+            cep.trim() && ` — CEP ${cep.trim()}`,
+          ]
+            .filter(Boolean)
+            .join(""),
           business_phone: phone.trim(),
           business_website: site.trim(),
         },
