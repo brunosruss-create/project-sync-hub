@@ -1,56 +1,108 @@
-## Problema
+# Plano: endereço estruturado + IA divulgando contato
 
-A mensagem inicial enviada no primeiro contato é:
+Objetivo: deixar funcional (não só cosmético). A IA passa a receber endereço/site/telefone no prompt, controlado por **um único toggle** na config de IA. Endereço vira estruturado com CEP, número e complemento.
 
-> "Olá! Bem-vindo(a) ao {{negocio}}. Em instantes um atendente irá responder."
+## 1. Banco de dados — nova migration
 
-Isso é incoerente quando a IA está ligada porque:
+Arquivo: `supabase/manual/20260612000000_business_address_structured_and_ai_contact_toggle.sql`
 
-1. Promete um **atendente humano** ("em instantes vai responder") — mas quem responde é a IA.
-2. Logo em seguida a IA dispara a própria apresentação ("Olá! Eu sou a Sofia, do …. Como posso ajudar?"), gerando **duas saudações duplicadas** e contraditórias.
-3. Ignora completamente os toggles já existentes no painel da IA ("A IA se apresenta pelo nome?" e "A IA menciona o nome do negócio?").
+```sql
+-- ════════════════════════════════════════════════════════════
+-- Endereço estruturado do negócio (CEP, rua, número, complemento)
+-- + toggle único para a IA divulgar dados de contato.
+-- ════════════════════════════════════════════════════════════
 
-A causa: a mensagem de boas-vindas é um template estático em `src/lib/message-defaults.ts` (e seed em `20260520000000_business_and_ai_timezone.sql`), enviada pelo webhook (`src/routes/api/public/evolution.$instanceId.ts` linhas 407–462) **sempre** que `welcome_message_enabled = true`, sem olhar se a IA está ativa.
+alter table public.profiles
+  add column if not exists business_cep                  text,
+  add column if not exists business_street               text,
+  add column if not exists business_address_number       text,
+  add column if not exists business_address_complement   text,
+  add column if not exists business_neighborhood         text,
+  add column if not exists business_city                 text,
+  add column if not exists business_state                text,
+  -- Toggle único: IA pode informar endereço, site e telefone quando perguntada.
+  add column if not exists ai_can_share_contact_info     boolean not null default true;
 
-## Correção
-
-### 1. Suprimir o welcome estático quando a IA estiver ativa
-
-Em `src/routes/api/public/evolution.$instanceId.ts`, ler também `ai_enabled` do profile e só disparar o welcome estático quando `ai_enabled = false`. Quando a IA está ligada, ela já cumpre o papel da saudação (com nome do assistente + nome do negócio + pergunta de abertura), de forma consistente com os toggles do painel.
-
-Comportamento resultante:
-
-```text
-AI ligada  → cliente recebe APENAS a saudação gerada pela IA
-AI desligada → cliente recebe o welcome estático (faz sentido prometer atendente humano)
+-- Backfill: se já existir business_address (texto livre antigo) e business_street
+-- estiver vazio, copia para business_street para não perder o que o usuário digitou.
+update public.profiles
+   set business_street = business_address
+ where business_street is null
+   and business_address is not null
+   and length(trim(business_address)) > 0;
 ```
 
-### 2. Trocar o texto default do welcome estático
+Mantém `business_address` legado (não dropa) para não quebrar nada — passa a ser ignorado pela UI nova, mas continua lendo no backfill.
 
-Mesmo no cenário "IA desligada", a frase atual ("Em instantes um atendente irá responder") soa fria e não pergunta nada. Trocar o default para algo neutro e acolhedor, que funcione com ou sem IA:
+## 2. Configurações → Negócio (UI)
 
-> "Olá{{cliente_virgula}} Recebemos sua mensagem no {{negocio}} e já vamos te atender. 😊"
+Arquivo: `src/routes/_authenticated.settings.workspace.tsx`
 
-Arquivos:
-- `src/lib/message-defaults.ts` — atualizar o campo `default` de `welcome`.
-- `supabase/manual/20260520000000_…sql` — esse seed só roda em instalações novas; não criar nova migration (usuários existentes que já personalizaram a mensagem não são afetados; quem está no default antigo continua até editar — aceitável).
+Trocar o bloco CONTATO atual (Endereço / Telefone / Site) por:
 
-### 3. UI: aviso explícito no painel da mensagem de Boas-vindas
+- Aviso topo da seção:
+  > 💡 Esses dados podem ser informados pela IA quando o cliente perguntar (endereço, site, telefone). Mantenha-os atualizados.
+- Linha 1: **CEP** (input com máscara `00000-000`). Ao completar 8 dígitos → fetch `https://viacep.com.br/ws/{cep}/json/` no cliente e preenche Rua / Bairro / Cidade / UF automaticamente. Estados de loading e "CEP não encontrado".
+- Linha 2: **Rua/Logradouro** (preenchido pelo ViaCEP, editável)
+- Linha 3 (grid 2 col): **Número** | **Complemento** (ex.: "Torre 2, Sala 33")
+- Linha 4 (grid 3 col): **Bairro** | **Cidade** | **UF**
+- **Telefone comercial** e **Site** (mantidos)
 
-Em `src/routes/_authenticated.settings.messages.tsx`, na seção da mensagem `welcome`, adicionar um aviso 💡:
+Estado/persistência:
+- novos `useState`: `cep`, `street`, `number`, `complement`, `neighborhood`, `city`, `state`
+- `useEffect` de load: hidrata dos campos novos; fallback: se `business_street` vazio e `business_address` preenchido → usa `business_address` como street
+- save: grava as 7 colunas novas; mantém `business_address` sincronizado como string concatenada (`"{street}, {number} — {complement} — {neighborhood}, {city}/{state} — CEP {cep}"`) para compatibilidade legada
 
-> "Quando a IA está ativa, esta mensagem **não é enviada** — a própria IA faz a saudação usando o nome do assistente e do negócio configurados em Agente IA."
+Validação: zod no save — CEP regex `^\d{5}-?\d{3}$` opcional, UF 2 letras maiúsculas opcional, demais strings ≤ 200.
 
-Isso evita que o usuário fique configurando uma mensagem que nunca dispara.
+## 3. Agente IA → novo toggle único
 
-## Fora de escopo
+Arquivo: `src/routes/_authenticated.ai-agent.tsx`
 
-- Não mexer no prompt da IA (já se apresenta corretamente).
-- Não mexer nas outras mensagens transacionais (transfer, booking_*).
-- Não criar nova coluna no banco.
+Na seção **COMPORTAMENTO DO AGENTE**, adicionar **1 toggle** (manter os 4 que já existem — não substituir nenhum):
+
+- Label: **"A IA pode informar endereço, site e telefone quando perguntada?"**
+- Hint: *"Quando ligado, a IA usa os dados de Configurações → Negócio para responder perguntas tipo 'onde fica?', 'qual o telefone?', 'tem site?'. Desligue se preferir que esses dados não sejam divulgados pelo WhatsApp."*
+- Estado: `shareContactInfo`, default `true`
+- Hidrata de `ai_can_share_contact_info`, salva em `profiles.ai_can_share_contact_info`
+
+## 4. IA — injeção real no system prompt (parte funcional)
+
+Arquivo: `src/lib/ai-respond.server.ts`
+
+Em `buildWorkspaceLayer` (depois do bloco IDENTIDADE / antes de TOM), adicionar bloco **DADOS DE CONTATO**:
+
+- Se `p.ai_can_share_contact_info !== false` (default ligado) E houver pelo menos um dado preenchido (`business_street` || `business_phone` || `business_website`):
+  - Monta `addressLine` a partir dos campos estruturados (street + número + complemento + bairro + cidade/UF + CEP), pulando vazios.
+  - Adiciona ao prompt:
+    ```
+    DADOS DE CONTATO DO NEGÓCIO (use APENAS se o cliente perguntar — não ofereça espontaneamente):
+    - Endereço: {addressLine}
+    - Telefone: {business_phone}
+    - Site: {business_website}
+    Quando perguntado sobre localização, telefone ou site, responda com a informação exata acima. Não invente, não complete dados faltantes.
+    ```
+- Se toggle desligado OU sem dados:
+  - Adiciona proibição:
+    ```
+    OBRIGATÓRIO: NÃO informe endereço, telefone ou site do negócio. Se perguntado, diga que pode passar o contato com um atendente humano.
+    ```
+
+Atualizar o `.select()` (linha ~500) para incluir os novos campos: `business_cep, business_street, business_address_number, business_address_complement, business_neighborhood, business_city, business_state, business_phone, business_website, ai_can_share_contact_info` (ou manter `*` se já cobre — confirmar; hoje é `*`, então cobre automaticamente).
+
+## 5. Tipos / interface
+
+Adicionar `ai_can_share_contact_info: boolean` em `AiBehaviorConfig` (linha 37-48 de `ai-respond.server.ts`).
 
 ## Arquivos afetados
 
-1. `src/routes/api/public/evolution.$instanceId.ts` — gate `ai_enabled` no envio do welcome.
-2. `src/lib/message-defaults.ts` — novo texto default.
-3. `src/routes/_authenticated.settings.messages.tsx` — aviso na UI.
+- ✏️ `supabase/manual/20260612000000_business_address_structured_and_ai_contact_toggle.sql` (novo)
+- ✏️ `src/routes/_authenticated.settings.workspace.tsx` (bloco CONTATO refeito + ViaCEP)
+- ✏️ `src/routes/_authenticated.ai-agent.tsx` (1 toggle novo)
+- ✏️ `src/lib/ai-respond.server.ts` (bloco DADOS DE CONTATO no prompt)
+
+## Fora de escopo
+
+- Não mexe nos toggles existentes de comportamento.
+- Não muda outras mensagens/templates.
+- Não remove `business_address` legado (fica como espelho).
