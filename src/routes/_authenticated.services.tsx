@@ -335,8 +335,31 @@ function ServicesPage() {
               category={categories.find((c) => c.id === s.category_id)}
               onEdit={() => setEditing({ mode: "edit", service: s })}
               onArchive={() => archiveService(s.id)}
+              onDelete={() => setConfirmDelete(s)}
             />
           ))}
+        </div>
+      )}
+
+      {editing && (
+        <ServiceModal
+          initial={editing.mode === "edit" ? editing.service : null}
+          categories={categories}
+          onClose={() => setEditing(null)}
+          onSubmit={upsertService}
+          onAddCategory={addCategory}
+        />
+      )}
+
+      <ConfirmDialog
+        open={!!confirmDelete}
+        onClose={() => setConfirmDelete(null)}
+        onConfirm={() => confirmDelete && deleteService(confirmDelete.id)}
+        title="Excluir serviço"
+        description={`Tem certeza que deseja excluir "${confirmDelete?.name ?? ""}"? Esta ação não pode ser desfeita.`}
+        confirmLabel="Excluir"
+        destructive
+      />
         </div>
       )}
 
