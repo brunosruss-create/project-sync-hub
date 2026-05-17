@@ -505,19 +505,31 @@ export function ConversationPanel({
                   <MenuItem icon={<UserPlus size={14} />} onClick={() => { setMenuOpen(false); setTransferOpen(true); }}>
                     Transferir para agente
                   </MenuItem>
-                  <MenuItem icon={<AlertOctagon size={14} />} onClick={() => menuAction("Marcar como urgente")}>
-                    Marcar como urgente
+                  <MenuItem
+                    icon={<AlertOctagon size={14} style={{ color: contact.priority === "urgent" ? "var(--text-muted)" : "#EF4444" }} />}
+                    onClick={() => { setMenuOpen(false); void actions.toggleUrgent(contact.id, contact.priority); }}
+                  >
+                    {contact.priority === "urgent" ? "Remover urgência" : "Marcar como urgente"}
                   </MenuItem>
-                  <MenuItem icon={<Tag size={14} />} onClick={() => menuAction("Adicionar tag")}>
+                  <MenuItem icon={<Tag size={14} />} onClick={() => { setMenuOpen(false); setTab("contact"); }}>
                     Adicionar tag
                   </MenuItem>
                   <MenuItem icon={<CalendarPlus size={14} />} onClick={() => { setMenuOpen(false); openSchedule(); }}>
                     Agendar atendimento
                   </MenuItem>
-                  <MenuItem icon={<Ban size={14} />} onClick={() => menuAction("Bloquear contato")}>
-                    Bloquear contato
+                  <MenuItem
+                    icon={<Ban size={14} style={{ color: "#EF4444" }} />}
+                    onClick={() => {
+                      setMenuOpen(false);
+                      const blocked = !!contact.is_blocked;
+                      if (confirm(`${blocked ? "Desbloquear" : "Bloquear"} ${contact.name}?`)) {
+                        void actions.toggleBlock(contact.id, blocked);
+                      }
+                    }}
+                  >
+                    {contact.is_blocked ? "Desbloquear contato" : "Bloquear contato"}
                   </MenuItem>
-                  <MenuItem icon={<ExternalLink size={14} />} onClick={() => menuAction("Ver perfil completo")}>
+                  <MenuItem icon={<ExternalLink size={14} />} onClick={() => { setMenuOpen(false); setTab("contact"); }}>
                     Ver perfil completo
                   </MenuItem>
                 </div>
