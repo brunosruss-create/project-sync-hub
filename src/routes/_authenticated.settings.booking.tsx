@@ -36,6 +36,7 @@ function BookingPage() {
   });
 
   const [enabled, setEnabled] = React.useState(false);
+  const [aiSend, setAiSend] = React.useState(true);
   const [slug, setSlug] = React.useState("");
   const [title, setTitle] = React.useState("");
   const [description, setDescription] = React.useState("");
@@ -45,6 +46,7 @@ function BookingPage() {
     const p = profileQ.data as any;
     if (!p) return;
     setEnabled(!!p.booking_enabled);
+    setAiSend(p.booking_ai_send !== false);
     setSlug(p.booking_slug ?? "");
     setTitle(p.booking_title ?? "");
     setDescription(p.booking_description ?? "");
@@ -62,6 +64,7 @@ function BookingPage() {
       await updateFn({
         data: {
           booking_enabled: enabled,
+          booking_ai_send: aiSend,
           booking_slug: slug.trim().toLowerCase(),
           booking_title: title.trim(),
           booking_description: description.trim(),
