@@ -616,7 +616,7 @@ function ServiceModal({
     return m % 60 === 0 && m >= 60 ? "h" : "min";
   });
   const [color, setColor] = React.useState(initial?.color ?? PRESET_COLORS[0]);
-  const [emoji, setEmoji] = React.useState(initial?.emoji ?? "🔧");
+  
   const [status, setStatus] = React.useState<ServiceStatus>(initial?.status ?? "active");
   const [showNewCat, setShowNewCat] = React.useState(false);
   const [newCatName, setNewCatName] = React.useState("");
