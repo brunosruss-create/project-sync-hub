@@ -150,7 +150,7 @@ function SchedulePage() {
       supabase.from("contacts").select("id,name,phone,tags,priority,kanban_column,last_message,last_message_at,is_unread,assigned_agent_id"),
       supabase
         .from("services")
-        .select("id,category_id,name,description,price_cents,duration_minutes,emoji,color,status,created_at")
+        .select("id,category_id,name,description,price_cents,duration_minutes,color,status,created_at")
         .order("created_at", { ascending: true }),
     ]);
     if (apptErr) console.warn("[schedule] select appointments:", apptErr.message);
@@ -184,7 +184,6 @@ function SchedulePage() {
           description: s.description ?? "",
           price_cents: s.price_cents ?? 0,
           duration_minutes: s.duration_minutes ?? 30,
-          emoji: s.emoji ?? "🔧",
           color: s.color ?? "#25C880",
           status: (s.status ?? "active") as Service["status"],
           created_at: s.created_at ? new Date(s.created_at) : new Date(),
@@ -1963,7 +1962,7 @@ function AppointmentModal({
               >
                 {services.map((s) => (
                   <option key={s.id} value={s.id}>
-                    {s.emoji} {s.name} · {(s.price_cents / 100).toLocaleString("pt-BR", { style: "currency", currency: "BRL" })} · {s.duration_minutes}min
+                    {s.name} · {(s.price_cents / 100).toLocaleString("pt-BR", { style: "currency", currency: "BRL" })} · {s.duration_minutes}min
                   </option>
                 ))}
               </select>
