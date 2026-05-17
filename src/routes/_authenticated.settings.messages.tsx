@@ -144,12 +144,14 @@ function MessageCard({
   meta,
   value,
   businessName,
+  aiEnabled,
   onChange,
   onReset,
 }: {
   meta: (typeof MESSAGE_DEFAULTS)[MessageKey];
   value: { enabled: boolean; text: string };
   businessName: string | null;
+  aiEnabled: boolean;
   onChange: (patch: Partial<{ enabled: boolean; text: string }>) => void;
   onReset: () => void;
 }) {
