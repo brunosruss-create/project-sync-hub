@@ -2004,35 +2004,21 @@ function AppointmentModal({
                     }}
                     style={{ ...inputStyle, paddingRight: 36 }}
                   />
-                  <input
-                    ref={dateNativeRef}
-                    type="date"
-                    value={date}
-                    onChange={(e) => {
-                      const iso = e.target.value;
-                      if (iso) {
-                        setDate(iso);
-                        setDateText(formatDateBR(iso));
-                      }
-                    }}
-                    aria-hidden
-                    tabIndex={-1}
-                    style={{
-                      position: "absolute",
-                      inset: 0,
-                      opacity: 0,
-                      pointerEvents: "none",
-                      width: "100%",
-                      height: "100%",
-                    }}
-                  />
                   <button
                     type="button"
                     onClick={() => {
                       const el = dateNativeRef.current;
                       if (!el) return;
-                      if (typeof el.showPicker === "function") el.showPicker();
-                      else el.click();
+                      try {
+                        if (typeof el.showPicker === "function") {
+                          el.showPicker();
+                          return;
+                        }
+                      } catch {
+                        /* cross-origin iframe / not allowed — cai no focus+click */
+                      }
+                      el.focus();
+                      el.click();
                     }}
                     aria-label="Abrir calendário"
                     style={{
@@ -2048,10 +2034,38 @@ function AppointmentModal({
                       borderRadius: 6,
                       background: "transparent",
                       color: "var(--text-muted)",
+                      zIndex: 1,
                     }}
                   >
                     <CalendarClock size={15} />
                   </button>
+                  <input
+                    ref={dateNativeRef}
+                    type="date"
+                    value={date}
+                    onChange={(e) => {
+                      const iso = e.target.value;
+                      if (iso) {
+                        setDate(iso);
+                        setDateText(formatDateBR(iso));
+                      }
+                    }}
+                    aria-label="Selecionar data"
+                    style={{
+                      position: "absolute",
+                      right: 4,
+                      top: "50%",
+                      transform: "translateY(-50%)",
+                      width: 30,
+                      height: 30,
+                      opacity: 0,
+                      cursor: "pointer",
+                      zIndex: 2,
+                      border: 0,
+                      padding: 0,
+                      background: "transparent",
+                    }}
+                  />
                 </div>
               </Field>
               <Field label="Horário" required>
