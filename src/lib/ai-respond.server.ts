@@ -531,6 +531,16 @@ export async function runAiResponse(input: AiRunInput): Promise<AiRunResult> {
   }
 
   const isFirstMessage = (data.conversation_history ?? []).length === 0;
+
+  // Link público de agendamento (se habilitado)
+  const bookingSlug = (profile as any).booking_slug as string | null;
+  const bookingEnabled = !!(profile as any).booking_enabled;
+  const bookingUrl =
+    bookingEnabled && bookingSlug ? getBookingUrl(bookingSlug) : null;
+  const bookingLayer = bookingUrl
+    ? `=== LINK PÚBLICO DE AGENDAMENTO ===\nO cliente pode agendar sozinho pelo link: ${bookingUrl}\nQuando o cliente pedir para agendar online, marcar horário, ou perguntar como agendar — ofereça este link de forma natural na conversa. Não invente outros links.\n\nSe, ao longo da conversa, o cliente confirmar TEXTUALMENTE um agendamento (data + hora + serviço + nome + telefone), inclua no FINAL da sua resposta uma única linha com este bloco JSON exato (sem markdown, sem comentário antes ou depois):\nAPPOINTMENT_JSON:{"service_name":"...","starts_at":"YYYY-MM-DDTHH:mm:00-03:00","client_name":"...","client_phone":"...","professional_id":null}\nSó emita esse bloco quando TODOS os campos estiverem confirmados pelo cliente. Nunca invente dados.`
+    : null;
+
   const finalPrompt = [
     g.ai_base_prompt,
     segment?.segment_prompt ?? "",
@@ -539,6 +549,7 @@ export async function runAiResponse(input: AiRunInput): Promise<AiRunResult> {
       segment_default_required_fields: segment?.default_required_fields ?? [],
       __is_first_message: isFirstMessage,
     }),
+    bookingLayer,
   ]
     .filter(Boolean)
     .join("\n\n---\n\n");
