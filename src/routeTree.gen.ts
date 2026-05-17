@@ -36,6 +36,7 @@ import { Route as AuthenticatedSettingsWhatsappRouteImport } from './routes/_aut
 import { Route as AuthenticatedSettingsTeamRouteImport } from './routes/_authenticated.settings.team'
 import { Route as AuthenticatedSettingsProfileRouteImport } from './routes/_authenticated.settings.profile'
 import { Route as AuthenticatedSettingsProfessionalsRouteImport } from './routes/_authenticated.settings.professionals'
+import { Route as AuthenticatedSettingsMessagesRouteImport } from './routes/_authenticated.settings.messages'
 import { Route as AuthenticatedSettingsBookingRouteImport } from './routes/_authenticated.settings.booking'
 import { Route as AuthenticatedSettingsBillingRouteImport } from './routes/_authenticated.settings.billing'
 import { Route as ApiPublicEvolutionInstanceIdRouteImport } from './routes/api/public/evolution.$instanceId'
@@ -186,6 +187,12 @@ const AuthenticatedSettingsProfessionalsRoute =
     path: '/settings/professionals',
     getParentRoute: () => AuthenticatedRoute,
   } as any)
+const AuthenticatedSettingsMessagesRoute =
+  AuthenticatedSettingsMessagesRouteImport.update({
+    id: '/settings/messages',
+    path: '/settings/messages',
+    getParentRoute: () => AuthenticatedRoute,
+  } as any)
 const AuthenticatedSettingsBookingRoute =
   AuthenticatedSettingsBookingRouteImport.update({
     id: '/settings/booking',
@@ -229,6 +236,7 @@ export interface FileRoutesByFullPath {
   '/book/$slug': typeof BookSlugRoute
   '/settings/billing': typeof AuthenticatedSettingsBillingRoute
   '/settings/booking': typeof AuthenticatedSettingsBookingRoute
+  '/settings/messages': typeof AuthenticatedSettingsMessagesRoute
   '/settings/professionals': typeof AuthenticatedSettingsProfessionalsRoute
   '/settings/profile': typeof AuthenticatedSettingsProfileRoute
   '/settings/team': typeof AuthenticatedSettingsTeamRoute
@@ -261,6 +269,7 @@ export interface FileRoutesByTo {
   '/book/$slug': typeof BookSlugRoute
   '/settings/billing': typeof AuthenticatedSettingsBillingRoute
   '/settings/booking': typeof AuthenticatedSettingsBookingRoute
+  '/settings/messages': typeof AuthenticatedSettingsMessagesRoute
   '/settings/professionals': typeof AuthenticatedSettingsProfessionalsRoute
   '/settings/profile': typeof AuthenticatedSettingsProfileRoute
   '/settings/team': typeof AuthenticatedSettingsTeamRoute
@@ -295,6 +304,7 @@ export interface FileRoutesById {
   '/book/$slug': typeof BookSlugRoute
   '/_authenticated/settings/billing': typeof AuthenticatedSettingsBillingRoute
   '/_authenticated/settings/booking': typeof AuthenticatedSettingsBookingRoute
+  '/_authenticated/settings/messages': typeof AuthenticatedSettingsMessagesRoute
   '/_authenticated/settings/professionals': typeof AuthenticatedSettingsProfessionalsRoute
   '/_authenticated/settings/profile': typeof AuthenticatedSettingsProfileRoute
   '/_authenticated/settings/team': typeof AuthenticatedSettingsTeamRoute
@@ -329,6 +339,7 @@ export interface FileRouteTypes {
     | '/book/$slug'
     | '/settings/billing'
     | '/settings/booking'
+    | '/settings/messages'
     | '/settings/professionals'
     | '/settings/profile'
     | '/settings/team'
@@ -361,6 +372,7 @@ export interface FileRouteTypes {
     | '/book/$slug'
     | '/settings/billing'
     | '/settings/booking'
+    | '/settings/messages'
     | '/settings/professionals'
     | '/settings/profile'
     | '/settings/team'
@@ -394,6 +406,7 @@ export interface FileRouteTypes {
     | '/book/$slug'
     | '/_authenticated/settings/billing'
     | '/_authenticated/settings/booking'
+    | '/_authenticated/settings/messages'
     | '/_authenticated/settings/professionals'
     | '/_authenticated/settings/profile'
     | '/_authenticated/settings/team'
@@ -612,6 +625,13 @@ declare module '@tanstack/react-router' {
       preLoaderRoute: typeof AuthenticatedSettingsProfessionalsRouteImport
       parentRoute: typeof AuthenticatedRoute
     }
+    '/_authenticated/settings/messages': {
+      id: '/_authenticated/settings/messages'
+      path: '/settings/messages'
+      fullPath: '/settings/messages'
+      preLoaderRoute: typeof AuthenticatedSettingsMessagesRouteImport
+      parentRoute: typeof AuthenticatedRoute
+    }
     '/_authenticated/settings/booking': {
       id: '/_authenticated/settings/booking'
       path: '/settings/booking'
@@ -678,6 +698,7 @@ interface AuthenticatedRouteChildren {
   AuthenticatedSuperAdminRoute: typeof AuthenticatedSuperAdminRouteWithChildren
   AuthenticatedSettingsBillingRoute: typeof AuthenticatedSettingsBillingRoute
   AuthenticatedSettingsBookingRoute: typeof AuthenticatedSettingsBookingRoute
+  AuthenticatedSettingsMessagesRoute: typeof AuthenticatedSettingsMessagesRoute
   AuthenticatedSettingsProfessionalsRoute: typeof AuthenticatedSettingsProfessionalsRoute
   AuthenticatedSettingsProfileRoute: typeof AuthenticatedSettingsProfileRoute
   AuthenticatedSettingsTeamRoute: typeof AuthenticatedSettingsTeamRoute
@@ -697,6 +718,7 @@ const AuthenticatedRouteChildren: AuthenticatedRouteChildren = {
   AuthenticatedSuperAdminRoute: AuthenticatedSuperAdminRouteWithChildren,
   AuthenticatedSettingsBillingRoute: AuthenticatedSettingsBillingRoute,
   AuthenticatedSettingsBookingRoute: AuthenticatedSettingsBookingRoute,
+  AuthenticatedSettingsMessagesRoute: AuthenticatedSettingsMessagesRoute,
   AuthenticatedSettingsProfessionalsRoute:
     AuthenticatedSettingsProfessionalsRoute,
   AuthenticatedSettingsProfileRoute: AuthenticatedSettingsProfileRoute,

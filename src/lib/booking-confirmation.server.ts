@@ -2,6 +2,8 @@
 // Reusa o client Evolution já existente em src/lib/evolution.server.ts.
 import { supabaseAdmin } from "@/integrations/supabase/client.server";
 import { evo, instanceNameForOwner } from "@/lib/evolution.server";
+import { MESSAGE_DEFAULTS, type MessageKey } from "@/lib/message-defaults";
+import { renderTemplate } from "@/lib/message-templates";
 
 type ProfileLite = {
   id: string;
@@ -79,6 +81,69 @@ async function getConnectedInstance(ownerId: string): Promise<string | null> {
   return instanceName;
 }
 
+// Lê o template + flag de uma mensagem do profile, usando os defaults
+// de message-defaults.ts como fallback. Retorna null se a mensagem
+// estiver explicitamente desativada.
+type TemplateColumns = {
+  text: string; // nome da coluna *_text/message
+  enabled: string; // nome da coluna *_enabled
+  defaultEnabled: boolean;
+};
+const TEMPLATE_COLS: Record<MessageKey, TemplateColumns> = {
+  welcome: {
+    text: "welcome_message",
+    enabled: "welcome_message_enabled",
+    defaultEnabled: false,
+  },
+  out_of_hours: {
+    text: "ai_out_of_hours_message",
+    enabled: "ai_out_of_hours_enabled",
+    defaultEnabled: false,
+  },
+  transfer: {
+    text: "msg_transfer_text",
+    enabled: "msg_transfer_enabled",
+    defaultEnabled: true,
+  },
+  booking_confirmed: {
+    text: "msg_booking_confirmed_text",
+    enabled: "msg_booking_confirmed_enabled",
+    defaultEnabled: true,
+  },
+  booking_rescheduled: {
+    text: "msg_booking_rescheduled_text",
+    enabled: "msg_booking_rescheduled_enabled",
+    defaultEnabled: true,
+  },
+  booking_cancelled: {
+    text: "msg_booking_cancelled_text",
+    enabled: "msg_booking_cancelled_enabled",
+    defaultEnabled: true,
+  },
+};
+
+async function loadTemplate(
+  ownerId: string,
+  key: MessageKey,
+): Promise<{ enabled: boolean; text: string }> {
+  const cols = TEMPLATE_COLS[key];
+  const { data } = await supabaseAdmin
+    .from("profiles")
+    .select(`${cols.text},${cols.enabled}`)
+    .eq("id", ownerId)
+    .maybeSingle();
+  const row = (data ?? {}) as Record<string, unknown>;
+  const text =
+    typeof row[cols.text] === "string" && (row[cols.text] as string).trim()
+      ? (row[cols.text] as string)
+      : MESSAGE_DEFAULTS[key].default;
+  const enabled =
+    typeof row[cols.enabled] === "boolean"
+      ? (row[cols.enabled] as boolean)
+      : cols.defaultEnabled;
+  return { enabled, text };
+}
+
 export async function sendBookingReschedule(args: {
   profile: ProfileLite;
   appointment: AppointmentLite;
@@ -88,20 +153,19 @@ export async function sendBookingReschedule(args: {
 }) {
   const { profile, appointment, service, professional, client } = args;
   try {
+    const tpl = await loadTemplate(profile.id, "booking_rescheduled");
+    if (!tpl.enabled) return;
     const instanceName = await getConnectedInstance(profile.id);
     if (!instanceName) return;
     const tz = profile.business_timezone || "America/Sao_Paulo";
-    const dateFormatted = formatDateBR(appointment.starts_at, tz);
-    const timeFormatted = formatTimeBR(appointment.starts_at, tz);
-    const professionalName = professional?.name ?? "nosso profissional";
-    const businessName = profile.business_name ?? "nosso estabelecimento";
-    const msg =
-      `Olá ${client.client_name}! 🔄\n\n` +
-      `Seu agendamento em *${businessName}* foi *reagendado*:\n\n` +
-      `📅 *${dateFormatted} às ${timeFormatted}*\n` +
-      `💼 ${service.name}\n` +
-      `👤 ${professionalName}\n\n` +
-      `Até lá! 😊`;
+    const msg = renderTemplate(tpl.text, {
+      cliente: client.client_name,
+      negocio: profile.business_name ?? "nosso estabelecimento",
+      data: formatDateBR(appointment.starts_at, tz),
+      hora: formatTimeBR(appointment.starts_at, tz),
+      servico: service.name,
+      profissional: professional?.name ?? "nosso profissional",
+    });
     const number = normalizePhone(client.client_phone);
     await evo.sendText(instanceName, { number, text: msg });
   } catch (e) {
@@ -117,18 +181,18 @@ export async function sendBookingCancellation(args: {
 }) {
   const { profile, appointment, service, client } = args;
   try {
+    const tpl = await loadTemplate(profile.id, "booking_cancelled");
+    if (!tpl.enabled) return;
     const instanceName = await getConnectedInstance(profile.id);
     if (!instanceName) return;
     const tz = profile.business_timezone || "America/Sao_Paulo";
-    const dateFormatted = formatDateBR(appointment.starts_at, tz);
-    const timeFormatted = formatTimeBR(appointment.starts_at, tz);
-    const businessName = profile.business_name ?? "nosso estabelecimento";
-    const msg =
-      `Olá ${client.client_name}.\n\n` +
-      `Seu agendamento em *${businessName}* foi *cancelado*:\n\n` +
-      `📅 ${dateFormatted} às ${timeFormatted}\n` +
-      `💼 ${service.name}\n\n` +
-      `Caso queira remarcar, é só responder esta mensagem. 🙏`;
+    const msg = renderTemplate(tpl.text, {
+      cliente: client.client_name,
+      negocio: profile.business_name ?? "nosso estabelecimento",
+      data: formatDateBR(appointment.starts_at, tz),
+      hora: formatTimeBR(appointment.starts_at, tz),
+      servico: service.name,
+    });
     const number = normalizePhone(client.client_phone);
     await evo.sendText(instanceName, { number, text: msg });
   } catch (e) {
@@ -145,25 +209,19 @@ export async function sendBookingConfirmation(args: {
 }) {
   const { profile, appointment, service, professional, client } = args;
   try {
-    const instanceName = instanceNameForOwner(profile.id);
-    const { data: inst } = await supabaseAdmin
-      .from("whatsapp_instances")
-      .select("status")
-      .eq("instance_name", instanceName)
-      .maybeSingle();
-    if (!inst || inst.status !== "connected") return; // sem WA conectado — não falhar
+    const tpl = await loadTemplate(profile.id, "booking_confirmed");
+    if (!tpl.enabled) return;
+    const instanceName = await getConnectedInstance(profile.id);
+    if (!instanceName) return;
     const tz = profile.business_timezone || "America/Sao_Paulo";
-    const dateFormatted = formatDateBR(appointment.starts_at, tz);
-    const timeFormatted = formatTimeBR(appointment.starts_at, tz);
-    const professionalName = professional?.name ?? "nosso profissional";
-    const businessName = profile.business_name ?? "nosso estabelecimento";
-    const msg =
-      `Olá ${client.client_name}! ✅\n\n` +
-      `Seu agendamento em *${businessName}* foi confirmado:\n\n` +
-      `📅 *${dateFormatted} às ${timeFormatted}*\n` +
-      `💼 ${service.name}\n` +
-      `👤 ${professionalName}\n\n` +
-      `Até lá! 😊`;
+    const msg = renderTemplate(tpl.text, {
+      cliente: client.client_name,
+      negocio: profile.business_name ?? "nosso estabelecimento",
+      data: formatDateBR(appointment.starts_at, tz),
+      hora: formatTimeBR(appointment.starts_at, tz),
+      servico: service.name,
+      profissional: professional?.name ?? "nosso profissional",
+    });
     const number = normalizePhone(client.client_phone);
     await evo.sendText(instanceName, { number, text: msg });
   } catch (e) {
