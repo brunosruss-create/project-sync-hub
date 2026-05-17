@@ -54,6 +54,8 @@ import {
   timeSlots,
   toDateInput,
 } from "@/features/schedule/data";
+import { utcToZonedLocal, zonedLocalToUtc } from "@/features/schedule/tz";
+import { useProfile } from "@/hooks/use-profile";
 
 function nameToColor(name: string): string {
   let hash = 0;
@@ -119,18 +121,25 @@ function SchedulePage() {
     };
   }, []);
 
+  // tz do negócio (fallback SP) — usado para normalizar Dates como "phantom
+  // local" para que a UI da agenda mostre o mesmo wall-clock que a mensagem WA.
+  const profileQ = useProfile();
+  const tz =
+    ((profileQ.data as unknown as { business_timezone?: string } | null)
+      ?.business_timezone as string | undefined) || "America/Sao_Paulo";
+
   // Hydrate from supabase + realtime + cross-tab events
   const mapAppt = React.useCallback((r: any): Appointment => ({
     id: r.id,
     contact_id: r.contact_id ?? "",
     service_id: r.service_id ?? "",
     agent_id: r.professional_id ?? r.agent_id ?? "",
-    starts_at: new Date(r.starts_at),
-    ends_at: new Date(r.ends_at),
+    starts_at: utcToZonedLocal(new Date(r.starts_at), tz),
+    ends_at: utcToZonedLocal(new Date(r.ends_at), tz),
     status: (r.status ?? "scheduled") as AppointmentStatus,
     notes: r.notes ?? "",
     notify_whatsapp: !!r.notify_whatsapp,
-  }), []);
+  }), [tz]);
 
   const reload = React.useCallback(async () => {
     const [{ data: appts, error: apptErr }, { data: cts }, { data: svc }] = await Promise.all([
@@ -228,7 +237,12 @@ function SchedulePage() {
   // não é conhecido (ex.: criados via WhatsApp com id de agente fora do mock).
   const knownAgents = React.useMemo(() => new Set(agents.map((a) => a.id)), [agents]);
   const filtered = React.useMemo(
-    () => items.filter((a) => !knownAgents.has(a.agent_id) || agentFilter.has(a.agent_id)),
+    () =>
+      items.filter(
+        (a) =>
+          a.status !== "cancelled" &&
+          (!knownAgents.has(a.agent_id) || agentFilter.has(a.agent_id)),
+      ),
     [items, agentFilter, knownAgents],
   );
 
@@ -240,7 +254,11 @@ function SchedulePage() {
   const upsert = async (draft: Appointment) => {
     // overlap detection
     const conflict = items.find(
-      (a) => a.id !== draft.id && a.agent_id === draft.agent_id && overlap(a, draft),
+      (a) =>
+        a.id !== draft.id &&
+        a.status !== "cancelled" &&
+        a.agent_id === draft.agent_id &&
+        overlap(a, draft),
     );
     if (conflict) {
       nfy.error("Horário em conflito com outro agendamento desse agente.");
@@ -259,8 +277,8 @@ function SchedulePage() {
       service_id: draft.service_id || null,
       agent_id: draft.agent_id || null,
       professional_id: draft.agent_id || null,
-      starts_at: draft.starts_at.toISOString(),
-      ends_at: draft.ends_at.toISOString(),
+      starts_at: zonedLocalToUtc(draft.starts_at, tz).toISOString(),
+      ends_at: zonedLocalToUtc(draft.ends_at, tz).toISOString(),
       status: draft.status,
       notes: draft.notes,
       notify_whatsapp: draft.notify_whatsapp,
@@ -280,7 +298,7 @@ function SchedulePage() {
       return false;
     }
     nfy.success(exists ? "Agendamento atualizado." : "Agendamento criado.");
-    if (draft.notify_whatsapp) {
+    {
       const rescheduled =
         exists && previous!.starts_at.getTime() !== draft.starts_at.getTime();
       const kind: "created" | "rescheduled" | null = !exists
@@ -289,8 +307,16 @@ function SchedulePage() {
           ? "rescheduled"
           : null;
       if (kind) {
-        void notifyChangeFn({ data: { appointmentId: draft.id, kind } }).catch(
-          (e) => console.warn("[schedule] notify falhou:", e),
+        const payload: {
+          appointmentId: string;
+          kind: "created" | "rescheduled";
+          previousStartsAt?: string;
+        } = { appointmentId: draft.id, kind };
+        if (kind === "rescheduled" && previous) {
+          payload.previousStartsAt = zonedLocalToUtc(previous.starts_at, tz).toISOString();
+        }
+        void notifyChangeFn({ data: payload }).catch((e) =>
+          console.warn("[schedule] notify falhou:", e),
         );
       }
     }
@@ -302,12 +328,7 @@ function SchedulePage() {
     setItems((prev) => prev.map((a) => (a.id === id ? { ...a, status } : a)));
     nfy.success(`Status: ${STATUS_LABEL[status]}`);
     await supabase.from("appointments").update({ status }).eq("id", id);
-    if (
-      status === "cancelled" &&
-      before &&
-      before.status !== "cancelled" &&
-      before.notify_whatsapp
-    ) {
+    if (status === "cancelled" && before && before.status !== "cancelled") {
       void notifyChangeFn({ data: { appointmentId: id, kind: "cancelled" } }).catch(
         (e) => console.warn("[schedule] notify cancel falhou:", e),
       );

@@ -11,6 +11,7 @@ import {
 const InputSchema = z.object({
   appointmentId: z.string().uuid(),
   kind: z.enum(["created", "rescheduled", "cancelled"]),
+  previousStartsAt: z.string().datetime().optional(),
 });
 
 export const notifyAppointmentChange = createServerFn({ method: "POST" })
@@ -18,7 +19,7 @@ export const notifyAppointmentChange = createServerFn({ method: "POST" })
   .inputValidator((input) => InputSchema.parse(input))
   .handler(async ({ data, context }) => {
     const { userId } = context;
-    const { appointmentId, kind } = data;
+    const { appointmentId, kind, previousStartsAt } = data;
 
     const { data: appt } = await supabaseAdmin
       .from("appointments")
@@ -28,15 +29,27 @@ export const notifyAppointmentChange = createServerFn({ method: "POST" })
       .eq("id", appointmentId)
       .maybeSingle();
     if (!appt) return { ok: false, reason: "appointment_not_found" };
-    if (!appt.notify_whatsapp) return { ok: false, reason: "notify_disabled" };
 
-    // Permissão: workspace owner == owner do appointment
+    // Permissão: workspace owner == owner do appointment (antes de gravar evento)
     const { supabase } = context;
     const { data: ownerId } = await supabase.rpc("get_my_workspace_owner");
     const allowedOwner = (ownerId as string | null) ?? userId;
     if (appt.owner_user_id !== allowedOwner) {
       return { ok: false, reason: "forbidden" };
     }
+
+    // Log do evento no histórico do lead — sempre, mesmo se notify_whatsapp=false.
+    await supabaseAdmin.from("appointment_events").insert({
+      appointment_id: appt.id,
+      owner_user_id: appt.owner_user_id,
+      contact_id: appt.contact_id,
+      service_id: appt.service_id,
+      kind,
+      starts_at: appt.starts_at,
+      previous_starts_at: kind === "rescheduled" ? previousStartsAt ?? null : null,
+    });
+
+    if (!appt.notify_whatsapp) return { ok: true, notified: false };
 
     const [{ data: profile }, { data: contact }, { data: service }] = await Promise.all([
       supabaseAdmin
