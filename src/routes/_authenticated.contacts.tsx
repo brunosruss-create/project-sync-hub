@@ -273,9 +273,10 @@ function ContactsPage() {
       <ConversationPanel
         contact={openContact}
         onClose={() => setOpenContact(null)}
-        onContactUpdate={(id, patch) =>
-          setContacts((prev) => prev.map((c) => (c.id === id ? { ...c, ...patch } : c)))
-        }
+        onContactUpdate={(id, patch) => {
+          setContacts((prev) => prev.map((c) => (c.id === id ? { ...c, ...patch } : c)));
+          setOpenContact((cur) => (cur && cur.id === id ? { ...cur, ...patch } : cur));
+        }}
       />
     </div>
   );
