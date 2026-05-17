@@ -1,65 +1,70 @@
-# Diagnóstico
+# Objetivo
 
-Ao clicar em "Novo Agendamento" na agenda e salvar, aparece:
+Unificar o motor de agendamento. Hoje existem dois caminhos:
 
-> Falha ao salvar: invalid input syntax for type uuid: "ap-1779051139566"
+- **Lead (Inbox → ScheduleModal)** — UI da foto 2, com grid de horários disponíveis (busy/passado riscado), realtime, multi-serviços, prévia da mensagem.
+- **Agenda (`/schedule` → AppointmentModal)** — UI da foto 1, dropdown simples de horários sem checagem de disponibilidade, contato inline, sem snapshot de serviços, sem ligação com `appointment_events`.
 
-## Causa raiz
+Resultado esperado: ao abrir "Novo Agendamento" na Agenda, o usuário vê **a mesma tela da foto 2** (grid de slots com disponibilidade em tempo real). Mudar horário, cancelar ou criar pelo lead reflete **imediatamente** nos slots disponíveis em qualquer entrada (mesma fonte de verdade).
 
-`src/routes/_authenticated.schedule.tsx` (linha 1786), no formulário `AppointmentForm`:
+# Estratégia
 
-```ts
-const draft: Appointment = {
-  id: initial?.id ?? `ap-${Date.now()}`,
-  ...
-};
-```
+Promover o `ScheduleModal` (do Inbox) ao único componente de criação/edição de agendamento. O `AppointmentModal` da agenda é descontinuado.
 
-Para agendamentos novos, é gerado um ID temporário no formato `ap-<timestamp>` e enviado para o `upsert` em `public.appointments`, cuja coluna `id` é `uuid`. O Postgres rejeita o valor e o agendamento nunca é criado.
+## Mudanças no `ScheduleModal` (`src/features/inbox/schedule-modal.tsx`)
 
-Como consequência, **nada do fluxo posterior funciona**:
-- `notifyAppointmentChange` valida `appointmentId: z.string().uuid()` (em `src/lib/appointments.functions.ts`), então mesmo se o insert passasse, a notificação WhatsApp seria rejeitada com erro de validação Zod.
-- O evento `appointment_events` (histórico do lead) também não é gravado porque depende da mesma função.
-- A confirmação por WhatsApp (`sendBookingConfirmation`) nunca dispara.
+Tornar o modal reutilizável tanto pelo lead quanto pela agenda.
 
-O resto do formulário (contato, serviço, agente, horários, fuso) está integrado corretamente ao core — o único bloqueio é o ID inválido.
+1. **Tornar `contact` opcional**:
+   - Quando `contact` for fornecido (uso atual no inbox) → comportamento atual.
+   - Quando ausente → renderizar bloco "Contato" no topo, com autocomplete por nome/telefone + opção "Adicionar novo" (mesma UX que existe hoje no `AppointmentModal` da agenda). Carregar contatos via `supabase.from("contacts")`.
 
-# Correção (mínima, sem regressão)
+2. **Novo prop `initial?: Appointment`** (modo edição):
+   - Pré-preenche serviços (via `appointment_services` do banco), data, hora, agente, observações, notify.
+   - Submit faz `UPDATE` em vez de `INSERT`; recria snapshot em `appointment_services` (delete + insert) se conjunto de serviços mudou.
+   - Mostra botões adicionais no rodapé: **Cancelar agendamento** (status `cancelled`) e **Excluir**.
 
-## Arquivo único: `src/routes/_authenticated.schedule.tsx`
+3. **Novo prop `preset?: { starts_at?: Date; agent_id?: string }`**:
+   - Quando o usuário clica numa célula vazia da grade da agenda, abre o modal já com a data/hora/profissional daquele slot.
 
-**1. Linha 1786** — gerar UUID válido para novos agendamentos:
+4. **Centralizar disparo de notificações e histórico**:
+   - Após `INSERT` bem-sucedido → chamar `notifyAppointmentChange({ appointmentId, kind: "created" })` (server fn). Hoje o ScheduleModal NÃO chama isso; só insere uma mensagem `outbound` direto. Substituir pela chamada à server fn, que já registra `appointment_events` + envia WhatsApp via template oficial.
+   - Em modo edição, se `starts_at` mudou → `kind: "rescheduled"` com `previousStartsAt`.
+   - Em cancelamento → `kind: "cancelled"`.
+   - Remover o `messages.insert` outbound manual (a server fn de notificação já cuida disso).
 
-```ts
-id: initial?.id ?? (crypto.randomUUID?.() ?? `${Date.now()}-${Math.random().toString(36).slice(2)}`),
-```
+5. **Bloquear self-conflict no modo edição**:
+   - No cálculo de `slotState`, ignorar o próprio `initial?.id` ao verificar `busy`, para que o horário atual do agendamento sendo editado não apareça como ocupado por ele mesmo.
 
-Usa `crypto.randomUUID()` (disponível no browser moderno e SSR Node 19+). O fallback existe apenas por segurança de tipos; na prática `crypto.randomUUID` está presente nos ambientes-alvo.
+## Mudanças em `src/routes/_authenticated.schedule.tsx`
 
-Isso garante:
-- `appointments.id` recebe um uuid válido → insert no Supabase funciona
-- `notifyAppointmentChange({ appointmentId: draft.id })` passa na validação Zod
-- WhatsApp de confirmação dispara
-- Evento `created` é registrado em `appointment_events` → histórico do lead aparece
-- Realtime channel (`appointments-rt`) recebe o INSERT e o card renderiza para outros clientes
+1. **Remover** o componente local `AppointmentModal` / `AppointmentForm` e toda a função `upsert` (linhas ~254–324), bem como a função `remove` direta (linhas ~338–343).
 
-## Verificações que NÃO precisam mudar
+2. **Substituir o uso** (linhas ~568–593 e ~595–607) por:
+   - `<ScheduleModal open={!!editing} ... initial={editing.appt} preset={editing.preset} onClose={...} onSubmitted={...} />`
+   - O `DetailPanel` (clique em card existente) passa a abrir o `ScheduleModal` em modo edição, mantendo botões de status/cancelar/excluir dentro dele.
 
-Já estão corretos:
-- `payload.owner_user_id` é preenchido via `useWorkspaceOwnerId()`
-- `starts_at` / `ends_at` são convertidos com `zonedLocalToUtc(..., tz)` antes do envio
-- Detecção de conflito ignora `status === 'cancelled'`
-- `notifyChangeFn` é chamado com `kind: "created"` após upsert bem-sucedido
+3. **Realtime**: a Agenda já assina `appointments-rt` (linha ~210). O ScheduleModal também assina `schedule-modal-busy-${date}`. Ambos disparam re-fetch a partir do mesmo `INSERT/UPDATE/DELETE`, então um agendamento criado pelo lead remove o slot na Agenda instantaneamente, e vice-versa. Nenhuma mudança nova — já funciona pelo Postgres Changes.
 
-# Como validar após aplicar
+4. **Optimistic update**: o `upsert` otimista da agenda some. A grade espera o evento de realtime para renderizar. Para evitar flicker, o `ScheduleModal` pode emitir o `CustomEvent("zf:appointment-created")` (já existe na linha 326) e a Agenda escuta esse evento para inserir/atualizar localmente antes do realtime chegar.
 
-1. Abrir `/schedule` → "Novo Agendamento" → preencher contato, serviço, agente, horário → Salvar.
-2. Toast: "Agendamento criado."
-3. Card aparece no grid no horário escolhido.
-4. Se `notify_whatsapp` estiver ativo: cliente recebe a mensagem de confirmação com data/hora batendo com o slot da agenda.
-5. Abrir o lead na Inbox → aba "Histórico" → evento "created" registrado com serviço e horário.
+## Itens fora do escopo (não tocar)
 
-# Escopo
+- Schema do banco. Tabelas `appointments`, `appointment_services`, `appointment_events`, `contacts`, `services`, `professionals` permanecem como estão.
+- `src/lib/appointments.functions.ts` (`notifyAppointmentChange`) — já faz o necessário.
+- Layout da grade da agenda, fuso horário (`zonedLocalToUtc`), formatação de WhatsApp (`booking-confirmation.server.ts`).
+- Modal de detalhe (`DetailPanel`) só muda no callback `onEdit` para abrir o ScheduleModal.
 
-- 1 arquivo, 1 linha alterada.
-- Sem mudanças de schema, auth, libs externas, ou qualquer outro fluxo.
+# Como validar
+
+1. Agenda → "Novo Agendamento" → modal mostra grid 6 colunas de horários, slots ocupados riscados, multi-seleção de serviços, prévia da mensagem WhatsApp. Idêntico à foto 2.
+2. Criar pela Agenda → card aparece na grade, slot fica indisponível em qualquer outro modal aberto. WhatsApp chega. Lead recebe evento `created` no histórico.
+3. Editar arrastando para outro horário (ou via modal) → notify dispara `rescheduled`, slot antigo libera, slot novo bloqueia.
+4. Cancelar → notify dispara `cancelled`, slot volta a ficar disponível.
+5. Criar pelo Inbox e abrir a Agenda em outra aba → card aparece sozinho (realtime).
+
+# Escopo de arquivos
+
+- `src/features/inbox/schedule-modal.tsx` (expandir API + reorganizar fluxo de notificação)
+- `src/routes/_authenticated.schedule.tsx` (remover modal local, plugar ScheduleModal)
+- Nenhum outro arquivo, nenhuma migration.
