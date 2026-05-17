@@ -127,6 +127,7 @@ function MessagesPage() {
               meta={MESSAGE_DEFAULTS[k]}
               value={draft[k]}
               businessName={businessName}
+              aiEnabled={aiEnabled}
               onChange={(patch) => set(k, patch)}
               onReset={() =>
                 set(k, { text: MESSAGE_DEFAULTS[k].default })
