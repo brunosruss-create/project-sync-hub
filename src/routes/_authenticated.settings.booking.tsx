@@ -107,6 +107,21 @@ function BookingPage() {
           />
           Permitir que clientes agendem por este link
         </label>
+        <label className="flex items-start gap-2" style={{ fontSize: 13, marginTop: 8 }}>
+          <input
+            type="checkbox"
+            checked={aiSend}
+            onChange={(e) => setAiSend(e.target.checked)}
+            disabled={!enabled}
+            style={{ marginTop: 3 }}
+          />
+          <span>
+            Permitir que a IA envie este link automaticamente
+            <div style={{ fontSize: 12, color: "var(--text-secondary)", marginTop: 2 }}>
+              Quando ativo, a IA oferece o link ao cliente sempre que ele pedir para agendar, perguntar horários ou demonstrar intenção de marcar. Desative se preferir que apenas atendentes humanos enviem o link.
+            </div>
+          </span>
+        </label>
       </FieldGroup>
 
       <FieldGroup label="Endereço do link">
