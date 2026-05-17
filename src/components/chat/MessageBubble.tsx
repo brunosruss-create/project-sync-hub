@@ -23,12 +23,12 @@ function formatTime(d: Date): string {
 
 function StatusTicks({ status }: { status: ChatMessage["status"] }) {
   if (status === "sent") {
-    return <Check size={13} style={{ color: "rgba(255,255,255,0.75)" }} />;
+    return <Check size={13} style={{ color: "var(--text-muted)" }} />;
   }
   if (status === "delivered") {
-    return <CheckCheck size={13} style={{ color: "rgba(255,255,255,0.75)" }} />;
+    return <CheckCheck size={13} style={{ color: "var(--text-muted)" }} />;
   }
-  return <CheckCheck size={13} style={{ color: "#9ed5ff" }} />;
+  return <CheckCheck size={13} style={{ color: "var(--brand-400)" }} />;
 }
 
 export function MessageBubble({ m }: { m: ChatMessage }) {
