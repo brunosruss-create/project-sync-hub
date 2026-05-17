@@ -18,6 +18,7 @@ import { supabase } from "@/integrations/supabase/client";
 import { useServerFn } from "@tanstack/react-start";
 import { useQuery } from "@tanstack/react-query";
 import { listProfessionals } from "@/lib/professionals.functions";
+import { notifyAppointmentChange } from "@/lib/appointments.functions";
 import { EmptyState } from "@/components/empty-state";
 import {
   HOUR_END,
