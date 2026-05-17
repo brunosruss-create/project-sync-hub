@@ -682,21 +682,22 @@ function lookup(ctx: Ctx, a: Appointment) {
 
 const HOURS = Array.from({ length: HOUR_END - HOUR_START + 1 }, (_, i) => HOUR_START + i);
 const HOUR_HEIGHT = 60 * PX_PER_MIN; // 84px per hour
-const TIME_COL_W = 56;
+const TIME_COL_W = 60;
+const GRID_TOP_PAD = 10; // espaço para o label do HOUR_START não ser cortado
 
 function HourGrid({ children, height }: { children: React.ReactNode; height: number }) {
   return (
-    <div style={{ position: "relative", height }}>
+    <div style={{ position: "relative", height: height + GRID_TOP_PAD, paddingTop: GRID_TOP_PAD }}>
       {HOURS.slice(0, -1).map((h, i) => (
         <div
           key={h}
           style={{
             position: "absolute",
-            top: i * HOUR_HEIGHT,
+            top: GRID_TOP_PAD + i * HOUR_HEIGHT,
             left: 0,
             right: 0,
             height: HOUR_HEIGHT,
-            borderTop: "1px solid var(--border)",
+            borderTop: i === 0 ? "none" : "1px solid var(--border-strong)",
           }}
         >
           <div
@@ -706,7 +707,7 @@ function HourGrid({ children, height }: { children: React.ReactNode; height: num
               left: 0,
               right: 0,
               borderTop: "1px dashed var(--border)",
-              opacity: 0.6,
+              opacity: 0.4,
             }}
           />
         </div>
@@ -724,6 +725,7 @@ function TimeColumn() {
         flexShrink: 0,
         borderRight: "1px solid var(--border)",
         position: "relative",
+        paddingTop: GRID_TOP_PAD,
       }}
     >
       {HOURS.slice(0, -1).map((h, i) => (
@@ -731,11 +733,14 @@ function TimeColumn() {
           key={h}
           style={{
             position: "absolute",
-            top: i * HOUR_HEIGHT - 6,
+            top: GRID_TOP_PAD + i * HOUR_HEIGHT - 6,
+            left: 0,
             right: 8,
+            textAlign: "right",
             fontSize: 10,
             color: "var(--text-muted)",
             fontFamily: "var(--font-mono, ui-monospace)",
+            letterSpacing: "0.02em",
           }}
         >
           {String(h).padStart(2, "0")}:00
