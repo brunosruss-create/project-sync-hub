@@ -1,5 +1,5 @@
 import * as React from "react";
-import { X, Check, CalendarDays, Clock, User, MessageCircle } from "lucide-react";
+import { X, Check, CalendarDays, Clock, User, MessageCircle, Trash2 } from "lucide-react";
 import { toast } from "sonner";
 import { supabase } from "@/integrations/supabase/client";
 import { useAuth } from "@/hooks/use-auth";
@@ -15,12 +15,17 @@ import {
   toDateInput,
   fromDateTimeInput,
   formatDateBR,
+  formatHM,
   parseDateBR,
+  type Appointment,
 } from "@/features/schedule/data";
+import { utcToZonedLocal, zonedLocalToUtc } from "@/features/schedule/tz";
+import { useProfile } from "@/hooks/use-profile";
 import { useServerFn } from "@tanstack/react-start";
 import { useQuery } from "@tanstack/react-query";
 import { Link } from "@tanstack/react-router";
 import { listProfessionals } from "@/lib/professionals.functions";
+import { notifyAppointmentChange } from "@/lib/appointments.functions";
 
 interface BusyAppt {
   id: string;
@@ -30,11 +35,18 @@ interface BusyAppt {
 }
 
 interface Props {
-  contact: ContactCard;
+  /** Quando ausente, o modal mostra um picker de contato (uso pela Agenda). */
+  contact?: ContactCard | null;
   open: boolean;
   onClose: () => void;
   preselectedServiceIds?: string[];
+  /** Modo edição: pré-preenche com dados do agendamento existente. */
+  initial?: Appointment | null;
+  /** Pré-preenche data/hora/profissional ao criar a partir de clique em célula da agenda. */
+  preset?: { starts_at?: Date; agent_id?: string };
   onScheduled?: (info: { startsAt: Date; serviceIds: string[] }) => void;
+  /** Disparado após criar OU editar OU cancelar com sucesso. */
+  onSubmitted?: () => void;
 }
 
 const SLOTS: string[] = (() => {
