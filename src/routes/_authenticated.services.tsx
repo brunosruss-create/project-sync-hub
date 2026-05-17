@@ -125,6 +125,13 @@ function ServicesPage() {
   // eslint-disable-next-line react-hooks/exhaustive-deps
   }, [services, activeCat, query, hydrated]);
 
+  const counts = React.useMemo(() => {
+    const m: Record<string, number> = { all: services.length };
+    for (const c of categories) m[c.id] = 0;
+    for (const s of services) m[s.category_id] = (m[s.category_id] ?? 0) + 1;
+    return m;
+  }, [services, categories]);
+
   const upsertService = async (draft: Service) => {
     if (!workspaceOwnerId) {
       notify.error("Carregando sua conta… tente novamente em instantes.");
