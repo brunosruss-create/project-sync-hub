@@ -1,59 +1,127 @@
-# Notificação WhatsApp em criação, reagendamento e cancelamento via /schedule
 
-## Diagnóstico
+## Inventário: mensagens enviadas ao cliente hoje
 
-Hoje a confirmação por WhatsApp (`sendBookingConfirmation` em `src/lib/booking-confirmation.server.ts`) só é disparada em dois lugares:
+Levantamento dos pontos onde o sistema dispara texto para o cliente final (WhatsApp). Marquei quais já têm configuração e quais estão **hardcoded**.
 
-1. `src/routes/api/public/book.$slug.ts` — quando o cliente agenda pelo link público.
-2. `createAppointmentFromAI` — quando a IA cria pelo WhatsApp.
+### 1. Mensagens transacionais (não dependem de IA — string pura)
 
-A tela **Agenda** (`src/routes/_authenticated.schedule.tsx`, função `upsert`, linhas 233–263) só faz `supabase.from("appointments").upsert(...)`. Não chama nada de notificação. Por isso editar/reagendar (e mesmo criar manualmente) **não dispara WhatsApp**, mesmo com o toggle "Notificar cliente via WhatsApp" ligado no modal.
+| # | Evento | Arquivo | Estado atual |
+|---|---|---|---|
+| 1 | **Boas-vindas no 1º contato** | `src/routes/api/public/evolution.$instanceId.ts` (lê `profiles.welcome_message` + `welcome_message_enabled`) | ✅ já configurável em Settings → Workspace |
+| 2 | **Fora do horário (IA)** | `src/lib/ai-respond.server.ts:498` — fallback `"Estamos fora do horário de atendimento."` | ⚠️ parcial: editável (`ai_out_of_hours_message`) mas com fallback hardcoded |
+| 3 | **Transferência para humano (IA)** | `ai-respond.server.ts:529` — `"Entendi! Vou passar você para um atendente humano agora. Aguarde um momento."` | ❌ hardcoded |
+| 4 | **Confirmação de agendamento** | `src/lib/booking-confirmation.server.ts:161-166` (`"Olá X! ✅ Seu agendamento em *Y* foi confirmado..."`) | ❌ hardcoded |
+| 5 | **Reagendamento** | `booking-confirmation.server.ts:99-104` (`"Olá X! 🔄 Seu agendamento foi reagendado..."`) | ❌ hardcoded |
+| 6 | **Cancelamento** | `booking-confirmation.server.ts:127-131` (`"Olá X. Seu agendamento foi cancelado..."`) | ❌ hardcoded |
 
-O mesmo vale para `setStatus` (cancelar) e `remove`.
+### 2. Mensagens "guardrails" da IA (system prompt — devem continuar no prompt)
 
-## O que vou implementar
+Esses são instruções para a LLM, não strings enviadas direto. Ficam onde estão (`ai-respond.server.ts:191, 259, 279, 335`), porém o **negócio** pode querer alterar tom — fica para uma fase futura.
 
-### 1. Nova server function: `src/lib/appointments.functions.ts`
+### 3. Fora de escopo
 
-`notifyAppointmentChange({ appointmentId, kind })` protegida por `requireSupabaseAuth`. `kind` ∈ `"created" | "rescheduled" | "cancelled"`.
+- Mensagens internas/UI (toasts em pt-BR) — são da interface do operador, não vão para o cliente. Não centralizamos.
+- Texto livre digitado pelo atendente humano no chat.
 
-Ela carrega via `supabaseAdmin` (server-side):
-- `appointments` (com `contact_id`, `service_id`, `professional_id`, `starts_at`, `notify_whatsapp`, `owner_user_id`)
-- `profiles` do owner (nome do negócio + timezone + instância)
-- `contacts` (nome + phone)
-- `services` (nome, preço, duração)
-- `professionals` (nome, opcional)
+---
 
-Regras:
-- Aborta silenciosamente se `notify_whatsapp = false`.
-- Aborta silenciosamente se a instância WA não estiver `connected` (mesmo padrão atual).
-- `kind = "created"` → reusa `sendBookingConfirmation` (texto atual de confirmação).
-- `kind = "rescheduled"` → mensagem nova: "Seu agendamento foi *reagendado* para 📅 *<data> às <hora>* — <serviço> · <profissional>".
-- `kind = "cancelled"` → mensagem nova: "Seu agendamento de 📅 *<data> às <hora>* foi *cancelado*."
+## Proposta
 
-Erros viram `console.warn` (best-effort, não quebram o fluxo da UI), igual à confirmação atual.
+### A. Nova página: `Settings → Mensagens`
 
-### 2. Chamada a partir de `_authenticated.schedule.tsx`
+Rota: `src/routes/_authenticated.settings.messages.tsx`
+Item no sidebar (`src/features/settings/settings-layout.tsx`), seção "Agenda" ou nova seção "Mensagens automáticas".
 
-- Em `upsert` (linhas 233–263): comparar com o item anterior em `items`. Se `exists && previous.starts_at !== draft.starts_at` → `kind = "rescheduled"`. Se `!exists` → `kind = "created"`. Só dispara se `draft.notify_whatsapp` e o upsert no Supabase não der erro.
-- Em `setStatus` (linhas 265–269): se novo status for `"cancelled"` e `appt.notify_whatsapp` → `kind = "cancelled"`.
-- `remove` (linhas 271–276): mantém sem notificação (já está deletado; cancelamento é o caminho correto para notificar).
+Layout: 6 cards, um por mensagem. Cada card tem:
+- **Switch enabled/disabled** (quando faz sentido)
+- **Textarea** com a string atual
+- Botão "Restaurar padrão"
+- Lista de **placeholders disponíveis** clicáveis (insere na posição do cursor)
+- Mini-preview à direita com placeholders substituídos por valores fictícios (ex: "João", "10/06/2026 às 14:00")
 
-Disparo via `useServerFn(notifyAppointmentChange)`, em background (`void fn(...)`), para não bloquear o `nfy.success`.
+### B. Placeholders padronizados (template engine simples)
 
-### 3. Sem mudanças em schema/SQL
+Substituição via `{{var}}`. Sem libs novas, helper próprio em `src/lib/message-templates.ts`:
 
-Tudo reusa colunas existentes (`notify_whatsapp`, `professional_id`, etc.). Nenhuma migration nova.
+```ts
+export function renderTemplate(tpl: string, vars: Record<string,string>): string {
+  return tpl.replace(/\{\{(\w+)\}\}/g, (_, k) => vars[k] ?? "");
+}
+```
 
-## Validação após implementar
+Placeholders por mensagem:
+- **Boas-vindas**: `{{cliente}}`, `{{negocio}}`
+- **Fora do horário**: `{{negocio}}`, `{{proximo_horario}}`
+- **Transferência humano**: `{{cliente}}`
+- **Confirmação / Reagendamento / Cancelamento**: `{{cliente}}`, `{{negocio}}`, `{{data}}`, `{{hora}}`, `{{servico}}`, `{{profissional}}`
 
-1. Em `/schedule`, abrir um agendamento existente, mudar horário e salvar → cliente recebe WhatsApp "reagendado".
-2. Criar agendamento novo pela Agenda → cliente recebe confirmação (igual ao link público).
-3. Marcar status como "Cancelado" → cliente recebe aviso de cancelamento.
-4. Com WhatsApp desconectado ou toggle off → nenhuma mensagem, sem erro visível.
+### C. Persistência
 
-## Arquivos afetados
+Uma migration nova (`supabase/manual/20260608000000_message_templates.sql`) adiciona em `profiles`:
 
-- `src/lib/appointments.functions.ts` (novo)
-- `src/lib/booking-confirmation.server.ts` (exporta helper `sendBookingReschedule` / `sendBookingCancellation` reusando `evo` + formatadores)
-- `src/routes/_authenticated.schedule.tsx` (chamadas em `upsert` e `setStatus`)
+```sql
+alter table public.profiles
+  add column if not exists msg_transfer_enabled    boolean not null default true,
+  add column if not exists msg_transfer_text       text,
+  add column if not exists msg_booking_confirmed_enabled boolean not null default true,
+  add column if not exists msg_booking_confirmed_text    text,
+  add column if not exists msg_booking_rescheduled_enabled boolean not null default true,
+  add column if not exists msg_booking_rescheduled_text   text,
+  add column if not exists msg_booking_cancelled_enabled boolean not null default true,
+  add column if not exists msg_booking_cancelled_text    text;
+
+notify pgrst, 'reload schema';
+```
+
+(`welcome_message*` e `ai_out_of_hours_*` já existem; apenas reaproveitamos.)
+
+### D. Defaults centralizados
+
+Novo arquivo `src/lib/message-defaults.ts` exporta cada template padrão. Tanto a UI quanto o servidor importam daí — fonte única de verdade.
+
+### E. Wiring no servidor (substituir hardcodes)
+
+- `booking-confirmation.server.ts` → ler `msg_booking_*_text/enabled` do `profile`, cair no default se vazio, e abortar envio se `enabled=false`.
+- `ai-respond.server.ts:498` → usar `profile.ai_out_of_hours_message || DEFAULTS.outOfHours`.
+- `ai-respond.server.ts:529` → ler `msg_transfer_text`, respeitar `msg_transfer_enabled`.
+
+### F. Server functions
+
+Em `src/lib/onboarding.functions.ts` (ou novo `messages.functions.ts`):
+- `getMessageTemplates()` — devolve os 6 templates + flags.
+- `updateMessageTemplates(input)` — Zod schema validando `max(2000)` em cada texto.
+
+---
+
+## Detalhes técnicos
+
+**Arquivos novos**
+- `src/routes/_authenticated.settings.messages.tsx`
+- `src/lib/messages.functions.ts`
+- `src/lib/message-templates.ts` (renderTemplate)
+- `src/lib/message-defaults.ts`
+- `supabase/manual/20260608000000_message_templates.sql`
+
+**Arquivos alterados**
+- `src/features/settings/settings-layout.tsx` (adiciona item "Mensagens")
+- `src/lib/booking-confirmation.server.ts` (usa templates do profile)
+- `src/lib/ai-respond.server.ts` (usa templates p/ out-of-hours + transferência)
+- `src/routes/api/public/evolution.$instanceId.ts` (welcome continua igual, mas opcionalmente passa pelo `renderTemplate` para suportar `{{cliente}}`)
+
+**Não muda nesta etapa**
+- Toggle `notify_whatsapp` por agendamento (continua no modal).
+- Prompts/guardrails da IA.
+- Toasts da UI interna.
+
+---
+
+## Resultado para o usuário
+
+Uma única tela mostrando as 6 mensagens que o sistema envia, cada uma com:
+- on/off
+- texto editável
+- placeholders documentados
+- preview ao vivo
+- botão "restaurar padrão"
+
+Zero string hardcoded saindo do servidor para o cliente.
