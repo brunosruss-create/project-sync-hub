@@ -116,16 +116,15 @@ export const Route = createFileRoute("/api/public/book/$slug")({
           const serviceIds = Array.isArray(profile.booking_service_ids)
             ? profile.booking_service_ids
             : [];
-          let services: any[] = [];
-          if (serviceIds.length > 0) {
-            const { data } = await supabaseAdmin
-              .from("services")
-              .select("id,name,description,price_cents,duration_minutes,emoji,color")
-              .in("id", serviceIds)
-              .eq("owner_user_id", profile.id)
-              .eq("status", "active");
-            services = data ?? [];
-          }
+          // Sem subconjunto definido = todos os serviços ativos ficam disponíveis.
+          let svcQ = supabaseAdmin
+            .from("services")
+            .select("id,name,description,price_cents,duration_minutes,emoji,color")
+            .eq("owner_user_id", profile.id)
+            .eq("status", "active");
+          if (serviceIds.length > 0) svcQ = svcQ.in("id", serviceIds);
+          const { data: svcData } = await svcQ;
+          const services = svcData ?? [];
           const { data: professionals } = await supabaseAdmin
             .from("professionals")
             .select("id,name,role,avatar_url,avatar_color")
