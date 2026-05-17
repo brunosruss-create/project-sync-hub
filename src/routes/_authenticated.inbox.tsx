@@ -141,7 +141,6 @@ function InboxPage() {
         .from("contacts")
         .select(SELECT_FULL)
         .eq("is_archived", false)
-        .eq("is_blocked", false)
         .order("last_message_at", { ascending: false, nullsFirst: false });
       // Fallback se as colunas novas ainda não existirem no banco
       if (error && /email|notes|is_blocked|is_archived|unread_count|last_direction/i.test(error.message)) {
@@ -197,7 +196,7 @@ function InboxPage() {
           }
           const row = mapRow(raw);
           setContacts((prev) => {
-            if (row.is_blocked || row.is_archived) {
+            if (row.is_archived) {
               return prev.filter((c) => c.id !== row.id);
             }
             const exists = prev.some((c) => c.id === row.id);
@@ -206,7 +205,7 @@ function InboxPage() {
           });
           setOpenContact((cur) => {
             if (!cur || cur.id !== row.id) return cur;
-            if (row.is_blocked || row.is_archived) return null;
+            if (row.is_archived) return null;
             return { ...cur, ...row };
           });
         },
@@ -230,14 +229,14 @@ function InboxPage() {
       if (!detail?.id) return;
       const { id, patch } = detail;
       setContacts((prev) => {
-        if (patch.is_archived || patch.is_blocked) {
+        if (patch.is_archived) {
           return prev.filter((c) => c.id !== id);
         }
         return prev.map((c) => (c.id === id ? { ...c, ...patch } as Contact : c));
       });
       setOpenContact((cur) => {
         if (!cur || cur.id !== id) return cur;
-        if (patch.is_archived || patch.is_blocked) return null;
+        if (patch.is_archived) return null;
         return { ...cur, ...patch } as Contact;
       });
     };
