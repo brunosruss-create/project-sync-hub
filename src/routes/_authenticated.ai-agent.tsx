@@ -392,10 +392,10 @@ function AIAgentPage() {
             hint="Quando desligado, a IA evita confirmar espontaneamente que é uma IA."
           />
           <ToggleRow
-            label="Este negócio tem mais de um profissional?"
+            label="Forçar a IA a perguntar a preferência de profissional?"
             value={multipleProfs}
             onChange={setMultipleProfs}
-            hint="Se desligado, a IA não pergunta com qual profissional o cliente quer ser atendido."
+            hint="Com 1 profissional ativo a IA já assume sozinha. Com 2+, ligue se quiser que a IA pergunte 'com qual profissional?' quando o cliente não citar nome. Desligado, a IA só responde sobre profissional quando o cliente perguntar pelo nome."
           />
           <ToggleRow
             label="A IA pode informar endereço, site e telefone quando perguntada?"
