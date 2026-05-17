@@ -71,7 +71,7 @@ function ServicesPage() {
         supabase
           .from("services")
           .select(
-            "id,category_id,name,description,price_cents,duration_minutes,emoji,color,status,created_at",
+            "id,category_id,name,description,price_cents,duration_minutes,color,status,created_at",
           )
           .eq("owner_user_id", workspaceOwnerId)
           .order("created_at", { ascending: true }),
