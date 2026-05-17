@@ -229,17 +229,15 @@ function SchedulePage() {
     };
   }, [reload, mapAppt]);
 
-  // Filtra por agente, mas SEMPRE mantém visíveis appointments cujo agent_id
-  // não é conhecido (ex.: criados via WhatsApp com id de agente fora do mock).
-  const knownAgents = React.useMemo(() => new Set(agents.map((a) => a.id)), [agents]);
+  // Filtra por agente (select único): "all" mostra todos.
   const filtered = React.useMemo(
     () =>
       items.filter(
         (a) =>
           a.status !== "cancelled" &&
-          (!knownAgents.has(a.agent_id) || agentFilter.has(a.agent_id)),
+          (agentFilter === "all" || a.agent_id === agentFilter),
       ),
-    [items, agentFilter, knownAgents],
+    [items, agentFilter],
   );
 
   const open = openId ? items.find((i) => i.id === openId) ?? null : null;
