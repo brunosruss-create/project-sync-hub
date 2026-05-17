@@ -354,7 +354,9 @@ function ServicesPage() {
       <ConfirmDialog
         open={!!confirmDelete}
         onClose={() => setConfirmDelete(null)}
-        onConfirm={() => confirmDelete && deleteService(confirmDelete.id)}
+        onConfirm={() => {
+          if (confirmDelete) void deleteService(confirmDelete.id);
+        }}
         title="Excluir serviço"
         description={`Tem certeza que deseja excluir "${confirmDelete?.name ?? ""}"? Esta ação não pode ser desfeita.`}
         confirmLabel="Excluir"
