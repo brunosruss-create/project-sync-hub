@@ -45,6 +45,7 @@ interface AiBehaviorConfig {
   ai_min_advance_hours: number;
   ai_required_fields: string[];
   ai_max_questions_per_message: number;
+  ai_can_share_contact_info: boolean;
 }
 
 export type AiRunInput = {
