@@ -277,6 +277,15 @@ export const getWorkspaceProfile = createServerFn({ method: "POST" })
       booking_title: (data as any)?.booking_title ?? "",
       booking_description: (data as any)?.booking_description ?? "",
       booking_service_ids: ((data as any)?.booking_service_ids as string[] | null) ?? [],
+      booking_ai_send: await (async () => {
+        const { data: row } = await supabaseAdmin
+          .from("profiles")
+          .select("booking_ai_send")
+          .eq("id", context.userId)
+          .maybeSingle();
+        const v = (row as any)?.booking_ai_send;
+        return typeof v === "boolean" ? v : true;
+      })(),
     };
   });
 
@@ -296,6 +305,7 @@ export const updateBookingConfig = createServerFn({ method: "POST" })
         booking_title: z.string().max(120).optional(),
         booking_description: z.string().max(500).optional(),
         booking_service_ids: z.array(z.string()).max(200).optional(),
+        booking_ai_send: z.boolean().optional(),
       })
       .parse(input),
   )

@@ -36,6 +36,7 @@ function BookingPage() {
   });
 
   const [enabled, setEnabled] = React.useState(false);
+  const [aiSend, setAiSend] = React.useState(true);
   const [slug, setSlug] = React.useState("");
   const [title, setTitle] = React.useState("");
   const [description, setDescription] = React.useState("");
@@ -45,6 +46,7 @@ function BookingPage() {
     const p = profileQ.data as any;
     if (!p) return;
     setEnabled(!!p.booking_enabled);
+    setAiSend(p.booking_ai_send !== false);
     setSlug(p.booking_slug ?? "");
     setTitle(p.booking_title ?? "");
     setDescription(p.booking_description ?? "");
@@ -62,6 +64,7 @@ function BookingPage() {
       await updateFn({
         data: {
           booking_enabled: enabled,
+          booking_ai_send: aiSend,
           booking_slug: slug.trim().toLowerCase(),
           booking_title: title.trim(),
           booking_description: description.trim(),
@@ -103,6 +106,21 @@ function BookingPage() {
             onChange={(e) => setEnabled(e.target.checked)}
           />
           Permitir que clientes agendem por este link
+        </label>
+        <label className="flex items-start gap-2" style={{ fontSize: 13, marginTop: 8 }}>
+          <input
+            type="checkbox"
+            checked={aiSend}
+            onChange={(e) => setAiSend(e.target.checked)}
+            disabled={!enabled}
+            style={{ marginTop: 3 }}
+          />
+          <span>
+            Permitir que a IA envie este link automaticamente
+            <div style={{ fontSize: 12, color: "var(--text-secondary)", marginTop: 2 }}>
+              Quando ativo, a IA oferece o link ao cliente sempre que ele pedir para agendar, perguntar horários ou demonstrar intenção de marcar. Desative se preferir que apenas atendentes humanos enviem o link.
+            </div>
+          </span>
         </label>
       </FieldGroup>
 
