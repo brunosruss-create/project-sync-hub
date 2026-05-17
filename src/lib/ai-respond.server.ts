@@ -591,7 +591,26 @@ export async function runAiResponse(input: AiRunInput): Promise<AiRunResult> {
       }
       return { action: "error", error: `HTTP ${res.status}` };
     }
-    const text = json.candidates?.[0]?.content?.parts?.[0]?.text ?? "";
+    let text = json.candidates?.[0]?.content?.parts?.[0]?.text ?? "";
+
+    // Detecta bloco APPOINTMENT_JSON emitido pela IA
+    if (bookingEnabled) {
+      const match = text.match(/APPOINTMENT_JSON:(\{[\s\S]*?\})\s*$/);
+      if (match) {
+        try {
+          const payload = JSON.parse(match[1]);
+          await createAppointmentFromAI(payload, {
+            id: profile.id,
+            business_timezone: profile.business_timezone ?? null,
+            business_name: profile.business_name ?? null,
+          });
+        } catch (err) {
+          console.warn("[ai booking] parse/create falhou:", (err as Error)?.message);
+        }
+        // Remove o bloco da resposta enviada ao cliente
+        text = text.replace(/APPOINTMENT_JSON:\{[\s\S]*?\}\s*$/, "").trim();
+      }
+    }
     const usage = json.usageMetadata ?? {};
     const tokensIn = usage.promptTokenCount ?? 0;
     const tokensOut = usage.candidatesTokenCount ?? 0;
