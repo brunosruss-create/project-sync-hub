@@ -96,7 +96,6 @@ function ServicesPage() {
           description: s.description ?? "",
           price_cents: s.price_cents ?? 0,
           duration_minutes: s.duration_minutes ?? 30,
-          emoji: s.emoji ?? "🔧",
           color: s.color ?? "#25C880",
           status: (s.status ?? "active") as ServiceStatus,
           created_at: s.created_at ? new Date(s.created_at) : new Date(),
