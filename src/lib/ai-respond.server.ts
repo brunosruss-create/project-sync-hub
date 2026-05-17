@@ -1,5 +1,9 @@
 import { supabaseAdmin } from "@/integrations/supabase/client.server";
-import { createAppointmentFromAI } from "@/lib/booking-confirmation.server";
+import {
+  createAppointmentFromAI,
+  rescheduleAppointmentFromAI,
+  cancelAppointmentFromAI,
+} from "@/lib/booking-confirmation.server";
 import { getBookingUrl } from "@/lib/booking-url";
 import { MESSAGE_DEFAULTS } from "@/lib/message-defaults";
 import { renderTemplate } from "@/lib/message-templates";
