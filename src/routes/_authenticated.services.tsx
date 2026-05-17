@@ -371,13 +371,34 @@ function ServiceCard({
   category,
   onEdit,
   onArchive,
+  onDelete,
 }: {
   service: Service;
   category: Category | undefined;
   onEdit: () => void;
   onArchive: () => void;
+  onDelete: () => void;
 }) {
   const accent = category?.color ?? service.color;
+  const [menuOpen, setMenuOpen] = React.useState(false);
+  const menuRef = React.useRef<HTMLDivElement>(null);
+
+  React.useEffect(() => {
+    if (!menuOpen) return;
+    const onDown = (e: MouseEvent) => {
+      if (!menuRef.current?.contains(e.target as Node)) setMenuOpen(false);
+    };
+    const onKey = (e: KeyboardEvent) => {
+      if (e.key === "Escape") setMenuOpen(false);
+    };
+    window.addEventListener("mousedown", onDown);
+    window.addEventListener("keydown", onKey);
+    return () => {
+      window.removeEventListener("mousedown", onDown);
+      window.removeEventListener("keydown", onKey);
+    };
+  }, [menuOpen]);
+
   return (
     <div
       style={{
@@ -394,111 +415,200 @@ function ServiceCard({
         transition: "border-color 150ms ease, transform 150ms ease",
       }}
     >
-      {/* Status badge */}
-      <span
-        style={{
-          position: "absolute",
-          top: 10,
-          right: 10,
-          fontSize: 10,
-          fontWeight: 500,
-          padding: "2px 7px",
-          borderRadius: 999,
-          color: STATUS_COLOR[service.status],
-          background: `color-mix(in oklab, ${STATUS_COLOR[service.status]} 12%, transparent)`,
-          border: `1px solid color-mix(in oklab, ${STATUS_COLOR[service.status]} 30%, transparent)`,
-          textTransform: "uppercase",
-          letterSpacing: "0.04em",
-        }}
+      {/* Top row: status badge + 3-dot menu */}
+      <div
+        className="flex items-center"
+        style={{ position: "absolute", top: 10, right: 10, gap: 6 }}
       >
-        {STATUS_LABEL[service.status]}
-      </span>
-
-      {/* Header */}
-      <div className="flex items-start" style={{ gap: 10 }}>
-        <div
-          aria-hidden
+        <span
           style={{
-            width: 10,
-            height: 36,
-            borderRadius: 4,
-            background: accent,
-            flexShrink: 0,
+            fontSize: 10,
+            fontWeight: 500,
+            padding: "2px 7px",
+            borderRadius: 999,
+            color: STATUS_COLOR[service.status],
+            background: `color-mix(in oklab, ${STATUS_COLOR[service.status]} 12%, transparent)`,
+            border: `1px solid color-mix(in oklab, ${STATUS_COLOR[service.status]} 30%, transparent)`,
+            textTransform: "uppercase",
+            letterSpacing: "0.04em",
           }}
-        />
-
-        <div className="min-w-0" style={{ paddingRight: 64 }}>
-          <div
-            className="truncate"
-            style={{ fontSize: 14, fontWeight: 600, color: "var(--text-primary)" }}
+        >
+          {STATUS_LABEL[service.status]}
+        </span>
+        <div ref={menuRef} style={{ position: "relative" }}>
+          <button
+            type="button"
+            onClick={() => setMenuOpen((v) => !v)}
+            aria-label="Ações"
+            className="inline-flex items-center justify-center"
+            style={{
+              width: 26,
+              height: 26,
+              borderRadius: 6,
+              border: "1px solid var(--border)",
+              background: "transparent",
+              color: "var(--text-muted)",
+              cursor: "pointer",
+            }}
           >
-            {service.name}
-          </div>
-          {category && (
-            <div style={{ fontSize: 11, color: "var(--text-muted)", marginTop: 1 }}>
-              {category.name}
+            <MoreVertical size={14} />
+          </button>
+          {menuOpen && (
+            <div
+              role="menu"
+              style={{
+                position: "absolute",
+                top: "calc(100% + 4px)",
+                right: 0,
+                minWidth: 160,
+                background: "var(--bg-surface)",
+                border: "1px solid var(--border)",
+                borderRadius: 8,
+                boxShadow: "0 12px 32px rgba(0,0,0,0.25)",
+                padding: 4,
+                zIndex: 20,
+              }}
+            >
+              <MenuItem
+                icon={<Pencil size={13} />}
+                label="Editar"
+                onClick={() => {
+                  setMenuOpen(false);
+                  onEdit();
+                }}
+              />
+              <MenuItem
+                icon={<Archive size={13} />}
+                label="Arquivar"
+                onClick={() => {
+                  setMenuOpen(false);
+                  onArchive();
+                }}
+              />
+              <MenuItem
+                icon={<Trash2 size={13} />}
+                label="Excluir"
+                destructive
+                onClick={() => {
+                  setMenuOpen(false);
+                  onDelete();
+                }}
+              />
             </div>
           )}
         </div>
       </div>
 
-      <div style={{ height: 1, background: "var(--border)" }} />
-
-      {/* Meta */}
-      <div className="flex flex-col" style={{ gap: 6 }}>
-        <Meta icon="⏱" label={formatDuration(service.duration_minutes)} />
-        <Meta
-          icon="💰"
-          label={formatCurrencyBRL(service.price_cents)}
-          valueStyle={{ fontWeight: 600, fontFamily: "var(--font-mono, ui-monospace)" }}
-        />
-        {service.description && (
-          <Meta icon="📝" label={service.description} muted />
+      {/* Header */}
+      <div className="min-w-0" style={{ paddingRight: 96 }}>
+        <div
+          style={{
+            fontSize: 10,
+            fontWeight: 500,
+            color: "var(--text-muted)",
+            textTransform: "uppercase",
+            letterSpacing: "0.04em",
+            marginBottom: 2,
+          }}
+        >
+          Nome do serviço
+        </div>
+        <div
+          className="truncate"
+          style={{ fontSize: 14, fontWeight: 600, color: "var(--text-primary)" }}
+        >
+          {service.name}
+        </div>
+        {category && (
+          <div style={{ fontSize: 11, color: "var(--text-muted)", marginTop: 2 }}>
+            {category.name}
+          </div>
         )}
       </div>
 
-      {/* Actions */}
-      <div className="flex items-center" style={{ gap: 6, marginTop: 4 }}>
-        <button
-          type="button"
-          onClick={onEdit}
-          className="inline-flex items-center justify-center"
-          style={{
-            flex: 1,
-            gap: 4,
-            height: 30,
-            borderRadius: 6,
-            border: "1px solid var(--border-strong)",
-            background: "transparent",
-            color: "var(--text-primary)",
-            fontSize: 12,
-            fontWeight: 500,
-          }}
-        >
-          <Pencil size={12} />
-          Editar
-        </button>
-        <button
-          type="button"
-          onClick={onArchive}
-          className="inline-flex items-center justify-center"
-          style={{
-            flex: 1,
-            gap: 4,
-            height: 30,
-            borderRadius: 6,
-            border: "1px solid var(--border)",
-            background: "transparent",
-            color: "var(--text-muted)",
-            fontSize: 12,
-            fontWeight: 500,
-          }}
-        >
-          <Archive size={12} />
-          Arquivar
-        </button>
+      <div style={{ height: 1, background: "var(--border)" }} />
+
+      {/* Meta */}
+      <div className="flex flex-col" style={{ gap: 6, fontSize: 12 }}>
+        <MetaRow label="Tempo" value={formatDuration(service.duration_minutes)} />
+        <MetaRow
+          label="Valor"
+          value={formatCurrencyBRL(service.price_cents)}
+          valueStyle={{ fontWeight: 600, fontFamily: "var(--font-mono, ui-monospace)" }}
+        />
+        {service.description && (
+          <MetaRow label="Descrição" value={service.description} muted />
+        )}
       </div>
     </div>
+  );
+}
+
+function MetaRow({
+  label,
+  value,
+  muted,
+  valueStyle,
+}: {
+  label: string;
+  value: string;
+  muted?: boolean;
+  valueStyle?: React.CSSProperties;
+}) {
+  return (
+    <div className="flex items-start" style={{ gap: 6, lineHeight: 1.4 }}>
+      <span style={{ color: "var(--text-muted)", flexShrink: 0 }}>{label}:</span>
+      <span
+        style={{
+          color: muted ? "var(--text-muted)" : "var(--text-primary)",
+          ...valueStyle,
+        }}
+      >
+        {value}
+      </span>
+    </div>
+  );
+}
+
+function MenuItem({
+  icon,
+  label,
+  onClick,
+  destructive,
+}: {
+  icon: React.ReactNode;
+  label: string;
+  onClick: () => void;
+  destructive?: boolean;
+}) {
+  return (
+    <button
+      type="button"
+      role="menuitem"
+      onClick={onClick}
+      className="flex items-center w-full"
+      style={{
+        gap: 8,
+        padding: "7px 10px",
+        borderRadius: 6,
+        background: "transparent",
+        border: "none",
+        cursor: "pointer",
+        fontSize: 12,
+        fontWeight: 500,
+        color: destructive ? "var(--danger)" : "var(--text-primary)",
+        textAlign: "left",
+      }}
+      onMouseEnter={(e) => {
+        (e.currentTarget as HTMLButtonElement).style.background = "var(--bg-overlay)";
+      }}
+      onMouseLeave={(e) => {
+        (e.currentTarget as HTMLButtonElement).style.background = "transparent";
+      }}
+    >
+      {icon}
+      {label}
+    </button>
   );
 }
 
