@@ -154,6 +154,7 @@ function AIAgentPage() {
     setCanCancel((cAny.ai_can_cancel as boolean | undefined) ?? false);
     setMinAdvanceHours((cAny.ai_min_advance_hours as number | undefined) ?? 2);
     setMaxQuestions((cAny.ai_max_questions_per_message as number | undefined) ?? 1);
+    setShareContactInfo((cAny.ai_can_share_contact_info as boolean | undefined) ?? true);
     setHydrated(true);
   }, [configQ.data, hydrated]);
 
