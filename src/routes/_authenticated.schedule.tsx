@@ -381,79 +381,31 @@ function SchedulePage() {
 
         <div className="flex flex-wrap items-center" style={{ gap: 8 }}>
           <ViewTabs view={view} onChange={setView} />
-          <div className="relative">
-            <button
-              type="button"
-              onClick={() => setFilterOpen((v) => !v)}
-              className="inline-flex items-center"
+          <div className="relative inline-flex items-center" style={{ gap: 6 }}>
+            <Filter size={14} style={{ color: "var(--text-muted)" }} />
+            <select
+              value={agentFilter}
+              onChange={(e) => setAgentFilter(e.target.value)}
+              aria-label="Filtrar por profissional"
               style={{
-                gap: 4,
                 height: 32,
-                padding: "0 10px",
+                padding: "0 28px 0 10px",
                 borderRadius: 6,
                 border: "1px solid var(--border-strong)",
-                background: "transparent",
+                background: "var(--bg-surface)",
                 color: "var(--text-primary)",
                 fontSize: 13,
                 fontWeight: 500,
+                cursor: "pointer",
               }}
             >
-              <Filter size={14} />
-              Profissionais
-            </button>
-            {filterOpen && (
-              <div
-                onMouseLeave={() => setFilterOpen(false)}
-                style={{
-                  position: "absolute",
-                  top: 36,
-                  right: 0,
-                  zIndex: 30,
-                  width: 220,
-                  background: "var(--bg-surface)",
-                  border: "1px solid var(--border-strong)",
-                  borderRadius: 8,
-                  padding: 6,
-                  boxShadow: "0 10px 30px rgba(0,0,0,0.18)",
-                  animation: "fadeSlideIn 150ms ease-out",
-                }}
-              >
-                {agents.map((a) => {
-                  const on = agentFilter.has(a.id);
-                  return (
-                    <label
-                      key={a.id}
-                      className="flex items-center w-full"
-                      style={{ gap: 8, padding: "6px 8px", borderRadius: 6, cursor: "pointer", fontSize: 13 }}
-                      onMouseEnter={(e) => (e.currentTarget.style.background = "var(--bg-overlay)")}
-                      onMouseLeave={(e) => (e.currentTarget.style.background = "transparent")}
-                    >
-                      <input
-                        type="checkbox"
-                        checked={on}
-                        onChange={() =>
-                          setAgentFilter((prev) => {
-                            const next = new Set(prev);
-                            if (next.has(a.id)) next.delete(a.id);
-                            else next.add(a.id);
-                            return next;
-                          })
-                        }
-                      />
-                      <span
-                        style={{
-                          width: 8,
-                          height: 8,
-                          borderRadius: 999,
-                          background: a.color,
-                        }}
-                      />
-                      <span style={{ flex: 1 }}>{a.name}</span>
-                    </label>
-                  );
-                })}
-              </div>
-            )}
+              <option value="all">Todos os profissionais</option>
+              {agents.map((a) => (
+                <option key={a.id} value={a.id}>
+                  {a.name}
+                </option>
+              ))}
+            </select>
           </div>
           <button
             type="button"
