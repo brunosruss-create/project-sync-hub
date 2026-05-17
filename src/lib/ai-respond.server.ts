@@ -428,6 +428,34 @@ export async function runAiResponse(input: AiRunInput): Promise<AiRunResult> {
       }
     | null;
 
+  // ===== CATÁLOGO DE SERVIÇOS (fonte única de verdade) =====
+  // Carrega os serviços ativos do workspace + categorias para nomear cada um.
+  // A IA NUNCA deve inferir serviços a partir de business_description,
+  // segmento ou nome — só pode falar do que está aqui.
+  const { data: activeServices } = await supabaseAdmin
+    .from("services")
+    .select("name,description,duration_minutes,price_cents,category_id")
+    .eq("owner_user_id", data.workspace_owner_id)
+    .eq("status", "active")
+    .order("name", { ascending: true });
+
+  let categoryNameById: Record<string, string> = {};
+  const categoryIds = Array.from(
+    new Set((activeServices ?? []).map((s) => s.category_id).filter(Boolean)),
+  ) as string[];
+  if (categoryIds.length > 0) {
+    const { data: cats } = await supabaseAdmin
+      .from("service_categories")
+      .select("id,name")
+      .in("id", categoryIds);
+    categoryNameById = Object.fromEntries((cats ?? []).map((c) => [c.id, c.name]));
+  }
+
+  const pricePolicyForCatalog: PriceDisclosurePolicy =
+    ((profile as any).ai_price_disclosure_policy as PriceDisclosurePolicy) ?? "on_request";
+
+  const servicesLayer = buildServicesLayer(activeServices ?? [], categoryNameById, pricePolicyForCatalog);
+
   // Sempre validar timezone — se inválido, força Brasília (nunca cai no fuso do servidor).
   const rawTz =
     (profile.ai_timezone as string | null) ||
