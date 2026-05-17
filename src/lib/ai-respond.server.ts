@@ -1062,6 +1062,54 @@ export async function runAiResponse(input: AiRunInput): Promise<AiRunResult> {
         text = text.replace(/APPOINTMENT_JSON:\{[\s\S]*?\}\s*$/, "").trim();
       }
     }
+
+    // Detecta bloco RESCHEDULE_JSON
+    if (canReschedule) {
+      const m = text.match(/RESCHEDULE_JSON:(\{[\s\S]*?\})\s*$/);
+      if (m) {
+        try {
+          const payload = JSON.parse(m[1]);
+          const result = await rescheduleAppointmentFromAI(
+            { ...payload, contact_id: data.contact_id ?? null },
+            {
+              id: profile.id,
+              business_timezone: profile.business_timezone ?? null,
+              business_name: profile.business_name ?? null,
+            },
+          );
+          if (!result.ok) {
+            console.warn("[ai reschedule] falhou:", result.reason);
+          }
+        } catch (err) {
+          console.warn("[ai reschedule] parse falhou:", (err as Error)?.message);
+        }
+        text = text.replace(/RESCHEDULE_JSON:\{[\s\S]*?\}\s*$/, "").trim();
+      }
+    }
+
+    // Detecta bloco CANCEL_JSON
+    if (canCancel) {
+      const m = text.match(/CANCEL_JSON:(\{[\s\S]*?\})\s*$/);
+      if (m) {
+        try {
+          const payload = JSON.parse(m[1]);
+          const result = await cancelAppointmentFromAI(
+            { ...payload, contact_id: data.contact_id ?? null },
+            {
+              id: profile.id,
+              business_timezone: profile.business_timezone ?? null,
+              business_name: profile.business_name ?? null,
+            },
+          );
+          if (!result.ok) {
+            console.warn("[ai cancel] falhou:", result.reason);
+          }
+        } catch (err) {
+          console.warn("[ai cancel] parse falhou:", (err as Error)?.message);
+        }
+        text = text.replace(/CANCEL_JSON:\{[\s\S]*?\}\s*$/, "").trim();
+      }
+    }
     const usage = json.usageMetadata ?? {};
     const tokensIn = usage.promptTokenCount ?? 0;
     const tokensOut = usage.candidatesTokenCount ?? 0;
