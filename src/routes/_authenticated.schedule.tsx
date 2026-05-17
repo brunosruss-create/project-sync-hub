@@ -372,8 +372,10 @@ function SchedulePage() {
             Agenda
           </h1>
           <p style={{ marginTop: 2, fontSize: 12, color: "var(--text-muted)" }}>
-            {filtered.length} agendamento{filtered.length === 1 ? "" : "s"} ·{" "}
-            {agentFilter.size} de {agents.length} profissionais
+            {filtered.length} agendamento{filtered.length === 1 ? "" : "s"}
+            {agentFilter !== "all" && agents.length > 0
+              ? ` · ${agents.find((a) => a.id === agentFilter)?.name ?? ""}`
+              : ` · ${agents.length} ${agents.length === 1 ? "profissional" : "profissionais"}`}
           </p>
         </div>
 
