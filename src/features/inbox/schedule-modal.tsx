@@ -192,7 +192,7 @@ export function ScheduleModal({
       setDateInput(formatDateBR(iso));
       if (preset?.starts_at) {
         const h = String(baseDate.getHours()).padStart(2, "0");
-        const m = String(baseDate.getMinutes() < 30 ? 0 : 30).padStart(2, "0");
+        const m = String(Math.floor(baseDate.getMinutes() / 15) * 15).padStart(2, "0");
         setTime(`${h}:${m}`);
       } else {
         setTime("09:00");
