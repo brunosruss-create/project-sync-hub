@@ -1,5 +1,9 @@
 import { supabaseAdmin } from "@/integrations/supabase/client.server";
-import { createAppointmentFromAI } from "@/lib/booking-confirmation.server";
+import {
+  createAppointmentFromAI,
+  rescheduleAppointmentFromAI,
+  cancelAppointmentFromAI,
+} from "@/lib/booking-confirmation.server";
 import { getBookingUrl } from "@/lib/booking-url";
 import { MESSAGE_DEFAULTS } from "@/lib/message-defaults";
 import { renderTemplate } from "@/lib/message-templates";
@@ -613,6 +617,53 @@ function estimateCostCents(input: number, output: number) {
 }
 
 
+type ContactApptRow = {
+  id: string;
+  starts_at: string;
+  ends_at: string;
+  status: string;
+  service_name: string | null;
+  professional_name: string | null;
+};
+
+function buildContactAppointmentsLayer(
+  rows: ContactApptRow[],
+  tz: string,
+): string | null {
+  if (!rows || rows.length === 0) {
+    return [
+      "=== AGENDAMENTOS DESTE CLIENTE ===",
+      "Este cliente NÃO possui nenhum agendamento ativo nem recente nos registros.",
+      "Se ele perguntar 'quando eu tenho consulta marcada?', 'meu horário', 'minha próxima consulta', responda EXATAMENTE com base nesta informação — diga que não há agendamento ativo no sistema e pergunte se ele quer marcar um novo. Não invente datas.",
+    ].join("\n");
+  }
+  const fmtDate = new Intl.DateTimeFormat("pt-BR", {
+    timeZone: tz, weekday: "long", day: "2-digit", month: "long", year: "numeric",
+  });
+  const fmtTime = new Intl.DateTimeFormat("pt-BR", {
+    timeZone: tz, hour: "2-digit", minute: "2-digit", hour12: false,
+  });
+  const lines: string[] = [];
+  lines.push("=== AGENDAMENTOS DESTE CLIENTE (FONTE ÚNICA DE VERDADE) ===");
+  lines.push(
+    "Use APENAS esta lista para responder qualquer pergunta sobre 'minha consulta', 'meu horário', 'quando eu tenho marcado', 'consulta agendada'. Nunca diga que não tem acesso à agenda — você TEM.",
+  );
+  lines.push("");
+  for (const r of rows) {
+    const d = new Date(r.starts_at);
+    const status = r.status === "cancelled" ? " (CANCELADO)" : r.status === "completed" ? " (CONCLUÍDO)" : "";
+    const svc = r.service_name ?? "atendimento";
+    const pro = r.professional_name ? ` com ${r.professional_name}` : "";
+    lines.push(`- [id:${r.id}] ${fmtDate.format(d)} às ${fmtTime.format(d)} — ${svc}${pro}${status}`);
+  }
+  lines.push("");
+  lines.push("REGRAS:");
+  lines.push("1. Ao informar a consulta ao cliente, escreva data e hora em linguagem natural — NUNCA mostre o [id:...] pra ele.");
+  lines.push("2. Os IDs entre colchetes são usados APENAS por você nos blocos RESCHEDULE_JSON / CANCEL_JSON.");
+  lines.push("3. Agendamentos marcados (CANCELADO) ou (CONCLUÍDO) NÃO podem ser reagendados nem cancelados de novo — informe o cliente caso ele tente.");
+  return lines.join("\n");
+}
+
 export async function runAiResponse(input: AiRunInput): Promise<AiRunResult> {
   const data = {
     conversation_history: [],
@@ -870,15 +921,70 @@ export async function runAiResponse(input: AiRunInput): Promise<AiRunResult> {
 
   const isFirstMessage = (data.conversation_history ?? []).length === 0;
 
+  // ===== AGENDAMENTOS DO PRÓPRIO CONTATO (para reagendar/cancelar/consultar) =====
+  let contactAppts: ContactApptRow[] = [];
+  if (data.contact_id) {
+    const lowerWindow = new Date(Date.now() - 24 * 3600_000).toISOString();
+    const upperWindow = new Date(Date.now() + 60 * 24 * 3600_000).toISOString();
+    const { data: rows } = await supabaseAdmin
+      .from("appointments")
+      .select(
+        "id,starts_at,ends_at,status,services(name),professionals(name)",
+      )
+      .eq("owner_user_id", data.workspace_owner_id)
+      .eq("contact_id", data.contact_id)
+      .gte("starts_at", lowerWindow)
+      .lte("starts_at", upperWindow)
+      .order("starts_at", { ascending: true })
+      .limit(20);
+    contactAppts = ((rows ?? []) as any[]).map((r) => ({
+      id: r.id,
+      starts_at: r.starts_at,
+      ends_at: r.ends_at,
+      status: r.status,
+      service_name: r.services?.name ?? null,
+      professional_name: r.professionals?.name ?? null,
+    }));
+  }
+  const contactApptsLayer = data.contact_id
+    ? buildContactAppointmentsLayer(contactAppts, tz)
+    : null;
+
   // Link público de agendamento (se habilitado)
   const bookingSlug = (profile as any).booking_slug as string | null;
   const bookingEnabled = !!(profile as any).booking_enabled;
   const bookingAiSend = (profile as any).booking_ai_send !== false; // default true
   const bookingUrl =
     bookingEnabled && bookingSlug ? getBookingUrl(bookingSlug) : null;
-  const bookingLayer = bookingUrl && bookingAiSend
-    ? `=== LINK PÚBLICO DE AGENDAMENTO ===\nO cliente pode agendar sozinho pelo link: ${bookingUrl}\nQuando o cliente pedir para agendar online, marcar horário, ou perguntar como agendar — ofereça este link de forma natural na conversa. Não invente outros links.\n\nSe, ao longo da conversa, o cliente confirmar TEXTUALMENTE um agendamento (data + hora + serviço + nome + telefone), inclua no FINAL da sua resposta uma única linha com este bloco JSON exato (sem markdown, sem comentário antes ou depois):\nAPPOINTMENT_JSON:{"service_name":"...","starts_at":"YYYY-MM-DDTHH:mm:00-03:00","client_name":"...","client_phone":"...","professional_id":null}\nSó emita esse bloco quando TODOS os campos estiverem confirmados pelo cliente. Nunca invente dados.`
-    : null;
+  const canReschedule = !!(profile as any).ai_can_reschedule;
+  const canCancel = !!(profile as any).ai_can_cancel;
+  const bookingParts: string[] = [];
+  if (bookingUrl && bookingAiSend) {
+    bookingParts.push(
+      `=== LINK PÚBLICO DE AGENDAMENTO ===\nO cliente pode agendar sozinho pelo link: ${bookingUrl}\nQuando o cliente pedir para agendar online, marcar horário, ou perguntar como agendar — ofereça este link de forma natural na conversa. Não invente outros links.`,
+    );
+  }
+  if (bookingEnabled) {
+    bookingParts.push(
+      `Se, ao longo da conversa, o cliente confirmar TEXTUALMENTE um agendamento novo (data + hora + serviço + nome + telefone), inclua no FINAL da sua resposta uma única linha com este bloco JSON exato (sem markdown, sem comentário antes ou depois):\nAPPOINTMENT_JSON:{"service_name":"...","starts_at":"YYYY-MM-DDTHH:mm:00-03:00","client_name":"...","client_phone":"...","professional_id":null}\nSó emita esse bloco quando TODOS os campos estiverem confirmados pelo cliente. Nunca invente dados.`,
+    );
+  }
+  if (canReschedule) {
+    bookingParts.push(
+      `REAGENDAMENTO: Se o cliente confirmar TEXTUALMENTE uma nova data/hora para um agendamento existente (referencie pelo [id:...] da lista de AGENDAMENTOS DESTE CLIENTE), inclua no FINAL da sua resposta uma única linha com este bloco JSON exato:\nRESCHEDULE_JSON:{"appointment_id":"<uuid-do-id-da-lista>","new_starts_at":"YYYY-MM-DDTHH:mm:00-03:00"}\nSó emita esse bloco quando o cliente confirmar literalmente a nova data/hora. Use o uuid EXATO da lista de agendamentos.`,
+    );
+  }
+  if (canCancel) {
+    bookingParts.push(
+      `CANCELAMENTO: Se o cliente confirmar TEXTUALMENTE o cancelamento de um agendamento existente, inclua no FINAL da sua resposta uma única linha com este bloco JSON exato:\nCANCEL_JSON:{"appointment_id":"<uuid-do-id-da-lista>","reason":"motivo curto"}\nSó emita esse bloco depois da confirmação explícita do cliente (ex.: "sim, pode cancelar"). Use o uuid EXATO da lista.`,
+    );
+  }
+  if (canReschedule || canCancel || bookingEnabled) {
+    bookingParts.push(
+      `REGRA: Você só pode emitir UM bloco JSON por resposta (APPOINTMENT_JSON, RESCHEDULE_JSON ou CANCEL_JSON). Nunca emita dois ao mesmo tempo.`,
+    );
+  }
+  const bookingLayer = bookingParts.length > 0 ? bookingParts.join("\n\n") : null;
 
   const professionalsLayer = buildProfessionalsLayer(pros, upcoming, bizHours, tz);
 
@@ -892,6 +998,7 @@ export async function runAiResponse(input: AiRunInput): Promise<AiRunResult> {
       __professionals_count: pros.length,
     }),
     professionalsLayer,
+    contactApptsLayer,
     servicesLayer,
     bookingLayer,
   ]
@@ -953,6 +1060,54 @@ export async function runAiResponse(input: AiRunInput): Promise<AiRunResult> {
         }
         // Remove o bloco da resposta enviada ao cliente
         text = text.replace(/APPOINTMENT_JSON:\{[\s\S]*?\}\s*$/, "").trim();
+      }
+    }
+
+    // Detecta bloco RESCHEDULE_JSON
+    if (canReschedule) {
+      const m = text.match(/RESCHEDULE_JSON:(\{[\s\S]*?\})\s*$/);
+      if (m) {
+        try {
+          const payload = JSON.parse(m[1]);
+          const result = await rescheduleAppointmentFromAI(
+            { ...payload, contact_id: data.contact_id ?? null },
+            {
+              id: profile.id,
+              business_timezone: profile.business_timezone ?? null,
+              business_name: profile.business_name ?? null,
+            },
+          );
+          if (!result.ok) {
+            console.warn("[ai reschedule] falhou:", result.reason);
+          }
+        } catch (err) {
+          console.warn("[ai reschedule] parse falhou:", (err as Error)?.message);
+        }
+        text = text.replace(/RESCHEDULE_JSON:\{[\s\S]*?\}\s*$/, "").trim();
+      }
+    }
+
+    // Detecta bloco CANCEL_JSON
+    if (canCancel) {
+      const m = text.match(/CANCEL_JSON:(\{[\s\S]*?\})\s*$/);
+      if (m) {
+        try {
+          const payload = JSON.parse(m[1]);
+          const result = await cancelAppointmentFromAI(
+            { ...payload, contact_id: data.contact_id ?? null },
+            {
+              id: profile.id,
+              business_timezone: profile.business_timezone ?? null,
+              business_name: profile.business_name ?? null,
+            },
+          );
+          if (!result.ok) {
+            console.warn("[ai cancel] falhou:", result.reason);
+          }
+        } catch (err) {
+          console.warn("[ai cancel] parse falhou:", (err as Error)?.message);
+        }
+        text = text.replace(/CANCEL_JSON:\{[\s\S]*?\}\s*$/, "").trim();
       }
     }
     const usage = json.usageMetadata ?? {};
