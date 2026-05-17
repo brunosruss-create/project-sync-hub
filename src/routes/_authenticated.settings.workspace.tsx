@@ -320,9 +320,83 @@ function WorkspacePage() {
       </FieldGroup>
 
       <FieldGroup label="Contato">
-        <Field label="Endereço">
-          <input style={inputStyle} value={address} onChange={(e) => setAddress(e.target.value)} />
+        <div
+          style={{
+            padding: "10px 12px",
+            borderRadius: 8,
+            background: "color-mix(in oklab, var(--brand-400) 8%, transparent)",
+            border: "1px solid color-mix(in oklab, var(--brand-400) 20%, transparent)",
+            fontSize: 12,
+            color: "var(--text-primary)",
+            lineHeight: 1.5,
+          }}
+        >
+          💡 Esses dados podem ser informados pela IA quando o cliente perguntar
+          (endereço, site, telefone). Mantenha-os atualizados — você controla se a
+          IA pode divulgá-los em <strong>Agente IA → Comportamento</strong>.
+        </div>
+
+        <Field label="CEP" hint={cepError ?? (cepLoading ? "Buscando endereço…" : undefined)}>
+          <input
+            style={inputStyle}
+            value={cep}
+            onChange={(e) => handleCepChange(e.target.value)}
+            placeholder="00000-000"
+            inputMode="numeric"
+            maxLength={9}
+          />
         </Field>
+        <Field label="Rua / Logradouro">
+          <input
+            style={inputStyle}
+            value={street}
+            onChange={(e) => setStreet(e.target.value)}
+            placeholder="Ex.: Av. Paulista"
+          />
+        </Field>
+        <div className="grid gap-3" style={{ gridTemplateColumns: "1fr 2fr" }}>
+          <Field label="Número">
+            <input
+              style={inputStyle}
+              value={number}
+              onChange={(e) => setNumber(e.target.value)}
+              placeholder="123"
+            />
+          </Field>
+          <Field label="Complemento">
+            <input
+              style={inputStyle}
+              value={complement}
+              onChange={(e) => setComplement(e.target.value)}
+              placeholder="Ex.: Torre 2, Sala 33"
+            />
+          </Field>
+        </div>
+        <div className="grid gap-3" style={{ gridTemplateColumns: "2fr 2fr 1fr" }}>
+          <Field label="Bairro">
+            <input
+              style={inputStyle}
+              value={neighborhood}
+              onChange={(e) => setNeighborhood(e.target.value)}
+            />
+          </Field>
+          <Field label="Cidade">
+            <input
+              style={inputStyle}
+              value={city}
+              onChange={(e) => setCity(e.target.value)}
+            />
+          </Field>
+          <Field label="UF">
+            <input
+              style={inputStyle}
+              value={stateUf}
+              onChange={(e) => setStateUf(e.target.value.toUpperCase().slice(0, 2))}
+              maxLength={2}
+              placeholder="SP"
+            />
+          </Field>
+        </div>
         <Field label="Telefone comercial">
           <input style={inputStyle} value={phone} onChange={(e) => setPhone(e.target.value)} />
         </Field>
