@@ -190,6 +190,24 @@ function ServicesPage() {
     notify.success("Serviço arquivado.");
   };
 
+  const [confirmDelete, setConfirmDelete] = React.useState<Service | null>(null);
+
+  const deleteService = async (id: string) => {
+    if (!isUuid(id)) {
+      setServices((prev) => prev.filter((s) => s.id !== id));
+      notify.success("Serviço excluído.");
+      return;
+    }
+    const { error } = await supabase.from("services").delete().eq("id", id);
+    if (error) {
+      console.error("[services] falha ao excluir:", error);
+      notify.error(`Não foi possível excluir: ${error.message}`);
+      return;
+    }
+    setServices((prev) => prev.filter((s) => s.id !== id));
+    notify.success("Serviço excluído.");
+  };
+
   const addCategory = async (name: string, color: string): Promise<Category> => {
     const tempId = `cat-${Date.now()}`;
     const { data, error } = await supabase
