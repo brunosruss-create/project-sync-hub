@@ -186,6 +186,13 @@ export function ContactCard({ contact, onClick, isOverlay, isSelected }: Props) 
         >
           {contact.name}
         </div>
+        {isBlocked && (
+          <Lock
+            size={12}
+            aria-label="Contato bloqueado"
+            style={{ color: "var(--danger, #EF4444)", flexShrink: 0 }}
+          />
+        )}
         {!showBadge && contact.priority === "urgent" && (
           <AlertTriangle size={13} style={{ color: "var(--danger)", flexShrink: 0 }} />
         )}
