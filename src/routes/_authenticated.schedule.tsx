@@ -915,7 +915,7 @@ function NowLine({ date }: { date: Date }) {
     <div
       style={{
         position: "absolute",
-        top: minutes * PX_PER_MIN,
+        top: GRID_TOP_PAD + minutes * PX_PER_MIN,
         left: 0,
         right: 0,
         height: 2,
