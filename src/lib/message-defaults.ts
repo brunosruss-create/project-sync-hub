@@ -24,11 +24,11 @@ export const MESSAGE_DEFAULTS: Record<MessageKey, MessageMeta> = {
     key: "welcome",
     label: "Boas-vindas",
     description:
-      "Enviada automaticamente na primeira mensagem de um novo contato.",
+      "Enviada na primeira mensagem de um novo contato. Quando a IA está ativa, esta mensagem NÃO é enviada — a própria IA faz a saudação usando o nome do assistente e do negócio.",
     placeholders: ["{{cliente}}", "{{negocio}}"],
     preview: { cliente: "João", negocio: "Salão Bela Vista" },
     default:
-      "Olá! Bem-vindo(a) ao {{negocio}}. Em instantes um atendente irá responder.",
+      "Olá! Recebemos sua mensagem no {{negocio}} e já vamos te atender. 😊",
   },
   out_of_hours: {
     key: "out_of_hours",
