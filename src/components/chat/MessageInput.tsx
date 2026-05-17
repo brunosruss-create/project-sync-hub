@@ -12,6 +12,7 @@ export function MessageInput({ contactId }: { contactId: string }) {
   const { user } = useAuth();
   const { workspaceOwnerId } = useWorkspaceOwnerId();
   const sendViaEvolution = useServerFn(sendWhatsAppMessage);
+  const { url: bookingUrl } = useBookingLink();
   const [draft, setDraft] = React.useState("");
   const [sending, setSending] = React.useState(false);
   const taRef = React.useRef<HTMLTextAreaElement | null>(null);
