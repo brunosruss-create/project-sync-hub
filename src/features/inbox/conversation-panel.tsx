@@ -15,6 +15,7 @@ import {
   Download,
   ChevronDown,
   Trash2,
+  Bot,
 } from "lucide-react";
 import { Composer } from "./composer";
 import { type ContactCard as Contact, formatRelative, formatPhone, initials } from "./data";
@@ -31,6 +32,7 @@ import { MessageActions } from "./message-actions";
 import { ForwardModal, type ForwardSource } from "./forward-modal";
 import { TransferConversationModal } from "./transfer-conversation-modal";
 import { AudioPlayerWithMe } from "@/components/chat/AudioPlayer";
+import { DateSeparator } from "@/components/chat/DateSeparator";
 import {
   SEED_SERVICES,
   formatCurrencyBRL,
@@ -63,6 +65,15 @@ interface Message {
   reactions?: Array<{ emoji: string; from: string }> | null;
   deleted_at?: string | null;
   edited_at?: string | null;
+  is_ai?: boolean;
+}
+
+function sameDay(a: Date, b: Date) {
+  return (
+    a.getFullYear() === b.getFullYear() &&
+    a.getMonth() === b.getMonth() &&
+    a.getDate() === b.getDate()
+  );
 }
 
 const MAX_CHARS = 4096;
@@ -179,7 +190,7 @@ export function ConversationPanel({
     (async () => {
       const { data, error } = await supabase
         .from("messages")
-        .select("id,direction,content,message_type,status,created_at,media_url,media_mime,media_name,whatsapp_message_id,quoted_preview,reactions,deleted_at,edited_at")
+        .select("id,direction,content,message_type,status,created_at,media_url,media_mime,media_name,whatsapp_message_id,quoted_preview,reactions,deleted_at,edited_at,is_ai")
         .eq("contact_id", contact.id)
         .order("created_at", { ascending: true });
       if (cancelled) return;
@@ -202,6 +213,7 @@ export function ConversationPanel({
             reactions: r.reactions ?? [],
             deleted_at: r.deleted_at ?? null,
             edited_at: r.edited_at ?? null,
+            is_ai: !!r.is_ai,
           })),
         );
       }
@@ -239,6 +251,7 @@ export function ConversationPanel({
                     reactions: r.reactions ?? [],
                     deleted_at: r.deleted_at ?? null,
                     edited_at: r.edited_at ?? null,
+                    is_ai: !!r.is_ai,
                   },
                 ],
           );
