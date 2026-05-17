@@ -102,6 +102,13 @@ function WorkspacePage() {
           business_address?: string;
           business_phone?: string;
           business_website?: string;
+          business_cep?: string;
+          business_street?: string;
+          business_address_number?: string;
+          business_address_complement?: string;
+          business_neighborhood?: string;
+          business_city?: string;
+          business_state?: string;
         }
       | undefined;
     if (!p) return;
@@ -115,10 +122,56 @@ function WorkspacePage() {
       setWelcome(p.welcome_message);
     }
     setWelcomeEnabled(p.welcome_message_enabled ?? false);
-    if (typeof p.business_address === "string") setAddress(p.business_address);
+    // Fallback: se business_street vazio mas business_address legado preenchido, usa.
+    const streetFromNew = p.business_street ?? "";
+    setStreet(streetFromNew || p.business_address || "");
+    setCep(p.business_cep ?? "");
+    setNumber(p.business_address_number ?? "");
+    setComplement(p.business_address_complement ?? "");
+    setNeighborhood(p.business_neighborhood ?? "");
+    setCity(p.business_city ?? "");
+    setStateUf(p.business_state ?? "");
     if (typeof p.business_phone === "string") setPhone(p.business_phone);
     if (typeof p.business_website === "string") setSite(p.business_website);
   }, [profileQ.data]);
+
+  // ViaCEP lookup quando CEP completa 8 dígitos
+  const lookupCep = React.useCallback(async (raw: string) => {
+    const clean = raw.replace(/\D/g, "");
+    if (clean.length !== 8) return;
+    setCepLoading(true);
+    setCepError(null);
+    try {
+      const res = await fetch(`https://viacep.com.br/ws/${clean}/json/`);
+      const json = (await res.json()) as {
+        erro?: boolean;
+        logradouro?: string;
+        bairro?: string;
+        localidade?: string;
+        uf?: string;
+      };
+      if (json.erro) {
+        setCepError("CEP não encontrado");
+        return;
+      }
+      if (json.logradouro) setStreet(json.logradouro);
+      if (json.bairro) setNeighborhood(json.bairro);
+      if (json.localidade) setCity(json.localidade);
+      if (json.uf) setStateUf(json.uf);
+    } catch {
+      setCepError("Falha ao buscar CEP");
+    } finally {
+      setCepLoading(false);
+    }
+  }, []);
+
+  const handleCepChange = (v: string) => {
+    const digits = v.replace(/\D/g, "").slice(0, 8);
+    const masked = digits.length > 5 ? `${digits.slice(0, 5)}-${digits.slice(5)}` : digits;
+    setCep(masked);
+    setCepError(null);
+    if (digits.length === 8) void lookupCep(digits);
+  };
 
   const segments = segmentsQ.data?.segments ?? [];
   const selectedSegment = segments.find((s) => s.id === segmentId);
