@@ -227,11 +227,11 @@ export const Route = createFileRoute("/api/public/book/$slug")({
         }
         const input = parsed.data;
 
-        // Serviço deve estar em booking_service_ids
+        // Se o admin restringiu, valida; senão aceita qualquer serviço ativo dele.
         const serviceIds = Array.isArray(profile.booking_service_ids)
           ? profile.booking_service_ids
           : [];
-        if (!serviceIds.includes(input.service_id)) {
+        if (serviceIds.length > 0 && !serviceIds.includes(input.service_id)) {
           return json({ error: "service_not_allowed" }, 400);
         }
 
