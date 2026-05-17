@@ -22,6 +22,7 @@ import {
   type MessageKey,
 } from "@/lib/message-defaults";
 import { renderTemplate } from "@/lib/message-templates";
+import { useProfile } from "@/hooks/use-profile";
 
 export const Route = createFileRoute("/_authenticated/settings/messages")({
   component: () => (
@@ -37,6 +38,9 @@ function MessagesPage() {
   const qc = useQueryClient();
   const getFn = useServerFn(getMessageTemplates);
   const updateFn = useServerFn(updateMessageTemplates);
+  const { data: profile } = useProfile();
+  const businessName = (profile as { business_name?: string | null } | null | undefined)
+    ?.business_name?.trim() || null;
 
   const q = useQuery({
     queryKey: ["message-templates"],
@@ -120,6 +124,7 @@ function MessagesPage() {
               key={k}
               meta={MESSAGE_DEFAULTS[k]}
               value={draft[k]}
+              businessName={businessName}
               onChange={(patch) => set(k, patch)}
               onReset={() =>
                 set(k, { text: MESSAGE_DEFAULTS[k].default })
@@ -135,17 +140,23 @@ function MessagesPage() {
 function MessageCard({
   meta,
   value,
+  businessName,
   onChange,
   onReset,
 }: {
   meta: (typeof MESSAGE_DEFAULTS)[MessageKey];
   value: { enabled: boolean; text: string };
+  businessName: string | null;
   onChange: (patch: Partial<{ enabled: boolean; text: string }>) => void;
   onReset: () => void;
 }) {
   const textareaRef = React.useRef<HTMLTextAreaElement>(null);
   const effective = value.text?.trim() ? value.text : meta.default;
-  const preview = renderTemplate(effective, meta.preview);
+  const previewVars = {
+    ...meta.preview,
+    negocio: businessName || meta.preview.negocio,
+  };
+  const preview = renderTemplate(effective, previewVars);
 
   const insertPlaceholder = (ph: string) => {
     const el = textareaRef.current;
