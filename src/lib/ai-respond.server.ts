@@ -280,15 +280,26 @@ function buildWorkspaceLayer(
     parts.push(`Sobre o negócio: ${p.business_description}`);
   }
 
-  // === PROFISSIONAIS ===
-  const hasMultiple = p.ai_has_multiple_professionals ?? false;
-  if (!hasMultiple) {
+  // === PROFISSIONAIS (toggle de override) ===
+  // A lista nominal vem em buildProfessionalsLayer (fonte de verdade: tabela professionals).
+  // Aqui só registramos o override do usuário para forçar/suprimir a pergunta de preferência.
+  const forceAskPreference = p.ai_has_multiple_professionals ?? false;
+  const proCount = (p as any).__professionals_count ?? 0;
+  if (proCount === 0) {
     prohibitions.push(
-      `OBRIGATÓRIO: NÃO pergunte com qual profissional o cliente quer ser atendido. Há apenas um profissional disponível neste negócio.`,
+      `OBRIGATÓRIO: NÃO cite nomes próprios de profissionais. Trate o atendimento como genérico do estabelecimento.`,
+    );
+  } else if (proCount === 1) {
+    parts.push(
+      `Há apenas um profissional ativo. Assuma esse profissional implicitamente — NÃO pergunte preferência, NÃO pergunte "qual médico/profissional".`,
+    );
+  } else if (forceAskPreference) {
+    parts.push(
+      `Há mais de um profissional. Se o cliente NÃO mencionou nome e o assunto envolver agendamento, pergunte a preferência. Se o cliente JÁ citou um nome existente na lista, use direto sem perguntar.`,
     );
   } else {
     parts.push(
-      `Este negócio tem mais de um profissional. Quando relevante para agendamento, pergunte com qual profissional o cliente prefere ser atendido.`,
+      `Há mais de um profissional. NÃO pergunte preferência de profissional — só responda sobre um profissional específico se o cliente perguntar por nome.`,
     );
   }
 
