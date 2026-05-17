@@ -30,8 +30,9 @@ export const notifyAppointmentChange = createServerFn({ method: "POST" })
     if (!appt) return { ok: false, reason: "appointment_not_found" };
     if (!appt.notify_whatsapp) return { ok: false, reason: "notify_disabled" };
 
-    // Permissão: workspace owner == user atual ou seu workspace owner
-    const { data: ownerId } = await supabaseAdmin.rpc("get_my_workspace_owner", {});
+    // Permissão: workspace owner == owner do appointment
+    const { supabase } = context;
+    const { data: ownerId } = await supabase.rpc("get_my_workspace_owner");
     const allowedOwner = (ownerId as string | null) ?? userId;
     if (appt.owner_user_id !== allowedOwner) {
       return { ok: false, reason: "forbidden" };
