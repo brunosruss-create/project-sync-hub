@@ -1690,6 +1690,7 @@ function AppointmentModal({
   const [agentId, setAgentId] = React.useState(initial?.agent_id ?? agents[0]?.id ?? "");
   const [date, setDate] = React.useState(toDateInput(baseDate));
   const [dateText, setDateText] = React.useState(formatDateBR(toDateInput(baseDate)));
+  const dateNativeRef = React.useRef<HTMLInputElement | null>(null);
   const [time, setTime] = React.useState(baseHM);
   const [notes, setNotes] = React.useState(initial?.notes ?? "");
   const [notify, setNotify] = React.useState(initial?.notify_whatsapp ?? true);
@@ -1936,34 +1937,82 @@ function AppointmentModal({
 
             <div style={{ display: "grid", gridTemplateColumns: "1fr 1fr", gap: 12 }}>
               <Field label="Data" required>
-                <input
-                  type="text"
-                  inputMode="numeric"
-                  placeholder="dd/mm/aaaa"
-                  value={dateText}
-                  onChange={(e) => {
-                    const raw = e.target.value.replace(/[^\d/]/g, "").slice(0, 10);
-                    let masked = raw;
-                    const d = raw.replace(/\D/g, "");
-                    if (d.length > 4) masked = `${d.slice(0, 2)}/${d.slice(2, 4)}/${d.slice(4, 8)}`;
-                    else if (d.length > 2) masked = `${d.slice(0, 2)}/${d.slice(2)}`;
-                    else masked = d;
-                    setDateText(masked);
-                    const iso = parseDateBR(masked);
-                    if (iso) setDate(iso);
-                  }}
-                  onBlur={() => {
-                    // resincroniza a máscara com o estado ISO válido
-                    const iso = parseDateBR(dateText);
-                    if (iso) {
-                      setDate(iso);
-                      setDateText(formatDateBR(iso));
-                    } else {
-                      setDateText(formatDateBR(date));
-                    }
-                  }}
-                  style={inputStyle}
-                />
+                <div style={{ position: "relative" }}>
+                  <input
+                    type="text"
+                    inputMode="numeric"
+                    placeholder="dd/mm/aaaa"
+                    value={dateText}
+                    onChange={(e) => {
+                      const raw = e.target.value.replace(/[^\d/]/g, "").slice(0, 10);
+                      const d = raw.replace(/\D/g, "");
+                      let masked = d;
+                      if (d.length > 4) masked = `${d.slice(0, 2)}/${d.slice(2, 4)}/${d.slice(4, 8)}`;
+                      else if (d.length > 2) masked = `${d.slice(0, 2)}/${d.slice(2)}`;
+                      setDateText(masked);
+                      const iso = parseDateBR(masked);
+                      if (iso) setDate(iso);
+                    }}
+                    onBlur={() => {
+                      const iso = parseDateBR(dateText);
+                      if (iso) {
+                        setDate(iso);
+                        setDateText(formatDateBR(iso));
+                      } else {
+                        setDateText(formatDateBR(date));
+                      }
+                    }}
+                    style={{ ...inputStyle, paddingRight: 36 }}
+                  />
+                  <input
+                    ref={dateNativeRef}
+                    type="date"
+                    value={date}
+                    onChange={(e) => {
+                      const iso = e.target.value;
+                      if (iso) {
+                        setDate(iso);
+                        setDateText(formatDateBR(iso));
+                      }
+                    }}
+                    aria-hidden
+                    tabIndex={-1}
+                    style={{
+                      position: "absolute",
+                      inset: 0,
+                      opacity: 0,
+                      pointerEvents: "none",
+                      width: "100%",
+                      height: "100%",
+                    }}
+                  />
+                  <button
+                    type="button"
+                    onClick={() => {
+                      const el = dateNativeRef.current;
+                      if (!el) return;
+                      if (typeof el.showPicker === "function") el.showPicker();
+                      else el.click();
+                    }}
+                    aria-label="Abrir calendário"
+                    style={{
+                      position: "absolute",
+                      right: 6,
+                      top: "50%",
+                      transform: "translateY(-50%)",
+                      width: 26,
+                      height: 26,
+                      display: "inline-flex",
+                      alignItems: "center",
+                      justifyContent: "center",
+                      borderRadius: 6,
+                      background: "transparent",
+                      color: "var(--text-muted)",
+                    }}
+                  >
+                    <CalendarClock size={15} />
+                  </button>
+                </div>
               </Field>
               <Field label="Horário" required>
                 <select value={time} onChange={(e) => setTime(e.target.value)} style={inputStyle}>
