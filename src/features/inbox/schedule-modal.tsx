@@ -633,6 +633,91 @@ export function ScheduleModal({
 
         {/* Body */}
         <div className="flex-1 overflow-y-auto" style={{ padding: 16, display: "flex", flexDirection: "column", gap: 16 }}>
+          {/* Contact picker (somente quando aberto sem contato fixo, ex: agenda) */}
+          {showContactPicker && (
+            <FieldGroup label="Contato" icon={<User size={12} />}>
+              {!showAddContact ? (
+                <div style={{ position: "relative" }}>
+                  <input
+                    value={contactQuery || pickedContact?.name || ""}
+                    onChange={(e) => {
+                      setContactQuery(e.target.value);
+                      setPickedContactId("");
+                    }}
+                    placeholder="Buscar por nome ou telefone…"
+                    style={inputStyle}
+                  />
+                  {contactQuery && !pickedContactId && (
+                    <div
+                      style={{
+                        position: "absolute",
+                        top: 38,
+                        left: 0,
+                        right: 0,
+                        zIndex: 5,
+                        background: "var(--bg-surface)",
+                        border: "1px solid var(--border-strong)",
+                        borderRadius: 6,
+                        maxHeight: 200,
+                        overflow: "auto",
+                        boxShadow: "0 10px 30px rgba(0,0,0,0.18)",
+                      }}
+                    >
+                      {filteredContacts.length === 0 ? (
+                        <div style={{ padding: 10, fontSize: 12, color: "var(--text-muted)" }}>Nenhum contato encontrado</div>
+                      ) : (
+                        filteredContacts.map((c) => (
+                          <button
+                            key={c.id}
+                            type="button"
+                            onClick={() => {
+                              setPickedContactId(c.id);
+                              setContactQuery(c.name);
+                            }}
+                            className="flex flex-col items-start w-full"
+                            style={{ gap: 2, padding: "8px 10px", background: "transparent", textAlign: "left", border: "none", cursor: "pointer" }}
+                          >
+                            <span style={{ fontSize: 13, color: "var(--text-primary)" }}>{c.name}</span>
+                            <span style={{ fontSize: 11, color: "var(--text-muted)" }}>{c.phone}</span>
+                          </button>
+                        ))
+                      )}
+                    </div>
+                  )}
+                  <button
+                    type="button"
+                    onClick={() => setShowAddContact(true)}
+                    style={{ marginTop: 6, fontSize: 11, color: "var(--brand-400)", background: "transparent", border: "none", cursor: "pointer", padding: 0 }}
+                  >
+                    + Adicionar novo contato
+                  </button>
+                </div>
+              ) : (
+                <div className="flex flex-col" style={{ gap: 6 }}>
+                  <input
+                    value={newContactName}
+                    onChange={(e) => setNewContactName(e.target.value)}
+                    placeholder="Nome"
+                    style={inputStyle}
+                  />
+                  <input
+                    value={newContactPhone}
+                    onChange={(e) => setNewContactPhone(e.target.value)}
+                    placeholder="Telefone"
+                    style={inputStyle}
+                  />
+                  <button
+                    type="button"
+                    onClick={() => setShowAddContact(false)}
+                    style={{ fontSize: 11, color: "var(--text-muted)", background: "transparent", border: "none", cursor: "pointer", padding: 0, alignSelf: "flex-start" }}
+                  >
+                    ← Buscar existente
+                  </button>
+                </div>
+              )}
+            </FieldGroup>
+          )}
+
           {/* Services */}
           <FieldGroup label="Serviços" hint={`${selectedServices.length} selecionado(s) · ${formatDuration(totalMin)} · ${formatCurrencyBRL(totalCents)}`}>
             <div className="flex flex-col" style={{ gap: 6, maxHeight: 200, overflowY: "auto" }}>
