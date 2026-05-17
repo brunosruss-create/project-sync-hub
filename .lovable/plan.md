@@ -1,88 +1,36 @@
 ## Objetivo
+Bolhas de mensagem enviada no modo chat devem ter exatamente a mesma cor suave do kanban (verde claro com texto escuro), em vez do verde forte atual.
 
-Adicionar comportamento de sidebar recolhível em `src/components/app-sidebar.tsx`, com toggle manual + persistência em localStorage + auto-recolher ao entrar em `/conversations-chat` (e restaurar ao sair). Tooltips do shadcn/ui aparecem nos ícones quando colapsada. Mobile sidebar permanece intocada.
+## Arquivo único alterado
+`src/components/chat/MessageBubble.tsx` — somente CSS inline das bolhas outbound.
 
-## Mudanças
+## Mudanças (copiando valores exatos do kanban — `conversation-panel.tsx` linhas 859-875)
 
-### 1. `src/components/app-sidebar.tsx`
+1. **Fundo e borda outbound**
+   - De: `bg = "var(--brand-400)"`, sem borda
+   - Para: `bg = "color-mix(in oklab, var(--brand-400) 15%, var(--bg-surface))"`, `border = "1px solid color-mix(in oklab, var(--brand-400) 30%, transparent)"`
 
-**Imports adicionais:**
-- `ChevronsLeft`, `ChevronsRight` de `lucide-react`.
-- `Tooltip, TooltipContent, TooltipTrigger, TooltipProvider` de `@/components/ui/tooltip`.
+2. **Cor do texto outbound**
+   - De: `#fff`
+   - Para: `var(--text-primary)` (igual ao kanban)
 
-**Estado de colapso (dentro de `AppSidebar`):**
-```ts
-const [isCollapsed, setIsCollapsed] = React.useState<boolean>(() =>
-  typeof window !== "undefined" && localStorage.getItem("sidebar_collapsed") === "true"
-);
-React.useEffect(() => {
-  localStorage.setItem("sidebar_collapsed", String(isCollapsed));
-}, [isCollapsed]);
-React.useEffect(() => {
-  const handler = (e: Event) => {
-    const detail = (e as CustomEvent<{ collapsed: boolean }>).detail;
-    if (detail) setIsCollapsed(detail.collapsed);
-  };
-  window.addEventListener("sidebar:setCollapsed", handler);
-  return () => window.removeEventListener("sidebar:setCollapsed", handler);
-}, []);
-```
+3. **Timestamp outbound** (legibilidade no novo fundo claro)
+   - De: `rgba(255,255,255,0.8)`
+   - Para: `var(--text-muted)`
 
-**Aside:** largura dinâmica + animação:
-```ts
-style={{ width: isCollapsed ? 64 : 240, height: "100vh",
-  background: "var(--bg-surface)", borderRight: "1px solid var(--border)",
-  transition: "width 200ms ease", overflow: "hidden" }}
-```
+4. **StatusTicks outbound** (ticks de enviado/entregue/lido)
+   - sent/delivered: `var(--text-muted)`
+   - read: `var(--brand-400)`
 
-**Logo:** ocultar o `<span>ZapFlow</span>` quando `isCollapsed`. Centralizar o "Z" (`justifyContent: center` no header). Padding lateral menor quando colapsada.
+5. **Badge "IA"** (aparece dentro de bolhas outbound)
+   - De: fundo `rgba(255,255,255,0.2)` herdando `color: #fff`
+   - Para: fundo `color-mix(in oklab, var(--brand-400) 20%, transparent)`, texto `var(--brand-400)`
 
-**Botão toggle** (novo, logo abaixo do header do logo):
-```tsx
-<button onClick={() => setIsCollapsed((p) => !p)}
-  title={isCollapsed ? "Expandir menu" : "Recolher menu"}
-  style={{ display: "flex", alignItems: "center",
-    justifyContent: isCollapsed ? "center" : "flex-end",
-    width: "100%", padding: "6px 8px", background: "transparent",
-    border: "none", cursor: "pointer", color: "var(--text-muted)" }}>
-  {isCollapsed ? <ChevronsRight size={14} /> : <ChevronsLeft size={14} />}
-</button>
-```
+## Não tocado
+- Bolhas inbound (recebidas)
+- `conversation-panel.tsx` (kanban)
+- Qualquer outro componente, rota, hook, lógica
+- Player de áudio, anexos, imagens — apenas as cores do container outbound
 
-**Workspace selector:** quando colapsada, renderizar apenas o quadrado da inicial (`{name.charAt(0)}`) centralizado em 36×36, sem o texto "Workspace pessoal" nem `ChevronsUpDown`.
-
-**Nav items:** envolver tudo em `<TooltipProvider delayDuration={0}>`. Para cada item:
-- `Link` renderiza ícone + `<span>` com `display: isCollapsed ? "none" : "inline"`.
-- Quando `isCollapsed`, ajustar `paddingLeft`/`paddingRight` para centralizar o ícone (`justifyContent: center`, gap 0, padding 0 8px, sem `borderLeft` deslocando — usar `borderLeft: "2px solid transparent"` sempre, mantendo o realce ativo só pela cor de fundo quando colapsada).
-- Envolver o `Link` em `<Tooltip><TooltipTrigger asChild>…</TooltipTrigger><TooltipContent side="right">{item.label}</TooltipContent></Tooltip>` apenas quando `isCollapsed`. Quando expandida, renderiza o `Link` direto (sem Tooltip) para evitar overhead/regressão.
-
-**Rodapé do usuário:** quando `isCollapsed`, ocultar o bloco com nome + email (manter apenas o avatar/quadrado da inicial centralizado, `justifyContent: center`, sem padding lateral excessivo).
-
-### 2. `src/routes/_authenticated.conversations-chat.tsx`
-
-Adicionar `useEffect` no `ChatPage` que dispara o evento e restaura ao desmontar:
-```ts
-import { useEffect } from "react";
-
-useEffect(() => {
-  const previous = localStorage.getItem("sidebar_collapsed") ?? "false";
-  localStorage.setItem("sidebar_chat_previous", previous);
-  window.dispatchEvent(new CustomEvent("sidebar:setCollapsed", { detail: { collapsed: true } }));
-  return () => {
-    const wasCollapsed = localStorage.getItem("sidebar_chat_previous") === "true";
-    window.dispatchEvent(new CustomEvent("sidebar:setCollapsed", { detail: { collapsed: wasCollapsed } }));
-    localStorage.removeItem("sidebar_chat_previous");
-  };
-}, []);
-```
-
-## Validação
-
-- Outras rotas (kanban, agenda, contatos, etc.): sidebar respeita estado salvo em localStorage; toggle manual funciona com animação de 200ms.
-- `/conversations-chat`: ao entrar, sidebar recolhe para 64px automaticamente; ao sair (via navegação para outra rota), restaura ao estado anterior.
-- Recolhida: ícones centralizados, tooltip à direita ao hover, "Z" do logo visível sem "ZapFlow", avatar do usuário visível sem nome/email.
-- `mobile-sidebar.tsx`, `ChatView.tsx`, kanban e demais arquivos não são tocados.
-
-## Riscos
-
-- O auto-recolher usa `useEffect` sem dependências; se o componente da rota remontar (por exemplo, ao trocar `?id=`), o "previous" capturado seria sobrescrito com `true`. Mitigação: a rota usa `validateSearch` sem `key`, então a troca de `?id=` não remonta o componente — apenas atualiza o search. Caso queira garantia extra, podemos checar se `sidebar_chat_previous` já existe antes de salvar; incluo essa proteção na implementação.
+## Validação visual
+Após aplicar, comparar `/conversations-chat` com o painel lateral do kanban: as bolhas enviadas devem ter fundo, borda, texto e ticks idênticos.

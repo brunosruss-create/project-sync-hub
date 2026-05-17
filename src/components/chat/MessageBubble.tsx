@@ -23,12 +23,12 @@ function formatTime(d: Date): string {
 
 function StatusTicks({ status }: { status: ChatMessage["status"] }) {
   if (status === "sent") {
-    return <Check size={13} style={{ color: "rgba(255,255,255,0.75)" }} />;
+    return <Check size={13} style={{ color: "var(--text-muted)" }} />;
   }
   if (status === "delivered") {
-    return <CheckCheck size={13} style={{ color: "rgba(255,255,255,0.75)" }} />;
+    return <CheckCheck size={13} style={{ color: "var(--text-muted)" }} />;
   }
-  return <CheckCheck size={13} style={{ color: "#9ed5ff" }} />;
+  return <CheckCheck size={13} style={{ color: "var(--brand-400)" }} />;
 }
 
 export function MessageBubble({ m }: { m: ChatMessage }) {
@@ -52,9 +52,14 @@ export function MessageBubble({ m }: { m: ChatMessage }) {
   }
 
   const outbound = m.direction === "outbound";
-  const bg = outbound ? "var(--brand-400)" : "var(--bg-surface)";
-  const color = outbound ? "#fff" : "var(--text-primary)";
+  const bg = outbound
+    ? "color-mix(in oklab, var(--brand-400) 15%, var(--bg-surface))"
+    : "var(--bg-surface)";
+  const color = "var(--text-primary)";
   const radius = outbound ? "12px 2px 12px 12px" : "2px 12px 12px 12px";
+  const border = outbound
+    ? "1px solid color-mix(in oklab, var(--brand-400) 30%, transparent)"
+    : "1px solid var(--border)";
 
   const deleted = !!m.deleted_at;
 
@@ -73,10 +78,8 @@ export function MessageBubble({ m }: { m: ChatMessage }) {
           color,
           borderRadius: radius,
           padding: "8px 12px",
-          boxShadow: outbound
-            ? "none"
-            : "0 1px 1px rgba(0,0,0,0.04)",
-          border: outbound ? "none" : "1px solid var(--border)",
+          boxShadow: outbound ? "none" : "0 1px 1px rgba(0,0,0,0.04)",
+          border,
           fontSize: 13.5,
           lineHeight: 1.4,
           wordBreak: "break-word",
@@ -89,7 +92,8 @@ export function MessageBubble({ m }: { m: ChatMessage }) {
               gap: 4,
               fontSize: 10,
               fontWeight: 600,
-              background: "rgba(255,255,255,0.2)",
+              background: "color-mix(in oklab, var(--brand-400) 20%, transparent)",
+              color: "var(--brand-400)",
               padding: "1px 6px",
               borderRadius: 999,
               marginBottom: 4,
@@ -148,7 +152,7 @@ export function MessageBubble({ m }: { m: ChatMessage }) {
             gap: 4,
             marginTop: 4,
             fontSize: 10,
-            color: outbound ? "rgba(255,255,255,0.8)" : "var(--text-muted)",
+            color: "var(--text-muted)",
           }}
         >
           <span>{formatTime(m.created_at)}</span>
