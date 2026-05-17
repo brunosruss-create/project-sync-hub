@@ -110,6 +110,7 @@ function AIAgentPage() {
   const [canCancel, setCanCancel] = React.useState(false);
   const [minAdvanceHours, setMinAdvanceHours] = React.useState(2);
   const [maxQuestions, setMaxQuestions] = React.useState(1);
+  const [shareContactInfo, setShareContactInfo] = React.useState(true);
 
   // Hidrata form quando config chega
   React.useEffect(() => {
