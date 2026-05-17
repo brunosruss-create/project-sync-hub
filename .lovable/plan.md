@@ -1,50 +1,46 @@
 ## Objetivo
 
-Padronizar todos os seletores e grids de agenda em intervalos de **15 minutos**, mantendo o tamanho atual da página (adicionando scroll vertical onde necessário).
+Remover qualquer exibição de emoji de serviço em toda a UI. A coluna `services.emoji` do banco permanece intacta (sem migration) — apenas paramos de ler/escrever/exibir no app.
 
-## Onde está hoje
+## Mudanças
 
-1. **Picker de horário no modal de agendamento** (`src/features/inbox/schedule-modal.tsx`, linhas 52–59):
-   - Constante local `SLOTS` gera somente `:00` e `:30` (passo de 30 min).
-   - Renderizado em grid 6 colunas, `maxHeight: 140`, já com `overflowY: auto` (linhas 850–857).
-2. **Snap do horário inicial** ao abrir (linha 201): arredonda para `00` ou `30`.
-3. **Grid de Dia/Semana** (`src/features/schedule/data.ts`): `SLOT_MIN = 30`, `PX_PER_MIN = 1.4` (~42 px por linha de 30 min ≈ 84 px/h).
-4. **Helper `timeSlots(stepMin = 15)`** já existe com passo padrão de 15 min — não está sendo usado pelo modal novo.
+### 1. `src/routes/_authenticated.services.tsx`
+- Remover o `ModalField "Ícone"` inteiro (linhas ~909–935) e o estado `emoji`/`setEmoji`.
+- Remover `emoji` do payload de submit e do `draft` enviado ao Supabase.
+- Remover `{service.emoji}` da listagem (linha 403).
+- Remover import `PRESET_EMOJIS`.
 
-## Mudanças propostas
+### 2. `src/routes/_authenticated.schedule.tsx`
+- Não selecionar mais `emoji` no `select(...)` e remover `emoji: s.emoji ?? "🔧"` do mapeamento.
+- Remover `{service?.emoji}` dos textos em EventBlock, tooltip, painel de detalhes e dropdown de serviços (linhas ~1048, 1324, 1422, 1480, 1966).
 
-### A. Modal de agendamento (picker de horários) — passo de 15 min
+### 3. `src/features/inbox/schedule-modal.tsx`
+- Remover `emoji` do `select` e do mapeamento de serviços (linhas 84 e 100).
+- Conferir se algum render usa `s.emoji` — se sim, remover.
 
-`src/features/inbox/schedule-modal.tsx`:
-- Substituir a `SLOTS` local por `timeSlots(15)` do `@/features/schedule/data` (gera `08:00, 08:15, 08:30, …, 20:00` → 49 horários).
-- Ajustar o snap inicial (linha 201) para o múltiplo de 15 min mais próximo:
-  ```ts
-  const m = Math.floor(baseDate.getMinutes() / 15) * 15;
-  ```
-- Manter o grid 6 colunas + `overflowY: auto`, aumentar `maxHeight` para `~180px` (≈ 4 linhas visíveis ainda, com scroll suave).
-- Não mexer em `blockMin` (duração mínima do bloqueio de conflito continua sendo a duração do serviço, com piso de 30 min).
+### 4. `src/routes/book.$slug.tsx` (página pública de booking)
+- Remover o `<div>{s.emoji ?? "🔧"}</div>` da listagem de serviços (linha 353).
+- Remover o campo `emoji` do tipo local.
 
-### B. Grid Dia/Semana da página `/schedule` — linhas a cada 15 min
+### 5. `src/routes/api/public/book.$slug.ts`
+- Se devolve `emoji` no JSON da rota pública, remover do `select` e do shape de resposta para manter consistência.
 
-`src/features/schedule/data.ts`:
-- `SLOT_MIN = 15`.
-- `PX_PER_MIN = 1.4` (mantém). Isso resulta em ~21 px por linha de 15 min e ~84 px/h — **a altura total do dia não muda** (continua `(20-8)*60*1.4 ≈ 1008 px`), apenas dobra a densidade de linhas-guia.
+### 6. `src/features/services/data.ts`
+- Tornar `emoji` opcional no tipo (`emoji?: string`) ou remover do tipo. Limpar valores `emoji: "..."` dos SEEDs.
+- Remover constante `PRESET_EMOJIS` se ficar sem uso.
 
-Como a altura total não muda, **a página não cresce**; o container do grid já vive dentro de `height: calc(100vh - 48px - 48px)` com scroll interno (verificar `HourGrid` em `_authenticated.schedule.tsx` e ajustar `overflowY: auto` no wrapper das views se ainda não estiver).
+### Substituição visual
 
-### C. Verificações
-
-- Confirmar que `EventBlock` (posicionamento por `PX_PER_MIN`) segue correto — não depende de `SLOT_MIN`.
-- Conferir `NowLine` e `TimeColumn`: o `TimeColumn` mostra rótulos de hora cheia; manter rótulos só na hora (não a cada 15 min) para não poluir.
-- O cálculo de conflito (`overlap`) e `slotState` continuam corretos pois operam em minutos absolutos, não em índices de slot.
+Onde o emoji aparecia como "ícone" do serviço (lista, EventBlock, painel, página pública), usar apenas o **bullet colorido** já existente baseado em `service.color` — sem trocar por outro ícone. Em texto inline (ex.: `{emoji} {name}`) o emoji simplesmente some, ficando só o nome.
 
 ## Fora do escopo
-
-- Não muda duração de serviços, regras de bloqueio, nem fuso.
-- Não muda a coluna de horas (continua marcando a cada hora cheia).
+- Sem migration SQL (coluna `emoji` continua na tabela).
+- Sem mexer em ícones de UI (lucide) ou em emojis fora de "serviços".
 
 ## Arquivos afetados
-
-- `src/features/inbox/schedule-modal.tsx` — picker de horário e snap inicial.
-- `src/features/schedule/data.ts` — `SLOT_MIN: 30 → 15`.
-- `src/routes/_authenticated.schedule.tsx` — verificar/garantir `overflowY: auto` no wrapper das views Dia/Semana (provavelmente já existe).
+- `src/routes/_authenticated.services.tsx`
+- `src/routes/_authenticated.schedule.tsx`
+- `src/features/inbox/schedule-modal.tsx`
+- `src/routes/book.$slug.tsx`
+- `src/routes/api/public/book.$slug.ts`
+- `src/features/services/data.ts`
