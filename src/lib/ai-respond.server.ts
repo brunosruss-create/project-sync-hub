@@ -706,6 +706,34 @@ export async function runAiResponse(input: AiRunInput): Promise<AiRunResult> {
 
   const servicesLayer = buildServicesLayer(activeServices ?? [], categoryNameById, pricePolicyForCatalog);
 
+  // ===== PROFISSIONAIS + AGENDA (próximos 7 dias) =====
+  const { data: prosRows } = await supabaseAdmin
+    .from("professionals")
+    .select("id,name,role")
+    .eq("owner_user_id", data.workspace_owner_id)
+    .eq("is_active", true)
+    .order("created_at", { ascending: true });
+  const pros: ProRow[] = (prosRows ?? []) as ProRow[];
+
+  const nowIso = new Date().toISOString();
+  const sevenDaysIso = new Date(Date.now() + 7 * 24 * 60 * 60 * 1000).toISOString();
+  let upcoming: ApptRow[] = [];
+  if (pros.length > 0) {
+    const { data: apptsRows } = await supabaseAdmin
+      .from("appointments")
+      .select("professional_id,starts_at,ends_at,status")
+      .eq("owner_user_id", data.workspace_owner_id)
+      .gte("starts_at", nowIso)
+      .lte("starts_at", sevenDaysIso)
+      .neq("status", "cancelled")
+      .order("starts_at", { ascending: true });
+    upcoming = ((apptsRows ?? []) as any[]).map((r) => ({
+      professional_id: r.professional_id,
+      starts_at: r.starts_at,
+      ends_at: r.ends_at,
+    }));
+  }
+
   // Sempre validar timezone — se inválido, força Brasília (nunca cai no fuso do servidor).
   const rawTz =
     (profile.ai_timezone as string | null) ||
