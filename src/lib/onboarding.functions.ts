@@ -410,6 +410,13 @@ export const updateWorkspaceProfile = createServerFn({ method: "POST" })
     if (data.business_phone !== undefined) update.business_phone = data.business_phone;
     if (data.business_website !== undefined) update.business_website = data.business_website;
     if (data.business_logo_url !== undefined) update.business_logo_url = data.business_logo_url;
+    if (data.business_cep !== undefined) update.business_cep = data.business_cep;
+    if (data.business_street !== undefined) update.business_street = data.business_street;
+    if (data.business_address_number !== undefined) update.business_address_number = data.business_address_number;
+    if (data.business_address_complement !== undefined) update.business_address_complement = data.business_address_complement;
+    if (data.business_neighborhood !== undefined) update.business_neighborhood = data.business_neighborhood;
+    if (data.business_city !== undefined) update.business_city = data.business_city;
+    if (data.business_state !== undefined) update.business_state = data.business_state;
     const { error } = await supabaseAdmin
       .from("profiles")
       .update(update)
