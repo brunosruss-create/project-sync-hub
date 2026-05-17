@@ -17,6 +17,7 @@ import {
   formatDateBR,
   formatHM,
   parseDateBR,
+  timeSlots,
   type Appointment,
 } from "@/features/schedule/data";
 import { utcToZonedLocal, zonedLocalToUtc } from "@/features/schedule/tz";
