@@ -1,7 +1,7 @@
 import * as React from "react";
 import { useDraggable } from "@dnd-kit/core";
 import { CSS } from "@dnd-kit/utilities";
-import { AlertTriangle, MoreVertical } from "lucide-react";
+import { AlertTriangle, Lock, MoreVertical } from "lucide-react";
 import {
   type ContactCard as Contact,
   formatRelative,
