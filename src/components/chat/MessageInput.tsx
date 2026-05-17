@@ -68,6 +68,15 @@ export function MessageInput({ contactId }: { contactId: string }) {
 
   const canSend = draft.trim().length > 0 && !sending;
 
+  const insertBookingLink = () => {
+    if (!bookingUrl) return;
+    const prefix = draft.trim()
+      ? draft.replace(/\s+$/, "") + "\n\n"
+      : "Olá! Você pode agendar pelo link: ";
+    setDraft(prefix + bookingUrl);
+    requestAnimationFrame(() => taRef.current?.focus());
+  };
+
   return (
     <div
       className="flex items-end"
