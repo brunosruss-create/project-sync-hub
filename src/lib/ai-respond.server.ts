@@ -221,7 +221,53 @@ function buildWorkspaceLayer(
     );
   }
 
-  // === TOM DE VOZ ===
+  // === DADOS DE CONTATO DO NEGÓCIO ===
+  const canShareContact = (p as any).ai_can_share_contact_info !== false; // default true
+  const street = ((p as any).business_street as string | null | undefined)?.trim();
+  const num = ((p as any).business_address_number as string | null | undefined)?.trim();
+  const complement = ((p as any).business_address_complement as string | null | undefined)?.trim();
+  const neighborhood = ((p as any).business_neighborhood as string | null | undefined)?.trim();
+  const city = ((p as any).business_city as string | null | undefined)?.trim();
+  const stateUf = ((p as any).business_state as string | null | undefined)?.trim();
+  const cep = ((p as any).business_cep as string | null | undefined)?.trim();
+  const bizPhone = ((p as any).business_phone as string | null | undefined)?.trim();
+  const bizSite = ((p as any).business_website as string | null | undefined)?.trim();
+  const legacyAddress = ((p as any).business_address as string | null | undefined)?.trim();
+
+  const addressLine = (() => {
+    if (street) {
+      let line = street;
+      if (num) line += `, ${num}`;
+      if (complement) line += ` — ${complement}`;
+      if (neighborhood) line += ` — ${neighborhood}`;
+      if (city) line += `, ${city}`;
+      if (stateUf) line += `/${stateUf}`;
+      if (cep) line += ` — CEP ${cep}`;
+      return line;
+    }
+    return legacyAddress || "";
+  })();
+
+  const hasAnyContact = !!(addressLine || bizPhone || bizSite);
+
+  if (canShareContact && hasAnyContact) {
+    const lines: string[] = [
+      "DADOS DE CONTATO DO NEGÓCIO (use APENAS se o cliente perguntar — não ofereça espontaneamente):",
+    ];
+    if (addressLine) lines.push(`- Endereço: ${addressLine}`);
+    if (bizPhone) lines.push(`- Telefone: ${bizPhone}`);
+    if (bizSite) lines.push(`- Site: ${bizSite}`);
+    lines.push(
+      "Quando perguntado sobre localização, telefone ou site, responda com a informação exata acima. Não invente, não complete dados faltantes — se o cliente pedir algo que não está listado, diga que pode passar para um atendente humano.",
+    );
+    parts.push(lines.join("\n"));
+  } else if (!canShareContact) {
+    prohibitions.push(
+      "OBRIGATÓRIO: NÃO informe endereço, telefone ou site do negócio. Se o cliente perguntar onde fica, qual o telefone ou se há site, diga que pode passar o contato com um atendente humano.",
+    );
+  }
+
+
   if (p.ai_tone) {
     const key = String(p.ai_tone).toLowerCase();
     const toneText = TONE_MAP[key];
