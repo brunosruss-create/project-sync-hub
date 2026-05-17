@@ -901,33 +901,6 @@ function ServiceModal({
               </div>
             </ModalField>
 
-            <ModalField label="Ícone">
-              <div className="flex flex-wrap" style={{ gap: 4 }}>
-                {PRESET_EMOJIS.map((e) => (
-                  <button
-                    key={e}
-                    type="button"
-                    onClick={() => setEmoji(e)}
-                    style={{
-                      width: 32,
-                      height: 32,
-                      borderRadius: 6,
-                      fontSize: 16,
-                      background:
-                        emoji === e
-                          ? `color-mix(in oklab, ${color} 15%, var(--bg-overlay))`
-                          : "var(--bg-overlay)",
-                      border:
-                        emoji === e
-                          ? `1px solid ${color}`
-                          : "1px solid var(--border)",
-                    }}
-                  >
-                    {e}
-                  </button>
-                ))}
-              </div>
-            </ModalField>
 
             <ModalField label="Status">
               <div
