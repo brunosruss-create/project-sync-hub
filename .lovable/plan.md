@@ -1,70 +1,50 @@
-# Objetivo
+## Objetivo
 
-Unificar o motor de agendamento. Hoje existem dois caminhos:
+Padronizar todos os seletores e grids de agenda em intervalos de **15 minutos**, mantendo o tamanho atual da página (adicionando scroll vertical onde necessário).
 
-- **Lead (Inbox → ScheduleModal)** — UI da foto 2, com grid de horários disponíveis (busy/passado riscado), realtime, multi-serviços, prévia da mensagem.
-- **Agenda (`/schedule` → AppointmentModal)** — UI da foto 1, dropdown simples de horários sem checagem de disponibilidade, contato inline, sem snapshot de serviços, sem ligação com `appointment_events`.
+## Onde está hoje
 
-Resultado esperado: ao abrir "Novo Agendamento" na Agenda, o usuário vê **a mesma tela da foto 2** (grid de slots com disponibilidade em tempo real). Mudar horário, cancelar ou criar pelo lead reflete **imediatamente** nos slots disponíveis em qualquer entrada (mesma fonte de verdade).
+1. **Picker de horário no modal de agendamento** (`src/features/inbox/schedule-modal.tsx`, linhas 52–59):
+   - Constante local `SLOTS` gera somente `:00` e `:30` (passo de 30 min).
+   - Renderizado em grid 6 colunas, `maxHeight: 140`, já com `overflowY: auto` (linhas 850–857).
+2. **Snap do horário inicial** ao abrir (linha 201): arredonda para `00` ou `30`.
+3. **Grid de Dia/Semana** (`src/features/schedule/data.ts`): `SLOT_MIN = 30`, `PX_PER_MIN = 1.4` (~42 px por linha de 30 min ≈ 84 px/h).
+4. **Helper `timeSlots(stepMin = 15)`** já existe com passo padrão de 15 min — não está sendo usado pelo modal novo.
 
-# Estratégia
+## Mudanças propostas
 
-Promover o `ScheduleModal` (do Inbox) ao único componente de criação/edição de agendamento. O `AppointmentModal` da agenda é descontinuado.
+### A. Modal de agendamento (picker de horários) — passo de 15 min
 
-## Mudanças no `ScheduleModal` (`src/features/inbox/schedule-modal.tsx`)
+`src/features/inbox/schedule-modal.tsx`:
+- Substituir a `SLOTS` local por `timeSlots(15)` do `@/features/schedule/data` (gera `08:00, 08:15, 08:30, …, 20:00` → 49 horários).
+- Ajustar o snap inicial (linha 201) para o múltiplo de 15 min mais próximo:
+  ```ts
+  const m = Math.floor(baseDate.getMinutes() / 15) * 15;
+  ```
+- Manter o grid 6 colunas + `overflowY: auto`, aumentar `maxHeight` para `~180px` (≈ 4 linhas visíveis ainda, com scroll suave).
+- Não mexer em `blockMin` (duração mínima do bloqueio de conflito continua sendo a duração do serviço, com piso de 30 min).
 
-Tornar o modal reutilizável tanto pelo lead quanto pela agenda.
+### B. Grid Dia/Semana da página `/schedule` — linhas a cada 15 min
 
-1. **Tornar `contact` opcional**:
-   - Quando `contact` for fornecido (uso atual no inbox) → comportamento atual.
-   - Quando ausente → renderizar bloco "Contato" no topo, com autocomplete por nome/telefone + opção "Adicionar novo" (mesma UX que existe hoje no `AppointmentModal` da agenda). Carregar contatos via `supabase.from("contacts")`.
+`src/features/schedule/data.ts`:
+- `SLOT_MIN = 15`.
+- `PX_PER_MIN = 1.4` (mantém). Isso resulta em ~21 px por linha de 15 min e ~84 px/h — **a altura total do dia não muda** (continua `(20-8)*60*1.4 ≈ 1008 px`), apenas dobra a densidade de linhas-guia.
 
-2. **Novo prop `initial?: Appointment`** (modo edição):
-   - Pré-preenche serviços (via `appointment_services` do banco), data, hora, agente, observações, notify.
-   - Submit faz `UPDATE` em vez de `INSERT`; recria snapshot em `appointment_services` (delete + insert) se conjunto de serviços mudou.
-   - Mostra botões adicionais no rodapé: **Cancelar agendamento** (status `cancelled`) e **Excluir**.
+Como a altura total não muda, **a página não cresce**; o container do grid já vive dentro de `height: calc(100vh - 48px - 48px)` com scroll interno (verificar `HourGrid` em `_authenticated.schedule.tsx` e ajustar `overflowY: auto` no wrapper das views se ainda não estiver).
 
-3. **Novo prop `preset?: { starts_at?: Date; agent_id?: string }`**:
-   - Quando o usuário clica numa célula vazia da grade da agenda, abre o modal já com a data/hora/profissional daquele slot.
+### C. Verificações
 
-4. **Centralizar disparo de notificações e histórico**:
-   - Após `INSERT` bem-sucedido → chamar `notifyAppointmentChange({ appointmentId, kind: "created" })` (server fn). Hoje o ScheduleModal NÃO chama isso; só insere uma mensagem `outbound` direto. Substituir pela chamada à server fn, que já registra `appointment_events` + envia WhatsApp via template oficial.
-   - Em modo edição, se `starts_at` mudou → `kind: "rescheduled"` com `previousStartsAt`.
-   - Em cancelamento → `kind: "cancelled"`.
-   - Remover o `messages.insert` outbound manual (a server fn de notificação já cuida disso).
+- Confirmar que `EventBlock` (posicionamento por `PX_PER_MIN`) segue correto — não depende de `SLOT_MIN`.
+- Conferir `NowLine` e `TimeColumn`: o `TimeColumn` mostra rótulos de hora cheia; manter rótulos só na hora (não a cada 15 min) para não poluir.
+- O cálculo de conflito (`overlap`) e `slotState` continuam corretos pois operam em minutos absolutos, não em índices de slot.
 
-5. **Bloquear self-conflict no modo edição**:
-   - No cálculo de `slotState`, ignorar o próprio `initial?.id` ao verificar `busy`, para que o horário atual do agendamento sendo editado não apareça como ocupado por ele mesmo.
+## Fora do escopo
 
-## Mudanças em `src/routes/_authenticated.schedule.tsx`
+- Não muda duração de serviços, regras de bloqueio, nem fuso.
+- Não muda a coluna de horas (continua marcando a cada hora cheia).
 
-1. **Remover** o componente local `AppointmentModal` / `AppointmentForm` e toda a função `upsert` (linhas ~254–324), bem como a função `remove` direta (linhas ~338–343).
+## Arquivos afetados
 
-2. **Substituir o uso** (linhas ~568–593 e ~595–607) por:
-   - `<ScheduleModal open={!!editing} ... initial={editing.appt} preset={editing.preset} onClose={...} onSubmitted={...} />`
-   - O `DetailPanel` (clique em card existente) passa a abrir o `ScheduleModal` em modo edição, mantendo botões de status/cancelar/excluir dentro dele.
-
-3. **Realtime**: a Agenda já assina `appointments-rt` (linha ~210). O ScheduleModal também assina `schedule-modal-busy-${date}`. Ambos disparam re-fetch a partir do mesmo `INSERT/UPDATE/DELETE`, então um agendamento criado pelo lead remove o slot na Agenda instantaneamente, e vice-versa. Nenhuma mudança nova — já funciona pelo Postgres Changes.
-
-4. **Optimistic update**: o `upsert` otimista da agenda some. A grade espera o evento de realtime para renderizar. Para evitar flicker, o `ScheduleModal` pode emitir o `CustomEvent("zf:appointment-created")` (já existe na linha 326) e a Agenda escuta esse evento para inserir/atualizar localmente antes do realtime chegar.
-
-## Itens fora do escopo (não tocar)
-
-- Schema do banco. Tabelas `appointments`, `appointment_services`, `appointment_events`, `contacts`, `services`, `professionals` permanecem como estão.
-- `src/lib/appointments.functions.ts` (`notifyAppointmentChange`) — já faz o necessário.
-- Layout da grade da agenda, fuso horário (`zonedLocalToUtc`), formatação de WhatsApp (`booking-confirmation.server.ts`).
-- Modal de detalhe (`DetailPanel`) só muda no callback `onEdit` para abrir o ScheduleModal.
-
-# Como validar
-
-1. Agenda → "Novo Agendamento" → modal mostra grid 6 colunas de horários, slots ocupados riscados, multi-seleção de serviços, prévia da mensagem WhatsApp. Idêntico à foto 2.
-2. Criar pela Agenda → card aparece na grade, slot fica indisponível em qualquer outro modal aberto. WhatsApp chega. Lead recebe evento `created` no histórico.
-3. Editar arrastando para outro horário (ou via modal) → notify dispara `rescheduled`, slot antigo libera, slot novo bloqueia.
-4. Cancelar → notify dispara `cancelled`, slot volta a ficar disponível.
-5. Criar pelo Inbox e abrir a Agenda em outra aba → card aparece sozinho (realtime).
-
-# Escopo de arquivos
-
-- `src/features/inbox/schedule-modal.tsx` (expandir API + reorganizar fluxo de notificação)
-- `src/routes/_authenticated.schedule.tsx` (remover modal local, plugar ScheduleModal)
-- Nenhum outro arquivo, nenhuma migration.
+- `src/features/inbox/schedule-modal.tsx` — picker de horário e snap inicial.
+- `src/features/schedule/data.ts` — `SLOT_MIN: 30 → 15`.
+- `src/routes/_authenticated.schedule.tsx` — verificar/garantir `overflowY: auto` no wrapper das views Dia/Semana (provavelmente já existe).

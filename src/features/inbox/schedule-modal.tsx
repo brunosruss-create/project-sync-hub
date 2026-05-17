@@ -17,6 +17,7 @@ import {
   formatDateBR,
   formatHM,
   parseDateBR,
+  timeSlots,
   type Appointment,
 } from "@/features/schedule/data";
 import { utcToZonedLocal, zonedLocalToUtc } from "@/features/schedule/tz";
@@ -49,14 +50,7 @@ interface Props {
   onSubmitted?: () => void;
 }
 
-const SLOTS: string[] = (() => {
-  const out: string[] = [];
-  for (let h = 8; h < 20; h++) {
-    out.push(`${String(h).padStart(2, "0")}:00`);
-    out.push(`${String(h).padStart(2, "0")}:30`);
-  }
-  return out;
-})();
+const SLOTS: string[] = timeSlots(15);
 
 export function ScheduleModal({
   contact,
@@ -198,7 +192,7 @@ export function ScheduleModal({
       setDateInput(formatDateBR(iso));
       if (preset?.starts_at) {
         const h = String(baseDate.getHours()).padStart(2, "0");
-        const m = String(baseDate.getMinutes() < 30 ? 0 : 30).padStart(2, "0");
+        const m = String(Math.floor(baseDate.getMinutes() / 15) * 15).padStart(2, "0");
         setTime(`${h}:${m}`);
       } else {
         setTime("09:00");
@@ -852,7 +846,7 @@ export function ScheduleModal({
                 display: "grid",
                 gridTemplateColumns: "repeat(6, 1fr)",
                 gap: 4,
-                maxHeight: 140,
+                maxHeight: 180,
                 overflowY: "auto",
               }}
             >
