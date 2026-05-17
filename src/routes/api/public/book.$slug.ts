@@ -4,7 +4,7 @@ import { supabaseAdmin } from "@/integrations/supabase/client.server";
 import {
   sendBookingConfirmation,
   normalizePhone,
-} from "@/lib/booking-confirmation";
+} from "@/lib/booking-confirmation.server";
 
 const CORS = {
   "Access-Control-Allow-Origin": "*",

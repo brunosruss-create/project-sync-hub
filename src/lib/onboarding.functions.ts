@@ -272,7 +272,50 @@ export const getWorkspaceProfile = createServerFn({ method: "POST" })
       business_phone: data?.business_phone ?? "",
       business_website: data?.business_website ?? "",
       business_logo_url: data?.business_logo_url ?? "",
+      booking_slug: (data as any)?.booking_slug ?? null,
+      booking_enabled: (data as any)?.booking_enabled ?? false,
+      booking_title: (data as any)?.booking_title ?? "",
+      booking_description: (data as any)?.booking_description ?? "",
+      booking_service_ids: ((data as any)?.booking_service_ids as string[] | null) ?? [],
     };
+  });
+
+// ============= UPDATE BOOKING CONFIG =============
+export const updateBookingConfig = createServerFn({ method: "POST" })
+  .middleware([requireSupabaseAuth])
+  .inputValidator((input) =>
+    z
+      .object({
+        booking_enabled: z.boolean().optional(),
+        booking_slug: z
+          .string()
+          .min(3)
+          .max(60)
+          .regex(/^[a-z0-9-]+$/, "Use apenas letras minúsculas, números e hífens")
+          .optional(),
+        booking_title: z.string().max(120).optional(),
+        booking_description: z.string().max(500).optional(),
+        booking_service_ids: z.array(z.string()).max(200).optional(),
+      })
+      .parse(input),
+  )
+  .handler(async ({ data, context }) => {
+    // Se mudou slug, garantir unicidade
+    if (data.booking_slug) {
+      const { data: clash } = await supabaseAdmin
+        .from("profiles")
+        .select("id")
+        .eq("booking_slug", data.booking_slug)
+        .neq("id", context.userId)
+        .maybeSingle();
+      if (clash) throw new Error("Esse link já está em uso. Escolha outro.");
+    }
+    const { error } = await supabaseAdmin
+      .from("profiles")
+      .update(data)
+      .eq("id", context.userId);
+    if (error) throw new Error(error.message);
+    return { ok: true };
   });
 
 const HoursSchema = z
