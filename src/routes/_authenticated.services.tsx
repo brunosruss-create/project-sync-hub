@@ -360,18 +360,6 @@ function ServicesPage() {
         confirmLabel="Excluir"
         destructive
       />
-        </div>
-      )}
-
-      {editing && (
-        <ServiceModal
-          initial={editing.mode === "edit" ? editing.service : null}
-          categories={categories}
-          onClose={() => setEditing(null)}
-          onSubmit={upsertService}
-          onAddCategory={addCategory}
-        />
-      )}
     </div>
   );
 }
