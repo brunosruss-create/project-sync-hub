@@ -1,11 +1,12 @@
 import * as React from "react";
-import { Send } from "lucide-react";
+import { Send, Link as LinkIcon } from "lucide-react";
 import { useServerFn } from "@tanstack/react-start";
 import { toast } from "sonner";
 import { sendWhatsAppMessage } from "@/lib/evolution.functions";
 import { supabase } from "@/integrations/supabase/client";
 import { useAuth } from "@/hooks/use-auth";
 import { useWorkspaceOwnerId } from "@/hooks/use-workspace-owner";
+import { useBookingLink } from "@/hooks/use-booking-link";
 
 export function MessageInput({ contactId }: { contactId: string }) {
   const { user } = useAuth();
