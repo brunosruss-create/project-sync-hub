@@ -13,7 +13,6 @@ export interface Service {
   description: string;
   price_cents: number;
   duration_minutes: number;
-  emoji: string;
   color: string;
   status: ServiceStatus;
   created_at: Date;
@@ -28,11 +27,6 @@ export const PRESET_COLORS = [
   "#EC4899",
   "#14B8A6",
   "#64748B",
-];
-
-export const PRESET_EMOJIS = [
-  "🔧", "⚙️", "🛠️", "🚗", "🦷", "💉", "🩺", "💆",
-  "✂️", "💅", "💇", "🧴", "🏥", "🐾", "📐", "💡",
 ];
 
 export const SEED_CATEGORIES: Category[] = [
@@ -51,7 +45,6 @@ export const SEED_SERVICES: Service[] = [
     description: "Troca de óleo + filtro de óleo. Verificação de níveis.",
     price_cents: 8990,
     duration_minutes: 30,
-    emoji: "🛢️",
     color: "#25C880",
     status: "active",
     created_at: new Date(),
@@ -63,7 +56,6 @@ export const SEED_SERVICES: Service[] = [
     description: "Análise completa do sistema elétrico com scanner.",
     price_cents: 15000,
     duration_minutes: 60,
-    emoji: "⚡",
     color: "#F59E0B",
     status: "active",
     created_at: new Date(),
@@ -75,7 +67,6 @@ export const SEED_SERVICES: Service[] = [
     description: "Alinhamento computadorizado das 4 rodas + balanceamento.",
     price_cents: 12990,
     duration_minutes: 45,
-    emoji: "🛞",
     color: "#3B82F6",
     status: "active",
     created_at: new Date(),
@@ -87,7 +78,6 @@ export const SEED_SERVICES: Service[] = [
     description: "Substituição de pastilhas dianteiras com revisão dos discos.",
     price_cents: 24500,
     duration_minutes: 90,
-    emoji: "🛑",
     color: "#EF4444",
     status: "active",
     created_at: new Date(),
@@ -99,7 +89,6 @@ export const SEED_SERVICES: Service[] = [
     description: "Polimento de pintura + cristalização. Cera de proteção.",
     price_cents: 35000,
     duration_minutes: 240,
-    emoji: "✨",
     color: "#8B5CF6",
     status: "draft",
     created_at: new Date(),

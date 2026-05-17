@@ -81,7 +81,7 @@ export function ScheduleModal({
     (async () => {
       const { data, error } = await supabase
         .from("services")
-        .select("id,category_id,name,description,price_cents,duration_minutes,emoji,color,status,created_at")
+        .select("id,category_id,name,description,price_cents,duration_minutes,color,status,created_at")
         .eq("status", "active")
         .order("created_at", { ascending: true });
       if (cancelled) return;
@@ -97,7 +97,6 @@ export function ScheduleModal({
           description: s.description ?? "",
           price_cents: s.price_cents ?? 0,
           duration_minutes: s.duration_minutes ?? 30,
-          emoji: s.emoji ?? "🔧",
           color: s.color ?? "#25C880",
           status: (s.status ?? "active") as Service["status"],
           created_at: s.created_at ? new Date(s.created_at) : new Date(),

@@ -18,7 +18,6 @@ type Service = {
   description: string | null;
   price_cents: number;
   duration_minutes: number;
-  emoji: string | null;
   color: string | null;
 };
 type Professional = {
@@ -350,7 +349,7 @@ function ServiceStep({ services, selected, onSelect }: { services: Service[]; se
               }}
             >
               <div style={{ display: "flex", alignItems: "center", gap: 12 }}>
-                <div style={{ fontSize: 22, width: 32, textAlign: "center" }}>{s.emoji ?? "🔧"}</div>
+                
                 <div style={{ flex: 1, textAlign: "left" }}>
                   <div style={{ fontWeight: 600, fontSize: 14 }}>{s.name}</div>
                   <div style={{ fontSize: 12, color: "var(--text-muted)" }}>

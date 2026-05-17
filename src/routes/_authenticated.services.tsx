@@ -8,7 +8,7 @@ import {
   type Service,
   type ServiceStatus,
   PRESET_COLORS,
-  PRESET_EMOJIS,
+  
   SEED_CATEGORIES,
   SEED_SERVICES,
   STATUS_COLOR,
@@ -71,7 +71,7 @@ function ServicesPage() {
         supabase
           .from("services")
           .select(
-            "id,category_id,name,description,price_cents,duration_minutes,emoji,color,status,created_at",
+            "id,category_id,name,description,price_cents,duration_minutes,color,status,created_at",
           )
           .eq("owner_user_id", workspaceOwnerId)
           .order("created_at", { ascending: true }),
@@ -96,7 +96,6 @@ function ServicesPage() {
           description: s.description ?? "",
           price_cents: s.price_cents ?? 0,
           duration_minutes: s.duration_minutes ?? 30,
-          emoji: s.emoji ?? "🔧",
           color: s.color ?? "#25C880",
           status: (s.status ?? "active") as ServiceStatus,
           created_at: s.created_at ? new Date(s.created_at) : new Date(),
@@ -146,7 +145,7 @@ function ServicesPage() {
       description: draft.description,
       price_cents: draft.price_cents,
       duration_minutes: draft.duration_minutes,
-      emoji: draft.emoji,
+      
       color: draft.color,
       status: draft.status,
     };
@@ -388,20 +387,16 @@ function ServiceCard({
       {/* Header */}
       <div className="flex items-start" style={{ gap: 10 }}>
         <div
+          aria-hidden
           style={{
-            width: 36,
+            width: 10,
             height: 36,
-            borderRadius: 8,
-            background: `color-mix(in oklab, ${accent} 14%, var(--bg-overlay))`,
-            display: "inline-flex",
-            alignItems: "center",
-            justifyContent: "center",
-            fontSize: 18,
+            borderRadius: 4,
+            background: accent,
             flexShrink: 0,
           }}
-        >
-          {service.emoji}
-        </div>
+        />
+
         <div className="min-w-0" style={{ paddingRight: 64 }}>
           <div
             className="truncate"
@@ -621,7 +616,7 @@ function ServiceModal({
     return m % 60 === 0 && m >= 60 ? "h" : "min";
   });
   const [color, setColor] = React.useState(initial?.color ?? PRESET_COLORS[0]);
-  const [emoji, setEmoji] = React.useState(initial?.emoji ?? "🔧");
+  
   const [status, setStatus] = React.useState<ServiceStatus>(initial?.status ?? "active");
   const [showNewCat, setShowNewCat] = React.useState(false);
   const [newCatName, setNewCatName] = React.useState("");
@@ -657,7 +652,7 @@ function ServiceModal({
       description: description.trim(),
       price_cents: cents,
       duration_minutes: minutes,
-      emoji,
+      
       color,
       status,
       created_at: initial?.created_at ?? new Date(),
@@ -906,33 +901,6 @@ function ServiceModal({
               </div>
             </ModalField>
 
-            <ModalField label="Ícone">
-              <div className="flex flex-wrap" style={{ gap: 4 }}>
-                {PRESET_EMOJIS.map((e) => (
-                  <button
-                    key={e}
-                    type="button"
-                    onClick={() => setEmoji(e)}
-                    style={{
-                      width: 32,
-                      height: 32,
-                      borderRadius: 6,
-                      fontSize: 16,
-                      background:
-                        emoji === e
-                          ? `color-mix(in oklab, ${color} 15%, var(--bg-overlay))`
-                          : "var(--bg-overlay)",
-                      border:
-                        emoji === e
-                          ? `1px solid ${color}`
-                          : "1px solid var(--border)",
-                    }}
-                  >
-                    {e}
-                  </button>
-                ))}
-              </div>
-            </ModalField>
 
             <ModalField label="Status">
               <div

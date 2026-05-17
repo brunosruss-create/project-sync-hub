@@ -150,7 +150,7 @@ function SchedulePage() {
       supabase.from("contacts").select("id,name,phone,tags,priority,kanban_column,last_message,last_message_at,is_unread,assigned_agent_id"),
       supabase
         .from("services")
-        .select("id,category_id,name,description,price_cents,duration_minutes,emoji,color,status,created_at")
+        .select("id,category_id,name,description,price_cents,duration_minutes,color,status,created_at")
         .order("created_at", { ascending: true }),
     ]);
     if (apptErr) console.warn("[schedule] select appointments:", apptErr.message);
@@ -184,7 +184,6 @@ function SchedulePage() {
           description: s.description ?? "",
           price_cents: s.price_cents ?? 0,
           duration_minutes: s.duration_minutes ?? 30,
-          emoji: s.emoji ?? "🔧",
           color: s.color ?? "#25C880",
           status: (s.status ?? "active") as Service["status"],
           created_at: s.created_at ? new Date(s.created_at) : new Date(),
@@ -1045,7 +1044,7 @@ function EventBlock({
               color: "var(--text-primary)",
             }}
           >
-            {service?.emoji} {service?.name?.slice(0, compact ? 14 : 24)}
+            {service?.name?.slice(0, compact ? 14 : 24)}
           </span>
         </div>
       )}
@@ -1321,7 +1320,7 @@ function ListView({
                           className="truncate"
                           style={{ fontSize: 11, color: "var(--text-muted)" }}
                         >
-                          {service?.emoji} {service?.name} · {agent?.name}
+                          {service?.name} · {agent?.name}
                         </div>
                       </div>
                       <span
@@ -1419,7 +1418,7 @@ function DetailPanel({
           <div className="flex-1 min-w-0">
             <div style={{ fontSize: 13, fontWeight: 600 }}>{contact?.name ?? "—"}</div>
             <div style={{ fontSize: 11, color: "var(--text-muted)" }}>
-              {service?.emoji} {service?.name}
+              {service?.name}
             </div>
           </div>
           <button
@@ -1477,7 +1476,7 @@ function DetailPanel({
           />
           <DataRow label="Contato" value={contact?.name ?? "—"} />
           <DataRow label="Telefone" value={contact?.phone ?? "—"} mono />
-          <DataRow label="Serviço" value={service ? `${service.emoji} ${service.name}` : "—"} />
+          <DataRow label="Serviço" value={service ? `$${service.name}` : "—"} />
           {service && (
             <DataRow
               label="Valor"
@@ -1963,7 +1962,7 @@ function AppointmentModal({
               >
                 {services.map((s) => (
                   <option key={s.id} value={s.id}>
-                    {s.emoji} {s.name} · {(s.price_cents / 100).toLocaleString("pt-BR", { style: "currency", currency: "BRL" })} · {s.duration_minutes}min
+                    {s.name} · {(s.price_cents / 100).toLocaleString("pt-BR", { style: "currency", currency: "BRL" })} · {s.duration_minutes}min
                   </option>
                 ))}
               </select>
