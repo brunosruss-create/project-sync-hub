@@ -504,10 +504,114 @@ function buildServicesLayer(
   return lines.join("\n");
 }
 
+type ProRow = { id: string; name: string; role: string | null };
+type ApptRow = { professional_id: string | null; starts_at: string; ends_at: string };
+
+function buildProfessionalsLayer(
+  pros: ProRow[],
+  upcoming: ApptRow[],
+  businessHours: WorkingHours | null,
+  tz: string,
+): string | null {
+  if (!pros || pros.length === 0) return null;
+
+  const fmtDate = new Intl.DateTimeFormat("pt-BR", {
+    timeZone: tz,
+    weekday: "short",
+    day: "2-digit",
+    month: "2-digit",
+  });
+  const fmtTime = new Intl.DateTimeFormat("pt-BR", {
+    timeZone: tz,
+    hour: "2-digit",
+    minute: "2-digit",
+    hour12: false,
+  });
+
+  const byPro = new Map<string, ApptRow[]>();
+  for (const a of upcoming) {
+    if (!a.professional_id) continue;
+    const list = byPro.get(a.professional_id) ?? [];
+    list.push(a);
+    byPro.set(a.professional_id, list);
+  }
+
+  const lines: string[] = [];
+  lines.push("=== PROFISSIONAIS ATIVOS (FONTE ÚNICA DE VERDADE) ===");
+  lines.push(
+    "Estes são os ÚNICOS profissionais que atendem neste negócio. Use exatamente estes nomes. Não invente nem cite outros nomes.",
+  );
+  lines.push("");
+
+  // Resumo do horário de funcionamento (todos os profissionais seguem o mesmo).
+  if (businessHours && typeof businessHours === "object") {
+    const dayLabels: Record<string, string> = {
+      monday: "Seg", mon: "Seg",
+      tuesday: "Ter", tue: "Ter",
+      wednesday: "Qua", wed: "Qua",
+      thursday: "Qui", thu: "Qui",
+      friday: "Sex", fri: "Sex",
+      saturday: "Sáb", sat: "Sáb",
+      sunday: "Dom", sun: "Dom",
+    };
+    const openDays: string[] = [];
+    for (const [k, v] of Object.entries(businessHours as Record<string, DayCfg>)) {
+      const enabled = v?.enabled ?? v?.active ?? false;
+      if (enabled && v?.start && v?.end) {
+        const lbl = dayLabels[k.toLowerCase()] ?? k;
+        openDays.push(`${lbl} ${v.start}–${v.end}`);
+      }
+    }
+    if (openDays.length > 0) {
+      lines.push(`Horário de funcionamento do negócio: ${openDays.join(", ")} (fuso ${tz}).`);
+      lines.push("");
+    }
+  }
+
+  for (const p of pros) {
+    const roleStr = p.role && p.role.trim() ? ` (${p.role.trim()})` : "";
+    lines.push(`- ${p.name}${roleStr}`);
+    const appts = (byPro.get(p.id) ?? []).slice(0, 12);
+    if (appts.length === 0) {
+      lines.push(`  Próximos 7 dias: sem compromissos cadastrados.`);
+    } else {
+      lines.push(`  Compromissos já marcados (próximos 7 dias):`);
+      for (const a of appts) {
+        const d = new Date(a.starts_at);
+        const e = new Date(a.ends_at);
+        lines.push(
+          `    • ${fmtDate.format(d)} ${fmtTime.format(d)}–${fmtTime.format(e)}`,
+        );
+      }
+    }
+  }
+
+  lines.push("");
+  lines.push("REGRAS DE USO DESTE BLOCO:");
+  lines.push(
+    "1. Se o cliente perguntar 'qual médico/profissional vocês têm', responda com a lista acima.",
+  );
+  lines.push(
+    "2. Se o cliente citar um nome que ESTÁ na lista, responda direto sobre esse profissional. Use os compromissos acima para indicar janelas livres/ocupadas dentro do horário de funcionamento.",
+  );
+  lines.push(
+    "3. Se o cliente citar um nome que NÃO está na lista, diga educadamente que esse profissional não atende aqui e cite os disponíveis.",
+  );
+  lines.push(
+    "4. Para confirmar horário definitivo, ofereça o link público de agendamento (se houver) — não invente disponibilidade exata, apenas oriente.",
+  );
+  lines.push(
+    "5. NUNCA responda 'não temos catálogo' para perguntas sobre profissionais ou horários — essa resposta é APENAS para perguntas de serviços/preços quando o catálogo está vazio.",
+  );
+
+  return lines.join("\n");
+}
+
 function estimateCostCents(input: number, output: number) {
   const cents = (input / 1_000_000) * 25 + (output / 1_000_000) * 150;
   return Math.max(1, Math.round(cents));
 }
+
 
 export async function runAiResponse(input: AiRunInput): Promise<AiRunResult> {
   const data = {
