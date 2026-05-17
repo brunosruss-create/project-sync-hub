@@ -145,7 +145,7 @@ function ServicesPage() {
       description: draft.description,
       price_cents: draft.price_cents,
       duration_minutes: draft.duration_minutes,
-      emoji: draft.emoji,
+      
       color: draft.color,
       status: draft.status,
     };
