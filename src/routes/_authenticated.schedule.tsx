@@ -228,7 +228,12 @@ function SchedulePage() {
   // não é conhecido (ex.: criados via WhatsApp com id de agente fora do mock).
   const knownAgents = React.useMemo(() => new Set(agents.map((a) => a.id)), [agents]);
   const filtered = React.useMemo(
-    () => items.filter((a) => !knownAgents.has(a.agent_id) || agentFilter.has(a.agent_id)),
+    () =>
+      items.filter(
+        (a) =>
+          a.status !== "cancelled" &&
+          (!knownAgents.has(a.agent_id) || agentFilter.has(a.agent_id)),
+      ),
     [items, agentFilter, knownAgents],
   );
 
