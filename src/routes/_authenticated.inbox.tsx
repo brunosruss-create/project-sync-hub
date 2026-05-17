@@ -34,6 +34,7 @@ import { supabase } from "@/integrations/supabase/client";
 import { useAuth } from "@/hooks/use-auth";
 import { useWorkspaceOwnerId } from "@/hooks/use-workspace-owner";
 import { useRole } from "@/hooks/use-role";
+import { useContactActions } from "@/hooks/use-contact-actions";
 
 export const Route = createFileRoute("/_authenticated/inbox")({
   component: InboxPage,
