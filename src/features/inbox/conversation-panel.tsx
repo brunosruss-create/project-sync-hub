@@ -39,6 +39,7 @@ import {
   formatDuration,
   type Service,
 } from "@/features/services/data";
+import { useContactActions } from "@/hooks/use-contact-actions";
 
 type Tab = "conversation" | "contact" | "services" | "history";
 
