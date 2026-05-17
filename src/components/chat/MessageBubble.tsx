@@ -52,9 +52,14 @@ export function MessageBubble({ m }: { m: ChatMessage }) {
   }
 
   const outbound = m.direction === "outbound";
-  const bg = outbound ? "var(--brand-400)" : "var(--bg-surface)";
-  const color = outbound ? "#fff" : "var(--text-primary)";
+  const bg = outbound
+    ? "color-mix(in oklab, var(--brand-400) 15%, var(--bg-surface))"
+    : "var(--bg-surface)";
+  const color = "var(--text-primary)";
   const radius = outbound ? "12px 2px 12px 12px" : "2px 12px 12px 12px";
+  const border = outbound
+    ? "1px solid color-mix(in oklab, var(--brand-400) 30%, transparent)"
+    : "1px solid var(--border)";
 
   const deleted = !!m.deleted_at;
 
