@@ -775,7 +775,7 @@ function DayView({
         onClick={(e) => {
           const rect = (e.currentTarget as HTMLDivElement).getBoundingClientRect();
           const y = e.clientY - rect.top;
-          const minutes = Math.max(0, Math.round(y / PX_PER_MIN / SLOT_MIN) * SLOT_MIN);
+          const minutes = Math.max(0, Math.round((y - GRID_TOP_PAD) / PX_PER_MIN / SLOT_MIN) * SLOT_MIN);
           const starts = startOfDay(date);
           starts.setMinutes(minutes + HOUR_START * 60);
           onSlotClick(starts);
