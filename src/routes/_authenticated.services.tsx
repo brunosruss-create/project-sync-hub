@@ -96,7 +96,7 @@ function ServicesPage() {
           })),
         );
       }
-      setHydrated(true);
+      
     })();
     return () => {
       cancelled = true;
