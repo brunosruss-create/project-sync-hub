@@ -1,39 +1,88 @@
 ## Objetivo
 
-Áudios no modo chat (`/conversations-chat`) devem aparecer com o mesmo player rico do kanban — incluindo a foto do remetente (lead em inbound, perfil do atendente em outbound) — em vez do `<audio>` HTML nativo atual.
-
-## Decisões confirmadas
-
-- **Reuso por extração**: mover `AudioPlayer` + `AudioPlayerWithMe` + helper `fmtTime` para um arquivo compartilhado. O kanban passa a importar de lá (única alteração permitida fora do escopo do chat, comportamento idêntico ao atual).
-- **Outbound usa perfil do usuário logado** (`useProfile`), idêntico ao kanban. Sem mudança de fonte de avatar.
+Adicionar comportamento de sidebar recolhível em `src/components/app-sidebar.tsx`, com toggle manual + persistência em localStorage + auto-recolher ao entrar em `/conversations-chat` (e restaurar ao sair). Tooltips do shadcn/ui aparecem nos ícones quando colapsada. Mobile sidebar permanece intocada.
 
 ## Mudanças
 
-### 1. Criar `src/components/chat/AudioPlayer.tsx` (novo)
-- Copiar literalmente `AudioPlayer`, `AudioPlayerWithMe` e a função `fmtTime` de `src/features/inbox/conversation-panel.tsx` (linhas 1185-1416).
-- Imports necessários: `React`, `Mic/Play/Pause` de `lucide-react`, `ContactAvatar` (mesmo caminho atual), `useProfile` (mesmo hook atual).
-- Exportar `AudioPlayerWithMe` (named export).
+### 1. `src/components/app-sidebar.tsx`
 
-### 2. `src/features/inbox/conversation-panel.tsx` (kanban — refator mínimo)
-- Remover as definições locais de `AudioPlayer`, `AudioPlayerWithMe` e `fmtTime`.
-- Adicionar `import { AudioPlayerWithMe } from "@/components/chat/AudioPlayer";`.
-- Nenhuma outra mudança. A chamada existente em ~linha 833 continua igual.
+**Imports adicionais:**
+- `ChevronsLeft`, `ChevronsRight` de `lucide-react`.
+- `Tooltip, TooltipContent, TooltipTrigger, TooltipProvider` de `@/components/ui/tooltip`.
 
-### 3. `src/components/chat/MessageBubble.tsx` (modo chat)
-- Estender `ChatMessage` com dois campos opcionais: `contactName?: string` e `contactAvatar?: string | null` (preenchidos pelo `MessageThread`).
-- Substituir o bloco `m.message_type === "audio"` (`<audio controls .../>`) por um wrapper estilo kanban que renderiza `<AudioPlayerWithMe src={m.media_url} contactName={m.contactName ?? ""} contactAvatar={m.contactAvatar ?? null} isMe={outbound} />` dentro de uma bolha com mesmo background suave (`color-mix(...var(--brand-400)...)` para outbound, `var(--bg-overlay)` para inbound) e mantendo o relógio + ticks no canto.
-- Texto, imagem, documento e system permanecem intocados.
+**Estado de colapso (dentro de `AppSidebar`):**
+```ts
+const [isCollapsed, setIsCollapsed] = React.useState<boolean>(() =>
+  typeof window !== "undefined" && localStorage.getItem("sidebar_collapsed") === "true"
+);
+React.useEffect(() => {
+  localStorage.setItem("sidebar_collapsed", String(isCollapsed));
+}, [isCollapsed]);
+React.useEffect(() => {
+  const handler = (e: Event) => {
+    const detail = (e as CustomEvent<{ collapsed: boolean }>).detail;
+    if (detail) setIsCollapsed(detail.collapsed);
+  };
+  window.addEventListener("sidebar:setCollapsed", handler);
+  return () => window.removeEventListener("sidebar:setCollapsed", handler);
+}, []);
+```
 
-### 4. `src/components/chat/MessageThread.tsx` (modo chat)
-- Onde monta cada `ChatMessage`, anexar `contactName: contact.name` e `contactAvatar: contact.avatar ?? null` (esses dados já existem no escopo — ver linha 222).
+**Aside:** largura dinâmica + animação:
+```ts
+style={{ width: isCollapsed ? 64 : 240, height: "100vh",
+  background: "var(--bg-surface)", borderRight: "1px solid var(--border)",
+  transition: "width 200ms ease", overflow: "hidden" }}
+```
+
+**Logo:** ocultar o `<span>ZapFlow</span>` quando `isCollapsed`. Centralizar o "Z" (`justifyContent: center` no header). Padding lateral menor quando colapsada.
+
+**Botão toggle** (novo, logo abaixo do header do logo):
+```tsx
+<button onClick={() => setIsCollapsed((p) => !p)}
+  title={isCollapsed ? "Expandir menu" : "Recolher menu"}
+  style={{ display: "flex", alignItems: "center",
+    justifyContent: isCollapsed ? "center" : "flex-end",
+    width: "100%", padding: "6px 8px", background: "transparent",
+    border: "none", cursor: "pointer", color: "var(--text-muted)" }}>
+  {isCollapsed ? <ChevronsRight size={14} /> : <ChevronsLeft size={14} />}
+</button>
+```
+
+**Workspace selector:** quando colapsada, renderizar apenas o quadrado da inicial (`{name.charAt(0)}`) centralizado em 36×36, sem o texto "Workspace pessoal" nem `ChevronsUpDown`.
+
+**Nav items:** envolver tudo em `<TooltipProvider delayDuration={0}>`. Para cada item:
+- `Link` renderiza ícone + `<span>` com `display: isCollapsed ? "none" : "inline"`.
+- Quando `isCollapsed`, ajustar `paddingLeft`/`paddingRight` para centralizar o ícone (`justifyContent: center`, gap 0, padding 0 8px, sem `borderLeft` deslocando — usar `borderLeft: "2px solid transparent"` sempre, mantendo o realce ativo só pela cor de fundo quando colapsada).
+- Envolver o `Link` em `<Tooltip><TooltipTrigger asChild>…</TooltipTrigger><TooltipContent side="right">{item.label}</TooltipContent></Tooltip>` apenas quando `isCollapsed`. Quando expandida, renderiza o `Link` direto (sem Tooltip) para evitar overhead/regressão.
+
+**Rodapé do usuário:** quando `isCollapsed`, ocultar o bloco com nome + email (manter apenas o avatar/quadrado da inicial centralizado, `justifyContent: center`, sem padding lateral excessivo).
+
+### 2. `src/routes/_authenticated.conversations-chat.tsx`
+
+Adicionar `useEffect` no `ChatPage` que dispara o evento e restaura ao desmontar:
+```ts
+import { useEffect } from "react";
+
+useEffect(() => {
+  const previous = localStorage.getItem("sidebar_collapsed") ?? "false";
+  localStorage.setItem("sidebar_chat_previous", previous);
+  window.dispatchEvent(new CustomEvent("sidebar:setCollapsed", { detail: { collapsed: true } }));
+  return () => {
+    const wasCollapsed = localStorage.getItem("sidebar_chat_previous") === "true";
+    window.dispatchEvent(new CustomEvent("sidebar:setCollapsed", { detail: { collapsed: wasCollapsed } }));
+    localStorage.removeItem("sidebar_chat_previous");
+  };
+}, []);
+```
 
 ## Validação
 
-- `/inbox` (kanban): áudios continuam idênticos visualmente e funcionalmente (mesmo componente, agora importado).
-- `/conversations-chat`: áudios inbound mostram avatar do lead com badge de microfone; outbound mostram avatar do perfil logado. Play/pause, seek e tempo funcionam como no kanban.
-- Mensagens de texto/imagem/documento/system no chat permanecem inalteradas.
-- Nenhuma tabela, hook de dados, server function ou lógica de envio é tocada.
+- Outras rotas (kanban, agenda, contatos, etc.): sidebar respeita estado salvo em localStorage; toggle manual funciona com animação de 200ms.
+- `/conversations-chat`: ao entrar, sidebar recolhe para 64px automaticamente; ao sair (via navegação para outra rota), restaura ao estado anterior.
+- Recolhida: ícones centralizados, tooltip à direita ao hover, "Z" do logo visível sem "ZapFlow", avatar do usuário visível sem nome/email.
+- `mobile-sidebar.tsx`, `ChatView.tsx`, kanban e demais arquivos não são tocados.
 
 ## Riscos
 
-- Único arquivo do kanban tocado é `conversation-panel.tsx`, e apenas para trocar definição local por import — comportamento idêntico. Se preferir zero toque no kanban, a alternativa seria duplicar ~200 linhas em `src/components/chat/AudioPlayer.tsx` (já discutido e rejeitado).
+- O auto-recolher usa `useEffect` sem dependências; se o componente da rota remontar (por exemplo, ao trocar `?id=`), o "previous" capturado seria sobrescrito com `true`. Mitigação: a rota usa `validateSearch` sem `key`, então a troca de `?id=` não remonta o componente — apenas atualiza o search. Caso queira garantia extra, podemos checar se `sidebar_chat_previous` já existe antes de salvar; incluo essa proteção na implementação.
