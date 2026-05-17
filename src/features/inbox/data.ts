@@ -25,6 +25,10 @@ export interface ContactCard {
   lastDirection?: "inbound" | "outbound" | null;
   priority: "normal" | "urgent";
   kanban_column: KanbanColumnId;
+  email?: string | null;
+  notes?: string | null;
+  is_blocked?: boolean;
+  is_archived?: boolean;
 }
 
 // Defaults aplicados quando o usuário ainda não tem colunas no banco.

@@ -39,6 +39,7 @@ import {
   formatDuration,
   type Service,
 } from "@/features/services/data";
+import { useContactActions } from "@/hooks/use-contact-actions";
 
 type Tab = "conversation" | "contact" | "services" | "history";
 
@@ -133,6 +134,7 @@ export function ConversationPanel({
   const [editingId, setEditingId] = React.useState<string | null>(null);
   const [forwardSource, setForwardSource] = React.useState<ForwardSource | null>(null);
   const [transferOpen, setTransferOpen] = React.useState(false);
+  const actions = useContactActions();
   const open = !!contact;
   const scrollRef = React.useRef<HTMLDivElement | null>(null);
   const taRef = React.useRef<HTMLTextAreaElement | null>(null);
@@ -386,11 +388,6 @@ export function ConversationPanel({
     await sendAudioFn({ data: { contactId: contact.id, url, quoted } });
   };
 
-  const menuAction = (label: string) => {
-    setMenuOpen(false);
-    toast.info(`${label} — em breve.`);
-  };
-
   return (
     <>
       {open && (
@@ -503,19 +500,31 @@ export function ConversationPanel({
                   <MenuItem icon={<UserPlus size={14} />} onClick={() => { setMenuOpen(false); setTransferOpen(true); }}>
                     Transferir para agente
                   </MenuItem>
-                  <MenuItem icon={<AlertOctagon size={14} />} onClick={() => menuAction("Marcar como urgente")}>
-                    Marcar como urgente
+                  <MenuItem
+                    icon={<AlertOctagon size={14} style={{ color: contact.priority === "urgent" ? "var(--text-muted)" : "#EF4444" }} />}
+                    onClick={() => { setMenuOpen(false); void actions.toggleUrgent(contact.id, contact.priority); }}
+                  >
+                    {contact.priority === "urgent" ? "Remover urgência" : "Marcar como urgente"}
                   </MenuItem>
-                  <MenuItem icon={<Tag size={14} />} onClick={() => menuAction("Adicionar tag")}>
+                  <MenuItem icon={<Tag size={14} />} onClick={() => { setMenuOpen(false); setTab("contact"); }}>
                     Adicionar tag
                   </MenuItem>
                   <MenuItem icon={<CalendarPlus size={14} />} onClick={() => { setMenuOpen(false); openSchedule(); }}>
                     Agendar atendimento
                   </MenuItem>
-                  <MenuItem icon={<Ban size={14} />} onClick={() => menuAction("Bloquear contato")}>
-                    Bloquear contato
+                  <MenuItem
+                    icon={<Ban size={14} style={{ color: "#EF4444" }} />}
+                    onClick={() => {
+                      setMenuOpen(false);
+                      const blocked = !!contact.is_blocked;
+                      if (confirm(`${blocked ? "Desbloquear" : "Bloquear"} ${contact.name}?`)) {
+                        void actions.toggleBlock(contact.id, blocked);
+                      }
+                    }}
+                  >
+                    {contact.is_blocked ? "Desbloquear contato" : "Bloquear contato"}
                   </MenuItem>
-                  <MenuItem icon={<ExternalLink size={14} />} onClick={() => menuAction("Ver perfil completo")}>
+                  <MenuItem icon={<ExternalLink size={14} />} onClick={() => { setMenuOpen(false); setTab("contact"); }}>
                     Ver perfil completo
                   </MenuItem>
                 </div>
@@ -1562,32 +1571,42 @@ function Field({
 }
 
 function ContactTab({ contact }: { contact: Contact }) {
+  const actions = useContactActions();
   const [name, setName] = React.useState(contact.name);
-  const [phone, setPhone] = React.useState(contact.phone);
-  const [email, setEmail] = React.useState("");
-  const [notes, setNotes] = React.useState("");
-  const [tags, setTags] = React.useState<string[]>(contact.tags);
+  const [email, setEmail] = React.useState(contact.email ?? "");
+  const [notes, setNotes] = React.useState(contact.notes ?? "");
   const [newTag, setNewTag] = React.useState("");
+  const [saving, setSaving] = React.useState(false);
+  const tags = contact.tags ?? [];
 
   React.useEffect(() => {
     setName(contact.name);
-    setPhone(contact.phone);
-    setEmail("");
-    setNotes("");
-    setTags(contact.tags);
-  }, [contact.id]);
-
-  const addTag = () => {
-    const t = newTag.trim();
-    if (!t || tags.includes(t)) return;
-    setTags([...tags, t]);
+    setEmail(contact.email ?? "");
+    setNotes(contact.notes ?? "");
     setNewTag("");
+  }, [contact.id, contact.email, contact.notes, contact.name]);
+
+  const handleSave = async () => {
+    setSaving(true);
+    await actions.saveContact(contact.id, {
+      name,
+      email: email.trim() || null,
+      notes: notes.trim() || null,
+    });
+    setSaving(false);
+  };
+
+  const handleAddTag = async () => {
+    const t = newTag.trim();
+    if (!t) return;
+    const ok = await actions.addTag(contact.id, t, tags);
+    if (ok) setNewTag("");
   };
 
   return (
     <div className="flex flex-col" style={{ gap: 12 }}>
       <Field label="Nome" value={name} onChange={setName} />
-      <Field label="Telefone" value={phone} onChange={setPhone} />
+      <Field label="Telefone" value={contact.phone} onChange={() => {}} />
       <Field label="Email" value={email} onChange={setEmail} />
       <Field label="Observações" value={notes} onChange={setNotes} multiline />
 
@@ -1620,7 +1639,7 @@ function ContactTab({ contact }: { contact: Contact }) {
               {t}
               <button
                 type="button"
-                onClick={() => setTags(tags.filter((x) => x !== t))}
+                onClick={() => void actions.removeTag(contact.id, t, tags)}
                 aria-label={`Remover ${t}`}
                 style={{
                   width: 16,
@@ -1642,9 +1661,9 @@ function ContactTab({ contact }: { contact: Contact }) {
               value={newTag}
               onChange={(e) => setNewTag(e.target.value)}
               onKeyDown={(e) => {
-                if (e.key === "Enter") {
+                if (e.key === "Enter" || e.key === ",") {
                   e.preventDefault();
-                  addTag();
+                  void handleAddTag();
                 }
               }}
               placeholder="Nova tag…"
@@ -1662,7 +1681,7 @@ function ContactTab({ contact }: { contact: Contact }) {
             />
             <button
               type="button"
-              onClick={addTag}
+              onClick={() => void handleAddTag()}
               aria-label="Adicionar tag"
               style={{
                 width: 24,
@@ -1679,40 +1698,19 @@ function ContactTab({ contact }: { contact: Contact }) {
             </button>
           </div>
         </div>
-      </div>
-
-      <div className="flex flex-col" style={{ gap: 6, marginTop: 4 }}>
-        <span
-          style={{
-            fontSize: 11,
-            color: "var(--text-muted)",
-            textTransform: "uppercase",
-            letterSpacing: "0.05em",
-          }}
-        >
-          Histórico de serviços
+        <span style={{ fontSize: 10, color: "var(--text-muted)" }}>
+          Enter ou vírgula para adicionar
         </span>
-        <div
-          style={{
-            fontSize: 12,
-            color: "var(--text-muted)",
-            padding: 12,
-            border: "1px dashed var(--border)",
-            borderRadius: 8,
-            textAlign: "center",
-          }}
-        >
-          Nenhum serviço registrado para este contato.
-        </div>
       </div>
 
       <button
         type="button"
-        onClick={() => toast.success("Contato atualizado.")}
+        onClick={() => void handleSave()}
+        disabled={saving}
         className="btn-primary"
-        style={{ alignSelf: "flex-start", marginTop: 4 }}
+        style={{ alignSelf: "flex-start", marginTop: 4, opacity: saving ? 0.6 : 1 }}
       >
-        Salvar alterações
+        {saving ? "Salvando…" : "Salvar alterações"}
       </button>
     </div>
   );

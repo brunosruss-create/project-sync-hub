@@ -34,6 +34,7 @@ import { supabase } from "@/integrations/supabase/client";
 import { useAuth } from "@/hooks/use-auth";
 import { useWorkspaceOwnerId } from "@/hooks/use-workspace-owner";
 import { useRole } from "@/hooks/use-role";
+import { useContactActions } from "@/hooks/use-contact-actions";
 
 export const Route = createFileRoute("/_authenticated/inbox")({
   component: InboxPage,
@@ -124,22 +125,29 @@ function InboxPage() {
       lastDirection: r.last_direction ?? null,
       priority: r.priority === "urgent" ? "urgent" : "normal",
       kanban_column: (r.kanban_column ?? "waiting") as KanbanColumnId,
+      email: r.email ?? null,
+      notes: r.notes ?? null,
+      is_blocked: !!r.is_blocked,
+      is_archived: !!r.is_archived,
     });
+
+    const SELECT_FULL =
+      "id,name,phone,avatar_url,kanban_column,assigned_agent_id,tags,priority,is_unread,unread_count,last_direction,last_message,last_message_at,email,notes,is_blocked,is_archived";
+    const SELECT_LEGACY =
+      "id,name,phone,avatar_url,kanban_column,assigned_agent_id,tags,priority,is_unread,last_message,last_message_at";
 
     const load = async () => {
       let { data, error } = await supabase
         .from("contacts")
-        .select(
-          "id,name,phone,avatar_url,kanban_column,assigned_agent_id,tags,priority,is_unread,unread_count,last_direction,last_message,last_message_at",
-        )
+        .select(SELECT_FULL)
+        .eq("is_archived", false)
+        .eq("is_blocked", false)
         .order("last_message_at", { ascending: false, nullsFirst: false });
       // Fallback se as colunas novas ainda não existirem no banco
-      if (error && /unread_count|last_direction/i.test(error.message)) {
+      if (error && /email|notes|is_blocked|is_archived|unread_count|last_direction/i.test(error.message)) {
         const r = await supabase
           .from("contacts")
-          .select(
-            "id,name,phone,avatar_url,kanban_column,assigned_agent_id,tags,priority,is_unread,last_message,last_message_at",
-          )
+          .select(SELECT_LEGACY)
           .order("last_message_at", { ascending: false, nullsFirst: false });
         data = r.data as any;
         error = r.error;
@@ -201,9 +209,25 @@ function InboxPage() {
     const onFocus = () => void load();
     window.addEventListener("focus", onFocus);
 
+    // Sincroniza estado local quando useContactActions emite uma mudança
+    const onContactUpdated = (e: Event) => {
+      const detail = (e as CustomEvent<{ id: string; patch: Partial<Contact> & { is_archived?: boolean; is_blocked?: boolean } }>).detail;
+      if (!detail?.id) return;
+      const { id, patch } = detail;
+      setContacts((prev) => {
+        // Remove se foi arquivado ou bloqueado
+        if (patch.is_archived || patch.is_blocked) {
+          return prev.filter((c) => c.id !== id);
+        }
+        return prev.map((c) => (c.id === id ? { ...c, ...patch } as Contact : c));
+      });
+    };
+    window.addEventListener("zf:contact-updated", onContactUpdated as EventListener);
+
     return () => {
       cancelled = true;
       window.removeEventListener("focus", onFocus);
+      window.removeEventListener("zf:contact-updated", onContactUpdated as EventListener);
       void supabase.removeChannel(channel);
     };
   }, [workspaceOwnerId]);
@@ -320,6 +344,8 @@ function InboxPage() {
     };
   }, [workspaceOwnerId]);
 
+  const actions = useContactActions();
+
   const handleMenuAction = React.useCallback(async (a: CardMenuAction) => {
     const c = a.contact;
     if (a.type === "assign") {
@@ -339,57 +365,18 @@ function InboxPage() {
       return;
     }
     if (a.type === "toggle-urgent") {
-      const next: "normal" | "urgent" = c.priority === "urgent" ? "normal" : "urgent";
-      setContacts((prev) => prev.map((x) => (x.id === c.id ? { ...x, priority: next } : x)));
-      const { error } = await supabase
-        .from("contacts")
-        .update({ priority: next })
-        .eq("id", c.id);
-      if (error) {
-        notify.error(error.message ?? "Falha ao atualizar prioridade.");
-        setContacts((prev) => prev.map((x) => (x.id === c.id ? { ...x, priority: c.priority } : x)));
-      } else {
-        notify.success(next === "urgent" ? "Marcado como urgente" : "Urgência removida");
-      }
+      await actions.toggleUrgent(c.id, c.priority);
       return;
     }
     if (a.type === "move") {
-      const col = a.column;
-      setContacts((prev) => prev.map((x) => (x.id === c.id ? { ...x, kanban_column: col } : x)));
-      const { error } = await supabase
-        .from("contacts")
-        .update({ kanban_column: col })
-        .eq("id", c.id);
-      if (error) {
-        notify.error(error.message ?? "Falha ao mover.");
-        setContacts((prev) => prev.map((x) => (x.id === c.id ? { ...x, kanban_column: c.kanban_column } : x)));
-      } else {
-        notify.success(`Movido para ${columns.find((cc) => cc.slug === col)?.label ?? col}`);
-      }
+      await actions.moveToColumn(c.id, a.column);
       return;
     }
     if (a.type === "archive") {
-      setContacts((prev) => prev.filter((x) => x.id !== c.id));
-      let { error } = await supabase
-        .from("contacts")
-        .update({ archived_at: new Date().toISOString() })
-        .eq("id", c.id);
-      if (error && /archived_at/i.test(error.message ?? "")) {
-        const retry = await supabase
-          .from("contacts")
-          .update({ kanban_column: "archived" })
-          .eq("id", c.id);
-        error = retry.error;
-      }
-      if (error) {
-        notify.error(error.message ?? "Falha ao arquivar.");
-        setContacts((prev) => [...prev, c].sort((x, y) => y.lastMessageAt.getTime() - x.lastMessageAt.getTime()));
-      } else {
-        notify.success(`"${c.name}" arquivado`);
-      }
+      await actions.archiveContact(c.id);
       return;
     }
-  }, []);
+  }, [actions]);
 
   // Título da aba com total de não lidas
   React.useEffect(() => {
