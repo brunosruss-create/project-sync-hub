@@ -1,33 +1,29 @@
-## Causa
+## Objetivo
 
-Ao desbloquear pelo menu da conversa, o hook `useContactActions.toggleBlock` atualiza o Supabase e dispara `zf:contact-updated`, mas:
-
-1. O `ConversationPanel` aberto recebe o contato via prop `contact` vinda do `openContact` (estado em `_authenticated.inbox.tsx` / `_authenticated.contacts.tsx`). O listener de `zf:contact-updated` só atualiza o array `contacts`, **não** o `openContact` — então `contact.is_blocked` continua `true` na UI até dar reload.
-2. Não existe assinatura realtime na tabela `contacts`, então mudanças feitas em outra aba/dispositivo (super-admin, outro atendente) só aparecem após refresh.
+Bloquear/desbloquear não deve mais remover o contato da lista do kanban. O contato bloqueado permanece no card com um ícone de cadeado visível, e a mudança aparece em tempo real em todas as abas/dispositivos sem precisar dar refresh.
 
 ## Mudanças
 
 ### 1. `src/routes/_authenticated.inbox.tsx`
-- No handler `onContactUpdated`, além de atualizar a lista, atualizar `openContact` quando o id coincidir; se `is_blocked` ou `is_archived` virar `true`, fechar o painel (`setOpenContact(null)`).
-- Adicionar canal Supabase realtime `postgres_changes` em `public.contacts` (event `UPDATE`, filtrado por `owner_user_id=eq.${workspaceOwnerId}`) que aplica o mesmo patch local (sem precisar de novo `load()`).
+- No `load()`: remover o filtro `.eq("is_blocked", false)` para que contatos bloqueados continuem aparecendo.
+- No handler de realtime `UPDATE` em `contacts`: remover o branch que filtrava contatos com `is_blocked || is_archived` do array; manter só o filtro de `is_archived` (arquivados continuam saindo da lista). Bloqueados são apenas atualizados, não removidos.
+- No handler `setOpenContact` (realtime + `zf:contact-updated`): não fechar o painel quando `is_blocked` muda; só fechar em `is_archived`. Aplicar o patch normalmente.
+- No listener `zf:contact-updated`: idem — não remover bloqueados da lista, só arquivados.
 
-### 2. `src/routes/_authenticated.contacts.tsx`
-- Adicionar listener `zf:contact-updated` que atualiza `contacts` e `openContact`.
-- Adicionar mesma assinatura realtime de `public.contacts`.
-- Garantir que `onContactUpdate` (já passado ao `ConversationPanel`) também atualize `openContact`, não só a lista.
+### 2. `src/features/inbox/contact-card.tsx`
+- Adicionar ícone `Lock` (lucide-react) ao lado do nome (ou no canto) quando `contact.is_blocked === true`. Estilo discreto, cor `var(--text-muted)` ou `var(--danger)`, tamanho 12–13px. Tooltip "Contato bloqueado".
+- Quando bloqueado, opcional: leve `opacity: 0.7` no card para sinalizar visualmente.
 
-### 3. `src/hooks/use-contact-actions.ts`
-- Sem mudanças funcionais. O `emitUpdate` já dispara o patch correto.
+### 3. Realtime entre abas
+- Garantir que o usuário aplicou `supabase/manual/20260605000000_contacts_realtime.sql` (adiciona `contacts` ao publication `supabase_realtime` + `replica identity full`). Sem isso, mudanças vindas de outras abas só aparecem com reload — o defensive fallback `void load()` já trata payloads parciais.
+- O evento local `zf:contact-updated` continua resolvendo o realtime dentro da mesma aba (instantâneo).
 
-### 4. Migration: `supabase/manual/20260605000000_contacts_realtime.sql`
-```sql
-alter publication supabase_realtime add table public.contacts;
-alter table public.contacts replica identity full;
-```
-(usar `do $$ ... exception when duplicate_object then null; end $$;` para ser idempotente)
+### 4. `src/routes/_authenticated.contacts.tsx`
+- Mesma lógica: remover do handler `zf:contact-updated` e do realtime qualquer remoção baseada em `is_blocked` (se houver). Verificar e ajustar consistentemente.
 
-## Resultado
+## Resultado esperado
 
-- Clicar "Desbloquear contato" → o menu instantaneamente vira "Bloquear contato" (sem reload).
-- Bloquear/desbloquear/arquivar em outra aba reflete em tempo real no inbox e na página de contatos.
-- Nenhuma alteração em lógica de mensagens, autenticação ou rotas.
+- Clicar em "Bloquear contato" → cadeado aparece no card imediatamente, contato permanece na coluna, painel continua aberto.
+- Clicar em "Desbloquear" → cadeado some imediatamente.
+- Mudança em outra aba/dispositivo → aparece em tempo real (após aplicar a migration de realtime).
+- Arquivar continua removendo da lista (comportamento atual mantido).
