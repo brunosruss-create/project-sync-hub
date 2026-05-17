@@ -41,6 +41,8 @@ function MessagesPage() {
   const { data: profile } = useProfile();
   const businessName = (profile as { business_name?: string | null } | null | undefined)
     ?.business_name?.trim() || null;
+  const aiEnabled = (profile as { ai_enabled?: boolean | null } | null | undefined)
+    ?.ai_enabled === true;
 
   const q = useQuery({
     queryKey: ["message-templates"],
