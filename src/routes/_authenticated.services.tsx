@@ -43,7 +43,7 @@ function ServicesPage() {
   const { workspaceOwnerId } = useWorkspaceOwnerId();
   const [categories, setCategories] = React.useState<Category[]>(SEED_CATEGORIES);
   const [services, setServices] = React.useState<Service[]>(SEED_SERVICES);
-  const [hydrated, setHydrated] = React.useState(false);
+  void useState; // hydrate flag reservado para futuro uso de estado vazio
   const [activeCat, setActiveCat] = React.useState<string>("all");
   const [query, setQuery] = React.useState("");
   const [editing, setEditing] = React.useState<Editing>(null);
