@@ -229,14 +229,14 @@ function InboxPage() {
       if (!detail?.id) return;
       const { id, patch } = detail;
       setContacts((prev) => {
-        if (patch.is_archived || patch.is_blocked) {
+        if (patch.is_archived) {
           return prev.filter((c) => c.id !== id);
         }
         return prev.map((c) => (c.id === id ? { ...c, ...patch } as Contact : c));
       });
       setOpenContact((cur) => {
         if (!cur || cur.id !== id) return cur;
-        if (patch.is_archived || patch.is_blocked) return null;
+        if (patch.is_archived) return null;
         return { ...cur, ...patch } as Contact;
       });
     };
