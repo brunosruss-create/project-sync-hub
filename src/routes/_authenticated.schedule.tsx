@@ -298,7 +298,7 @@ function SchedulePage() {
       return false;
     }
     nfy.success(exists ? "Agendamento atualizado." : "Agendamento criado.");
-    if (draft.notify_whatsapp) {
+    {
       const rescheduled =
         exists && previous!.starts_at.getTime() !== draft.starts_at.getTime();
       const kind: "created" | "rescheduled" | null = !exists
@@ -307,8 +307,16 @@ function SchedulePage() {
           ? "rescheduled"
           : null;
       if (kind) {
-        void notifyChangeFn({ data: { appointmentId: draft.id, kind } }).catch(
-          (e) => console.warn("[schedule] notify falhou:", e),
+        const payload: {
+          appointmentId: string;
+          kind: "created" | "rescheduled";
+          previousStartsAt?: string;
+        } = { appointmentId: draft.id, kind };
+        if (kind === "rescheduled" && previous) {
+          payload.previousStartsAt = zonedLocalToUtc(previous.starts_at, tz).toISOString();
+        }
+        void notifyChangeFn({ data: payload }).catch((e) =>
+          console.warn("[schedule] notify falhou:", e),
         );
       }
     }
