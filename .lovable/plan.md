@@ -1,46 +1,22 @@
-## Ajustar emojis dos templates padrão
+## Usar o nome real do negócio no preview de `/settings/messages`
 
-Editar `src/lib/message-defaults.ts` removendo emojis dos defaults:
+### Diagnóstico
+O envio real já usa `profile.business_name` (ver `booking-confirmation.server.ts:163/191/219`). O "Salão Bela Vista" aparece **apenas** no preview porque vem do objeto `preview` em `src/lib/message-defaults.ts` (fallback fictício).
 
-**`booking_confirmed`** — remover ✅, 📅, 💼, 👤 (manter 😊 do "Até lá!"):
-```
-Olá {{cliente}}!
+### Mudança
+Em `src/routes/_authenticated.settings.messages.tsx`, ao montar as variáveis do preview, sobrescrever `negocio` com o nome real do workspace (usar o hook `useProfile` que já existe no projeto, lendo `profile.business_name`). Se vazio, manter o valor fictício do default.
 
-Seu agendamento em *{{negocio}}* foi confirmado:
-
-*{{data}} às {{hora}}*
-{{servico}}
-{{profissional}}
-
-Até lá! 😊
-```
-
-**`booking_rescheduled`** — remover 🔄, 📅, 💼, 👤 (manter 😊):
-```
-Olá {{cliente}}!
-
-Seu agendamento em *{{negocio}}* foi *reagendado*:
-
-*{{data}} às {{hora}}*
-{{servico}}
-{{profissional}}
-
-Até lá! 😊
+Pseudo:
+```ts
+const { profile } = useProfile();
+const previewVars = {
+  ...meta.preview,
+  negocio: profile?.business_name || meta.preview.negocio,
+};
+renderTemplate(text, previewVars);
 ```
 
-**`booking_cancelled`** — remover todos os emojis (📅, 💼, 🙏):
-```
-Olá {{cliente}}.
-
-Seu agendamento em *{{negocio}}* foi *cancelado*:
-
-{{data}} às {{hora}}
-{{servico}}
-
-Caso queira remarcar, é só responder esta mensagem.
-```
-
-### Observação
-Isso só altera os **defaults**. Usuários que já salvaram texto customizado em `profiles.msg_booking_*_text` continuam vendo o próprio texto — precisam clicar em "Restaurar padrão" na página `/settings/messages` para pegar a nova versão sem emojis.
-
-Nenhuma migration SQL é necessária.
+### Escopo
+- Apenas frontend (`_authenticated.settings.messages.tsx`).
+- Sem migration, sem mudar defaults, sem mudar lógica de envio.
+- Os defaults em `message-defaults.ts` continuam com "Salão Bela Vista" como fallback caso o workspace ainda não tenha nome configurado.
