@@ -40,11 +40,17 @@ function isUuid(value: string): boolean {
   return /^[0-9a-f]{8}-[0-9a-f]{4}-[1-5][0-9a-f]{3}-[89ab][0-9a-f]{3}-[0-9a-f]{12}$/i.test(value);
 }
 
+const FALLBACK_DESCRIPTION_EXAMPLE =
+  "Descreva o que está incluso, materiais usados, duração média e quaisquer pré-requisitos para o cliente.";
+
 function ServicesPage() {
   const { workspaceOwnerId } = useWorkspaceOwnerId();
   const [categories, setCategories] = React.useState<Category[]>(SEED_CATEGORIES);
   const [services, setServices] = React.useState<Service[]>(SEED_SERVICES);
-  
+  const [descriptionExample, setDescriptionExample] = React.useState<string>(
+    FALLBACK_DESCRIPTION_EXAMPLE,
+  );
+
   const [activeCat, setActiveCat] = React.useState<string>("all");
   const [query, setQuery] = React.useState("");
   const [editing, setEditing] = React.useState<Editing>(null);
@@ -63,7 +69,11 @@ function ServicesPage() {
     if (!workspaceOwnerId) return;
     let cancelled = false;
     (async () => {
-      const [{ data: cats }, { data: svc, error: svcErr }] = await Promise.all([
+      const [
+        { data: cats },
+        { data: svc, error: svcErr },
+        { data: profile },
+      ] = await Promise.all([
         supabase
           .from("service_categories")
           .select("id,name,color,owner_user_id")
@@ -76,11 +86,21 @@ function ServicesPage() {
           )
           .eq("owner_user_id", workspaceOwnerId)
           .order("created_at", { ascending: true }),
+        supabase
+          .from("profiles")
+          .select("ai_segments:segment_id ( example_service_description )")
+          .eq("id", workspaceOwnerId)
+          .maybeSingle(),
       ]);
       if (cancelled) return;
       if (svcErr) {
         console.warn("[services] erro ao ler:", svcErr.message);
         notify.error(`Falha ao carregar serviços: ${svcErr.message}`);
+      }
+      const segExample =
+        (profile as any)?.ai_segments?.example_service_description;
+      if (typeof segExample === "string" && segExample.trim().length > 0) {
+        setDescriptionExample(segExample);
       }
       if (cats && cats.length > 0) {
         setCategories(
@@ -345,6 +365,7 @@ function ServicesPage() {
         <ServiceModal
           initial={editing.mode === "edit" ? editing.service : null}
           categories={categories}
+          descriptionExample={descriptionExample}
           onClose={() => setEditing(null)}
           onSubmit={upsertService}
           onAddCategory={addCategory}
@@ -746,12 +767,14 @@ function EmptyState({ onCreate }: { onCreate: () => void }) {
 function ServiceModal({
   initial,
   categories,
+  descriptionExample,
   onClose,
   onSubmit,
   onAddCategory,
 }: {
   initial: Service | null;
   categories: Category[];
+  descriptionExample: string;
   onClose: () => void;
   onSubmit: (s: Service) => void;
   onAddCategory: (name: string, color: string) => Promise<Category>;
@@ -964,7 +987,7 @@ function ServiceModal({
               <textarea
                 value={description}
                 onChange={(e) => setDescription(e.target.value.slice(0, 500))}
-                placeholder="Ex.: Limpeza de pele profunda com extração de cravos, aplicação de máscara calmante e finalização com protetor solar. Duração aproximada de 1h."
+                placeholder={`Ex.: ${descriptionExample}`}
                 rows={3}
                 style={{
                   ...inputStyle,
