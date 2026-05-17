@@ -32,9 +32,10 @@ type Props = {
   onSendAudio?: (blob: Blob) => Promise<void>;
   replyingTo?: { author: string; content: string; isMe: boolean } | null;
   onCancelReply?: () => void;
+  bookingUrl?: string | null;
 };
 
-export function Composer({ draft, setDraft, taRef, onSend, onClosePanel, onSendAttachments, onSendAudio, replyingTo, onCancelReply }: Props) {
+export function Composer({ draft, setDraft, taRef, onSend, onClosePanel, onSendAttachments, onSendAudio, replyingTo, onCancelReply, bookingUrl }: Props) {
   const hasText = draft.trim().length > 0;
   const nearLimit = draft.length > MAX_CHARS - 200;
 
