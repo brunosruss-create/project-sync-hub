@@ -362,3 +362,134 @@ export async function createAppointmentFromAI(
 
   return { ok: true };
 }
+
+// Reagendamento via IA: muda starts_at/ends_at de um appointment existente.
+export async function rescheduleAppointmentFromAI(
+  data: { appointment_id?: string; new_starts_at?: string; contact_id?: string | null },
+  profile: { id: string; business_timezone: string | null; business_name: string | null },
+): Promise<{ ok: boolean; reason?: string }> {
+  if (!data.appointment_id || !data.new_starts_at) {
+    return { ok: false, reason: "missing_fields" };
+  }
+  const newStart = new Date(data.new_starts_at);
+  if (Number.isNaN(newStart.getTime())) return { ok: false, reason: "bad_date" };
+  if (newStart.getTime() < Date.now() - 60_000) return { ok: false, reason: "past_date" };
+
+  // 1. Busca appointment + serviço + profissional + contato
+  const { data: appt } = await supabaseAdmin
+    .from("appointments")
+    .select(
+      "id, contact_id, professional_id, service_id, status, starts_at, ends_at, " +
+        "services(id,name,duration_minutes,price_cents), " +
+        "professionals(id,name), " +
+        "contacts(name,phone)",
+    )
+    .eq("id", data.appointment_id)
+    .eq("owner_user_id", profile.id)
+    .maybeSingle();
+  if (!appt) return { ok: false, reason: "appointment_not_found" };
+  if (appt.status === "cancelled") return { ok: false, reason: "already_cancelled" };
+  // Escopo do contato: se a IA passou contact_id, precisa bater.
+  if (data.contact_id && appt.contact_id && data.contact_id !== appt.contact_id) {
+    return { ok: false, reason: "contact_mismatch" };
+  }
+
+  const svc = (appt as any).services as ServiceLite | null;
+  if (!svc) return { ok: false, reason: "service_missing" };
+  const newEnd = new Date(newStart.getTime() + svc.duration_minutes * 60_000);
+
+  // 2. Anti-conflito (mesmo profissional, exclui o próprio appointment)
+  if (appt.professional_id) {
+    const { data: conflict } = await supabaseAdmin
+      .from("appointments")
+      .select("id")
+      .eq("owner_user_id", profile.id)
+      .eq("professional_id", appt.professional_id)
+      .lt("starts_at", newEnd.toISOString())
+      .gt("ends_at", newStart.toISOString())
+      .neq("status", "cancelled")
+      .neq("id", appt.id)
+      .maybeSingle();
+    if (conflict) return { ok: false, reason: "slot_taken" };
+  }
+
+  // 3. Update
+  const { error: uerr } = await supabaseAdmin
+    .from("appointments")
+    .update({
+      starts_at: newStart.toISOString(),
+      ends_at: newEnd.toISOString(),
+    })
+    .eq("id", appt.id)
+    .eq("owner_user_id", profile.id);
+  if (uerr) return { ok: false, reason: "update_failed" };
+
+  // 4. Confirmação WhatsApp
+  const contact = (appt as any).contacts as { name: string; phone: string } | null;
+  const professional = ((appt as any).professionals as { id: string; name: string } | null) ?? null;
+  if (contact) {
+    await sendBookingReschedule({
+      profile: {
+        id: profile.id,
+        business_name: profile.business_name,
+        business_timezone: profile.business_timezone,
+      },
+      appointment: { id: appt.id, starts_at: newStart.toISOString() },
+      service: svc,
+      professional,
+      client: { client_name: contact.name, client_phone: contact.phone },
+    });
+  }
+  return { ok: true };
+}
+
+// Cancelamento via IA: marca appointment como cancelled.
+export async function cancelAppointmentFromAI(
+  data: { appointment_id?: string; reason?: string; contact_id?: string | null },
+  profile: { id: string; business_timezone: string | null; business_name: string | null },
+): Promise<{ ok: boolean; reason?: string }> {
+  if (!data.appointment_id) return { ok: false, reason: "missing_fields" };
+
+  const { data: appt } = await supabaseAdmin
+    .from("appointments")
+    .select(
+      "id, contact_id, status, starts_at, notes, " +
+        "services(id,name,duration_minutes,price_cents), " +
+        "contacts(name,phone)",
+    )
+    .eq("id", data.appointment_id)
+    .eq("owner_user_id", profile.id)
+    .maybeSingle();
+  if (!appt) return { ok: false, reason: "appointment_not_found" };
+  if (appt.status === "cancelled") return { ok: false, reason: "already_cancelled" };
+  if (data.contact_id && appt.contact_id && data.contact_id !== appt.contact_id) {
+    return { ok: false, reason: "contact_mismatch" };
+  }
+
+  const notesAppend = data.reason ? `\n[IA cancelou: ${data.reason}]` : "\n[IA cancelou]";
+  const { error: uerr } = await supabaseAdmin
+    .from("appointments")
+    .update({
+      status: "cancelled",
+      notes: ((appt as any).notes ?? "") + notesAppend,
+    })
+    .eq("id", appt.id)
+    .eq("owner_user_id", profile.id);
+  if (uerr) return { ok: false, reason: "update_failed" };
+
+  const svc = (appt as any).services as ServiceLite | null;
+  const contact = (appt as any).contacts as { name: string; phone: string } | null;
+  if (svc && contact) {
+    await sendBookingCancellation({
+      profile: {
+        id: profile.id,
+        business_name: profile.business_name,
+        business_timezone: profile.business_timezone,
+      },
+      appointment: { id: appt.id, starts_at: appt.starts_at },
+      service: svc,
+      client: { client_name: contact.name, client_phone: contact.phone },
+    });
+  }
+  return { ok: true };
+}
