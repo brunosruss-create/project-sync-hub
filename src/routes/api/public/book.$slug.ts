@@ -119,7 +119,7 @@ export const Route = createFileRoute("/api/public/book/$slug")({
           // Sem subconjunto definido = todos os serviços ativos ficam disponíveis.
           let svcQ = supabaseAdmin
             .from("services")
-            .select("id,name,description,price_cents,duration_minutes,emoji,color")
+            .select("id,name,description,price_cents,duration_minutes,color")
             .eq("owner_user_id", profile.id)
             .eq("status", "active");
           if (serviceIds.length > 0) svcQ = svcQ.in("id", serviceIds);
