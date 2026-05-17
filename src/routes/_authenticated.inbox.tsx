@@ -188,7 +188,14 @@ function InboxPage() {
         "postgres_changes",
         { event: "UPDATE", schema: "public", table: "contacts", filter: `owner_user_id=eq.${workspaceOwnerId}` },
         (payload) => {
-          const row = mapRow(payload.new as any);
+          const raw = payload.new as any;
+          // Sem `replica identity full` aplicado, o payload vem só com o id.
+          // Nesse caso, recarrega em vez de corromper o estado local.
+          if (!raw || typeof raw.phone !== "string") {
+            void load();
+            return;
+          }
+          const row = mapRow(raw);
           setContacts((prev) => {
             if (row.is_blocked || row.is_archived) {
               return prev.filter((c) => c.id !== row.id);

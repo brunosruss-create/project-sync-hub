@@ -93,7 +93,9 @@ function ContactsPage() {
         "postgres_changes",
         { event: "UPDATE", schema: "public", table: "contacts" },
         (payload) => {
-          const row = mapRow(payload.new as any);
+          const raw = payload.new as any;
+          if (!raw || typeof raw.phone !== "string") return; // payload parcial sem replica identity full
+          const row = mapRow(raw);
           setContacts((prev) => prev.map((c) => (c.id === row.id ? { ...c, ...row } : c)));
           setOpenContact((cur) => (cur && cur.id === row.id ? { ...cur, ...row } : cur));
         },
