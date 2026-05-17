@@ -451,7 +451,7 @@ export async function cancelAppointmentFromAI(
 ): Promise<{ ok: boolean; reason?: string }> {
   if (!data.appointment_id) return { ok: false, reason: "missing_fields" };
 
-  const { data: appt } = await supabaseAdmin
+  const { data: apptRaw } = await supabaseAdmin
     .from("appointments")
     .select(
       "id, contact_id, status, starts_at, notes, " +
@@ -461,6 +461,7 @@ export async function cancelAppointmentFromAI(
     .eq("id", data.appointment_id)
     .eq("owner_user_id", profile.id)
     .maybeSingle();
+  const appt = apptRaw as any;
   if (!appt) return { ok: false, reason: "appointment_not_found" };
   if (appt.status === "cancelled") return { ok: false, reason: "already_cancelled" };
   if (data.contact_id && appt.contact_id && data.contact_id !== appt.contact_id) {
