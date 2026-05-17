@@ -442,9 +442,10 @@ function buildServicesLayer(
       "REGRAS INVIOLÁVEIS:",
       "1. NÃO liste, descreva, sugira ou cite qualquer serviço — nem genérico, nem do ramo, nem do que 'normalmente' um negócio assim faz.",
       "2. NÃO use a descrição do negócio, o segmento, o nome do estabelecimento ou conhecimento geral do ramo para inferir serviços.",
-      "3. Se o cliente perguntar o que vocês fazem / quais serviços / preços / agendar algo, responda no espírito de:",
+      "3. Se — e SOMENTE se — o cliente perguntar QUAIS SERVIÇOS o negócio oferece, O QUE VOCÊS FAZEM, ou PREÇOS, responda no espírito de:",
       "   \"No momento ainda não temos o catálogo de serviços cadastrado por aqui. Vou encaminhar você para um atendente humano que pode te passar todos os detalhes.\"",
-      "4. Em seguida, ofereça encaminhar para um atendente humano.",
+      "4. ESTA regra NÃO se aplica a perguntas sobre profissionais, horários, endereço, telefone ou agendamento — para essas, use os blocos PROFISSIONAIS, AGENDA e DADOS DE CONTATO. A ausência de catálogo NÃO impede responder essas perguntas.",
+      "5. Para agendamento sem serviço específico citado: confirme dia/hora/profissional normalmente; só mencione 'não temos catálogo' se o cliente perguntar QUAL serviço escolher.",
     ].join("\n");
   }
 
