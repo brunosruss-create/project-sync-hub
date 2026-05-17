@@ -125,22 +125,29 @@ function InboxPage() {
       lastDirection: r.last_direction ?? null,
       priority: r.priority === "urgent" ? "urgent" : "normal",
       kanban_column: (r.kanban_column ?? "waiting") as KanbanColumnId,
+      email: r.email ?? null,
+      notes: r.notes ?? null,
+      is_blocked: !!r.is_blocked,
+      is_archived: !!r.is_archived,
     });
+
+    const SELECT_FULL =
+      "id,name,phone,avatar_url,kanban_column,assigned_agent_id,tags,priority,is_unread,unread_count,last_direction,last_message,last_message_at,email,notes,is_blocked,is_archived";
+    const SELECT_LEGACY =
+      "id,name,phone,avatar_url,kanban_column,assigned_agent_id,tags,priority,is_unread,last_message,last_message_at";
 
     const load = async () => {
       let { data, error } = await supabase
         .from("contacts")
-        .select(
-          "id,name,phone,avatar_url,kanban_column,assigned_agent_id,tags,priority,is_unread,unread_count,last_direction,last_message,last_message_at",
-        )
+        .select(SELECT_FULL)
+        .eq("is_archived", false)
+        .eq("is_blocked", false)
         .order("last_message_at", { ascending: false, nullsFirst: false });
       // Fallback se as colunas novas ainda não existirem no banco
-      if (error && /unread_count|last_direction/i.test(error.message)) {
+      if (error && /email|notes|is_blocked|is_archived|unread_count|last_direction/i.test(error.message)) {
         const r = await supabase
           .from("contacts")
-          .select(
-            "id,name,phone,avatar_url,kanban_column,assigned_agent_id,tags,priority,is_unread,last_message,last_message_at",
-          )
+          .select(SELECT_LEGACY)
           .order("last_message_at", { ascending: false, nullsFirst: false });
         data = r.data as any;
         error = r.error;
