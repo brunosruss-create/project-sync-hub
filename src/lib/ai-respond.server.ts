@@ -1,4 +1,6 @@
 import { supabaseAdmin } from "@/integrations/supabase/client.server";
+import { createAppointmentFromAI } from "@/lib/booking-confirmation";
+import { getBookingUrl } from "@/lib/booking-url";
 
 type DayCfg = {
   enabled?: boolean;
