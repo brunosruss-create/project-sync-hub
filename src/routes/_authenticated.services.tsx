@@ -1,6 +1,7 @@
 import * as React from "react";
 import { createFileRoute } from "@tanstack/react-router";
-import { Plus, Search, Pencil, Archive, X, Check } from "lucide-react";
+import { Plus, Search, Pencil, Archive, X, Check, MoreVertical, Trash2 } from "lucide-react";
+import { ConfirmDialog } from "@/components/confirm-dialog";
 import { notify } from "@/lib/notify";
 import { supabase } from "@/integrations/supabase/client";
 import {
