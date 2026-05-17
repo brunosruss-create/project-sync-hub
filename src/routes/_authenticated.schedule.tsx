@@ -1689,6 +1689,7 @@ function AppointmentModal({
   );
   const [agentId, setAgentId] = React.useState(initial?.agent_id ?? agents[0]?.id ?? "");
   const [date, setDate] = React.useState(toDateInput(baseDate));
+  const [dateText, setDateText] = React.useState(formatDateBR(toDateInput(baseDate)));
   const [time, setTime] = React.useState(baseHM);
   const [notes, setNotes] = React.useState(initial?.notes ?? "");
   const [notify, setNotify] = React.useState(initial?.notify_whatsapp ?? true);
