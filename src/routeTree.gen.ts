@@ -36,6 +36,7 @@ import { Route as AuthenticatedSettingsWhatsappRouteImport } from './routes/_aut
 import { Route as AuthenticatedSettingsTeamRouteImport } from './routes/_authenticated.settings.team'
 import { Route as AuthenticatedSettingsProfileRouteImport } from './routes/_authenticated.settings.profile'
 import { Route as AuthenticatedSettingsProfessionalsRouteImport } from './routes/_authenticated.settings.professionals'
+import { Route as AuthenticatedSettingsBookingRouteImport } from './routes/_authenticated.settings.booking'
 import { Route as AuthenticatedSettingsBillingRouteImport } from './routes/_authenticated.settings.billing'
 import { Route as ApiPublicEvolutionInstanceIdRouteImport } from './routes/api/public/evolution.$instanceId'
 import { Route as ApiPublicBookSlugRouteImport } from './routes/api/public/book.$slug'
@@ -185,6 +186,12 @@ const AuthenticatedSettingsProfessionalsRoute =
     path: '/settings/professionals',
     getParentRoute: () => AuthenticatedRoute,
   } as any)
+const AuthenticatedSettingsBookingRoute =
+  AuthenticatedSettingsBookingRouteImport.update({
+    id: '/settings/booking',
+    path: '/settings/booking',
+    getParentRoute: () => AuthenticatedRoute,
+  } as any)
 const AuthenticatedSettingsBillingRoute =
   AuthenticatedSettingsBillingRouteImport.update({
     id: '/settings/billing',
@@ -221,6 +228,7 @@ export interface FileRoutesByFullPath {
   '/auth/callback': typeof AuthCallbackRoute
   '/book/$slug': typeof BookSlugRoute
   '/settings/billing': typeof AuthenticatedSettingsBillingRoute
+  '/settings/booking': typeof AuthenticatedSettingsBookingRoute
   '/settings/professionals': typeof AuthenticatedSettingsProfessionalsRoute
   '/settings/profile': typeof AuthenticatedSettingsProfileRoute
   '/settings/team': typeof AuthenticatedSettingsTeamRoute
@@ -252,6 +260,7 @@ export interface FileRoutesByTo {
   '/auth/callback': typeof AuthCallbackRoute
   '/book/$slug': typeof BookSlugRoute
   '/settings/billing': typeof AuthenticatedSettingsBillingRoute
+  '/settings/booking': typeof AuthenticatedSettingsBookingRoute
   '/settings/professionals': typeof AuthenticatedSettingsProfessionalsRoute
   '/settings/profile': typeof AuthenticatedSettingsProfileRoute
   '/settings/team': typeof AuthenticatedSettingsTeamRoute
@@ -285,6 +294,7 @@ export interface FileRoutesById {
   '/auth/callback': typeof AuthCallbackRoute
   '/book/$slug': typeof BookSlugRoute
   '/_authenticated/settings/billing': typeof AuthenticatedSettingsBillingRoute
+  '/_authenticated/settings/booking': typeof AuthenticatedSettingsBookingRoute
   '/_authenticated/settings/professionals': typeof AuthenticatedSettingsProfessionalsRoute
   '/_authenticated/settings/profile': typeof AuthenticatedSettingsProfileRoute
   '/_authenticated/settings/team': typeof AuthenticatedSettingsTeamRoute
@@ -318,6 +328,7 @@ export interface FileRouteTypes {
     | '/auth/callback'
     | '/book/$slug'
     | '/settings/billing'
+    | '/settings/booking'
     | '/settings/professionals'
     | '/settings/profile'
     | '/settings/team'
@@ -349,6 +360,7 @@ export interface FileRouteTypes {
     | '/auth/callback'
     | '/book/$slug'
     | '/settings/billing'
+    | '/settings/booking'
     | '/settings/professionals'
     | '/settings/profile'
     | '/settings/team'
@@ -381,6 +393,7 @@ export interface FileRouteTypes {
     | '/auth/callback'
     | '/book/$slug'
     | '/_authenticated/settings/billing'
+    | '/_authenticated/settings/booking'
     | '/_authenticated/settings/professionals'
     | '/_authenticated/settings/profile'
     | '/_authenticated/settings/team'
@@ -599,6 +612,13 @@ declare module '@tanstack/react-router' {
       preLoaderRoute: typeof AuthenticatedSettingsProfessionalsRouteImport
       parentRoute: typeof AuthenticatedRoute
     }
+    '/_authenticated/settings/booking': {
+      id: '/_authenticated/settings/booking'
+      path: '/settings/booking'
+      fullPath: '/settings/booking'
+      preLoaderRoute: typeof AuthenticatedSettingsBookingRouteImport
+      parentRoute: typeof AuthenticatedRoute
+    }
     '/_authenticated/settings/billing': {
       id: '/_authenticated/settings/billing'
       path: '/settings/billing'
@@ -657,6 +677,7 @@ interface AuthenticatedRouteChildren {
   AuthenticatedServicesRoute: typeof AuthenticatedServicesRoute
   AuthenticatedSuperAdminRoute: typeof AuthenticatedSuperAdminRouteWithChildren
   AuthenticatedSettingsBillingRoute: typeof AuthenticatedSettingsBillingRoute
+  AuthenticatedSettingsBookingRoute: typeof AuthenticatedSettingsBookingRoute
   AuthenticatedSettingsProfessionalsRoute: typeof AuthenticatedSettingsProfessionalsRoute
   AuthenticatedSettingsProfileRoute: typeof AuthenticatedSettingsProfileRoute
   AuthenticatedSettingsTeamRoute: typeof AuthenticatedSettingsTeamRoute
@@ -675,6 +696,7 @@ const AuthenticatedRouteChildren: AuthenticatedRouteChildren = {
   AuthenticatedServicesRoute: AuthenticatedServicesRoute,
   AuthenticatedSuperAdminRoute: AuthenticatedSuperAdminRouteWithChildren,
   AuthenticatedSettingsBillingRoute: AuthenticatedSettingsBillingRoute,
+  AuthenticatedSettingsBookingRoute: AuthenticatedSettingsBookingRoute,
   AuthenticatedSettingsProfessionalsRoute:
     AuthenticatedSettingsProfessionalsRoute,
   AuthenticatedSettingsProfileRoute: AuthenticatedSettingsProfileRoute,
@@ -702,3 +724,13 @@ const rootRouteChildren: RootRouteChildren = {
 export const routeTree = rootRouteImport
   ._addFileChildren(rootRouteChildren)
   ._addFileTypes<FileRouteTypes>()
+
+import type { getRouter } from './router.tsx'
+import type { startInstance } from './start.ts'
+declare module '@tanstack/react-start' {
+  interface Register {
+    ssr: true
+    router: Awaited<ReturnType<typeof getRouter>>
+    config: Awaited<ReturnType<typeof startInstance.getOptions>>
+  }
+}
