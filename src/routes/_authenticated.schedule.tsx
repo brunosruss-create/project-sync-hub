@@ -884,7 +884,7 @@ function WeekView({
                   const y = e.clientY - rect.top;
                   const minutes = Math.max(
                     0,
-                    Math.round(y / PX_PER_MIN / SLOT_MIN) * SLOT_MIN,
+                    Math.round((y - GRID_TOP_PAD) / PX_PER_MIN / SLOT_MIN) * SLOT_MIN,
                   );
                   const starts = startOfDay(d);
                   starts.setMinutes(minutes + HOUR_START * 60);
