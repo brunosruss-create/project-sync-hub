@@ -1,108 +1,88 @@
-# Plano: endereço estruturado + IA divulgando contato
 
-Objetivo: deixar funcional (não só cosmético). A IA passa a receber endereço/site/telefone no prompt, controlado por **um único toggle** na config de IA. Endereço vira estruturado com CEP, número e complemento.
+# Plano de correção: Profissionais ↔ IA ↔ Agenda
 
-## 1. Banco de dados — nova migration
+## Problemas identificados
 
-Arquivo: `supabase/manual/20260612000000_business_address_structured_and_ai_contact_toggle.sql`
+1. **IA não conhece os profissionais cadastrados.** O prompt (`buildWorkspaceLayer` em `src/lib/ai-respond.server.ts`) só adiciona uma frase genérica "tem mais de um profissional". A tabela `professionals` nunca é carregada nem injetada no contexto. Por isso, ao perguntarem "Dr Pedro tem horário?", a IA não reconhece o nome.
 
-```sql
--- ════════════════════════════════════════════════════════════
--- Endereço estruturado do negócio (CEP, rua, número, complemento)
--- + toggle único para a IA divulgar dados de contato.
--- ════════════════════════════════════════════════════════════
+2. **IA responde "não temos catálogo de serviços" mesmo quando a pergunta era sobre profissional/horário.** O bloco `buildServicesLayer` (quando services=0) instrui a IA a usar essa resposta para *qualquer* pergunta de "serviço, preço, agendar". Essa regra vaza para perguntas de profissional/agenda. Precisa ser escopo apenas para "o que vocês fazem / quais serviços", não para profissional/horário.
 
-alter table public.profiles
-  add column if not exists business_cep                  text,
-  add column if not exists business_street               text,
-  add column if not exists business_address_number       text,
-  add column if not exists business_address_complement   text,
-  add column if not exists business_neighborhood         text,
-  add column if not exists business_city                 text,
-  add column if not exists business_state                text,
-  -- Toggle único: IA pode informar endereço, site e telefone quando perguntada.
-  add column if not exists ai_can_share_contact_info     boolean not null default true;
+3. **Toggle "tem mais de um profissional" é manual e desconectado da realidade.** Deveria ser derivado do número de profissionais **ativos** cadastrados: 0 → nunca pergunta e nem cita nome; 1 → assume aquele profissional implicitamente (nome no prompt); ≥2 → pergunta apenas se o cliente não tiver preferência. O toggle vira opcional (apenas para forçar "não perguntar" mesmo com vários).
 
--- Backfill: se já existir business_address (texto livre antigo) e business_street
--- estiver vazio, copia para business_street para não perder o que o usuário digitou.
-update public.profiles
-   set business_street = business_address
- where business_street is null
-   and business_address is not null
-   and length(trim(business_address)) > 0;
-```
+4. **IA não tem acesso à agenda dos profissionais.** Não consegue responder "Dr Pedro tem horário amanhã?". Precisa receber os próximos compromissos por profissional (janela curta, ex.: próximos 7 dias) e a regra de horário de funcionamento já existente, para sugerir slots livres ou redirecionar.
 
-Mantém `business_address` legado (não dropa) para não quebrar nada — passa a ser ignorado pela UI nova, mas continua lendo no backfill.
+5. **Agenda filtra por `agent_id` legado.** `appointments` antigos só têm `agent_id` (uuid do mock de agentes). Profissionais novos (Dr Pedro/Dra Pamela) nunca aparecem porque seus `professional_id` não batem com `agent_id`. Precisamos:
+   - Migration que faça backfill: `update appointments set professional_id = agent_id where professional_id is null` (quando o `agent_id` existir em `professionals.id`) e, simétrico, ao criar/editar sempre gravar **os dois** campos (já é feito) e usar `professional_id` como fonte de verdade.
+   - Toda leitura/filtro/conflito da Agenda deve usar `professional_id` (com fallback para `agent_id` só no `mapAppt` durante a transição).
 
-## 2. Configurações → Negócio (UI)
+6. **Filtro de profissionais na Agenda é multi-checkbox e gera o estado mostrado na foto 4.** Trocar por um **dropdown único** (estilo foto 5: "Todos os profissionais" + um item por profissional), como já é o select do modal de novo agendamento.
 
-Arquivo: `src/routes/_authenticated.settings.workspace.tsx`
+## Mudanças a implementar
 
-Trocar o bloco CONTATO atual (Endereço / Telefone / Site) por:
+### A. Banco (migration nova `20260613000000_appointments_professional_backfill.sql`)
+- `update public.appointments set professional_id = agent_id where professional_id is null and agent_id in (select id from public.professionals);`
+- Índice extra `appointments_owner_professional_starts_idx (owner_user_id, professional_id, starts_at)` para a consulta de disponibilidade da IA.
+- `notify pgrst, 'reload schema';`
 
-- Aviso topo da seção:
-  > 💡 Esses dados podem ser informados pela IA quando o cliente perguntar (endereço, site, telefone). Mantenha-os atualizados.
-- Linha 1: **CEP** (input com máscara `00000-000`). Ao completar 8 dígitos → fetch `https://viacep.com.br/ws/{cep}/json/` no cliente e preenche Rua / Bairro / Cidade / UF automaticamente. Estados de loading e "CEP não encontrado".
-- Linha 2: **Rua/Logradouro** (preenchido pelo ViaCEP, editável)
-- Linha 3 (grid 2 col): **Número** | **Complemento** (ex.: "Torre 2, Sala 33")
-- Linha 4 (grid 3 col): **Bairro** | **Cidade** | **UF**
-- **Telefone comercial** e **Site** (mantidos)
+### B. IA (`src/lib/ai-respond.server.ts`)
+1. Em `runAiResponse`, **carregar profissionais ativos**:
+   ```ts
+   const { data: pros } = await supabaseAdmin
+     .from("professionals")
+     .select("id,name,role")
+     .eq("owner_user_id", data.workspace_owner_id)
+     .eq("is_active", true)
+     .order("created_at");
+   ```
+2. Carregar **agenda futura** (próximos 7 dias) para esses profissionais:
+   ```ts
+   const { data: upcoming } = await supabaseAdmin
+     .from("appointments")
+     .select("professional_id,starts_at,ends_at,status")
+     .eq("owner_user_id", data.workspace_owner_id)
+     .gte("starts_at", nowIso)
+     .lte("starts_at", sevenDaysIso)
+     .neq("status", "cancelled");
+   ```
+3. Criar `buildProfessionalsLayer(pros, upcoming, businessHours, tz)`:
+   - Lista nominal: `- Dr Pedro (Dentista)` etc.
+   - Para cada profissional, agrupar `upcoming` em "ocupado em: dd/mm HH:MM–HH:MM" (no `tz` do negócio).
+   - Combinar com `business_hours` para descrever janelas livres aproximadas ("Dr Pedro amanhã está livre 9h–12h e 14h–18h, ocupado 12h30–13h30").
+   - Regras: "Use APENAS estes nomes. Se o cliente perguntar por outro profissional, diga que não atende aqui. Para confirmar horário definitivo, ofereça o link de agendamento (se houver) ou encaminhe humano."
+4. Substituir o trecho atual `// === PROFISSIONAIS ===` por lógica derivada do array:
+   - `pros.length === 0`: proibição "Não cite nomes de profissionais. Trate como atendimento genérico."
+   - `pros.length === 1`: parts.push: "O atendimento é feito por **{Nome}** ({role}). Quando o cliente perguntar 'qual médico/profissional', assuma este. Não pergunte preferência."
+   - `pros.length >= 2`: usa toggle `ai_has_multiple_professionals` como override. Default = perguntar preferência somente quando relevante e o cliente não tiver mencionado nome. Se o cliente citar um nome existente, responda direto sem perguntar.
+5. **Corrigir vazamento do `servicesLayer` para perguntas de profissional/horário.** Reescrever as regras quando `services.length === 0`:
+   - Trocar "Se o cliente perguntar o que vocês fazem / quais serviços / preços / agendar algo" por "Se o cliente perguntar **quais serviços** ou **preços**...".
+   - Adicionar: "Perguntas sobre profissionais ou horários NÃO são bloqueadas por ausência de catálogo — responda usando o bloco PROFISSIONAIS e AGENDA."
 
-Estado/persistência:
-- novos `useState`: `cep`, `street`, `number`, `complement`, `neighborhood`, `city`, `state`
-- `useEffect` de load: hidrata dos campos novos; fallback: se `business_street` vazio e `business_address` preenchido → usa `business_address` como street
-- save: grava as 7 colunas novas; mantém `business_address` sincronizado como string concatenada (`"{street}, {number} — {complement} — {neighborhood}, {city}/{state} — CEP {cep}"`) para compatibilidade legada
+### C. Onboarding/perfil
+- `getWorkspaceAiConfig`/`updateWorkspaceAiConfig` não precisam mudar (toggle continua existindo). Apenas atualizar o label do toggle em `_authenticated.ai-agent.tsx`:
+  "Forçar a IA a perguntar a preferência de profissional? (recomendado quando você tem vários profissionais e o cliente normalmente escolhe)" — texto auxiliar deixando claro que com 1 só profissional a IA já assume sozinha.
 
-Validação: zod no save — CEP regex `^\d{5}-?\d{3}$` opcional, UF 2 letras maiúsculas opcional, demais strings ≤ 200.
+### D. Agenda (`src/routes/_authenticated.schedule.tsx`)
+1. **Filtro de profissional**: substituir o popover de checkboxes (botão `Profissionais` da foto 4) por um `<select>` único com opções "Todos os profissionais" + cada `agents[i]`. Estado vira `agentFilter: string | "all"` ao invés de `Set<string>`.
+2. Atualizar `filtered`: 
+   ```ts
+   items.filter(a => a.status !== "cancelled" && (agentFilter === "all" || a.agent_id === agentFilter))
+   ```
+   Remover a regra "manter visíveis appointments cujo agent_id não é conhecido" (era patch para o problema legado; o backfill resolve).
+3. `mapAppt` já lê `professional_id ?? agent_id` — manter.
+4. `upsert` já grava ambos campos — manter; remover gravação de `agent_id` no futuro (não nesse PR).
+5. Detecção de conflito (`a.agent_id === draft.agent_id`) continua válida porque ambos refletem o mesmo uuid após backfill.
 
-## 3. Agente IA → novo toggle único
-
-Arquivo: `src/routes/_authenticated.ai-agent.tsx`
-
-Na seção **COMPORTAMENTO DO AGENTE**, adicionar **1 toggle** (manter os 4 que já existem — não substituir nenhum):
-
-- Label: **"A IA pode informar endereço, site e telefone quando perguntada?"**
-- Hint: *"Quando ligado, a IA usa os dados de Configurações → Negócio para responder perguntas tipo 'onde fica?', 'qual o telefone?', 'tem site?'. Desligue se preferir que esses dados não sejam divulgados pelo WhatsApp."*
-- Estado: `shareContactInfo`, default `true`
-- Hidrata de `ai_can_share_contact_info`, salva em `profiles.ai_can_share_contact_info`
-
-## 4. IA — injeção real no system prompt (parte funcional)
-
-Arquivo: `src/lib/ai-respond.server.ts`
-
-Em `buildWorkspaceLayer` (depois do bloco IDENTIDADE / antes de TOM), adicionar bloco **DADOS DE CONTATO**:
-
-- Se `p.ai_can_share_contact_info !== false` (default ligado) E houver pelo menos um dado preenchido (`business_street` || `business_phone` || `business_website`):
-  - Monta `addressLine` a partir dos campos estruturados (street + número + complemento + bairro + cidade/UF + CEP), pulando vazios.
-  - Adiciona ao prompt:
-    ```
-    DADOS DE CONTATO DO NEGÓCIO (use APENAS se o cliente perguntar — não ofereça espontaneamente):
-    - Endereço: {addressLine}
-    - Telefone: {business_phone}
-    - Site: {business_website}
-    Quando perguntado sobre localização, telefone ou site, responda com a informação exata acima. Não invente, não complete dados faltantes.
-    ```
-- Se toggle desligado OU sem dados:
-  - Adiciona proibição:
-    ```
-    OBRIGATÓRIO: NÃO informe endereço, telefone ou site do negócio. Se perguntado, diga que pode passar o contato com um atendente humano.
-    ```
-
-Atualizar o `.select()` (linha ~500) para incluir os novos campos: `business_cep, business_street, business_address_number, business_address_complement, business_neighborhood, business_city, business_state, business_phone, business_website, ai_can_share_contact_info` (ou manter `*` se já cobre — confirmar; hoje é `*`, então cobre automaticamente).
-
-## 5. Tipos / interface
-
-Adicionar `ai_can_share_contact_info: boolean` em `AiBehaviorConfig` (linha 37-48 de `ai-respond.server.ts`).
+### E. QA manual após deploy
+- Rodar migration no SQL Editor.
+- Verificar na Agenda: filtro dropdown lista os 3 profissionais; selecionar "Dr Pedro" mostra os agendamentos dele depois de criar um novo.
+- No simulador da IA com 1 profissional ativo: perguntar "qual médico atende?" — deve citar o nome sem perguntar preferência.
+- Com 3 profissionais e a pergunta "Dr Pedro tem horário amanhã?": IA deve reconhecer o nome e responder com a janela livre/ocupada baseada na agenda real.
+- Sem nenhum serviço cadastrado, perguntar "Dr Pedro tem horário?": IA NÃO deve responder "não temos catálogo".
 
 ## Arquivos afetados
+- `supabase/manual/20260613000000_appointments_professional_backfill.sql` (novo)
+- `src/lib/ai-respond.server.ts` (carregar profissionais + agenda, novo `buildProfessionalsLayer`, reescrever services layer vazio, reescrever bloco PROFISSIONAIS)
+- `src/routes/_authenticated.schedule.tsx` (filtro como select único, ajuste do `filtered`)
+- `src/routes/_authenticated.ai-agent.tsx` (apenas texto do toggle "tem mais de um profissional")
 
-- ✏️ `supabase/manual/20260612000000_business_address_structured_and_ai_contact_toggle.sql` (novo)
-- ✏️ `src/routes/_authenticated.settings.workspace.tsx` (bloco CONTATO refeito + ViaCEP)
-- ✏️ `src/routes/_authenticated.ai-agent.tsx` (1 toggle novo)
-- ✏️ `src/lib/ai-respond.server.ts` (bloco DADOS DE CONTATO no prompt)
-
-## Fora de escopo
-
-- Não mexe nos toggles existentes de comportamento.
-- Não muda outras mensagens/templates.
-- Não remove `business_address` legado (fica como espelho).
+Nada na tabela `professionals`, nada na auth, nada de novos toggles.
