@@ -119,11 +119,14 @@ export function MessageBubble({ m }: { m: ChatMessage }) {
             {m.content && <div>{m.content}</div>}
           </div>
         ) : m.message_type === "audio" && m.media_url ? (
-          <audio
-            controls
-            src={m.media_url}
-            style={{ width: 240, maxWidth: "100%" }}
-          />
+          <div style={{ margin: "-2px 0" }}>
+            <AudioPlayerWithMe
+              src={m.media_url}
+              contactName={m.contactName ?? ""}
+              contactAvatar={m.contactAvatar ?? null}
+              isMe={outbound}
+            />
+          </div>
         ) : m.message_type === "document" && m.media_url ? (
           <a
             href={m.media_url}
