@@ -330,7 +330,7 @@ function StepIndicator({ current, total }: { current: number; total: number }) {
 
 function ServiceStep({ services, selected, onSelect }: { services: Service[]; selected: string; onSelect: (id: string) => void }) {
   if (services.length === 0) {
-    return <p style={{ color: "var(--text-muted)" }}>Nenhum serviço disponível para agendamento.</p>;
+    return <p style={{ color: "var(--text-muted)" }}>Este estabelecimento ainda não cadastrou serviços ativos para agendamento online. Volte mais tarde ou entre em contato pelo WhatsApp.</p>;
   }
   return (
     <div>

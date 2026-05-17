@@ -20,6 +20,7 @@ import {
 } from "@/features/services/data";
 
 import { ManagerOnly } from "@/components/manager-only";
+import { useWorkspaceOwnerId } from "@/hooks/use-workspace-owner";
 
 export const Route = createFileRoute("/_authenticated/services")({
   component: () => (
@@ -39,8 +40,10 @@ function isUuid(value: string): boolean {
 }
 
 function ServicesPage() {
+  const { workspaceOwnerId } = useWorkspaceOwnerId();
   const [categories, setCategories] = React.useState<Category[]>(SEED_CATEGORIES);
   const [services, setServices] = React.useState<Service[]>(SEED_SERVICES);
+  
   const [activeCat, setActiveCat] = React.useState<string>("all");
   const [query, setQuery] = React.useState("");
   const [editing, setEditing] = React.useState<Editing>(null);
@@ -74,7 +77,10 @@ function ServicesPage() {
           cats.map((c: any) => ({ id: c.id, name: c.name, color: c.color ?? "#25C880" })),
         );
       }
-      if (svc && svc.length > 0) {
+      if (svc) {
+        // Hidrata SEMPRE com o que veio do banco (inclusive lista vazia),
+        // para não confundir SEED com dados persistidos. Os SEEDs ficam
+        // só como placeholder até o primeiro fetch concluir.
         setServices(
           svc.map((s: any) => ({
             id: s.id,
@@ -90,6 +96,7 @@ function ServicesPage() {
           })),
         );
       }
+      
     })();
     return () => {
       cancelled = true;
@@ -126,7 +133,7 @@ function ServicesPage() {
     setEditing(null);
     notify.success(exists ? "Serviço atualizado." : "Serviço criado.");
 
-    const payload = {
+    const payload: Record<string, unknown> = {
       category_id: draft.category_id && isUuid(draft.category_id) ? draft.category_id : null,
       name: draft.name,
       description: draft.description,
@@ -136,6 +143,9 @@ function ServicesPage() {
       color: draft.color,
       status: draft.status,
     };
+    // Garante que o serviço fica associado ao dono do workspace, o mesmo
+    // owner_user_id que o link público de agendamento usa pra filtrar.
+    if (workspaceOwnerId) payload.owner_user_id = workspaceOwnerId;
     const query = exists && isUuid(draft.id)
       ? supabase.from("services").upsert({ id: draft.id, ...payload }).select("id,created_at").single()
       : supabase.from("services").insert(payload).select("id,created_at").single();
