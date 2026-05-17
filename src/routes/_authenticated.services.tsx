@@ -538,8 +538,34 @@ function ServiceCard({
           value={formatCurrencyBRL(service.price_cents)}
           valueStyle={{ fontWeight: 600, fontFamily: "var(--font-mono, ui-monospace)" }}
         />
-        {service.description && (
+        {service.description ? (
           <MetaRow label="Descrição" value={service.description} muted />
+        ) : (
+          <button
+            type="button"
+            onClick={onEdit}
+            title="Clique para adicionar uma descrição"
+            style={{
+              marginTop: 4,
+              display: "inline-flex",
+              alignItems: "center",
+              gap: 6,
+              alignSelf: "flex-start",
+              padding: "4px 8px",
+              borderRadius: 6,
+              border: "1px solid color-mix(in oklab, var(--warning, #d97706) 35%, transparent)",
+              background: "color-mix(in oklab, var(--warning, #d97706) 10%, transparent)",
+              color: "var(--warning, #b45309)",
+              fontSize: 11,
+              fontWeight: 500,
+              lineHeight: 1.3,
+              cursor: "pointer",
+              textAlign: "left",
+            }}
+          >
+            <span aria-hidden>⚠</span>
+            Sem descrição — a IA não terá contexto para falar deste serviço
+          </button>
         )}
       </div>
     </div>
@@ -686,6 +712,21 @@ function EmptyState({ onCreate }: { onCreate: () => void }) {
       </div>
       <div style={{ fontSize: 12, marginTop: 4 }}>
         Comece criando seu primeiro serviço para o catálogo.
+      </div>
+      <div
+        style={{
+          fontSize: 11,
+          marginTop: 8,
+          maxWidth: 420,
+          marginLeft: "auto",
+          marginRight: "auto",
+          lineHeight: 1.5,
+          color: "var(--text-muted)",
+        }}
+      >
+        💡 A IA do WhatsApp usa estes serviços e suas descrições para responder
+        seus clientes. Sem nenhum serviço cadastrado, ela redireciona para
+        atendimento humano.
       </div>
       <button
         type="button"
@@ -923,7 +964,7 @@ function ServiceModal({
               <textarea
                 value={description}
                 onChange={(e) => setDescription(e.target.value.slice(0, 500))}
-                placeholder="O que está incluso neste serviço?"
+                placeholder="Ex.: Limpeza de pele profunda com extração de cravos, aplicação de máscara calmante e finalização com protetor solar. Duração aproximada de 1h."
                 rows={3}
                 style={{
                   ...inputStyle,
@@ -933,6 +974,25 @@ function ServiceModal({
                   lineHeight: 1.4,
                 }}
               />
+              <div
+                style={{
+                  marginTop: 6,
+                  fontSize: 11,
+                  color: "var(--text-muted)",
+                  lineHeight: 1.4,
+                  display: "flex",
+                  gap: 6,
+                  alignItems: "flex-start",
+                }}
+              >
+                <span aria-hidden style={{ flexShrink: 0 }}>💡</span>
+                <span>
+                  Esta descrição é usada pela IA do WhatsApp para responder seus
+                  clientes sobre este serviço. Quanto mais específica, melhor a
+                  IA atende — sem ela, a IA não terá contexto e vai redirecionar
+                  para um atendente humano.
+                </span>
+              </div>
             </ModalField>
 
             <div
