@@ -1,4 +1,5 @@
 import { Check, CheckCheck, FileText, Bot } from "lucide-react";
+import { AudioPlayerWithMe } from "./AudioPlayer";
 
 export interface ChatMessage {
   id: string;
@@ -12,6 +13,8 @@ export interface ChatMessage {
   media_name?: string | null;
   is_ai?: boolean;
   deleted_at?: string | null;
+  contactName?: string;
+  contactAvatar?: string | null;
 }
 
 function formatTime(d: Date): string {
