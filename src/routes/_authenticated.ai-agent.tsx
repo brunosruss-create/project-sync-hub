@@ -184,6 +184,7 @@ function AIAgentPage() {
           ai_can_cancel: canCancel,
           ai_min_advance_hours: minAdvanceHours,
           ai_max_questions_per_message: maxQuestions,
+          ai_can_share_contact_info: shareContactInfo,
         },
       }),
     onSuccess: () => {
