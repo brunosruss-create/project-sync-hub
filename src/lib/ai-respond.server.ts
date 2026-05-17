@@ -358,6 +358,92 @@ REGRAS ABSOLUTAS — NUNCA VIOLE:
   return parts.join("\n");
 }
 
+function formatPriceBRL(cents: number | null | undefined): string | null {
+  if (cents == null || Number.isNaN(cents)) return null;
+  const v = (cents / 100).toFixed(2).replace(".", ",");
+  return `R$ ${v}`;
+}
+
+function buildServicesLayer(
+  services: Array<{
+    name: string;
+    description: string | null;
+    duration_minutes: number | null;
+    price_cents: number | null;
+    category_id: string | null;
+  }>,
+  categoryNameById: Record<string, string>,
+  pricePolicy: PriceDisclosurePolicy,
+): string {
+  if (!services || services.length === 0) {
+    return [
+      "=== CATÁLOGO OFICIAL DE SERVIÇOS ===",
+      "O negócio ainda NÃO tem nenhum serviço cadastrado no sistema.",
+      "",
+      "REGRAS INVIOLÁVEIS:",
+      "1. NÃO liste, descreva, sugira ou cite qualquer serviço — nem genérico, nem do ramo, nem do que 'normalmente' um negócio assim faz.",
+      "2. NÃO use a descrição do negócio, o segmento, o nome do estabelecimento ou conhecimento geral do ramo para inferir serviços.",
+      "3. Se o cliente perguntar o que vocês fazem / quais serviços / preços / agendar algo, responda no espírito de:",
+      "   \"No momento ainda não temos o catálogo de serviços cadastrado por aqui. Vou encaminhar você para um atendente humano que pode te passar todos os detalhes.\"",
+      "4. Em seguida, ofereça encaminhar para um atendente humano.",
+    ].join("\n");
+  }
+
+  const lines: string[] = [];
+  lines.push("=== CATÁLOGO OFICIAL DE SERVIÇOS (FONTE ÚNICA DE VERDADE) ===");
+  lines.push(
+    "Estes são os ÚNICOS serviços que o negócio oferece. Não mencione, sugira nem invente nenhum outro, mesmo que pareçam óbvios para o ramo.",
+  );
+  lines.push("");
+
+  for (const s of services) {
+    const dur =
+      s.duration_minutes && s.duration_minutes > 0
+        ? `${s.duration_minutes} min`
+        : null;
+    const header = dur ? `- ${s.name} (${dur})` : `- ${s.name}`;
+    lines.push(header);
+    if (s.category_id && categoryNameById[s.category_id]) {
+      lines.push(`  Categoria: ${categoryNameById[s.category_id]}`);
+    }
+    const desc = (s.description ?? "").trim();
+    if (desc) {
+      lines.push(`  Descrição: ${desc}`);
+    } else {
+      lines.push(
+        `  Descrição: (não informada — não invente detalhes deste serviço; se perguntarem, diga que vai pedir mais informações a um atendente)`,
+      );
+    }
+    if (pricePolicy === "always") {
+      const price = formatPriceBRL(s.price_cents);
+      if (price) lines.push(`  Valor: ${price}`);
+    }
+    lines.push("");
+  }
+
+  lines.push("REGRAS DE USO DESTE CATÁLOGO:");
+  lines.push(
+    "1. Ao apresentar os serviços, NÃO recite a lista crua. Use a Descrição de cada serviço para responder de forma natural e contextualizada ao que o cliente perguntou.",
+  );
+  lines.push(
+    "2. Se a pergunta for genérica (\"o que vocês fazem?\"), faça um resumo curto cobrindo os serviços disponíveis com base nas descrições.",
+  );
+  lines.push(
+    "3. Se a pergunta for específica (\"vocês fazem X?\"), responda APENAS com base na descrição do serviço correspondente.",
+  );
+  lines.push(
+    "4. Se o cliente pedir um serviço que NÃO está nesta lista, diga que esse serviço não consta no catálogo e ofereça encaminhar para um atendente humano. Nunca prometa algo fora desta lista.",
+  );
+  lines.push(
+    "5. NUNCA invente indicações, contraindicações, etapas, materiais ou procedimentos que não estejam na Descrição.",
+  );
+  lines.push(
+    "6. NÃO use a descrição do negócio, o segmento ou o nome do estabelecimento para inferir serviços — eles servem apenas como contexto de tom de voz.",
+  );
+
+  return lines.join("\n");
+}
+
 function estimateCostCents(input: number, output: number) {
   const cents = (input / 1_000_000) * 25 + (output / 1_000_000) * 150;
   return Math.max(1, Math.round(cents));
@@ -610,6 +696,7 @@ export async function runAiResponse(input: AiRunInput): Promise<AiRunResult> {
       segment_default_required_fields: segment?.default_required_fields ?? [],
       __is_first_message: isFirstMessage,
     }),
+    servicesLayer,
     bookingLayer,
   ]
     .filter(Boolean)
