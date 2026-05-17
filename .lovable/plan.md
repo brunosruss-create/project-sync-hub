@@ -1,46 +1,47 @@
 ## Objetivo
 
-Remover qualquer exibição de emoji de serviço em toda a UI. A coluna `services.emoji` do banco permanece intacta (sem migration) — apenas paramos de ler/escrever/exibir no app.
+Limpar o card de serviço em `/services`: remover ícones emoji da meta, remover a barra colorida vertical ao lado do nome, e mover ações para um menu de 3 pontinhos com Editar, Arquivar e Excluir.
 
-## Mudanças
+## Mudanças em `src/routes/_authenticated.services.tsx`
 
-### 1. `src/routes/_authenticated.services.tsx`
-- Remover o `ModalField "Ícone"` inteiro (linhas ~909–935) e o estado `emoji`/`setEmoji`.
-- Remover `emoji` do payload de submit e do `draft` enviado ao Supabase.
-- Remover `{service.emoji}` da listagem (linha 403).
-- Remover import `PRESET_EMOJIS`.
+### 1. Card de serviço (`ServiceCard`)
+- **Remover a barra vertical colorida** (`<div>` com `width:10, height:36, background:accent`) ao lado do nome. Manter apenas o `borderLeft: 3px solid accent` do card como indicação de categoria.
+- **Header simplificado**:
+  - Linha 1 (label): "Nome do serviço" em fonte pequena e muted.
+  - Linha 2: nome do serviço em destaque.
+  - Categoria continua abaixo (opcional manter).
+- **Meta sem emojis**: remover os ícones `⏱`, `💰`, `📝`. Trocar pelo formato:
+  - `Tempo: 30 min`
+  - `Valor: R$ 20,00`
+  - `Descrição: testando`
+  - Labels em muted, valores em primary. Sem o componente `Meta` com `icon` — usar texto puro.
+- **Badge de status (ATIVO)** continua no topo direito.
 
-### 2. `src/routes/_authenticated.schedule.tsx`
-- Não selecionar mais `emoji` no `select(...)` e remover `emoji: s.emoji ?? "🔧"` do mapeamento.
-- Remover `{service?.emoji}` dos textos em EventBlock, tooltip, painel de detalhes e dropdown de serviços (linhas ~1048, 1324, 1422, 1480, 1966).
+### 2. Ações: menu de 3 pontinhos
+- Remover os botões inline "Editar" e "Arquivar" do rodapé do card.
+- Adicionar botão `MoreVertical` (lucide) no topo direito do card, ao lado do badge de status (ou logo abaixo dele).
+- Ao clicar, abrir um popover/menu ancorado com 3 itens, seguindo o padrão já usado em `src/routes/_authenticated.settings.professionals.tsx`:
+  - **Editar** (ícone `Pencil`) → chama `onEdit`
+  - **Arquivar** (ícone `Archive`) → chama `onArchive` (alterna entre ativo/inativo, comportamento atual)
+  - **Excluir** (ícone `Trash2`, cor destrutiva) → chama novo `onDelete`
+- Fechar menu ao clicar fora ou em um item. Usar mesmo estilo visual dos menus existentes (background `--bg-surface`, border `--border`, sombra suave).
 
-### 3. `src/features/inbox/schedule-modal.tsx`
-- Remover `emoji` do `select` e do mapeamento de serviços (linhas 84 e 100).
-- Conferir se algum render usa `s.emoji` — se sim, remover.
+### 3. Excluir serviço (nova funcionalidade)
+- Criar função `deleteService(id)` no componente da página:
+  - Abre `ConfirmDialog` (`src/components/confirm-dialog.tsx`) com título "Excluir serviço" e mensagem de confirmação.
+  - Ao confirmar, `await supabase.from("services").delete().eq("id", id)`.
+  - Atualiza estado local removendo o serviço da lista.
+  - Toast de sucesso ou erro via `sonner`.
+- Passar `onDelete` como prop para `ServiceCard`.
 
-### 4. `src/routes/book.$slug.tsx` (página pública de booking)
-- Remover o `<div>{s.emoji ?? "🔧"}</div>` da listagem de serviços (linha 353).
-- Remover o campo `emoji` do tipo local.
-
-### 5. `src/routes/api/public/book.$slug.ts`
-- Se devolve `emoji` no JSON da rota pública, remover do `select` e do shape de resposta para manter consistência.
-
-### 6. `src/features/services/data.ts`
-- Tornar `emoji` opcional no tipo (`emoji?: string`) ou remover do tipo. Limpar valores `emoji: "..."` dos SEEDs.
-- Remover constante `PRESET_EMOJIS` se ficar sem uso.
-
-### Substituição visual
-
-Onde o emoji aparecia como "ícone" do serviço (lista, EventBlock, painel, página pública), usar apenas o **bullet colorido** já existente baseado em `service.color` — sem trocar por outro ícone. Em texto inline (ex.: `{emoji} {name}`) o emoji simplesmente some, ficando só o nome.
+### 4. Limpeza
+- Remover o componente auxiliar `Meta` (ou mantê-lo sem uso) — preferência: remover se não for usado em outro lugar do arquivo.
+- Remover imports não usados.
 
 ## Fora do escopo
-- Sem migration SQL (coluna `emoji` continua na tabela).
-- Sem mexer em ícones de UI (lucide) ou em emojis fora de "serviços".
+- Nenhuma alteração de schema SQL.
+- Sem mexer em outras telas (agenda, página pública, modal de agendamento).
+- Sem mudar cores do design system.
 
 ## Arquivos afetados
-- `src/routes/_authenticated.services.tsx`
-- `src/routes/_authenticated.schedule.tsx`
-- `src/features/inbox/schedule-modal.tsx`
-- `src/routes/book.$slug.tsx`
-- `src/routes/api/public/book.$slug.ts`
-- `src/features/services/data.ts`
+- `src/routes/_authenticated.services.tsx` (única alteração)
