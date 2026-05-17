@@ -141,7 +141,6 @@ function InboxPage() {
         .from("contacts")
         .select(SELECT_FULL)
         .eq("is_archived", false)
-        .eq("is_blocked", false)
         .order("last_message_at", { ascending: false, nullsFirst: false });
       // Fallback se as colunas novas ainda não existirem no banco
       if (error && /email|notes|is_blocked|is_archived|unread_count|last_direction/i.test(error.message)) {
