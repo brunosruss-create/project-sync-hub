@@ -310,6 +310,7 @@ export const updateBookingConfig = createServerFn({ method: "POST" })
       .parse(input),
   )
   .handler(async ({ data, context }) => {
+    const { booking_ai_send, ...profileUpdate } = data;
     // Se mudou slug, garantir unicidade
     if (data.booking_slug) {
       const { data: clash } = await supabaseAdmin
@@ -322,9 +323,18 @@ export const updateBookingConfig = createServerFn({ method: "POST" })
     }
     const { error } = await supabaseAdmin
       .from("profiles")
-      .update(data)
+      .update(profileUpdate)
       .eq("id", context.userId);
     if (error) throw new Error(error.message);
+    if (typeof booking_ai_send === "boolean") {
+      const { error: aiSendError } = await supabaseAdmin
+        .from("profiles")
+        .update({ booking_ai_send })
+        .eq("id", context.userId);
+      if (aiSendError && !aiSendError.message.includes("booking_ai_send")) {
+        throw new Error(aiSendError.message);
+      }
+    }
     return { ok: true };
   });
 
