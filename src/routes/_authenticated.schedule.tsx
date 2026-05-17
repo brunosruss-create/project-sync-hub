@@ -245,7 +245,11 @@ function SchedulePage() {
   const upsert = async (draft: Appointment) => {
     // overlap detection
     const conflict = items.find(
-      (a) => a.id !== draft.id && a.agent_id === draft.agent_id && overlap(a, draft),
+      (a) =>
+        a.id !== draft.id &&
+        a.status !== "cancelled" &&
+        a.agent_id === draft.agent_id &&
+        overlap(a, draft),
     );
     if (conflict) {
       nfy.error("Horário em conflito com outro agendamento desse agente.");
