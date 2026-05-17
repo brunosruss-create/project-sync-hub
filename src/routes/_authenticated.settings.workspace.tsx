@@ -60,7 +60,15 @@ function WorkspacePage() {
 
   const [name, setName] = React.useState("");
   const [segmentId, setSegmentId] = React.useState<string>("");
-  const [address, setAddress] = React.useState("");
+  const [cep, setCep] = React.useState("");
+  const [street, setStreet] = React.useState("");
+  const [number, setNumber] = React.useState("");
+  const [complement, setComplement] = React.useState("");
+  const [neighborhood, setNeighborhood] = React.useState("");
+  const [city, setCity] = React.useState("");
+  const [stateUf, setStateUf] = React.useState("");
+  const [cepLoading, setCepLoading] = React.useState(false);
+  const [cepError, setCepError] = React.useState<string | null>(null);
   const [phone, setPhone] = React.useState("");
   const [site, setSite] = React.useState("");
   const [tz, setTz] = React.useState("America/Sao_Paulo");
