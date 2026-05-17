@@ -63,10 +63,21 @@ export function ScheduleModal({
   open,
   onClose,
   preselectedServiceIds,
+  initial,
+  preset,
   onScheduled,
+  onSubmitted,
 }: Props) {
   const { user } = useAuth();
   const { workspaceOwnerId } = useWorkspaceOwnerId();
+  const profileQ = useProfile();
+  const tz =
+    ((profileQ.data as unknown as { business_timezone?: string } | null)
+      ?.business_timezone as string | undefined) || "America/Sao_Paulo";
+  const notifyChangeFn = useServerFn(notifyAppointmentChange);
+
+  const showContactPicker = !contact;
+
   const [services, setServices] = React.useState<Service[]>([]);
 
   // Carrega serviços reais do banco (fallback para SEED apenas se DB vazio).
@@ -101,6 +112,43 @@ export function ScheduleModal({
     })();
     return () => { cancelled = true; };
   }, [open]);
+
+  // Contact picker (quando aberto pela agenda sem contato fixo)
+  const [contactList, setContactList] = React.useState<Array<{ id: string; name: string; phone: string }>>([]);
+  const [contactQuery, setContactQuery] = React.useState("");
+  const [pickedContactId, setPickedContactId] = React.useState<string>("");
+  const [showAddContact, setShowAddContact] = React.useState(false);
+  const [newContactName, setNewContactName] = React.useState("");
+  const [newContactPhone, setNewContactPhone] = React.useState("");
+
+  React.useEffect(() => {
+    if (!open || !showContactPicker) return;
+    let cancelled = false;
+    (async () => {
+      const { data } = await supabase
+        .from("contacts")
+        .select("id,name,phone")
+        .order("name");
+      if (cancelled) return;
+      setContactList((data ?? []) as any);
+    })();
+    return () => { cancelled = true; };
+  }, [open, showContactPicker]);
+
+  const pickedContact = React.useMemo(() => {
+    if (contact) return { id: contact.id, name: contact.name, phone: contact.phone };
+    if (!pickedContactId) return null;
+    return contactList.find((c) => c.id === pickedContactId) ?? null;
+  }, [contact, contactList, pickedContactId]);
+
+  const filteredContacts = React.useMemo(() => {
+    if (!contactQuery) return contactList.slice(0, 6);
+    const q = contactQuery.toLowerCase();
+    return contactList
+      .filter((c) => c.name.toLowerCase().includes(q) || c.phone.toLowerCase().includes(q))
+      .slice(0, 8);
+  }, [contactQuery, contactList]);
+
   const [selected, setSelected] = React.useState<Set<string>>(new Set());
   const [date, setDate] = React.useState<string>(toDateInput(new Date()));
   const [time, setTime] = React.useState<string>("09:00");
@@ -124,18 +172,62 @@ export function ScheduleModal({
   const [busy, setBusy] = React.useState<BusyAppt[]>([]);
   const [calendarOpen, setCalendarOpen] = React.useState(false);
 
+  // Reset / prefill ao abrir
   React.useEffect(() => {
     if (!open) return;
-    const today = toDateInput(new Date());
-    setSelected(new Set(preselectedServiceIds ?? []));
-    setDate(today);
-    setDateInput(formatDateBR(today));
-    setDateError(null);
-    setTime("09:00");
-    setNotes("");
-    setNotifyWa(true);
     setSubmitting(false);
-  }, [open, preselectedServiceIds]);
+    setDateError(null);
+    setNewContactName("");
+    setNewContactPhone("");
+    setShowAddContact(false);
+
+    if (initial) {
+      const iso = toDateInput(initial.starts_at);
+      setDate(iso);
+      setDateInput(formatDateBR(iso));
+      setTime(formatHM(initial.starts_at));
+      setAgentId(initial.agent_id || "");
+      setNotes(initial.notes || "");
+      setNotifyWa(!!initial.notify_whatsapp);
+      setContactQuery("");
+      setPickedContactId(initial.contact_id || "");
+    } else {
+      const baseDate = preset?.starts_at ?? new Date();
+      const iso = toDateInput(baseDate);
+      setDate(iso);
+      setDateInput(formatDateBR(iso));
+      if (preset?.starts_at) {
+        const h = String(baseDate.getHours()).padStart(2, "0");
+        const m = String(baseDate.getMinutes() < 30 ? 0 : 30).padStart(2, "0");
+        setTime(`${h}:${m}`);
+      } else {
+        setTime("09:00");
+      }
+      setAgentId(preset?.agent_id || "");
+      setNotes("");
+      setNotifyWa(true);
+      setContactQuery("");
+      setPickedContactId("");
+      setSelected(new Set(preselectedServiceIds ?? []));
+    }
+  }, [open, initial, preset, preselectedServiceIds]);
+
+  // Em modo edição: carrega serviços vinculados via appointment_services.
+  React.useEffect(() => {
+    if (!open || !initial?.id) return;
+    let cancelled = false;
+    (async () => {
+      const { data } = await supabase
+        .from("appointment_services")
+        .select("service_id")
+        .eq("appointment_id", initial.id);
+      if (cancelled) return;
+      const ids = (data ?? []).map((r: any) => r.service_id).filter(Boolean);
+      if (ids.length > 0) setSelected(new Set(ids));
+      else if (initial.service_id) setSelected(new Set([initial.service_id]));
+    })();
+    return () => { cancelled = true; };
+  }, [open, initial?.id, initial?.service_id]);
 
   React.useEffect(() => {
     if (!open || !user?.id || !date) return;
@@ -168,7 +260,7 @@ export function ScheduleModal({
       cancelled = true;
       supabase.removeChannel(ch);
     };
-  }, [open, user?.id, date]);
+  }, [open, user?.id, date, workspaceOwnerId]);
 
   const selectedServices = services.filter((s) => selected.has(s.id));
   const totalMin = selectedServices.reduce((a, s) => a + s.duration_minutes, 0);
@@ -183,6 +275,7 @@ export function ScheduleModal({
       const end = new Date(start.getTime() + blockMin * 60_000);
       const past = start.getTime() < now;
       const isBusy = busy.some((b) => {
+        if (b.id === initial?.id) return false;
         if (b.agent_id !== agentId) return false;
         const bs = new Date(b.starts_at).getTime();
         const be = new Date(b.ends_at).getTime();
@@ -191,7 +284,7 @@ export function ScheduleModal({
       map.set(slot, { busy: isBusy, past });
     }
     return map;
-  }, [busy, agentId, date, blockMin]);
+  }, [busy, agentId, date, blockMin, initial?.id]);
 
   const toggle = (id: string) => {
     setSelected((prev) => {
@@ -206,21 +299,47 @@ export function ScheduleModal({
     const dt = fromDateTimeInput(date, time);
     const dateStr = dt.toLocaleDateString("pt-BR", { day: "2-digit", month: "2-digit" });
     const list = selectedServices.map((s) => s.name).join(", ") || "—";
-    return `Olá ${contact.name.split(" ")[0]}! Seu agendamento foi confirmado para ${dateStr} às ${time}. Serviços: ${list}. Até lá! 👋`;
-  }, [date, time, selectedServices, contact.name]);
+    const firstName = (pickedContact?.name ?? "cliente").split(" ")[0];
+    return `Olá ${firstName}! Seu agendamento foi confirmado para ${dateStr} às ${time}. Serviços: ${list}. Até lá! 👋`;
+  }, [date, time, selectedServices, pickedContact]);
 
   const currentSlotState = slotState.get(time);
   const slotUnavailable = !!(currentSlotState?.busy || currentSlotState?.past);
   const canSubmit =
-    selectedServices.length > 0 && !!date && !!time && !!agentId && !submitting && !dateError && !slotUnavailable;
+    selectedServices.length > 0 &&
+    !!date &&
+    !!time &&
+    !!agentId &&
+    (!!pickedContact || (showAddContact && !!newContactName.trim())) &&
+    !submitting &&
+    !dateError &&
+    !slotUnavailable;
+
+  const ensureContact = async (): Promise<{ id: string; name: string; phone: string } | null> => {
+    if (pickedContact) return pickedContact;
+    if (showAddContact && newContactName.trim()) {
+      const { data, error } = await supabase
+        .from("contacts")
+        .insert({
+          owner_user_id: workspaceOwnerId,
+          name: newContactName.trim(),
+          phone: newContactPhone.trim(),
+          kanban_column: "scheduled",
+        })
+        .select("id,name,phone")
+        .single();
+      if (error || !data) {
+        toast.error(`Não foi possível criar contato: ${error?.message ?? "erro desconhecido"}`);
+        return null;
+      }
+      return data as any;
+    }
+    return null;
+  };
 
   const submit = async () => {
     if (!canSubmit) return;
     setSubmitting(true);
-    const startsAt = fromDateTimeInput(date, time);
-    const endsAt = new Date(startsAt.getTime() + Math.max(totalMin, 30) * 60_000);
-    const dateStr = startsAt.toLocaleDateString("pt-BR", { day: "2-digit", month: "2-digit" });
-    const sysContent = `Agendado para ${dateStr} às ${time} — ${selectedServices.map((s) => s.name).join(", ")}`;
 
     if (!user?.id) {
       toast.error("Sessão expirada. Faça login novamente.");
@@ -228,22 +347,35 @@ export function ScheduleModal({
       return;
     }
 
-    // Re-check conflict at submit (race condition guard)
-    const { data: conflictRows } = await supabase
+    const ctc = await ensureContact();
+    if (!ctc) {
+      setSubmitting(false);
+      return;
+    }
+
+    const localStart = fromDateTimeInput(date, time);
+    const localEnd = new Date(localStart.getTime() + Math.max(totalMin, 30) * 60_000);
+    const startsAtUtc = zonedLocalToUtc(localStart, tz);
+    const endsAtUtc = zonedLocalToUtc(localEnd, tz);
+    const dateStr = localStart.toLocaleDateString("pt-BR", { day: "2-digit", month: "2-digit" });
+    const sysContent = `Agendado para ${dateStr} às ${time} — ${selectedServices.map((s) => s.name).join(", ")}`;
+
+    let conflictQ = supabase
       .from("appointments")
       .select("id, starts_at, ends_at")
       .eq("owner_user_id", workspaceOwnerId)
       .eq("agent_id", agentId)
       .neq("status", "cancelled")
-      .lt("starts_at", endsAt.toISOString())
-      .gt("ends_at", startsAt.toISOString());
+      .lt("starts_at", endsAtUtc.toISOString())
+      .gt("ends_at", startsAtUtc.toISOString());
+    if (initial?.id) conflictQ = conflictQ.neq("id", initial.id);
+    const { data: conflictRows } = await conflictQ;
     if (conflictRows && conflictRows.length > 0) {
       toast.error("Esse horário ficou indisponível, escolha outro.");
       setSubmitting(false);
       return;
     }
 
-    // Validar que todos os serviços selecionados existem realmente no banco
     const selectedIds = selectedServices.map((s) => s.id);
     if (selectedIds.length) {
       const { data: existing } = await supabase
@@ -259,91 +391,138 @@ export function ScheduleModal({
       }
     }
 
-    const { data: appt, error: apptErr } = await supabase
-      .from("appointments")
-      .insert({
-        owner_user_id: workspaceOwnerId,
-        contact_id: contact.id,
-        agent_id: agentId,
-        service_id: selectedServices[0]?.id ?? null,
-        starts_at: startsAt.toISOString(),
-        ends_at: endsAt.toISOString(),
-        status: "scheduled",
-        notes,
-        notify_whatsapp: notifyWa,
-      })
-      .select("id")
-      .single();
+    let apptId: string;
+    let previousStartsAtUtcIso: string | null = null;
 
-    if (apptErr || !appt) {
-      console.error("[schedule-modal] erro ao criar appointment:", apptErr);
-      toast.error(`Não foi possível agendar: ${apptErr?.message ?? "erro desconhecido"}`);
-      setSubmitting(false);
-      return;
-    }
-
-    // 2. Insert appointment_services snapshot — em caso de falha, faz rollback
-    if (selectedServices.length) {
-      const { error: svcErr } = await supabase.from("appointment_services").insert(
-        selectedServices.map((s) => ({
-          appointment_id: appt.id,
-          owner_user_id: workspaceOwnerId,
-          service_id: s.id,
-          price_cents: s.price_cents,
-          duration_minutes: s.duration_minutes,
-        })),
-      );
-      if (svcErr) {
-        console.error("[schedule-modal] services snapshot falhou:", svcErr);
-        await supabase.from("appointments").delete().eq("id", appt.id);
-        toast.error(`Não foi possível salvar os serviços: ${svcErr.message}`);
+    if (initial?.id) {
+      previousStartsAtUtcIso = zonedLocalToUtc(initial.starts_at, tz).toISOString();
+      const { error: updErr } = await supabase
+        .from("appointments")
+        .update({
+          contact_id: ctc.id,
+          agent_id: agentId,
+          professional_id: agentId,
+          service_id: selectedServices[0]?.id ?? null,
+          starts_at: startsAtUtc.toISOString(),
+          ends_at: endsAtUtc.toISOString(),
+          notes,
+          notify_whatsapp: notifyWa,
+        })
+        .eq("id", initial.id);
+      if (updErr) {
+        console.error("[schedule-modal] update falhou:", updErr);
+        toast.error(`Não foi possível atualizar: ${updErr.message}`);
         setSubmitting(false);
         return;
       }
-    }
+      apptId = initial.id;
 
-    // 3. Move kanban column
-    const { error: updErr } = await supabase
-      .from("contacts")
-      .update({ kanban_column: "scheduled" })
-      .eq("id", contact.id);
-    if (updErr) console.warn("[schedule-modal] contact update ignorado:", updErr.message);
+      await supabase.from("appointment_services").delete().eq("appointment_id", apptId);
+      if (selectedServices.length) {
+        await supabase.from("appointment_services").insert(
+          selectedServices.map((s) => ({
+            appointment_id: apptId,
+            owner_user_id: workspaceOwnerId,
+            service_id: s.id,
+            price_cents: s.price_cents,
+            duration_minutes: s.duration_minutes,
+          })),
+        );
+      }
+    } else {
+      const { data: appt, error: apptErr } = await supabase
+        .from("appointments")
+        .insert({
+          owner_user_id: workspaceOwnerId,
+          contact_id: ctc.id,
+          agent_id: agentId,
+          professional_id: agentId,
+          service_id: selectedServices[0]?.id ?? null,
+          starts_at: startsAtUtc.toISOString(),
+          ends_at: endsAtUtc.toISOString(),
+          status: "scheduled",
+          notes,
+          notify_whatsapp: notifyWa,
+        })
+        .select("id")
+        .single();
+      if (apptErr || !appt) {
+        console.error("[schedule-modal] erro ao criar appointment:", apptErr);
+        toast.error(`Não foi possível agendar: ${apptErr?.message ?? "erro desconhecido"}`);
+        setSubmitting(false);
+        return;
+      }
+      apptId = appt.id;
 
-    // 4. System message in chat
-    await supabase.from("messages").insert({
-      owner_user_id: workspaceOwnerId,
-      contact_id: contact.id,
-      direction: "system",
-      content: sysContent,
-      message_type: "system",
-      status: "sent",
-      sent_by: user?.id ?? null,
-    });
+      if (selectedServices.length) {
+        const { error: svcErr } = await supabase.from("appointment_services").insert(
+          selectedServices.map((s) => ({
+            appointment_id: apptId,
+            owner_user_id: workspaceOwnerId,
+            service_id: s.id,
+            price_cents: s.price_cents,
+            duration_minutes: s.duration_minutes,
+          })),
+        );
+        if (svcErr) {
+          console.error("[schedule-modal] services snapshot falhou:", svcErr);
+          await supabase.from("appointments").delete().eq("id", apptId);
+          toast.error(`Não foi possível salvar os serviços: ${svcErr.message}`);
+          setSubmitting(false);
+          return;
+        }
+      }
 
-    // 5. Outbound confirmation message (intent)
-    if (notifyWa) {
+      await supabase
+        .from("contacts")
+        .update({ kanban_column: "scheduled" })
+        .eq("id", ctc.id);
+
       await supabase.from("messages").insert({
         owner_user_id: workspaceOwnerId,
-        contact_id: contact.id,
-        direction: "outbound",
-        content: previewMessage,
-        message_type: "text",
+        contact_id: ctc.id,
+        direction: "system",
+        content: sysContent,
+        message_type: "system",
         status: "sent",
         sent_by: user?.id ?? null,
       });
     }
 
-    toast.success(`Agendamento criado! 📅 ${dateStr} às ${time}`);
+    const kind: "created" | "rescheduled" = initial?.id
+      ? previousStartsAtUtcIso && previousStartsAtUtcIso !== startsAtUtc.toISOString()
+        ? "rescheduled"
+        : "created"
+      : "created";
+    const shouldNotify = !initial?.id || kind === "rescheduled";
+    if (shouldNotify) {
+      void notifyChangeFn({
+        data: {
+          appointmentId: apptId,
+          kind,
+          ...(kind === "rescheduled" && previousStartsAtUtcIso
+            ? { previousStartsAt: previousStartsAtUtcIso }
+            : {}),
+        },
+      }).catch((e) => console.warn("[schedule-modal] notify falhou:", e));
+    }
+
+    toast.success(
+      initial?.id
+        ? `Agendamento atualizado! 📅 ${dateStr} às ${time}`
+        : `Agendamento criado! 📅 ${dateStr} às ${time}`,
+    );
     if (typeof window !== "undefined") {
       window.dispatchEvent(
         new CustomEvent("zf:appointment-created", {
           detail: {
-            id: appt.id,
-            contact_id: contact.id,
+            id: apptId,
+            contact_id: ctc.id,
             agent_id: agentId,
+            professional_id: agentId,
             service_id: selectedServices[0]?.id ?? null,
-            starts_at: startsAt.toISOString(),
-            ends_at: endsAt.toISOString(),
+            starts_at: startsAtUtc.toISOString(),
+            ends_at: endsAtUtc.toISOString(),
             status: "scheduled",
             notes,
             notify_whatsapp: notifyWa,
@@ -351,7 +530,45 @@ export function ScheduleModal({
         }),
       );
     }
-    onScheduled?.({ startsAt, serviceIds: selectedServices.map((s) => s.id) });
+    onScheduled?.({ startsAt: localStart, serviceIds: selectedServices.map((s) => s.id) });
+    onSubmitted?.();
+    onClose();
+  };
+
+  const handleCancelAppointment = async () => {
+    if (!initial?.id) return;
+    if (!confirm("Cancelar este agendamento? O horário voltará a ficar disponível.")) return;
+    setSubmitting(true);
+    const { error } = await supabase
+      .from("appointments")
+      .update({ status: "cancelled" })
+      .eq("id", initial.id);
+    if (error) {
+      toast.error(`Falha ao cancelar: ${error.message}`);
+      setSubmitting(false);
+      return;
+    }
+    void notifyChangeFn({ data: { appointmentId: initial.id, kind: "cancelled" } }).catch(
+      (e) => console.warn("[schedule-modal] notify cancel falhou:", e),
+    );
+    toast.success("Agendamento cancelado.");
+    onSubmitted?.();
+    onClose();
+  };
+
+  const handleDeleteAppointment = async () => {
+    if (!initial?.id) return;
+    if (!confirm("Excluir este agendamento permanentemente?")) return;
+    setSubmitting(true);
+    await supabase.from("appointment_services").delete().eq("appointment_id", initial.id);
+    const { error } = await supabase.from("appointments").delete().eq("id", initial.id);
+    if (error) {
+      toast.error(`Falha ao excluir: ${error.message}`);
+      setSubmitting(false);
+      return;
+    }
+    toast.success("Agendamento excluído.");
+    onSubmitted?.();
     onClose();
   };
 
