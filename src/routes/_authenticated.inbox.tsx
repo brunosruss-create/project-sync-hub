@@ -209,9 +209,25 @@ function InboxPage() {
     const onFocus = () => void load();
     window.addEventListener("focus", onFocus);
 
+    // Sincroniza estado local quando useContactActions emite uma mudança
+    const onContactUpdated = (e: Event) => {
+      const detail = (e as CustomEvent<{ id: string; patch: Partial<Contact> & { is_archived?: boolean; is_blocked?: boolean } }>).detail;
+      if (!detail?.id) return;
+      const { id, patch } = detail;
+      setContacts((prev) => {
+        // Remove se foi arquivado ou bloqueado
+        if (patch.is_archived || patch.is_blocked) {
+          return prev.filter((c) => c.id !== id);
+        }
+        return prev.map((c) => (c.id === id ? { ...c, ...patch } as Contact : c));
+      });
+    };
+    window.addEventListener("zf:contact-updated", onContactUpdated as EventListener);
+
     return () => {
       cancelled = true;
       window.removeEventListener("focus", onFocus);
+      window.removeEventListener("zf:contact-updated", onContactUpdated as EventListener);
       void supabase.removeChannel(channel);
     };
   }, [workspaceOwnerId]);
