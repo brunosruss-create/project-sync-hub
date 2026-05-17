@@ -6,7 +6,6 @@ import { useAuth } from "@/hooks/use-auth";
 import { useWorkspaceOwnerId } from "@/hooks/use-workspace-owner";
 import { type ContactCard } from "./data";
 import {
-  SEED_SERVICES,
   formatCurrencyBRL,
   formatDuration,
   type Service,
