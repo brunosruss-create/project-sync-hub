@@ -9,6 +9,7 @@ import {
   evo,
 } from "@/lib/evolution.server";
 import { runAiResponse } from "@/lib/ai-respond.server";
+import { getContactAiSummary, maybeUpdateAiSummary } from "@/lib/ai-summary";
 
 type MediaKind = "image" | "audio" | "video" | "document";
 
@@ -468,25 +469,46 @@ export const Route = createFileRoute("/api/public/evolution/$instanceId")({
                     const { data: history } = await supabaseAdmin
                       .from("messages")
                       .select("direction,content,created_at")
+                      .eq("owner_user_id", row.owner_user_id)
                       .eq("contact_id", contactId)
                       .order("created_at", { ascending: false })
-                      .limit(20);
+                      .limit(100);
                     const conversation_history = (history ?? [])
                       .reverse()
                       .filter((h) => h.content && String(h.content).trim().length > 0)
                       .map((h) => ({
                         role: h.direction === "inbound" ? ("user" as const) : ("assistant" as const),
-                        content: String(h.content).slice(0, 8000),
-                      }))
-                      .slice(-20);
+                        content: String(h.content).slice(0, 2000),
+                      }));
                     // remove a mensagem atual do histórico (já vai como `message`)
                     if (conversation_history.length > 0) conversation_history.pop();
+
+                    // ── Memória de longo prazo: resumo + sumarização em background ──
+                    const { count: totalCount } = await supabaseAdmin
+                      .from("messages")
+                      .select("id", { count: "exact", head: true })
+                      .eq("owner_user_id", row.owner_user_id)
+                      .eq("contact_id", contactId);
+                    const aiSummary = await getContactAiSummary(
+                      contactId,
+                      row.owner_user_id,
+                    );
+                    if (totalCount && totalCount > 80) {
+                      maybeUpdateAiSummary(
+                        contactId,
+                        row.owner_user_id,
+                        totalCount,
+                      ).catch((err) =>
+                        console.error("[ai-summary]", err?.message ?? err),
+                      );
+                    }
 
                     const ai = await runAiResponse({
                       workspace_owner_id: row.owner_user_id,
                       contact_id: contactId,
                       message: caption,
                       conversation_history,
+                      ai_summary: aiSummary,
                       wa_message_id: m?.key?.id ?? null,
                       contact_name: pushName ?? null,
                       contact_phone: phone,
@@ -561,23 +583,46 @@ export const Route = createFileRoute("/api/public/evolution/$instanceId")({
                         const { data: history } = await supabaseAdmin
                           .from("messages")
                           .select("direction,content,created_at")
+                          .eq("owner_user_id", row.owner_user_id)
                           .eq("contact_id", contactId)
                           .order("created_at", { ascending: false })
-                          .limit(20);
+                          .limit(100);
                         const conversation_history = (history ?? [])
                           .reverse()
                           .filter((h) => h.content && String(h.content).trim().length > 0)
                           .map((h) => ({
                             role: h.direction === "inbound" ? ("user" as const) : ("assistant" as const),
-                            content: String(h.content).slice(0, 8000),
-                          }))
-                          .slice(-20);
+                            content: String(h.content).slice(0, 2000),
+                          }));
+                        // remove a mensagem atual do histórico (já vai como `message`)
+                        if (conversation_history.length > 0) conversation_history.pop();
+
+                        // ── Memória de longo prazo: resumo + sumarização em background ──
+                        const { count: totalCount } = await supabaseAdmin
+                          .from("messages")
+                          .select("id", { count: "exact", head: true })
+                          .eq("owner_user_id", row.owner_user_id)
+                          .eq("contact_id", contactId);
+                        const aiSummary = await getContactAiSummary(
+                          contactId,
+                          row.owner_user_id,
+                        );
+                        if (totalCount && totalCount > 80) {
+                          maybeUpdateAiSummary(
+                            contactId,
+                            row.owner_user_id,
+                            totalCount,
+                          ).catch((err) =>
+                            console.error("[ai-summary]", err?.message ?? err),
+                          );
+                        }
 
                         const ai = await runAiResponse({
                           workspace_owner_id: row.owner_user_id,
                           contact_id: contactId,
                           message: caption?.trim() || "[áudio do cliente]",
                           conversation_history,
+                          ai_summary: aiSummary,
                           wa_message_id: m?.key?.id ?? null,
                           contact_name: pushName ?? null,
                           contact_phone: phone,
