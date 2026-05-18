@@ -30,6 +30,7 @@ export const aiRespond = createServerFn({ method: "POST" })
             mimeType: z.string().min(1).max(100),
           })
           .nullish(),
+        ai_summary: z.string().max(8000).nullish(),
       })
       .parse(input),
   )
