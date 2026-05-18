@@ -386,7 +386,7 @@ export async function createAppointmentFromAI(
     appointment: appt,
     service: serviceRow,
     professional,
-    client: { client_name: data.client_name, client_phone: data.client_phone },
+    client: { client_name: resolvedName || "Cliente", client_phone: resolvedPhone },
   });
 
   return { ok: true };
