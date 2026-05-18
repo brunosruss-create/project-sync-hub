@@ -60,6 +60,10 @@ export type AiRunInput = {
   preview?: boolean;
   /** Stable id da mensagem do WhatsApp (m.key.id). Quando presente, é usado como dedup_key. */
   wa_message_id?: string | null;
+  /** Nome do cliente (pushName do WhatsApp). Usado como default no agendamento. */
+  contact_name?: string | null;
+  /** Telefone do cliente (já é o WhatsApp). Usado como default no agendamento — IA não deve pedir. */
+  contact_phone?: string | null;
   /** Áudio (base64 + mimeType) para Gemini processar nativamente. */
   audio?: { data: string; mimeType: string } | null;
 };
