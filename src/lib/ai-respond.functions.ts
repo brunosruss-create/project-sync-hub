@@ -22,6 +22,8 @@ export const aiRespond = createServerFn({ method: "POST" })
           .default([]),
         preview: z.boolean().optional(),
         wa_message_id: z.string().max(200).nullish(),
+        contact_name: z.string().max(200).nullish(),
+        contact_phone: z.string().max(50).nullish(),
         audio: z
           .object({
             data: z.string().min(1),

@@ -245,11 +245,13 @@ export async function createAppointmentFromAI(
     starts_at?: string;
     client_name?: string;
     client_phone?: string;
+    /** Contact id já conhecido (vindo do webhook WhatsApp). Preferido ao lookup por telefone. */
+    contact_id?: string | null;
     notes?: string;
   },
   profile: { id: string; business_timezone: string | null; business_name: string | null },
 ): Promise<{ ok: boolean; reason?: string }> {
-  if (!data.starts_at || !data.client_name || !data.client_phone || !data.service_name) {
+  if (!data.starts_at || !data.service_name) {
     return { ok: false, reason: "missing_fields" };
   }
 
@@ -287,23 +289,50 @@ export async function createAppointmentFromAI(
     if (pros && pros.length === 1) professional = pros[0];
   }
 
-  // 3. Contato (upsert por telefone)
-  const phone = normalizePhone(data.client_phone);
-  const { data: existingContact } = await supabaseAdmin
-    .from("contacts")
-    .select("id")
-    .eq("owner_user_id", profile.id)
-    .eq("phone", phone)
-    .maybeSingle();
-  let contactId = existingContact?.id ?? null;
-  if (!contactId) {
-    const { data: newC, error: ce } = await supabaseAdmin
+  // 3. Contato — preferimos o contact_id passado pelo webhook (conversa atual);
+  //    fallback faz upsert por telefone.
+  let contactId: string | null = null;
+  let resolvedName = (data.client_name ?? "").trim();
+  let resolvedPhone = normalizePhone(data.client_phone ?? "");
+
+  if (data.contact_id) {
+    const { data: existing } = await supabaseAdmin
       .from("contacts")
-      .insert({ owner_user_id: profile.id, name: data.client_name, phone })
-      .select("id")
-      .single();
-    if (ce || !newC) return { ok: false, reason: "contact_create_failed" };
-    contactId = newC.id;
+      .select("id,name,phone")
+      .eq("id", data.contact_id)
+      .eq("owner_user_id", profile.id)
+      .maybeSingle();
+    if (existing) {
+      contactId = existing.id;
+      if (!resolvedName) resolvedName = existing.name ?? "";
+      if (!resolvedPhone) resolvedPhone = normalizePhone(existing.phone ?? "");
+    }
+  }
+
+  if (!contactId) {
+    if (!resolvedPhone) return { ok: false, reason: "missing_phone" };
+    const { data: existingContact } = await supabaseAdmin
+      .from("contacts")
+      .select("id,name")
+      .eq("owner_user_id", profile.id)
+      .eq("phone", resolvedPhone)
+      .maybeSingle();
+    if (existingContact) {
+      contactId = existingContact.id;
+      if (!resolvedName) resolvedName = existingContact.name ?? "";
+    } else {
+      const { data: newC, error: ce } = await supabaseAdmin
+        .from("contacts")
+        .insert({
+          owner_user_id: profile.id,
+          name: resolvedName || resolvedPhone,
+          phone: resolvedPhone,
+        })
+        .select("id")
+        .single();
+      if (ce || !newC) return { ok: false, reason: "contact_create_failed" };
+      contactId = newC.id;
+    }
   }
 
   // 4. Anti-conflito
@@ -357,7 +386,7 @@ export async function createAppointmentFromAI(
     appointment: appt,
     service: serviceRow,
     professional,
-    client: { client_name: data.client_name, client_phone: data.client_phone },
+    client: { client_name: resolvedName || "Cliente", client_phone: resolvedPhone },
   });
 
   return { ok: true };

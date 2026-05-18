@@ -60,6 +60,10 @@ export type AiRunInput = {
   preview?: boolean;
   /** Stable id da mensagem do WhatsApp (m.key.id). Quando presente, é usado como dedup_key. */
   wa_message_id?: string | null;
+  /** Nome do cliente (pushName do WhatsApp). Usado como default no agendamento. */
+  contact_name?: string | null;
+  /** Telefone do cliente (já é o WhatsApp). Usado como default no agendamento — IA não deve pedir. */
+  contact_phone?: string | null;
   /** Áudio (base64 + mimeType) para Gemini processar nativamente. */
   audio?: { data: string; mimeType: string } | null;
 };
@@ -1003,12 +1007,51 @@ export async function runAiResponse(input: AiRunInput): Promise<AiRunResult> {
     ? buildContactAppointmentsLayer(contactAppts, tz)
     : null;
 
+  // Dados já conhecidos do cliente (vindos do WhatsApp). A IA NUNCA deve
+  // pedir telefone — o número da conversa JÁ é o WhatsApp dele.
+  const knownName = (data.contact_name ?? "").trim();
+  const knownPhone = (data.contact_phone ?? "").trim();
+  const knownClientLayer =
+    knownName || knownPhone
+      ? [
+          "=== DADOS JÁ CONHECIDOS DESTE CLIENTE (FONTE ÚNICA DE VERDADE) ===",
+          knownName ? `Nome no WhatsApp: ${knownName}` : null,
+          knownPhone ? `Telefone (WhatsApp): ${knownPhone}` : null,
+          "",
+          "REGRAS ABSOLUTAS:",
+          "1. NUNCA peça o número de telefone — você JÁ tem (é o WhatsApp acima). Use esse telefone em qualquer agendamento.",
+          "2. NUNCA peça 'um número de contato', 'telefone para finalizar', 'número para confirmação' nem nada parecido. O cliente vai estranhar.",
+          "3. Use o Nome do WhatsApp como nome do cliente, a menos que ele já tenha dado um nome diferente nesta conversa ou em mensagens anteriores. Só pergunte o nome completo se o Nome do WhatsApp for claramente vazio, um apelido genérico ('Cliente', 'Z', 'A'), ou só um primeiro nome curto e você precisar do sobrenome para o registro.",
+        ]
+          .filter(Boolean)
+          .join("\n")
+      : null;
+
   // Agendamento autônomo pela IA — sempre habilitado (link público foi removido).
   const canReschedule = !!(profile as any).ai_can_reschedule;
   const canCancel = !!(profile as any).ai_can_cancel;
   const bookingParts: string[] = [];
   bookingParts.push(
-    `=== AGENDAMENTO AUTÔNOMO PELA IA ===\nVocê É RESPONSÁVEL por agendar diretamente na conversa — NÃO existe link externo de agendamento, NÃO ofereça nenhum link. Use a lista de PROFISSIONAIS e a agenda em tempo real acima para propor horários livres dentro do horário de funcionamento.\n\nFLUXO:\n1. Quando o cliente quiser marcar, pergunte (se ainda não souber): serviço desejado, data/hora de preferência, nome completo e telefone (use o número do WhatsApp se ele confirmar).\n2. Confira na lista de compromissos do profissional se o horário está livre. Se não estiver, ofereça as 2–3 alternativas livres mais próximas.\n3. Resuma para o cliente ("Confirmo então: {serviço} com {profissional} em {data} às {hora}, no nome de {nome}, telefone {telefone}. Posso confirmar?") e SÓ emita o JSON quando ele responder confirmando.\n\nQuando o cliente confirmar TEXTUALMENTE um agendamento novo, inclua no FINAL da sua resposta uma única linha com este bloco JSON exato (sem markdown, sem comentário antes ou depois):\nAPPOINTMENT_JSON:{"service_name":"...","starts_at":"YYYY-MM-DDTHH:mm:00-03:00","client_name":"...","client_phone":"...","professional_id":null}\nSó emita esse bloco quando TODOS os campos estiverem confirmados. Nunca invente dados. Use o uuid de um profissional da lista quando souber qual será o atendente; caso contrário, use null.`,
+    [
+      "=== AGENDAMENTO AUTÔNOMO PELA IA ===",
+      "Você É RESPONSÁVEL por agendar diretamente na conversa — NÃO existe link externo, NÃO ofereça nenhum link. Use a lista de PROFISSIONAIS e a agenda em tempo real acima para propor horários livres dentro do horário de funcionamento.",
+      "",
+      "FLUXO OBRIGATÓRIO antes de criar qualquer agendamento:",
+      "1. Identifique: SERVIÇO desejado (da lista de serviços), DATA + HORA (use o bloco DATA E HORA ATUAIS), e PROFISSIONAL (se houver mais de um).",
+      "2. NÃO peça telefone — use o telefone do WhatsApp (bloco DADOS JÁ CONHECIDOS). Use o Nome do WhatsApp como nome, a menos que precise do nome completo.",
+      "3. Cheque na lista de COMPROMISSOS do profissional se o horário está livre. Se não estiver, ofereça 2–3 alternativas livres mais próximas.",
+      "4. Faça um RESUMO de confirmação para o cliente, ex.: \"Confirmo então: {serviço} com {profissional} em {data} às {hora}, no nome de {nome}. Posso confirmar?\" — NÃO mencione telefone nesse resumo.",
+      "5. SÓ emita o bloco APPOINTMENT_JSON depois que o cliente responder confirmando (ex.: \"sim\", \"pode confirmar\", \"isso\"). NUNCA emita o JSON na mesma mensagem do resumo.",
+      "",
+      "Quando o cliente confirmar TEXTUALMENTE o agendamento, inclua no FINAL da sua resposta uma única linha com este bloco JSON exato (sem markdown, sem comentário antes ou depois):",
+      'APPOINTMENT_JSON:{"service_name":"...","starts_at":"YYYY-MM-DDTHH:mm:00-03:00","client_name":"...","client_phone":"...","professional_id":null}',
+      "- client_phone: SEMPRE o telefone do WhatsApp acima (não invente, não peça).",
+      "- client_name: o nome do WhatsApp (ou o nome completo se o cliente informou).",
+      "- professional_id: uuid de um profissional da lista quando souber; caso contrário, null.",
+      "Nunca invente dados. Nunca emita esse bloco sem confirmação prévia do cliente.",
+      "",
+      "DEPOIS DE CRIAR O AGENDAMENTO: na PRÓXIMA mensagem do cliente, o novo agendamento já estará disponível no bloco AGENDAMENTOS DESTE CLIENTE acima. Use ELE como fonte da verdade para qualquer pergunta de 'quando é minha consulta', 'pode confirmar meu horário', etc. NUNCA diga que não tem acesso à agenda.",
+    ].join("\n"),
   );
   if (canReschedule) {
     bookingParts.push(
@@ -1038,6 +1081,7 @@ export async function runAiResponse(input: AiRunInput): Promise<AiRunResult> {
       __professionals_count: pros.length,
     }),
     professionalsLayer,
+    knownClientLayer,
     contactApptsLayer,
     servicesLayer,
     bookingLayer,
@@ -1101,6 +1145,12 @@ export async function runAiResponse(input: AiRunInput): Promise<AiRunResult> {
       if (match) {
         try {
           const payload = JSON.parse(match[1]);
+          // Garante que o appointment criado fique ligado ao contato real da
+          // conversa (evita duplicar contato por divergência de formato no
+          // telefone). Também injeta defaults pro caso da IA esquecer.
+          if (data.contact_id) payload.contact_id = data.contact_id;
+          if (!payload.client_phone && knownPhone) payload.client_phone = knownPhone;
+          if (!payload.client_name && knownName) payload.client_name = knownName;
           await createAppointmentFromAI(payload, {
             id: profile.id,
             business_timezone: profile.business_timezone ?? null,
