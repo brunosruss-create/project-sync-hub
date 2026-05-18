@@ -18,7 +18,7 @@ export const aiRespond = createServerFn({ method: "POST" })
               content: z.string().max(8000),
             }),
           )
-          .max(50)
+          .max(200)
           .default([]),
         preview: z.boolean().optional(),
         wa_message_id: z.string().max(200).nullish(),
@@ -30,6 +30,7 @@ export const aiRespond = createServerFn({ method: "POST" })
             mimeType: z.string().min(1).max(100),
           })
           .nullish(),
+        ai_summary: z.string().max(8000).nullish(),
       })
       .parse(input),
   )

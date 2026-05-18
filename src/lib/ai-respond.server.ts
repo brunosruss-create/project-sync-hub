@@ -66,6 +66,8 @@ export type AiRunInput = {
   contact_phone?: string | null;
   /** Áudio (base64 + mimeType) para Gemini processar nativamente. */
   audio?: { data: string; mimeType: string } | null;
+  /** Resumo automático do histórico antigo do contato (memória de longo prazo). */
+  ai_summary?: string | null;
 };
 
 export type AiRunResult =
@@ -1070,7 +1072,12 @@ export async function runAiResponse(input: AiRunInput): Promise<AiRunResult> {
 
   const professionalsLayer = buildProfessionalsLayer(pros, upcoming, bizHours, tz);
 
+  const summarySection = data.ai_summary && data.ai_summary.trim()
+    ? `=== HISTÓRICO ANTERIOR DO CLIENTE (resumo automático) ===\n${data.ai_summary.trim()}\n=== FIM DO HISTÓRICO ANTERIOR ===`
+    : "";
+
   const finalPrompt = [
+    summarySection,
     buildNowLayer(tz),
     g.ai_base_prompt,
     segment?.segment_prompt ?? "",
