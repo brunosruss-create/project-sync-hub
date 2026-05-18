@@ -597,7 +597,26 @@ export async function cancelAppointmentFromAI(
   data: { appointment_id?: string; reason?: string; contact_id?: string | null; silent?: boolean },
   profile: { id: string; business_timezone: string | null; business_name: string | null },
 ): Promise<{ ok: boolean; reason?: string; previous_status?: string; previous_notes?: string }> {
-  if (!data.appointment_id) return { ok: false, reason: "missing_fields" };
+  // Resolve appointment_id quando a IA não mandou ou mandou um inválido/cancelado.
+  let cancelId = data.appointment_id ?? "";
+  let needsResolve = !cancelId;
+  if (cancelId) {
+    const { data: check } = await supabaseAdmin
+      .from("appointments")
+      .select("id,status,contact_id")
+      .eq("id", cancelId)
+      .eq("owner_user_id", profile.id)
+      .maybeSingle();
+    if (!check) needsResolve = true;
+    else if (check.status === "cancelled" || check.status === "completed") needsResolve = true;
+    else if (data.contact_id && check.contact_id && check.contact_id !== data.contact_id) needsResolve = true;
+  }
+  if (needsResolve) {
+    const r = await resolveActiveAppointment(profile.id, data.contact_id ?? null);
+    if (r.kind === "none") return { ok: false, reason: "no_active_appointment" };
+    if (r.kind === "many") return { ok: false, reason: "ambiguous_appointment" };
+    cancelId = r.id;
+  }
 
   const { data: apptRaw } = await supabaseAdmin
     .from("appointments")
@@ -606,7 +625,7 @@ export async function cancelAppointmentFromAI(
         "services(id,name,duration_minutes,price_cents), " +
         "contacts(name,phone)",
     )
-    .eq("id", data.appointment_id)
+    .eq("id", cancelId)
     .eq("owner_user_id", profile.id)
     .maybeSingle();
   const appt = apptRaw as any;
