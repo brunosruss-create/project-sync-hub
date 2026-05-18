@@ -60,6 +60,8 @@ export type AiRunInput = {
   preview?: boolean;
   /** Stable id da mensagem do WhatsApp (m.key.id). Quando presente, é usado como dedup_key. */
   wa_message_id?: string | null;
+  /** Áudio (base64 + mimeType) para Gemini processar nativamente. */
+  audio?: { data: string; mimeType: string } | null;
 };
 
 export type AiRunResult =
