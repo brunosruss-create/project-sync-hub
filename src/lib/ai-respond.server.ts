@@ -513,6 +513,57 @@ function buildServicesLayer(
 type ProRow = { id: string; name: string; role: string | null };
 type ApptRow = { professional_id: string | null; starts_at: string; ends_at: string };
 
+function buildNowLayer(tz: string): string {
+  const now = new Date();
+  const fmtFull = new Intl.DateTimeFormat("pt-BR", {
+    timeZone: tz,
+    weekday: "long",
+    day: "2-digit",
+    month: "long",
+    year: "numeric",
+  });
+  const fmtTime = new Intl.DateTimeFormat("pt-BR", {
+    timeZone: tz,
+    hour: "2-digit",
+    minute: "2-digit",
+    hour12: false,
+  });
+  const fmtIso = new Intl.DateTimeFormat("en-CA", {
+    timeZone: tz,
+    year: "numeric",
+    month: "2-digit",
+    day: "2-digit",
+  });
+  const fmtWeekday = new Intl.DateTimeFormat("pt-BR", {
+    timeZone: tz,
+    weekday: "long",
+  });
+  const todayIso = fmtIso.format(now); // YYYY-MM-DD
+  const tomorrow = new Date(now.getTime() + 24 * 3600_000);
+  const afterTomorrow = new Date(now.getTime() + 48 * 3600_000);
+  return [
+    "=== DATA E HORA ATUAIS (FONTE ÚNICA DE VERDADE) ===",
+    `Agora: ${fmtFull.format(now)} — ${fmtTime.format(now)} (fuso ${tz}).`,
+    `HOJE = ${todayIso} (${fmtWeekday.format(now)}).`,
+    `AMANHÃ = ${fmtIso.format(tomorrow)} (${fmtWeekday.format(tomorrow)}).`,
+    `DEPOIS DE AMANHÃ = ${fmtIso.format(afterTomorrow)} (${fmtWeekday.format(afterTomorrow)}).`,
+    "",
+    "REGRAS DE TEMPO (use SEMPRE estas referências, NUNCA chute datas):",
+    "1. Quando o cliente disser 'hoje', use a data HOJE acima. 'Amanhã' = AMANHÃ. 'Depois de amanhã' = DEPOIS DE AMANHÃ.",
+    "2. Se o cliente disser apenas um horário sem data ('às 15h', 'umas 10'), assuma HOJE se o horário ainda não passou; caso já tenha passado, confirme com ele se quer amanhã.",
+    "3. Nunca diga 'amanhã é dia X' sem usar a data exata listada acima. Se houver dúvida, leia novamente este bloco.",
+    "",
+    "PERÍODOS DO DIA (interpretação obrigatória):",
+    "- Manhã = 06:00 às 11:59.",
+    "- Meio-dia / horário de almoço = 12:00 às 13:59.",
+    "- 'Depois do almoço' = a partir das 12:00 (geralmente 13:00–14:00 em diante) do MESMO dia mencionado.",
+    "- Tarde = 12:00 às 17:59.",
+    "- Final de tarde = 17:00 às 18:59.",
+    "- Noite = 18:00 às 22:59.",
+    "Se o cliente disser 'tarde' ou 'depois do almoço' sem horário exato, ofereça 2–3 opções dentro dessa faixa que estejam livres na agenda dos profissionais.",
+  ].join("\n");
+}
+
 function buildProfessionalsLayer(
   pros: ProRow[],
   upcoming: ApptRow[],
