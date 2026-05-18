@@ -579,6 +579,8 @@ export const Route = createFileRoute("/api/public/evolution/$instanceId")({
                           message: caption?.trim() || "[áudio do cliente]",
                           conversation_history,
                           wa_message_id: m?.key?.id ?? null,
+                          contact_name: pushName ?? null,
+                          contact_phone: phone,
                           audio: { data: b64, mimeType: mime },
                         });
 
