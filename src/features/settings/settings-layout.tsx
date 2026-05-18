@@ -8,7 +8,6 @@ import {
   MessageSquare,
   CreditCard,
   Briefcase,
-  Link as LinkIcon,
 } from "lucide-react";
 
 type SidebarEntry =
@@ -22,7 +21,6 @@ const items: SidebarEntry[] = [
   { kind: "item", label: "Equipe", to: "/settings/team", icon: Users },
   { kind: "section", label: "Agenda" },
   { kind: "item", label: "Profissionais", to: "/settings/professionals", icon: Briefcase },
-  { kind: "item", label: "Link público", to: "/settings/booking", icon: LinkIcon },
   { kind: "item", label: "WhatsApp", to: "/settings/whatsapp", icon: MessageCircle },
   { kind: "item", label: "Mensagens", to: "/settings/messages", icon: MessageSquare },
   { kind: "item", label: "Planos & Cobrança", to: "/settings/billing", icon: CreditCard },
