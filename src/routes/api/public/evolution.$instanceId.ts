@@ -534,6 +534,97 @@ export const Route = createFileRoute("/api/public/evolution/$instanceId")({
                   } catch (e: any) {
                     console.error("[evolution ai] erro:", e?.message ?? e);
                   }
+                } else if (mediaType === "audio" && mediaUrl && !humanInControl) {
+                  // ───── IA processa áudio nativamente (Gemini multimodal) ─────
+                  try {
+                    const audioResp = await fetch(mediaUrl);
+                    if (!audioResp.ok) {
+                      console.error("[evolution ai audio] download falhou:", audioResp.status);
+                    } else {
+                      const buf = new Uint8Array(await audioResp.arrayBuffer());
+                      const MAX_BYTES = 15 * 1024 * 1024;
+                      if (buf.byteLength > MAX_BYTES) {
+                        console.warn("[evolution ai audio] arquivo grande, ignorando", buf.byteLength);
+                      } else {
+                        // base64
+                        let bin = "";
+                        for (let i = 0; i < buf.length; i++) bin += String.fromCharCode(buf[i]);
+                        const b64 = btoa(bin);
+                        // normaliza mime para Gemini
+                        const rawMime = (mediaMime ?? "audio/ogg").toLowerCase();
+                        const mime = rawMime.startsWith("audio/ogg")
+                          ? "audio/ogg"
+                          : rawMime.split(";")[0].trim() || "audio/ogg";
+
+                        const { data: history } = await supabaseAdmin
+                          .from("messages")
+                          .select("direction,content,created_at")
+                          .eq("contact_id", contactId)
+                          .order("created_at", { ascending: false })
+                          .limit(20);
+                        const conversation_history = (history ?? [])
+                          .reverse()
+                          .filter((h) => h.content && String(h.content).trim().length > 0)
+                          .map((h) => ({
+                            role: h.direction === "inbound" ? ("user" as const) : ("assistant" as const),
+                            content: String(h.content).slice(0, 8000),
+                          }))
+                          .slice(-20);
+
+                        const ai = await runAiResponse({
+                          workspace_owner_id: row.owner_user_id,
+                          contact_id: contactId,
+                          message: caption?.trim() || "[áudio do cliente]",
+                          conversation_history,
+                          wa_message_id: m?.key?.id ?? null,
+                          audio: { data: b64, mimeType: mime },
+                        });
+
+                        if (ai.action === "send_message" || ai.action === "send_out_of_hours") {
+                          const responseText = ai.response?.trim();
+                          if (responseText) {
+                            let waMessageId: string | null = null;
+                            try {
+                              const r: any = await evo.sendText(row.instance_name as string, {
+                                number: phone,
+                                text: responseText,
+                              });
+                              waMessageId = r?.key?.id ?? r?.messageId ?? null;
+                            } catch (e: any) {
+                              console.error("[evolution ai audio] sendText falhou:", e?.message ?? e);
+                            }
+                            await supabaseAdmin.from("messages").insert({
+                              owner_user_id: row.owner_user_id,
+                              contact_id: contactId,
+                              direction: "outbound",
+                              content: responseText,
+                              message_type: "text",
+                              status: "sent",
+                              whatsapp_message_id: waMessageId,
+                              is_ai: true,
+                            });
+                            await supabaseAdmin
+                              .from("contacts")
+                              .update({
+                                last_message: responseText,
+                                last_message_at: new Date().toISOString(),
+                                last_direction: "outbound",
+                              })
+                              .eq("id", contactId);
+                          }
+                        } else if (ai.action === "transfer_to_human") {
+                          await supabaseAdmin
+                            .from("contacts")
+                            .update({ kanban_column: "waiting", is_unread: true })
+                            .eq("id", contactId);
+                        } else {
+                          console.log("[evolution ai audio] skipped", ai);
+                        }
+                      }
+                    }
+                  } catch (e: any) {
+                    console.error("[evolution ai audio] erro:", e?.message ?? e);
+                  }
                 }
               } else {
                 console.error("[evolution upsert] no contactId after upsert", { phone });

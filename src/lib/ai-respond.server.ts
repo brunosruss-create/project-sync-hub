@@ -60,6 +60,8 @@ export type AiRunInput = {
   preview?: boolean;
   /** Stable id da mensagem do WhatsApp (m.key.id). Quando presente, é usado como dedup_key. */
   wa_message_id?: string | null;
+  /** Áudio (base64 + mimeType) para Gemini processar nativamente. */
+  audio?: { data: string; mimeType: string } | null;
 };
 
 export type AiRunResult =
@@ -1007,12 +1009,23 @@ export async function runAiResponse(input: AiRunInput): Promise<AiRunResult> {
 
   const model = g.gemini_model || "gemini-3.1-flash-lite";
   const url = `https://generativelanguage.googleapis.com/v1beta/models/${model}:generateContent?key=${g.gemini_api_key}`;
+  const lastUserParts: Array<Record<string, unknown>> = [];
+  if (data.audio?.data && data.audio?.mimeType) {
+    lastUserParts.push({
+      inlineData: { mimeType: data.audio.mimeType, data: data.audio.data },
+    });
+    lastUserParts.push({
+      text: data.message?.trim() || "Ouça o áudio do cliente acima e responda em português.",
+    });
+  } else {
+    lastUserParts.push({ text: data.message });
+  }
   const contents = [
     ...(data.conversation_history ?? []).map((m) => ({
       role: m.role === "user" ? "user" : "model",
       parts: [{ text: m.content }],
     })),
-    { role: "user", parts: [{ text: data.message }] },
+    { role: "user", parts: lastUserParts },
   ];
   try {
     const res = await fetch(url, {
