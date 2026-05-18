@@ -4,7 +4,7 @@ import {
   rescheduleAppointmentFromAI,
   cancelAppointmentFromAI,
 } from "@/lib/booking-confirmation.server";
-import { getBookingUrl } from "@/lib/booking-url";
+
 import { MESSAGE_DEFAULTS } from "@/lib/message-defaults";
 import { renderTemplate } from "@/lib/message-templates";
 
@@ -513,6 +513,57 @@ function buildServicesLayer(
 type ProRow = { id: string; name: string; role: string | null };
 type ApptRow = { professional_id: string | null; starts_at: string; ends_at: string };
 
+function buildNowLayer(tz: string): string {
+  const now = new Date();
+  const fmtFull = new Intl.DateTimeFormat("pt-BR", {
+    timeZone: tz,
+    weekday: "long",
+    day: "2-digit",
+    month: "long",
+    year: "numeric",
+  });
+  const fmtTime = new Intl.DateTimeFormat("pt-BR", {
+    timeZone: tz,
+    hour: "2-digit",
+    minute: "2-digit",
+    hour12: false,
+  });
+  const fmtIso = new Intl.DateTimeFormat("en-CA", {
+    timeZone: tz,
+    year: "numeric",
+    month: "2-digit",
+    day: "2-digit",
+  });
+  const fmtWeekday = new Intl.DateTimeFormat("pt-BR", {
+    timeZone: tz,
+    weekday: "long",
+  });
+  const todayIso = fmtIso.format(now); // YYYY-MM-DD
+  const tomorrow = new Date(now.getTime() + 24 * 3600_000);
+  const afterTomorrow = new Date(now.getTime() + 48 * 3600_000);
+  return [
+    "=== DATA E HORA ATUAIS (FONTE ÚNICA DE VERDADE) ===",
+    `Agora: ${fmtFull.format(now)} — ${fmtTime.format(now)} (fuso ${tz}).`,
+    `HOJE = ${todayIso} (${fmtWeekday.format(now)}).`,
+    `AMANHÃ = ${fmtIso.format(tomorrow)} (${fmtWeekday.format(tomorrow)}).`,
+    `DEPOIS DE AMANHÃ = ${fmtIso.format(afterTomorrow)} (${fmtWeekday.format(afterTomorrow)}).`,
+    "",
+    "REGRAS DE TEMPO (use SEMPRE estas referências, NUNCA chute datas):",
+    "1. Quando o cliente disser 'hoje', use a data HOJE acima. 'Amanhã' = AMANHÃ. 'Depois de amanhã' = DEPOIS DE AMANHÃ.",
+    "2. Se o cliente disser apenas um horário sem data ('às 15h', 'umas 10'), assuma HOJE se o horário ainda não passou; caso já tenha passado, confirme com ele se quer amanhã.",
+    "3. Nunca diga 'amanhã é dia X' sem usar a data exata listada acima. Se houver dúvida, leia novamente este bloco.",
+    "",
+    "PERÍODOS DO DIA (interpretação obrigatória):",
+    "- Manhã = 06:00 às 11:59.",
+    "- Meio-dia / horário de almoço = 12:00 às 13:59.",
+    "- 'Depois do almoço' = a partir das 12:00 (geralmente 13:00–14:00 em diante) do MESMO dia mencionado.",
+    "- Tarde = 12:00 às 17:59.",
+    "- Final de tarde = 17:00 às 18:59.",
+    "- Noite = 18:00 às 22:59.",
+    "Se o cliente disser 'tarde' ou 'depois do almoço' sem horário exato, ofereça 2–3 opções dentro dessa faixa que estejam livres na agenda dos profissionais.",
+  ].join("\n");
+}
+
 function buildProfessionalsLayer(
   pros: ProRow[],
   upcoming: ApptRow[],
@@ -952,25 +1003,13 @@ export async function runAiResponse(input: AiRunInput): Promise<AiRunResult> {
     ? buildContactAppointmentsLayer(contactAppts, tz)
     : null;
 
-  // Link público de agendamento (se habilitado)
-  const bookingSlug = (profile as any).booking_slug as string | null;
-  const bookingEnabled = !!(profile as any).booking_enabled;
-  const bookingAiSend = (profile as any).booking_ai_send !== false; // default true
-  const bookingUrl =
-    bookingEnabled && bookingSlug ? getBookingUrl(bookingSlug) : null;
+  // Agendamento autônomo pela IA — sempre habilitado (link público foi removido).
   const canReschedule = !!(profile as any).ai_can_reschedule;
   const canCancel = !!(profile as any).ai_can_cancel;
   const bookingParts: string[] = [];
-  if (bookingUrl && bookingAiSend) {
-    bookingParts.push(
-      `=== LINK PÚBLICO DE AGENDAMENTO ===\nO cliente pode agendar sozinho pelo link: ${bookingUrl}\nQuando o cliente pedir para agendar online, marcar horário, ou perguntar como agendar — ofereça este link de forma natural na conversa. Não invente outros links.`,
-    );
-  }
-  if (bookingEnabled) {
-    bookingParts.push(
-      `Se, ao longo da conversa, o cliente confirmar TEXTUALMENTE um agendamento novo (data + hora + serviço + nome + telefone), inclua no FINAL da sua resposta uma única linha com este bloco JSON exato (sem markdown, sem comentário antes ou depois):\nAPPOINTMENT_JSON:{"service_name":"...","starts_at":"YYYY-MM-DDTHH:mm:00-03:00","client_name":"...","client_phone":"...","professional_id":null}\nSó emita esse bloco quando TODOS os campos estiverem confirmados pelo cliente. Nunca invente dados.`,
-    );
-  }
+  bookingParts.push(
+    `=== AGENDAMENTO AUTÔNOMO PELA IA ===\nVocê É RESPONSÁVEL por agendar diretamente na conversa — NÃO existe link externo de agendamento, NÃO ofereça nenhum link. Use a lista de PROFISSIONAIS e a agenda em tempo real acima para propor horários livres dentro do horário de funcionamento.\n\nFLUXO:\n1. Quando o cliente quiser marcar, pergunte (se ainda não souber): serviço desejado, data/hora de preferência, nome completo e telefone (use o número do WhatsApp se ele confirmar).\n2. Confira na lista de compromissos do profissional se o horário está livre. Se não estiver, ofereça as 2–3 alternativas livres mais próximas.\n3. Resuma para o cliente ("Confirmo então: {serviço} com {profissional} em {data} às {hora}, no nome de {nome}, telefone {telefone}. Posso confirmar?") e SÓ emita o JSON quando ele responder confirmando.\n\nQuando o cliente confirmar TEXTUALMENTE um agendamento novo, inclua no FINAL da sua resposta uma única linha com este bloco JSON exato (sem markdown, sem comentário antes ou depois):\nAPPOINTMENT_JSON:{"service_name":"...","starts_at":"YYYY-MM-DDTHH:mm:00-03:00","client_name":"...","client_phone":"...","professional_id":null}\nSó emita esse bloco quando TODOS os campos estiverem confirmados. Nunca invente dados. Use o uuid de um profissional da lista quando souber qual será o atendente; caso contrário, use null.`,
+  );
   if (canReschedule) {
     bookingParts.push(
       `REAGENDAMENTO: Se o cliente confirmar TEXTUALMENTE uma nova data/hora para um agendamento existente (referencie pelo [id:...] da lista de AGENDAMENTOS DESTE CLIENTE), inclua no FINAL da sua resposta uma única linha com este bloco JSON exato:\nRESCHEDULE_JSON:{"appointment_id":"<uuid-do-id-da-lista>","new_starts_at":"YYYY-MM-DDTHH:mm:00-03:00"}\nSó emita esse bloco quando o cliente confirmar literalmente a nova data/hora. Use o uuid EXATO da lista de agendamentos.`,
@@ -981,16 +1020,15 @@ export async function runAiResponse(input: AiRunInput): Promise<AiRunResult> {
       `CANCELAMENTO: Se o cliente confirmar TEXTUALMENTE o cancelamento de um agendamento existente, inclua no FINAL da sua resposta uma única linha com este bloco JSON exato:\nCANCEL_JSON:{"appointment_id":"<uuid-do-id-da-lista>","reason":"motivo curto"}\nSó emita esse bloco depois da confirmação explícita do cliente (ex.: "sim, pode cancelar"). Use o uuid EXATO da lista.`,
     );
   }
-  if (canReschedule || canCancel || bookingEnabled) {
-    bookingParts.push(
-      `REGRA: Você só pode emitir UM bloco JSON por resposta (APPOINTMENT_JSON, RESCHEDULE_JSON ou CANCEL_JSON). Nunca emita dois ao mesmo tempo.`,
-    );
-  }
+  bookingParts.push(
+    `REGRA: Você só pode emitir UM bloco JSON por resposta (APPOINTMENT_JSON, RESCHEDULE_JSON ou CANCEL_JSON). Nunca emita dois ao mesmo tempo.`,
+  );
   const bookingLayer = bookingParts.length > 0 ? bookingParts.join("\n\n") : null;
 
   const professionalsLayer = buildProfessionalsLayer(pros, upcoming, bizHours, tz);
 
   const finalPrompt = [
+    buildNowLayer(tz),
     g.ai_base_prompt,
     segment?.segment_prompt ?? "",
     buildWorkspaceLayer({
@@ -1058,7 +1096,7 @@ export async function runAiResponse(input: AiRunInput): Promise<AiRunResult> {
     let text = json.candidates?.[0]?.content?.parts?.[0]?.text ?? "";
 
     // Detecta bloco APPOINTMENT_JSON emitido pela IA
-    if (bookingEnabled) {
+    {
       const match = text.match(/APPOINTMENT_JSON:(\{[\s\S]*?\})\s*$/);
       if (match) {
         try {
