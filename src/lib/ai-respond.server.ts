@@ -1081,6 +1081,7 @@ export async function runAiResponse(input: AiRunInput): Promise<AiRunResult> {
       __professionals_count: pros.length,
     }),
     professionalsLayer,
+    knownClientLayer,
     contactApptsLayer,
     servicesLayer,
     bookingLayer,
