@@ -40,7 +40,7 @@ import {
   type Service,
 } from "@/features/services/data";
 import { useContactActions } from "@/hooks/use-contact-actions";
-import { useBookingLink } from "@/hooks/use-booking-link";
+
 
 type Tab = "conversation" | "contact" | "services" | "history";
 
@@ -145,7 +145,7 @@ export function ConversationPanel({
   const [forwardSource, setForwardSource] = React.useState<ForwardSource | null>(null);
   const [transferOpen, setTransferOpen] = React.useState(false);
   const actions = useContactActions();
-  const { url: bookingUrl } = useBookingLink();
+  
   const open = !!contact;
   const scrollRef = React.useRef<HTMLDivElement | null>(null);
   const taRef = React.useRef<HTMLTextAreaElement | null>(null);
@@ -697,7 +697,6 @@ export function ConversationPanel({
                       : null
                   }
                   onCancelReply={() => setReplyingTo(null)}
-                  bookingUrl={bookingUrl}
                 />
               </>
             ) : (

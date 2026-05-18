@@ -15,7 +15,6 @@ import { Route as LoginRouteImport } from './routes/login'
 import { Route as ForgotPasswordRouteImport } from './routes/forgot-password'
 import { Route as AuthenticatedRouteImport } from './routes/_authenticated'
 import { Route as IndexRouteImport } from './routes/index'
-import { Route as BookSlugRouteImport } from './routes/book.$slug'
 import { Route as AuthCallbackRouteImport } from './routes/auth.callback'
 import { Route as AuthenticatedSuperAdminRouteImport } from './routes/_authenticated.super-admin'
 import { Route as AuthenticatedServicesRouteImport } from './routes/_authenticated.services'
@@ -37,10 +36,8 @@ import { Route as AuthenticatedSettingsTeamRouteImport } from './routes/_authent
 import { Route as AuthenticatedSettingsProfileRouteImport } from './routes/_authenticated.settings.profile'
 import { Route as AuthenticatedSettingsProfessionalsRouteImport } from './routes/_authenticated.settings.professionals'
 import { Route as AuthenticatedSettingsMessagesRouteImport } from './routes/_authenticated.settings.messages'
-import { Route as AuthenticatedSettingsBookingRouteImport } from './routes/_authenticated.settings.booking'
 import { Route as AuthenticatedSettingsBillingRouteImport } from './routes/_authenticated.settings.billing'
 import { Route as ApiPublicEvolutionInstanceIdRouteImport } from './routes/api/public/evolution.$instanceId'
-import { Route as ApiPublicBookSlugRouteImport } from './routes/api/public/book.$slug'
 
 const SignupRoute = SignupRouteImport.update({
   id: '/signup',
@@ -69,11 +66,6 @@ const AuthenticatedRoute = AuthenticatedRouteImport.update({
 const IndexRoute = IndexRouteImport.update({
   id: '/',
   path: '/',
-  getParentRoute: () => rootRouteImport,
-} as any)
-const BookSlugRoute = BookSlugRouteImport.update({
-  id: '/book/$slug',
-  path: '/book/$slug',
   getParentRoute: () => rootRouteImport,
 } as any)
 const AuthCallbackRoute = AuthCallbackRouteImport.update({
@@ -193,12 +185,6 @@ const AuthenticatedSettingsMessagesRoute =
     path: '/settings/messages',
     getParentRoute: () => AuthenticatedRoute,
   } as any)
-const AuthenticatedSettingsBookingRoute =
-  AuthenticatedSettingsBookingRouteImport.update({
-    id: '/settings/booking',
-    path: '/settings/booking',
-    getParentRoute: () => AuthenticatedRoute,
-  } as any)
 const AuthenticatedSettingsBillingRoute =
   AuthenticatedSettingsBillingRouteImport.update({
     id: '/settings/billing',
@@ -211,11 +197,6 @@ const ApiPublicEvolutionInstanceIdRoute =
     path: '/api/public/evolution/$instanceId',
     getParentRoute: () => rootRouteImport,
   } as any)
-const ApiPublicBookSlugRoute = ApiPublicBookSlugRouteImport.update({
-  id: '/api/public/book/$slug',
-  path: '/api/public/book/$slug',
-  getParentRoute: () => rootRouteImport,
-} as any)
 
 export interface FileRoutesByFullPath {
   '/': typeof IndexRoute
@@ -233,9 +214,7 @@ export interface FileRoutesByFullPath {
   '/services': typeof AuthenticatedServicesRoute
   '/super-admin': typeof AuthenticatedSuperAdminRouteWithChildren
   '/auth/callback': typeof AuthCallbackRoute
-  '/book/$slug': typeof BookSlugRoute
   '/settings/billing': typeof AuthenticatedSettingsBillingRoute
-  '/settings/booking': typeof AuthenticatedSettingsBookingRoute
   '/settings/messages': typeof AuthenticatedSettingsMessagesRoute
   '/settings/professionals': typeof AuthenticatedSettingsProfessionalsRoute
   '/settings/profile': typeof AuthenticatedSettingsProfileRoute
@@ -247,7 +226,6 @@ export interface FileRoutesByFullPath {
   '/super-admin/ia': typeof AuthenticatedSuperAdminIaRoute
   '/super-admin/users': typeof AuthenticatedSuperAdminUsersRoute
   '/super-admin/workspaces': typeof AuthenticatedSuperAdminWorkspacesRoute
-  '/api/public/book/$slug': typeof ApiPublicBookSlugRoute
   '/api/public/evolution/$instanceId': typeof ApiPublicEvolutionInstanceIdRoute
 }
 export interface FileRoutesByTo {
@@ -266,9 +244,7 @@ export interface FileRoutesByTo {
   '/services': typeof AuthenticatedServicesRoute
   '/super-admin': typeof AuthenticatedSuperAdminRouteWithChildren
   '/auth/callback': typeof AuthCallbackRoute
-  '/book/$slug': typeof BookSlugRoute
   '/settings/billing': typeof AuthenticatedSettingsBillingRoute
-  '/settings/booking': typeof AuthenticatedSettingsBookingRoute
   '/settings/messages': typeof AuthenticatedSettingsMessagesRoute
   '/settings/professionals': typeof AuthenticatedSettingsProfessionalsRoute
   '/settings/profile': typeof AuthenticatedSettingsProfileRoute
@@ -280,7 +256,6 @@ export interface FileRoutesByTo {
   '/super-admin/ia': typeof AuthenticatedSuperAdminIaRoute
   '/super-admin/users': typeof AuthenticatedSuperAdminUsersRoute
   '/super-admin/workspaces': typeof AuthenticatedSuperAdminWorkspacesRoute
-  '/api/public/book/$slug': typeof ApiPublicBookSlugRoute
   '/api/public/evolution/$instanceId': typeof ApiPublicEvolutionInstanceIdRoute
 }
 export interface FileRoutesById {
@@ -301,9 +276,7 @@ export interface FileRoutesById {
   '/_authenticated/services': typeof AuthenticatedServicesRoute
   '/_authenticated/super-admin': typeof AuthenticatedSuperAdminRouteWithChildren
   '/auth/callback': typeof AuthCallbackRoute
-  '/book/$slug': typeof BookSlugRoute
   '/_authenticated/settings/billing': typeof AuthenticatedSettingsBillingRoute
-  '/_authenticated/settings/booking': typeof AuthenticatedSettingsBookingRoute
   '/_authenticated/settings/messages': typeof AuthenticatedSettingsMessagesRoute
   '/_authenticated/settings/professionals': typeof AuthenticatedSettingsProfessionalsRoute
   '/_authenticated/settings/profile': typeof AuthenticatedSettingsProfileRoute
@@ -315,7 +288,6 @@ export interface FileRoutesById {
   '/_authenticated/super-admin/ia': typeof AuthenticatedSuperAdminIaRoute
   '/_authenticated/super-admin/users': typeof AuthenticatedSuperAdminUsersRoute
   '/_authenticated/super-admin/workspaces': typeof AuthenticatedSuperAdminWorkspacesRoute
-  '/api/public/book/$slug': typeof ApiPublicBookSlugRoute
   '/api/public/evolution/$instanceId': typeof ApiPublicEvolutionInstanceIdRoute
 }
 export interface FileRouteTypes {
@@ -336,9 +308,7 @@ export interface FileRouteTypes {
     | '/services'
     | '/super-admin'
     | '/auth/callback'
-    | '/book/$slug'
     | '/settings/billing'
-    | '/settings/booking'
     | '/settings/messages'
     | '/settings/professionals'
     | '/settings/profile'
@@ -350,7 +320,6 @@ export interface FileRouteTypes {
     | '/super-admin/ia'
     | '/super-admin/users'
     | '/super-admin/workspaces'
-    | '/api/public/book/$slug'
     | '/api/public/evolution/$instanceId'
   fileRoutesByTo: FileRoutesByTo
   to:
@@ -369,9 +338,7 @@ export interface FileRouteTypes {
     | '/services'
     | '/super-admin'
     | '/auth/callback'
-    | '/book/$slug'
     | '/settings/billing'
-    | '/settings/booking'
     | '/settings/messages'
     | '/settings/professionals'
     | '/settings/profile'
@@ -383,7 +350,6 @@ export interface FileRouteTypes {
     | '/super-admin/ia'
     | '/super-admin/users'
     | '/super-admin/workspaces'
-    | '/api/public/book/$slug'
     | '/api/public/evolution/$instanceId'
   id:
     | '__root__'
@@ -403,9 +369,7 @@ export interface FileRouteTypes {
     | '/_authenticated/services'
     | '/_authenticated/super-admin'
     | '/auth/callback'
-    | '/book/$slug'
     | '/_authenticated/settings/billing'
-    | '/_authenticated/settings/booking'
     | '/_authenticated/settings/messages'
     | '/_authenticated/settings/professionals'
     | '/_authenticated/settings/profile'
@@ -417,7 +381,6 @@ export interface FileRouteTypes {
     | '/_authenticated/super-admin/ia'
     | '/_authenticated/super-admin/users'
     | '/_authenticated/super-admin/workspaces'
-    | '/api/public/book/$slug'
     | '/api/public/evolution/$instanceId'
   fileRoutesById: FileRoutesById
 }
@@ -429,8 +392,6 @@ export interface RootRouteChildren {
   ResetPasswordRoute: typeof ResetPasswordRoute
   SignupRoute: typeof SignupRoute
   AuthCallbackRoute: typeof AuthCallbackRoute
-  BookSlugRoute: typeof BookSlugRoute
-  ApiPublicBookSlugRoute: typeof ApiPublicBookSlugRoute
   ApiPublicEvolutionInstanceIdRoute: typeof ApiPublicEvolutionInstanceIdRoute
 }
 
@@ -476,13 +437,6 @@ declare module '@tanstack/react-router' {
       path: '/'
       fullPath: '/'
       preLoaderRoute: typeof IndexRouteImport
-      parentRoute: typeof rootRouteImport
-    }
-    '/book/$slug': {
-      id: '/book/$slug'
-      path: '/book/$slug'
-      fullPath: '/book/$slug'
-      preLoaderRoute: typeof BookSlugRouteImport
       parentRoute: typeof rootRouteImport
     }
     '/auth/callback': {
@@ -632,13 +586,6 @@ declare module '@tanstack/react-router' {
       preLoaderRoute: typeof AuthenticatedSettingsMessagesRouteImport
       parentRoute: typeof AuthenticatedRoute
     }
-    '/_authenticated/settings/booking': {
-      id: '/_authenticated/settings/booking'
-      path: '/settings/booking'
-      fullPath: '/settings/booking'
-      preLoaderRoute: typeof AuthenticatedSettingsBookingRouteImport
-      parentRoute: typeof AuthenticatedRoute
-    }
     '/_authenticated/settings/billing': {
       id: '/_authenticated/settings/billing'
       path: '/settings/billing'
@@ -651,13 +598,6 @@ declare module '@tanstack/react-router' {
       path: '/api/public/evolution/$instanceId'
       fullPath: '/api/public/evolution/$instanceId'
       preLoaderRoute: typeof ApiPublicEvolutionInstanceIdRouteImport
-      parentRoute: typeof rootRouteImport
-    }
-    '/api/public/book/$slug': {
-      id: '/api/public/book/$slug'
-      path: '/api/public/book/$slug'
-      fullPath: '/api/public/book/$slug'
-      preLoaderRoute: typeof ApiPublicBookSlugRouteImport
       parentRoute: typeof rootRouteImport
     }
   }
@@ -697,7 +637,6 @@ interface AuthenticatedRouteChildren {
   AuthenticatedServicesRoute: typeof AuthenticatedServicesRoute
   AuthenticatedSuperAdminRoute: typeof AuthenticatedSuperAdminRouteWithChildren
   AuthenticatedSettingsBillingRoute: typeof AuthenticatedSettingsBillingRoute
-  AuthenticatedSettingsBookingRoute: typeof AuthenticatedSettingsBookingRoute
   AuthenticatedSettingsMessagesRoute: typeof AuthenticatedSettingsMessagesRoute
   AuthenticatedSettingsProfessionalsRoute: typeof AuthenticatedSettingsProfessionalsRoute
   AuthenticatedSettingsProfileRoute: typeof AuthenticatedSettingsProfileRoute
@@ -717,7 +656,6 @@ const AuthenticatedRouteChildren: AuthenticatedRouteChildren = {
   AuthenticatedServicesRoute: AuthenticatedServicesRoute,
   AuthenticatedSuperAdminRoute: AuthenticatedSuperAdminRouteWithChildren,
   AuthenticatedSettingsBillingRoute: AuthenticatedSettingsBillingRoute,
-  AuthenticatedSettingsBookingRoute: AuthenticatedSettingsBookingRoute,
   AuthenticatedSettingsMessagesRoute: AuthenticatedSettingsMessagesRoute,
   AuthenticatedSettingsProfessionalsRoute:
     AuthenticatedSettingsProfessionalsRoute,
@@ -739,8 +677,6 @@ const rootRouteChildren: RootRouteChildren = {
   ResetPasswordRoute: ResetPasswordRoute,
   SignupRoute: SignupRoute,
   AuthCallbackRoute: AuthCallbackRoute,
-  BookSlugRoute: BookSlugRoute,
-  ApiPublicBookSlugRoute: ApiPublicBookSlugRoute,
   ApiPublicEvolutionInstanceIdRoute: ApiPublicEvolutionInstanceIdRoute,
 }
 export const routeTree = rootRouteImport

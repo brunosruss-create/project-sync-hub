@@ -244,7 +244,7 @@ export const getWorkspaceProfile = createServerFn({ method: "POST" })
     const { data } = await supabaseAdmin
       .from("profiles")
       .select(
-        "business_name,business_description,segment_id,business_hours,business_timezone,welcome_message,ai_working_hours,business_address,business_phone,business_website,business_logo_url,business_cep,business_street,business_address_number,business_address_complement,business_neighborhood,business_city,business_state,booking_slug,booking_enabled,booking_title,booking_description,booking_service_ids",
+        "business_name,business_description,segment_id,business_hours,business_timezone,welcome_message,ai_working_hours,business_address,business_phone,business_website,business_logo_url,business_cep,business_street,business_address_number,business_address_complement,business_neighborhood,business_city,business_state",
       )
       .eq("id", context.userId)
       .maybeSingle();
@@ -280,70 +280,7 @@ export const getWorkspaceProfile = createServerFn({ method: "POST" })
       business_neighborhood: (data as any)?.business_neighborhood ?? "",
       business_city: (data as any)?.business_city ?? "",
       business_state: (data as any)?.business_state ?? "",
-      booking_slug: (data as any)?.booking_slug ?? null,
-      booking_enabled: (data as any)?.booking_enabled ?? false,
-      booking_title: (data as any)?.booking_title ?? "",
-      booking_description: (data as any)?.booking_description ?? "",
-      booking_service_ids: ((data as any)?.booking_service_ids as string[] | null) ?? [],
-      booking_ai_send: await (async () => {
-        const { data: row } = await supabaseAdmin
-          .from("profiles")
-          .select("booking_ai_send")
-          .eq("id", context.userId)
-          .maybeSingle();
-        const v = (row as any)?.booking_ai_send;
-        return typeof v === "boolean" ? v : true;
-      })(),
     };
-  });
-
-// ============= UPDATE BOOKING CONFIG =============
-export const updateBookingConfig = createServerFn({ method: "POST" })
-  .middleware([requireSupabaseAuth])
-  .inputValidator((input) =>
-    z
-      .object({
-        booking_enabled: z.boolean().optional(),
-        booking_slug: z
-          .string()
-          .min(3)
-          .max(60)
-          .regex(/^[a-z0-9-]+$/, "Use apenas letras minúsculas, números e hífens")
-          .optional(),
-        booking_title: z.string().max(120).optional(),
-        booking_description: z.string().max(500).optional(),
-        booking_service_ids: z.array(z.string()).max(200).optional(),
-        booking_ai_send: z.boolean().optional(),
-      })
-      .parse(input),
-  )
-  .handler(async ({ data, context }) => {
-    const { booking_ai_send, ...profileUpdate } = data;
-    // Se mudou slug, garantir unicidade
-    if (data.booking_slug) {
-      const { data: clash } = await supabaseAdmin
-        .from("profiles")
-        .select("id")
-        .eq("booking_slug", data.booking_slug)
-        .neq("id", context.userId)
-        .maybeSingle();
-      if (clash) throw new Error("Esse link já está em uso. Escolha outro.");
-    }
-    const { error } = await supabaseAdmin
-      .from("profiles")
-      .update(profileUpdate)
-      .eq("id", context.userId);
-    if (error) throw new Error(error.message);
-    if (typeof booking_ai_send === "boolean") {
-      const { error: aiSendError } = await supabaseAdmin
-        .from("profiles")
-        .update({ booking_ai_send })
-        .eq("id", context.userId);
-      if (aiSendError && !aiSendError.message.includes("booking_ai_send")) {
-        throw new Error(aiSendError.message);
-      }
-    }
-    return { ok: true };
   });
 
 const HoursSchema = z

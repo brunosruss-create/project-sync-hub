@@ -11,7 +11,6 @@ import {
   Camera,
   Play,
   Pause,
-  Link as LinkIcon,
 } from "lucide-react";
 import Picker from "@emoji-mart/react";
 import emojiData from "@emoji-mart/data";
@@ -32,10 +31,9 @@ type Props = {
   onSendAudio?: (blob: Blob) => Promise<void>;
   replyingTo?: { author: string; content: string; isMe: boolean } | null;
   onCancelReply?: () => void;
-  bookingUrl?: string | null;
 };
 
-export function Composer({ draft, setDraft, taRef, onSend, onClosePanel, onSendAttachments, onSendAudio, replyingTo, onCancelReply, bookingUrl }: Props) {
+export function Composer({ draft, setDraft, taRef, onSend, onClosePanel, onSendAttachments, onSendAudio, replyingTo, onCancelReply }: Props) {
   const hasText = draft.trim().length > 0;
   const nearLimit = draft.length > MAX_CHARS - 200;
 
@@ -606,25 +604,6 @@ export function Composer({ draft, setDraft, taRef, onSend, onClosePanel, onSendA
           >
             <Mic size={20} />
           </button>
-          {bookingUrl && (
-            <button
-              type="button"
-              aria-label="Enviar link de agendamento"
-              title="Inserir link de agendamento"
-              onClick={() => {
-                const prefix = draft.trim()
-                  ? draft.replace(/\s+$/, "") + "\n\n"
-                  : "Olá! Você pode agendar pelo link: ";
-                setDraft((prefix + bookingUrl).slice(0, MAX_CHARS));
-                requestAnimationFrame(() => taRef.current?.focus());
-              }}
-              style={iconBtn}
-              onMouseEnter={(e) => (e.currentTarget.style.color = "var(--brand-400)")}
-              onMouseLeave={(e) => (e.currentTarget.style.color = "var(--text-muted)")}
-            >
-              <LinkIcon size={20} />
-            </button>
-          )}
           <textarea
             ref={taRef}
             value={draft}
