@@ -377,20 +377,22 @@ export async function createAppointmentFromAI(
     duration_minutes: serviceRow.duration_minutes,
   });
 
-  // 7. Confirmação WA
-  await sendBookingConfirmation({
-    profile: {
-      id: profile.id,
-      business_name: profile.business_name,
-      business_timezone: profile.business_timezone,
-    },
-    appointment: appt,
-    service: serviceRow,
-    professional,
-    client: { client_name: resolvedName || "Cliente", client_phone: resolvedPhone },
-  });
+  // 7. Confirmação WA (pode ser suprimida quando chamado dentro do reschedule)
+  if (!data.silent) {
+    await sendBookingConfirmation({
+      profile: {
+        id: profile.id,
+        business_name: profile.business_name,
+        business_timezone: profile.business_timezone,
+      },
+      appointment: appt,
+      service: serviceRow,
+      professional,
+      client: { client_name: resolvedName || "Cliente", client_phone: resolvedPhone },
+    });
+  }
 
-  return { ok: true };
+  return { ok: true, appointment_id: appt.id };
 }
 
 // Reagendamento via IA: muda starts_at/ends_at de um appointment existente.
