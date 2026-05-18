@@ -489,14 +489,34 @@ export async function rescheduleAppointmentFromAI(
   data: { appointment_id?: string; new_starts_at?: string; contact_id?: string | null },
   profile: { id: string; business_timezone: string | null; business_name: string | null },
 ): Promise<{ ok: boolean; reason?: string }> {
-  if (!data.appointment_id || !data.new_starts_at) {
-    return { ok: false, reason: "missing_fields" };
-  }
-  const newStart = new Date(data.new_starts_at);
-  if (Number.isNaN(newStart.getTime())) return { ok: false, reason: "bad_date" };
+  const tzR = profile.business_timezone || "America/Sao_Paulo";
+  if (!data.new_starts_at) return { ok: false, reason: "missing_fields" };
+  const newStart = parseAiDate(data.new_starts_at, tzR);
+  if (!newStart) return { ok: false, reason: "bad_date" };
   if (newStart.getTime() < Date.now() - 60_000) return { ok: false, reason: "past_date" };
 
-  // 1. Busca appointment antigo (escopo workspace) + dados que vamos reaproveitar.
+  // 1. Resolve appointment_id — se a IA não mandou, ou mandou um cancelado/
+  // concluído/de outro contato, tentamos achar o ativo do contato atual.
+  let apptId = data.appointment_id ?? "";
+  let needsResolve = !apptId;
+  if (apptId) {
+    const { data: check } = await supabaseAdmin
+      .from("appointments")
+      .select("id,status,contact_id")
+      .eq("id", apptId)
+      .eq("owner_user_id", profile.id)
+      .maybeSingle();
+    if (!check) needsResolve = true;
+    else if (check.status === "cancelled" || check.status === "completed") needsResolve = true;
+    else if (data.contact_id && check.contact_id && check.contact_id !== data.contact_id) needsResolve = true;
+  }
+  if (needsResolve) {
+    const r = await resolveActiveAppointment(profile.id, data.contact_id ?? null);
+    if (r.kind === "none") return { ok: false, reason: "no_active_appointment" };
+    if (r.kind === "many") return { ok: false, reason: "ambiguous_appointment" };
+    apptId = r.id;
+  }
+
   const { data: apptRaw } = await supabaseAdmin
     .from("appointments")
     .select(
@@ -504,15 +524,12 @@ export async function rescheduleAppointmentFromAI(
         "services(id,name,duration_minutes,price_cents), " +
         "contacts(name,phone)",
     )
-    .eq("id", data.appointment_id)
+    .eq("id", apptId)
     .eq("owner_user_id", profile.id)
     .maybeSingle();
   const oldAppt = apptRaw as any;
   if (!oldAppt) return { ok: false, reason: "appointment_not_found" };
   if (oldAppt.status === "cancelled") return { ok: false, reason: "already_cancelled" };
-  if (data.contact_id && oldAppt.contact_id && data.contact_id !== oldAppt.contact_id) {
-    return { ok: false, reason: "contact_mismatch" };
-  }
   const oldStartsAt = oldAppt.starts_at as string;
   const svc = oldAppt.services as ServiceLite | null;
   const contact = oldAppt.contacts as { name: string; phone: string } | null;
