@@ -1003,25 +1003,13 @@ export async function runAiResponse(input: AiRunInput): Promise<AiRunResult> {
     ? buildContactAppointmentsLayer(contactAppts, tz)
     : null;
 
-  // Link público de agendamento (se habilitado)
-  const bookingSlug = (profile as any).booking_slug as string | null;
-  const bookingEnabled = !!(profile as any).booking_enabled;
-  const bookingAiSend = (profile as any).booking_ai_send !== false; // default true
-  const bookingUrl =
-    bookingEnabled && bookingSlug ? getBookingUrl(bookingSlug) : null;
+  // Agendamento autônomo pela IA — sempre habilitado (link público foi removido).
   const canReschedule = !!(profile as any).ai_can_reschedule;
   const canCancel = !!(profile as any).ai_can_cancel;
   const bookingParts: string[] = [];
-  if (bookingUrl && bookingAiSend) {
-    bookingParts.push(
-      `=== LINK PÚBLICO DE AGENDAMENTO ===\nO cliente pode agendar sozinho pelo link: ${bookingUrl}\nQuando o cliente pedir para agendar online, marcar horário, ou perguntar como agendar — ofereça este link de forma natural na conversa. Não invente outros links.`,
-    );
-  }
-  if (bookingEnabled) {
-    bookingParts.push(
-      `Se, ao longo da conversa, o cliente confirmar TEXTUALMENTE um agendamento novo (data + hora + serviço + nome + telefone), inclua no FINAL da sua resposta uma única linha com este bloco JSON exato (sem markdown, sem comentário antes ou depois):\nAPPOINTMENT_JSON:{"service_name":"...","starts_at":"YYYY-MM-DDTHH:mm:00-03:00","client_name":"...","client_phone":"...","professional_id":null}\nSó emita esse bloco quando TODOS os campos estiverem confirmados pelo cliente. Nunca invente dados.`,
-    );
-  }
+  bookingParts.push(
+    `=== AGENDAMENTO AUTÔNOMO PELA IA ===\nVocê É RESPONSÁVEL por agendar diretamente na conversa — NÃO existe link externo de agendamento, NÃO ofereça nenhum link. Use a lista de PROFISSIONAIS e a agenda em tempo real acima para propor horários livres dentro do horário de funcionamento.\n\nFLUXO:\n1. Quando o cliente quiser marcar, pergunte (se ainda não souber): serviço desejado, data/hora de preferência, nome completo e telefone (use o número do WhatsApp se ele confirmar).\n2. Confira na lista de compromissos do profissional se o horário está livre. Se não estiver, ofereça as 2–3 alternativas livres mais próximas.\n3. Resuma para o cliente ("Confirmo então: {serviço} com {profissional} em {data} às {hora}, no nome de {nome}, telefone {telefone}. Posso confirmar?") e SÓ emita o JSON quando ele responder confirmando.\n\nQuando o cliente confirmar TEXTUALMENTE um agendamento novo, inclua no FINAL da sua resposta uma única linha com este bloco JSON exato (sem markdown, sem comentário antes ou depois):\nAPPOINTMENT_JSON:{"service_name":"...","starts_at":"YYYY-MM-DDTHH:mm:00-03:00","client_name":"...","client_phone":"...","professional_id":null}\nSó emita esse bloco quando TODOS os campos estiverem confirmados. Nunca invente dados. Use o uuid de um profissional da lista quando souber qual será o atendente; caso contrário, use null.`,
+  );
   if (canReschedule) {
     bookingParts.push(
       `REAGENDAMENTO: Se o cliente confirmar TEXTUALMENTE uma nova data/hora para um agendamento existente (referencie pelo [id:...] da lista de AGENDAMENTOS DESTE CLIENTE), inclua no FINAL da sua resposta uma única linha com este bloco JSON exato:\nRESCHEDULE_JSON:{"appointment_id":"<uuid-do-id-da-lista>","new_starts_at":"YYYY-MM-DDTHH:mm:00-03:00"}\nSó emita esse bloco quando o cliente confirmar literalmente a nova data/hora. Use o uuid EXATO da lista de agendamentos.`,
