@@ -40,7 +40,7 @@ import {
   type Service,
 } from "@/features/services/data";
 import { useContactActions } from "@/hooks/use-contact-actions";
-import { useBookingLink } from "@/hooks/use-booking-link";
+
 
 type Tab = "conversation" | "contact" | "services" | "history";
 
