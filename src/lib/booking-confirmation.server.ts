@@ -248,9 +248,10 @@ export async function createAppointmentFromAI(
     /** Contact id já conhecido (vindo do webhook WhatsApp). Preferido ao lookup por telefone. */
     contact_id?: string | null;
     notes?: string;
+    silent?: boolean;
   },
   profile: { id: string; business_timezone: string | null; business_name: string | null },
-): Promise<{ ok: boolean; reason?: string }> {
+): Promise<{ ok: boolean; reason?: string; appointment_id?: string }> {
   if (!data.starts_at || !data.service_name) {
     return { ok: false, reason: "missing_fields" };
   }
