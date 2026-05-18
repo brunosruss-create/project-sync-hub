@@ -40,6 +40,93 @@ function toUtcDate(iso: string): Date {
   return new Date(iso.replace(" ", "T") + "Z");
 }
 
+// Offset (minutos) de uma timezone IANA num instante específico.
+function tzOffsetMinutes(date: Date, tz: string): number {
+  const dtf = new Intl.DateTimeFormat("en-US", {
+    timeZone: tz,
+    hour12: false,
+    year: "numeric", month: "2-digit", day: "2-digit",
+    hour: "2-digit", minute: "2-digit", second: "2-digit",
+  });
+  const parts = Object.fromEntries(
+    dtf.formatToParts(date).filter((p) => p.type !== "literal").map((p) => [p.type, p.value]),
+  ) as Record<string, string>;
+  const asUtc = Date.UTC(
+    Number(parts.year), Number(parts.month) - 1, Number(parts.day),
+    Number(parts.hour === "24" ? "0" : parts.hour), Number(parts.minute), Number(parts.second),
+  );
+  return (asUtc - date.getTime()) / 60000;
+}
+
+// Parser tolerante para datas vindas da IA. Aceita:
+//   2026-05-23T14:00:00-03:00 / +00:00 / Z  (já com offset → usado como vem)
+//   2026-05-23T14:00:00 / 2026-05-23T14:00 / 2026-05-23 14:00
+//   23/05/2026 14:00
+// Sem offset → interpreta como horário local da timezone do negócio.
+export function parseAiDate(input: string | null | undefined, tz: string): Date | null {
+  if (!input) return null;
+  const raw = String(input).trim();
+  if (!raw) return null;
+
+  // Já tem offset/Z — confia no parser nativo.
+  if (/Z$|[+-]\d{2}:?\d{2}$/.test(raw)) {
+    const d = new Date(raw);
+    return Number.isNaN(d.getTime()) ? null : d;
+  }
+
+  // dd/mm/yyyy hh:mm
+  const br = raw.match(/^(\d{2})\/(\d{2})\/(\d{4})[ T](\d{1,2}):(\d{2})(?::(\d{2}))?$/);
+  // yyyy-mm-dd[ T]hh:mm[:ss]
+  const iso = raw.match(/^(\d{4})-(\d{2})-(\d{2})[ T](\d{1,2}):(\d{2})(?::(\d{2}))?$/);
+
+  let y: number, mo: number, d: number, h: number, mi: number, s: number;
+  if (br) {
+    [, , , , , ,] = br;
+    d = Number(br[1]); mo = Number(br[2]); y = Number(br[3]);
+    h = Number(br[4]); mi = Number(br[5]); s = Number(br[6] ?? 0);
+  } else if (iso) {
+    y = Number(iso[1]); mo = Number(iso[2]); d = Number(iso[3]);
+    h = Number(iso[4]); mi = Number(iso[5]); s = Number(iso[6] ?? 0);
+  } else {
+    const fallback = new Date(raw);
+    return Number.isNaN(fallback.getTime()) ? null : fallback;
+  }
+
+  // Constrói um Date interpretando os componentes como hora local de `tz`.
+  // Estratégia: começa em UTC com os componentes, depois corrige pelo offset
+  // da tz NAQUELE instante (cobre horário de verão automaticamente).
+  const asUtcGuess = Date.UTC(y, mo - 1, d, h, mi, s);
+  const offsetMin = tzOffsetMinutes(new Date(asUtcGuess), tz);
+  return new Date(asUtcGuess - offsetMin * 60000);
+}
+
+// Acha o agendamento ativo (não cancelado/concluído) do contato.
+// Retorna { kind: 'one', id } / { kind: 'many' } / { kind: 'none' }.
+async function resolveActiveAppointment(
+  ownerUserId: string,
+  contactId: string | null,
+): Promise<
+  | { kind: "one"; id: string }
+  | { kind: "many" }
+  | { kind: "none" }
+> {
+  if (!contactId) return { kind: "none" };
+  const nowMinus1h = new Date(Date.now() - 3600_000).toISOString();
+  const { data } = await supabaseAdmin
+    .from("appointments")
+    .select("id,starts_at,status")
+    .eq("owner_user_id", ownerUserId)
+    .eq("contact_id", contactId)
+    .gte("starts_at", nowMinus1h)
+    .not("status", "in", "(cancelled,completed)")
+    .order("starts_at", { ascending: true })
+    .limit(3);
+  const rows = data ?? [];
+  if (rows.length === 0) return { kind: "none" };
+  if (rows.length === 1) return { kind: "one", id: rows[0].id };
+  return { kind: "many" };
+}
+
 function formatDateBR(iso: string, tz: string): string {
   try {
     return new Intl.DateTimeFormat("pt-BR", {
@@ -265,8 +352,9 @@ export async function createAppointmentFromAI(
     .maybeSingle();
   if (!serviceRow) return { ok: false, reason: "service_not_found" };
 
-  const startsAt = new Date(data.starts_at);
-  if (Number.isNaN(startsAt.getTime())) return { ok: false, reason: "bad_date" };
+  const tzCreate = profile.business_timezone || "America/Sao_Paulo";
+  const startsAt = parseAiDate(data.starts_at, tzCreate);
+  if (!startsAt) return { ok: false, reason: "bad_date" };
   const endsAt = new Date(startsAt.getTime() + serviceRow.duration_minutes * 60_000);
 
   // 2. Profissional (opcional). Se a IA não passou um, e existir só 1 ativo,
@@ -401,14 +489,34 @@ export async function rescheduleAppointmentFromAI(
   data: { appointment_id?: string; new_starts_at?: string; contact_id?: string | null },
   profile: { id: string; business_timezone: string | null; business_name: string | null },
 ): Promise<{ ok: boolean; reason?: string }> {
-  if (!data.appointment_id || !data.new_starts_at) {
-    return { ok: false, reason: "missing_fields" };
-  }
-  const newStart = new Date(data.new_starts_at);
-  if (Number.isNaN(newStart.getTime())) return { ok: false, reason: "bad_date" };
+  const tzR = profile.business_timezone || "America/Sao_Paulo";
+  if (!data.new_starts_at) return { ok: false, reason: "missing_fields" };
+  const newStart = parseAiDate(data.new_starts_at, tzR);
+  if (!newStart) return { ok: false, reason: "bad_date" };
   if (newStart.getTime() < Date.now() - 60_000) return { ok: false, reason: "past_date" };
 
-  // 1. Busca appointment antigo (escopo workspace) + dados que vamos reaproveitar.
+  // 1. Resolve appointment_id — se a IA não mandou, ou mandou um cancelado/
+  // concluído/de outro contato, tentamos achar o ativo do contato atual.
+  let apptId = data.appointment_id ?? "";
+  let needsResolve = !apptId;
+  if (apptId) {
+    const { data: check } = await supabaseAdmin
+      .from("appointments")
+      .select("id,status,contact_id")
+      .eq("id", apptId)
+      .eq("owner_user_id", profile.id)
+      .maybeSingle();
+    if (!check) needsResolve = true;
+    else if (check.status === "cancelled" || check.status === "completed") needsResolve = true;
+    else if (data.contact_id && check.contact_id && check.contact_id !== data.contact_id) needsResolve = true;
+  }
+  if (needsResolve) {
+    const r = await resolveActiveAppointment(profile.id, data.contact_id ?? null);
+    if (r.kind === "none") return { ok: false, reason: "no_active_appointment" };
+    if (r.kind === "many") return { ok: false, reason: "ambiguous_appointment" };
+    apptId = r.id;
+  }
+
   const { data: apptRaw } = await supabaseAdmin
     .from("appointments")
     .select(
@@ -416,15 +524,12 @@ export async function rescheduleAppointmentFromAI(
         "services(id,name,duration_minutes,price_cents), " +
         "contacts(name,phone)",
     )
-    .eq("id", data.appointment_id)
+    .eq("id", apptId)
     .eq("owner_user_id", profile.id)
     .maybeSingle();
   const oldAppt = apptRaw as any;
   if (!oldAppt) return { ok: false, reason: "appointment_not_found" };
   if (oldAppt.status === "cancelled") return { ok: false, reason: "already_cancelled" };
-  if (data.contact_id && oldAppt.contact_id && data.contact_id !== oldAppt.contact_id) {
-    return { ok: false, reason: "contact_mismatch" };
-  }
   const oldStartsAt = oldAppt.starts_at as string;
   const svc = oldAppt.services as ServiceLite | null;
   const contact = oldAppt.contacts as { name: string; phone: string } | null;
@@ -492,7 +597,26 @@ export async function cancelAppointmentFromAI(
   data: { appointment_id?: string; reason?: string; contact_id?: string | null; silent?: boolean },
   profile: { id: string; business_timezone: string | null; business_name: string | null },
 ): Promise<{ ok: boolean; reason?: string; previous_status?: string; previous_notes?: string }> {
-  if (!data.appointment_id) return { ok: false, reason: "missing_fields" };
+  // Resolve appointment_id quando a IA não mandou ou mandou um inválido/cancelado.
+  let cancelId = data.appointment_id ?? "";
+  let needsResolve = !cancelId;
+  if (cancelId) {
+    const { data: check } = await supabaseAdmin
+      .from("appointments")
+      .select("id,status,contact_id")
+      .eq("id", cancelId)
+      .eq("owner_user_id", profile.id)
+      .maybeSingle();
+    if (!check) needsResolve = true;
+    else if (check.status === "cancelled" || check.status === "completed") needsResolve = true;
+    else if (data.contact_id && check.contact_id && check.contact_id !== data.contact_id) needsResolve = true;
+  }
+  if (needsResolve) {
+    const r = await resolveActiveAppointment(profile.id, data.contact_id ?? null);
+    if (r.kind === "none") return { ok: false, reason: "no_active_appointment" };
+    if (r.kind === "many") return { ok: false, reason: "ambiguous_appointment" };
+    cancelId = r.id;
+  }
 
   const { data: apptRaw } = await supabaseAdmin
     .from("appointments")
@@ -501,7 +625,7 @@ export async function cancelAppointmentFromAI(
         "services(id,name,duration_minutes,price_cents), " +
         "contacts(name,phone)",
     )
-    .eq("id", data.appointment_id)
+    .eq("id", cancelId)
     .eq("owner_user_id", profile.id)
     .maybeSingle();
   const appt = apptRaw as any;
