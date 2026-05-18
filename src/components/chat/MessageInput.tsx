@@ -66,15 +66,6 @@ export function MessageInput({ contactId }: { contactId: string }) {
 
   const canSend = draft.trim().length > 0 && !sending;
 
-  const insertBookingLink = () => {
-    if (!bookingUrl) return;
-    const prefix = draft.trim()
-      ? draft.replace(/\s+$/, "") + "\n\n"
-      : "Olá! Você pode agendar pelo link: ";
-    setDraft(prefix + bookingUrl);
-    requestAnimationFrame(() => taRef.current?.focus());
-  };
-
   return (
     <div
       className="flex items-end"
@@ -109,29 +100,6 @@ export function MessageInput({ contactId }: { contactId: string }) {
           lineHeight: 1.4,
         }}
       />
-      {bookingUrl && (
-        <button
-          type="button"
-          onClick={insertBookingLink}
-          aria-label="Enviar link de agendamento"
-          title="Inserir link de agendamento"
-          style={{
-            width: 38,
-            height: 38,
-            borderRadius: 999,
-            background: "var(--bg-overlay)",
-            color: "var(--brand-400)",
-            display: "inline-flex",
-            alignItems: "center",
-            justifyContent: "center",
-            border: "1px solid var(--border)",
-            cursor: "pointer",
-            flexShrink: 0,
-          }}
-        >
-          <LinkIcon size={15} />
-        </button>
-      )}
       <button
         type="button"
         onClick={() => void send()}
