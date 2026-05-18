@@ -11,7 +11,6 @@ import {
   Camera,
   Play,
   Pause,
-  Link as LinkIcon,
 } from "lucide-react";
 import Picker from "@emoji-mart/react";
 import emojiData from "@emoji-mart/data";
