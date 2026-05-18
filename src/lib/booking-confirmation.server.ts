@@ -478,9 +478,9 @@ export async function rescheduleAppointmentFromAI(
 
 // Cancelamento via IA: marca appointment como cancelled.
 export async function cancelAppointmentFromAI(
-  data: { appointment_id?: string; reason?: string; contact_id?: string | null },
+  data: { appointment_id?: string; reason?: string; contact_id?: string | null; silent?: boolean },
   profile: { id: string; business_timezone: string | null; business_name: string | null },
-): Promise<{ ok: boolean; reason?: string }> {
+): Promise<{ ok: boolean; reason?: string; previous_status?: string; previous_notes?: string }> {
   if (!data.appointment_id) return { ok: false, reason: "missing_fields" };
 
   const { data: apptRaw } = await supabaseAdmin
@@ -500,12 +500,14 @@ export async function cancelAppointmentFromAI(
     return { ok: false, reason: "contact_mismatch" };
   }
 
+  const previousStatus = appt.status as string;
+  const previousNotes = (appt.notes ?? "") as string;
   const notesAppend = data.reason ? `\n[IA cancelou: ${data.reason}]` : "\n[IA cancelou]";
   const { error: uerr } = await supabaseAdmin
     .from("appointments")
     .update({
       status: "cancelled",
-      notes: ((appt as any).notes ?? "") + notesAppend,
+      notes: previousNotes + notesAppend,
     })
     .eq("id", appt.id)
     .eq("owner_user_id", profile.id);
@@ -513,7 +515,7 @@ export async function cancelAppointmentFromAI(
 
   const svc = (appt as any).services as ServiceLite | null;
   const contact = (appt as any).contacts as { name: string; phone: string } | null;
-  if (svc && contact) {
+  if (!data.silent && svc && contact) {
     await sendBookingCancellation({
       profile: {
         id: profile.id,
@@ -525,5 +527,5 @@ export async function cancelAppointmentFromAI(
       client: { client_name: contact.name, client_phone: contact.phone },
     });
   }
-  return { ok: true };
+  return { ok: true, previous_status: previousStatus, previous_notes: previousNotes };
 }
