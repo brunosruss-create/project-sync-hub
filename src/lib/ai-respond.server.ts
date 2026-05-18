@@ -1028,6 +1028,7 @@ export async function runAiResponse(input: AiRunInput): Promise<AiRunResult> {
   const professionalsLayer = buildProfessionalsLayer(pros, upcoming, bizHours, tz);
 
   const finalPrompt = [
+    buildNowLayer(tz),
     g.ai_base_prompt,
     segment?.segment_prompt ?? "",
     buildWorkspaceLayer({
