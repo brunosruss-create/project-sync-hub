@@ -1177,6 +1177,36 @@ export async function runAiResponse(input: AiRunInput): Promise<AiRunResult> {
         userMsgLower,
       );
 
+    // Helper: traduz reason de falha em mensagem honesta pro cliente.
+    const friendlyReason = (action: "create" | "reschedule" | "cancel", reason?: string): string => {
+      switch (reason) {
+        case "slot_taken":
+          return "Esse horário acabou de ser ocupado. Pode me dizer outro horário?";
+        case "past_date":
+          return "Esse horário já passou. Qual outro fica bom pra você?";
+        case "bad_date":
+          return "Tive um problema técnico aqui — pode repetir a data e a hora desejadas?";
+        case "ambiguous_appointment":
+          return "Você tem mais de um agendamento ativo. Me diga o dia e a hora do que você quer mudar.";
+        case "no_active_appointment":
+          return "Não encontrei nenhum agendamento ativo seu. Quer marcar um novo?";
+        case "appointment_not_found":
+        case "already_cancelled":
+          return "Esse agendamento não está mais ativo no sistema. Quer marcar um novo?";
+        case "service_not_found":
+          return "Não consegui localizar esse serviço no nosso catálogo. Pode confirmar o nome?";
+        case "missing_phone":
+        case "contact_create_failed":
+          return "Tive um problema ao registrar seus dados. Pode me confirmar seu nome, por favor?";
+        default:
+          return action === "reschedule"
+            ? "Não consegui concluir o reagendamento aqui. Pode tentar de novo me dizendo o novo horário?"
+            : action === "cancel"
+            ? "Não consegui concluir o cancelamento aqui. Pode confirmar qual agendamento você quer cancelar?"
+            : "Não consegui concluir o agendamento aqui. Pode repetir o horário desejado?";
+      }
+    };
+
     // Detecta bloco APPOINTMENT_JSON emitido pela IA
     {
       const match = text.match(/APPOINTMENT_JSON:(\{[\s\S]*?\})\s*$/);
@@ -1186,22 +1216,31 @@ export async function runAiResponse(input: AiRunInput): Promise<AiRunResult> {
           console.warn("[ai booking] APPOINTMENT_JSON ignorado (protocolo/intenção)", {
             asksForConfirmation, userWantsCancel, userWantsReschedule,
           });
+          text = text.replace(/APPOINTMENT_JSON:\{[\s\S]*?\}\s*$/, "").trim();
         } else {
+          let okResult = false;
+          let reason: string | undefined;
           try {
+            console.log("[ai booking] payload:", match[1]);
             const payload = JSON.parse(match[1]);
             if (data.contact_id) payload.contact_id = data.contact_id;
             if (!payload.client_phone && knownPhone) payload.client_phone = knownPhone;
             if (!payload.client_name && knownName) payload.client_name = knownName;
-            await createAppointmentFromAI(payload, {
+            const r = await createAppointmentFromAI(payload, {
               id: profile.id,
               business_timezone: profile.business_timezone ?? null,
               business_name: profile.business_name ?? null,
             });
+            okResult = r.ok;
+            reason = r.reason;
+            if (!r.ok) console.warn("[ai booking] falhou:", r.reason);
           } catch (err) {
             console.warn("[ai booking] parse/create falhou:", (err as Error)?.message);
+            reason = "bad_date";
           }
+          text = text.replace(/APPOINTMENT_JSON:\{[\s\S]*?\}\s*$/, "").trim();
+          if (!okResult) text = friendlyReason("create", reason);
         }
-        text = text.replace(/APPOINTMENT_JSON:\{[\s\S]*?\}\s*$/, "").trim();
       }
     }
 
@@ -1211,10 +1250,14 @@ export async function runAiResponse(input: AiRunInput): Promise<AiRunResult> {
       if (m) {
         if (asksForConfirmation) {
           console.warn("[ai reschedule] ignorado: ainda pedindo confirmação");
+          text = text.replace(/RESCHEDULE_JSON:\{[\s\S]*?\}\s*$/, "").trim();
         } else {
+          let okResult = false;
+          let reason: string | undefined;
           try {
+            console.log("[ai reschedule] payload:", m[1]);
             const payload = JSON.parse(m[1]);
-            const result = await rescheduleAppointmentFromAI(
+            const r = await rescheduleAppointmentFromAI(
               { ...payload, contact_id: data.contact_id ?? null },
               {
                 id: profile.id,
@@ -1222,12 +1265,16 @@ export async function runAiResponse(input: AiRunInput): Promise<AiRunResult> {
                 business_name: profile.business_name ?? null,
               },
             );
-            if (!result.ok) console.warn("[ai reschedule] falhou:", result.reason);
+            okResult = r.ok;
+            reason = r.reason;
+            if (!r.ok) console.warn("[ai reschedule] falhou:", r.reason);
           } catch (err) {
             console.warn("[ai reschedule] parse falhou:", (err as Error)?.message);
+            reason = "bad_date";
           }
+          text = text.replace(/RESCHEDULE_JSON:\{[\s\S]*?\}\s*$/, "").trim();
+          if (!okResult) text = friendlyReason("reschedule", reason);
         }
-        text = text.replace(/RESCHEDULE_JSON:\{[\s\S]*?\}\s*$/, "").trim();
       }
     }
 
@@ -1237,10 +1284,14 @@ export async function runAiResponse(input: AiRunInput): Promise<AiRunResult> {
       if (m) {
         if (asksForConfirmation) {
           console.warn("[ai cancel] ignorado: ainda pedindo confirmação");
+          text = text.replace(/CANCEL_JSON:\{[\s\S]*?\}\s*$/, "").trim();
         } else {
+          let okResult = false;
+          let reason: string | undefined;
           try {
+            console.log("[ai cancel] payload:", m[1]);
             const payload = JSON.parse(m[1]);
-            const result = await cancelAppointmentFromAI(
+            const r = await cancelAppointmentFromAI(
               { ...payload, contact_id: data.contact_id ?? null },
               {
                 id: profile.id,
@@ -1248,12 +1299,16 @@ export async function runAiResponse(input: AiRunInput): Promise<AiRunResult> {
                 business_name: profile.business_name ?? null,
               },
             );
-            if (!result.ok) console.warn("[ai cancel] falhou:", result.reason);
+            okResult = r.ok;
+            reason = r.reason;
+            if (!r.ok) console.warn("[ai cancel] falhou:", r.reason);
           } catch (err) {
             console.warn("[ai cancel] parse falhou:", (err as Error)?.message);
+            reason = "bad_date";
           }
+          text = text.replace(/CANCEL_JSON:\{[\s\S]*?\}\s*$/, "").trim();
+          if (!okResult) text = friendlyReason("cancel", reason);
         }
-        text = text.replace(/CANCEL_JSON:\{[\s\S]*?\}\s*$/, "").trim();
       }
     }
     const usage = json.usageMetadata ?? {};
