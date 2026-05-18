@@ -395,7 +395,8 @@ export async function createAppointmentFromAI(
   return { ok: true, appointment_id: appt.id };
 }
 
-// Reagendamento via IA: muda starts_at/ends_at de um appointment existente.
+// Reagendamento via IA: cancela o antigo + cria um novo (mesmo serviço, profissional
+// e contato), com rollback se a criação falhar. Reaproveita os fluxos que já funcionam.
 export async function rescheduleAppointmentFromAI(
   data: { appointment_id?: string; new_starts_at?: string; contact_id?: string | null },
   profile: { id: string; business_timezone: string | null; business_name: string | null },
@@ -407,59 +408,69 @@ export async function rescheduleAppointmentFromAI(
   if (Number.isNaN(newStart.getTime())) return { ok: false, reason: "bad_date" };
   if (newStart.getTime() < Date.now() - 60_000) return { ok: false, reason: "past_date" };
 
-  // 1. Busca appointment + serviço + profissional + contato
+  // 1. Busca appointment antigo (escopo workspace) + dados que vamos reaproveitar.
   const { data: apptRaw } = await supabaseAdmin
     .from("appointments")
     .select(
-      "id, contact_id, professional_id, service_id, status, starts_at, ends_at, " +
+      "id, contact_id, professional_id, service_id, status, starts_at, " +
         "services(id,name,duration_minutes,price_cents), " +
-        "professionals(id,name), " +
         "contacts(name,phone)",
     )
     .eq("id", data.appointment_id)
     .eq("owner_user_id", profile.id)
     .maybeSingle();
-  const appt = apptRaw as any;
-  if (!appt) return { ok: false, reason: "appointment_not_found" };
-  if (appt.status === "cancelled") return { ok: false, reason: "already_cancelled" };
-  // Escopo do contato: se a IA passou contact_id, precisa bater.
-  if (data.contact_id && appt.contact_id && data.contact_id !== appt.contact_id) {
+  const oldAppt = apptRaw as any;
+  if (!oldAppt) return { ok: false, reason: "appointment_not_found" };
+  if (oldAppt.status === "cancelled") return { ok: false, reason: "already_cancelled" };
+  if (data.contact_id && oldAppt.contact_id && data.contact_id !== oldAppt.contact_id) {
     return { ok: false, reason: "contact_mismatch" };
   }
-
-  const svc = (appt as any).services as ServiceLite | null;
+  const oldStartsAt = oldAppt.starts_at as string;
+  const svc = oldAppt.services as ServiceLite | null;
+  const contact = oldAppt.contacts as { name: string; phone: string } | null;
   if (!svc) return { ok: false, reason: "service_missing" };
-  const newEnd = new Date(newStart.getTime() + svc.duration_minutes * 60_000);
 
-  // 2. Anti-conflito (mesmo profissional, exclui o próprio appointment)
-  if (appt.professional_id) {
-    const { data: conflict } = await supabaseAdmin
+  // 2. Cancela o antigo (silencioso — sem WhatsApp de cancelamento)
+  const cancelRes = await cancelAppointmentFromAI(
+    {
+      appointment_id: oldAppt.id,
+      contact_id: data.contact_id ?? null,
+      reason: "reagendamento",
+      silent: true,
+    },
+    profile,
+  );
+  if (!cancelRes.ok) return { ok: false, reason: cancelRes.reason ?? "cancel_failed" };
+
+  // 3. Cria o novo no horário pedido (silencioso — não envia confirmação normal)
+  const createRes = await createAppointmentFromAI(
+    {
+      service_name: svc.name,
+      professional_id: oldAppt.professional_id ?? null,
+      starts_at: newStart.toISOString(),
+      client_name: contact?.name ?? "",
+      client_phone: contact?.phone ?? "",
+      contact_id: oldAppt.contact_id ?? null,
+      notes: `Reagendado de ${oldStartsAt}`,
+      silent: true,
+    },
+    profile,
+  );
+
+  if (!createRes.ok) {
+    // 3a. ROLLBACK — reverte o cancelamento para o estado anterior.
+    await supabaseAdmin
       .from("appointments")
-      .select("id")
-      .eq("owner_user_id", profile.id)
-      .eq("professional_id", appt.professional_id)
-      .lt("starts_at", newEnd.toISOString())
-      .gt("ends_at", newStart.toISOString())
-      .neq("status", "cancelled")
-      .neq("id", appt.id)
-      .maybeSingle();
-    if (conflict) return { ok: false, reason: "slot_taken" };
+      .update({
+        status: cancelRes.previous_status ?? "scheduled",
+        notes: cancelRes.previous_notes ?? "",
+      })
+      .eq("id", oldAppt.id)
+      .eq("owner_user_id", profile.id);
+    return { ok: false, reason: createRes.reason ?? "create_failed" };
   }
 
-  // 3. Update
-  const { error: uerr } = await supabaseAdmin
-    .from("appointments")
-    .update({
-      starts_at: newStart.toISOString(),
-      ends_at: newEnd.toISOString(),
-    })
-    .eq("id", appt.id)
-    .eq("owner_user_id", profile.id);
-  if (uerr) return { ok: false, reason: "update_failed" };
-
-  // 4. Confirmação WhatsApp
-  const contact = (appt as any).contacts as { name: string; phone: string } | null;
-  const professional = ((appt as any).professionals as { id: string; name: string } | null) ?? null;
+  // 4. Envia a única mensagem de reagendamento (antigo → novo).
   if (contact) {
     await sendBookingReschedule({
       profile: {
@@ -467,9 +478,9 @@ export async function rescheduleAppointmentFromAI(
         business_name: profile.business_name,
         business_timezone: profile.business_timezone,
       },
-      appointment: { id: appt.id, starts_at: newStart.toISOString() },
+      appointment: { id: createRes.appointment_id ?? oldAppt.id, starts_at: newStart.toISOString() },
       service: svc,
-      professional,
+      professional: null,
       client: { client_name: contact.name, client_phone: contact.phone },
     });
   }
