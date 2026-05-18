@@ -1095,7 +1095,7 @@ export async function runAiResponse(input: AiRunInput): Promise<AiRunResult> {
     let text = json.candidates?.[0]?.content?.parts?.[0]?.text ?? "";
 
     // Detecta bloco APPOINTMENT_JSON emitido pela IA
-    if (bookingEnabled) {
+    {
       const match = text.match(/APPOINTMENT_JSON:(\{[\s\S]*?\})\s*$/);
       if (match) {
         try {
