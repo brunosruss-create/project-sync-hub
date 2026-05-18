@@ -328,6 +328,7 @@ export async function sendBookingConfirmation(args: {
 export async function createAppointmentFromAI(
   data: {
     service_name?: string;
+    service_id?: string | null;
     professional_id?: string | null;
     starts_at?: string;
     client_name?: string;
@@ -339,17 +340,39 @@ export async function createAppointmentFromAI(
   },
   profile: { id: string; business_timezone: string | null; business_name: string | null },
 ): Promise<{ ok: boolean; reason?: string; appointment_id?: string }> {
-  if (!data.starts_at || !data.service_name) {
+  if (!data.starts_at || (!data.service_name && !data.service_id)) {
+    console.warn("[booking create] missing_fields", {
+      has_starts_at: !!data.starts_at,
+      has_service_name: !!data.service_name,
+      has_service_id: !!data.service_id,
+      payload_keys: Object.keys(data),
+    });
     return { ok: false, reason: "missing_fields" };
   }
 
-  // 1. Resolver serviço pelo nome (case-insensitive)
-  const { data: serviceRow } = await supabaseAdmin
-    .from("services")
-    .select("id,name,duration_minutes,price_cents")
-    .eq("owner_user_id", profile.id)
-    .ilike("name", data.service_name)
-    .maybeSingle();
+  // 1. Resolver serviço — preferir service_id quando vier (caminho interno do reschedule),
+  // senão buscar por nome (case-insensitive).
+  let serviceRow:
+    | { id: string; name: string; duration_minutes: number; price_cents: number }
+    | null = null;
+  if (data.service_id) {
+    const { data: s } = await supabaseAdmin
+      .from("services")
+      .select("id,name,duration_minutes,price_cents")
+      .eq("id", data.service_id)
+      .eq("owner_user_id", profile.id)
+      .maybeSingle();
+    serviceRow = s ?? null;
+  }
+  if (!serviceRow && data.service_name) {
+    const { data: s } = await supabaseAdmin
+      .from("services")
+      .select("id,name,duration_minutes,price_cents")
+      .eq("owner_user_id", profile.id)
+      .ilike("name", data.service_name)
+      .maybeSingle();
+    serviceRow = s ?? null;
+  }
   if (!serviceRow) return { ok: false, reason: "service_not_found" };
 
   const tzCreate = profile.business_timezone || "America/Sao_Paulo";
@@ -531,8 +554,36 @@ export async function rescheduleAppointmentFromAI(
   if (!oldAppt) return { ok: false, reason: "appointment_not_found" };
   if (oldAppt.status === "cancelled") return { ok: false, reason: "already_cancelled" };
   const oldStartsAt = oldAppt.starts_at as string;
-  const svc = oldAppt.services as ServiceLite | null;
-  const contact = oldAppt.contacts as { name: string; phone: string } | null;
+
+  // Normaliza embed: PostgREST pode devolver o relacionamento como objeto OU array
+  // dependendo de como ele resolve a FK. Sem isso, svc.name vira undefined e
+  // cascateia como "missing_fields" em createAppointmentFromAI.
+  const svcRaw = oldAppt.services as ServiceLite | ServiceLite[] | null;
+  let svc: ServiceLite | null = Array.isArray(svcRaw) ? svcRaw[0] ?? null : svcRaw;
+  const contactRaw = oldAppt.contacts as
+    | { name: string; phone: string }
+    | { name: string; phone: string }[]
+    | null;
+  const contact = Array.isArray(contactRaw) ? contactRaw[0] ?? null : contactRaw;
+
+  console.log("[booking reschedule] oldAppt shape", {
+    appt_id: oldAppt.id,
+    services_is_array: Array.isArray(svcRaw),
+    service_id: oldAppt.service_id,
+    service_name: svc?.name ?? null,
+    contact_present: !!contact,
+  });
+
+  // Fallback: se o embed falhou (sem name/duration), busca direto pela FK.
+  if ((!svc || !svc.name || !svc.duration_minutes) && oldAppt.service_id) {
+    const { data: fetched } = await supabaseAdmin
+      .from("services")
+      .select("id,name,duration_minutes,price_cents")
+      .eq("id", oldAppt.service_id)
+      .eq("owner_user_id", profile.id)
+      .maybeSingle();
+    if (fetched) svc = fetched as ServiceLite;
+  }
   if (!svc) return { ok: false, reason: "service_missing" };
 
   // 2. Cancela o antigo (silencioso — sem WhatsApp de cancelamento)
@@ -545,11 +596,12 @@ export async function rescheduleAppointmentFromAI(
     },
     profile,
   );
-  if (!cancelRes.ok) return { ok: false, reason: cancelRes.reason ?? "cancel_failed" };
+  if (!cancelRes.ok) return { ok: false, reason: `cancel:${cancelRes.reason ?? "failed"}` };
 
   // 3. Cria o novo no horário pedido (silencioso — não envia confirmação normal)
   const createRes = await createAppointmentFromAI(
     {
+      service_id: svc.id,
       service_name: svc.name,
       professional_id: oldAppt.professional_id ?? null,
       starts_at: newStart.toISOString(),
@@ -572,7 +624,7 @@ export async function rescheduleAppointmentFromAI(
       })
       .eq("id", oldAppt.id)
       .eq("owner_user_id", profile.id);
-    return { ok: false, reason: createRes.reason ?? "create_failed" };
+    return { ok: false, reason: `create:${createRes.reason ?? "failed"}` };
   }
 
   // 4. Envia a única mensagem de reagendamento (antigo → novo).
@@ -586,7 +638,7 @@ export async function rescheduleAppointmentFromAI(
       appointment: { id: createRes.appointment_id ?? oldAppt.id, starts_at: newStart.toISOString() },
       service: svc,
       professional: null,
-      client: { client_name: contact.name, client_phone: contact.phone },
+      client: contact ? { client_name: contact.name, client_phone: contact.phone } : { client_name: "Cliente", client_phone: "" },
     });
   }
   return { ok: true };

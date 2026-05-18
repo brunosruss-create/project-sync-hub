@@ -236,7 +236,7 @@ describe("rescheduleAppointmentFromAI", () => {
     );
 
     expect(result.ok).toBe(false);
-    expect(result.reason).toBe("slot_taken");
+    expect(result.reason).toBe("create:slot_taken");
 
     // Devem existir DOIS updates: 1) cancel do antigo, 2) rollback que reverte
     const updates = calls.filter((c) => c.table === "appointments" && c.op === "update");

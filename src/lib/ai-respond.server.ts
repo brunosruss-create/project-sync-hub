@@ -1179,7 +1179,9 @@ export async function runAiResponse(input: AiRunInput): Promise<AiRunResult> {
 
     // Helper: traduz reason de falha em mensagem honesta pro cliente.
     const friendlyReason = (action: "create" | "reschedule" | "cancel", reason?: string): string => {
-      switch (reason) {
+      // Aceita reasons prefixadas pelo reschedule (ex.: "create:slot_taken", "cancel:appointment_not_found").
+      const bare = reason?.includes(":") ? reason.split(":").slice(1).join(":") : reason;
+      switch (bare) {
         case "slot_taken":
           return "Esse horário acabou de ser ocupado. Pode me dizer outro horário?";
         case "past_date":
@@ -1194,6 +1196,7 @@ export async function runAiResponse(input: AiRunInput): Promise<AiRunResult> {
         case "already_cancelled":
           return "Esse agendamento não está mais ativo no sistema. Quer marcar um novo?";
         case "service_not_found":
+        case "service_missing":
           return "Não consegui localizar esse serviço no nosso catálogo. Pode confirmar o nome?";
         case "missing_phone":
         case "contact_create_failed":
