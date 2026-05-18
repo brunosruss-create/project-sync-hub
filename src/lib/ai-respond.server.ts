@@ -1020,11 +1020,9 @@ export async function runAiResponse(input: AiRunInput): Promise<AiRunResult> {
       `CANCELAMENTO: Se o cliente confirmar TEXTUALMENTE o cancelamento de um agendamento existente, inclua no FINAL da sua resposta uma única linha com este bloco JSON exato:\nCANCEL_JSON:{"appointment_id":"<uuid-do-id-da-lista>","reason":"motivo curto"}\nSó emita esse bloco depois da confirmação explícita do cliente (ex.: "sim, pode cancelar"). Use o uuid EXATO da lista.`,
     );
   }
-  if (canReschedule || canCancel || bookingEnabled) {
-    bookingParts.push(
-      `REGRA: Você só pode emitir UM bloco JSON por resposta (APPOINTMENT_JSON, RESCHEDULE_JSON ou CANCEL_JSON). Nunca emita dois ao mesmo tempo.`,
-    );
-  }
+  bookingParts.push(
+    `REGRA: Você só pode emitir UM bloco JSON por resposta (APPOINTMENT_JSON, RESCHEDULE_JSON ou CANCEL_JSON). Nunca emita dois ao mesmo tempo.`,
+  );
   const bookingLayer = bookingParts.length > 0 ? bookingParts.join("\n\n") : null;
 
   const professionalsLayer = buildProfessionalsLayer(pros, upcoming, bizHours, tz);
