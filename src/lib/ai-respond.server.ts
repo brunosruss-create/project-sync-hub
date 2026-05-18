@@ -1145,6 +1145,12 @@ export async function runAiResponse(input: AiRunInput): Promise<AiRunResult> {
       if (match) {
         try {
           const payload = JSON.parse(match[1]);
+          // Garante que o appointment criado fique ligado ao contato real da
+          // conversa (evita duplicar contato por divergência de formato no
+          // telefone). Também injeta defaults pro caso da IA esquecer.
+          if (data.contact_id) payload.contact_id = data.contact_id;
+          if (!payload.client_phone && knownPhone) payload.client_phone = knownPhone;
+          if (!payload.client_name && knownName) payload.client_name = knownName;
           await createAppointmentFromAI(payload, {
             id: profile.id,
             business_timezone: profile.business_timezone ?? null,
