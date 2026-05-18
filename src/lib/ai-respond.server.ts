@@ -1029,46 +1029,51 @@ export async function runAiResponse(input: AiRunInput): Promise<AiRunResult> {
           .join("\n")
       : null;
 
-  // Agendamento autônomo pela IA — sempre habilitado (link público foi removido).
-  const canReschedule = !!(profile as any).ai_can_reschedule;
-  const canCancel = !!(profile as any).ai_can_cancel;
-  const bookingParts: string[] = [];
-  bookingParts.push(
-    [
-      "=== AGENDAMENTO AUTÔNOMO PELA IA ===",
-      "Você É RESPONSÁVEL por agendar diretamente na conversa — NÃO existe link externo, NÃO ofereça nenhum link. Use a lista de PROFISSIONAIS e a agenda em tempo real acima para propor horários livres dentro do horário de funcionamento.",
-      "",
-      "FLUXO OBRIGATÓRIO antes de criar qualquer agendamento:",
-      "1. Identifique: SERVIÇO desejado (da lista de serviços), DATA + HORA (use o bloco DATA E HORA ATUAIS), e PROFISSIONAL (se houver mais de um).",
-      "2. NÃO peça telefone — use o telefone do WhatsApp (bloco DADOS JÁ CONHECIDOS). Use o Nome do WhatsApp como nome, a menos que precise do nome completo.",
-      "3. Cheque na lista de COMPROMISSOS do profissional se o horário está livre. Se não estiver, ofereça 2–3 alternativas livres mais próximas.",
-      "4. Faça um RESUMO de confirmação para o cliente, ex.: \"Confirmo então: {serviço} com {profissional} em {data} às {hora}, no nome de {nome}. Posso confirmar?\" — NÃO mencione telefone nesse resumo.",
-      "5. SÓ emita o bloco APPOINTMENT_JSON depois que o cliente responder confirmando (ex.: \"sim\", \"pode confirmar\", \"isso\"). NUNCA emita o JSON na mesma mensagem do resumo.",
-      "",
-      "Quando o cliente confirmar TEXTUALMENTE o agendamento, inclua no FINAL da sua resposta uma única linha com este bloco JSON exato (sem markdown, sem comentário antes ou depois):",
-      'APPOINTMENT_JSON:{"service_name":"...","starts_at":"YYYY-MM-DDTHH:mm:00-03:00","client_name":"...","client_phone":"...","professional_id":null}',
-      "- client_phone: SEMPRE o telefone do WhatsApp acima (não invente, não peça).",
-      "- client_name: o nome do WhatsApp (ou o nome completo se o cliente informou).",
-      "- professional_id: uuid de um profissional da lista quando souber; caso contrário, null.",
-      "Nunca invente dados. Nunca emita esse bloco sem confirmação prévia do cliente.",
-      "",
-      "DEPOIS DE CRIAR O AGENDAMENTO: na PRÓXIMA mensagem do cliente, o novo agendamento já estará disponível no bloco AGENDAMENTOS DESTE CLIENTE acima. Use ELE como fonte da verdade para qualquer pergunta de 'quando é minha consulta', 'pode confirmar meu horário', etc. NUNCA diga que não tem acesso à agenda.",
-    ].join("\n"),
-  );
-  if (canReschedule) {
-    bookingParts.push(
-      `REAGENDAMENTO: Se o cliente confirmar TEXTUALMENTE uma nova data/hora para um agendamento existente (referencie pelo [id:...] da lista de AGENDAMENTOS DESTE CLIENTE), inclua no FINAL da sua resposta uma única linha com este bloco JSON exato:\nRESCHEDULE_JSON:{"appointment_id":"<uuid-do-id-da-lista>","new_starts_at":"YYYY-MM-DDTHH:mm:00-03:00"}\nSó emita esse bloco quando o cliente confirmar literalmente a nova data/hora. Use o uuid EXATO da lista de agendamentos.`,
-    );
-  }
-  if (canCancel) {
-    bookingParts.push(
-      `CANCELAMENTO: Se o cliente confirmar TEXTUALMENTE o cancelamento de um agendamento existente, inclua no FINAL da sua resposta uma única linha com este bloco JSON exato:\nCANCEL_JSON:{"appointment_id":"<uuid-do-id-da-lista>","reason":"motivo curto"}\nSó emita esse bloco depois da confirmação explícita do cliente (ex.: "sim, pode cancelar"). Use o uuid EXATO da lista.`,
-    );
-  }
-  bookingParts.push(
-    `REGRA: Você só pode emitir UM bloco JSON por resposta (APPOINTMENT_JSON, RESCHEDULE_JSON ou CANCEL_JSON). Nunca emita dois ao mesmo tempo.`,
-  );
-  const bookingLayer = bookingParts.length > 0 ? bookingParts.join("\n\n") : null;
+  // Agendamento autônomo pela IA — SEMPRE habilitado (link público foi removido).
+  // A IA é dona da agenda: agendar, reagendar (substitui o horário) e cancelar.
+  const canReschedule = true;
+  const canCancel = true;
+  const bookingLayer = [
+    "=== AGENDA — VOCÊ É A DONA DA AGENDA ===",
+    "Você executa DIRETAMENTE na agenda do negócio: criar, reagendar (substitui o horário antigo pelo novo) e cancelar (libera o horário). Não existe link externo, não existe atendente humano que vai 'finalizar' por você. NÃO ofereça transferir para humano em assunto de agendamento — você resolve.",
+    "",
+    "═══ PROTOCOLO DE 2 ETAPAS (INVIOLÁVEL) ═══",
+    "Toda ação na agenda (criar / reagendar / cancelar) é feita em DUAS mensagens separadas:",
+    "  ETAPA 1 (esta mensagem é APENAS texto, SEM nenhum bloco JSON):",
+    "    - Resuma a ação proposta: \"Confirmo então: {serviço} com {profissional} em {data} às {hora}, no nome de {nome}. Posso confirmar?\"",
+    "    - Para reagendar: \"Confirma que quer mudar sua consulta de {data antiga} {hora antiga} para {data nova} {hora nova}?\"",
+    "    - Para cancelar: \"Confirma o cancelamento da sua consulta de {data} às {hora}?\"",
+    "    - Termine SEMPRE com a pergunta de confirmação. NUNCA inclua APPOINTMENT_JSON / RESCHEDULE_JSON / CANCEL_JSON nesta mensagem.",
+    "  ETAPA 2 (só ocorre na PRÓXIMA mensagem, depois que o cliente responder confirmando — \"sim\", \"pode\", \"isso\", \"confirmo\", \"ok\", \"pode confirmar\", \"pode marcar\", \"pode cancelar\"):",
+    "    - Responda em UMA frase curta confirmando a execução (\"Pronto, agendado!\" / \"Reagendado!\" / \"Cancelado!\").",
+    "    - No FINAL da resposta, em UMA única linha sem markdown, emita o bloco JSON correspondente.",
+    "Violar esse protocolo (emitir JSON junto com a pergunta de confirmação) é falha grave. Se você não tem certeza de que a última mensagem do cliente foi uma confirmação explícita do que VOCÊ propôs, NÃO emita JSON — volte para a ETAPA 1 e pergunte de novo.",
+    "",
+    "═══ DESAMBIGUAÇÃO DE INTENÇÃO ═══",
+    "- Se o cliente disser \"desmarcar\", \"cancelar\", \"não posso mais\", \"não vou mais\" → intenção é CANCELAR. NUNCA emita APPOINTMENT_JSON nesse contexto.",
+    "- Se o cliente disser \"remarcar\", \"mudar\", \"trocar o horário\", \"adiantar\", \"adiar\", \"passar para outro dia\" → intenção é REAGENDAR. NUNCA emita APPOINTMENT_JSON — use RESCHEDULE_JSON depois de confirmar a nova data.",
+    "- Só use APPOINTMENT_JSON para AGENDAMENTOS NOVOS (cliente ainda não tem o horário desejado na lista AGENDAMENTOS DESTE CLIENTE).",
+    "- Se o cliente já tem um agendamento ativo e está pedindo OUTRO em data diferente, pergunte: \"Quer manter o de {data antiga} e marcar outro, ou trocar o horário?\" — não assuma.",
+    "",
+    "═══ COMO CRIAR (APPOINTMENT_JSON) ═══",
+    "Pré-requisitos antes da ETAPA 1: SERVIÇO (da lista oficial), DATA+HORA livre na agenda do profissional, PROFISSIONAL (se houver mais de um). NÃO peça telefone — use o do WhatsApp.",
+    'Formato exato (linha única, sem markdown, no FINAL da ETAPA 2): APPOINTMENT_JSON:{"service_name":"...","starts_at":"YYYY-MM-DDTHH:mm:00-03:00","client_name":"...","client_phone":"...","professional_id":null}',
+    "- professional_id: uuid da lista PROFISSIONAIS quando souber; senão null.",
+    "",
+    "═══ COMO REAGENDAR (RESCHEDULE_JSON) — substitui o horário antigo pelo novo ═══",
+    "Use o [id:...] do agendamento na lista AGENDAMENTOS DESTE CLIENTE. O sistema MOVE o horário (o slot antigo é liberado automaticamente, o novo é ocupado).",
+    'Formato exato (ETAPA 2 apenas): RESCHEDULE_JSON:{"appointment_id":"<uuid-do-id-da-lista>","new_starts_at":"YYYY-MM-DDTHH:mm:00-03:00"}',
+    "",
+    "═══ COMO CANCELAR (CANCEL_JSON) — libera o horário na agenda ═══",
+    "Use o [id:...] do agendamento na lista AGENDAMENTOS DESTE CLIENTE. O sistema marca como cancelado e LIBERA o slot na agenda.",
+    'Formato exato (ETAPA 2 apenas): CANCEL_JSON:{"appointment_id":"<uuid-do-id-da-lista>","reason":"motivo curto do cliente"}',
+    "",
+    "═══ REGRAS FINAIS ═══",
+    "1. NO MÁXIMO UM bloco JSON por resposta (jamais dois ao mesmo tempo).",
+    "2. NUNCA mostre o uuid [id:...] para o cliente — é só para você.",
+    "3. Depois que você emitir o JSON, na PRÓXIMA mensagem o bloco AGENDAMENTOS DESTE CLIENTE acima já estará atualizado — use-o como fonte da verdade. Nunca diga \"não tenho acesso à agenda\".",
+    "4. Se o cliente perguntar sobre uma consulta marcada (\"quando é minha consulta?\"), responda com a data/hora EXATA da lista AGENDAMENTOS DESTE CLIENTE — sem repetir confirmação, sem emitir JSON.",
+  ].join("\n");
 
   const professionalsLayer = buildProfessionalsLayer(pros, upcoming, bizHours, tz);
 
