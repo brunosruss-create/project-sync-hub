@@ -328,6 +328,7 @@ export async function sendBookingConfirmation(args: {
 export async function createAppointmentFromAI(
   data: {
     service_name?: string;
+    service_id?: string | null;
     professional_id?: string | null;
     starts_at?: string;
     client_name?: string;
@@ -339,17 +340,39 @@ export async function createAppointmentFromAI(
   },
   profile: { id: string; business_timezone: string | null; business_name: string | null },
 ): Promise<{ ok: boolean; reason?: string; appointment_id?: string }> {
-  if (!data.starts_at || !data.service_name) {
+  if (!data.starts_at || (!data.service_name && !data.service_id)) {
+    console.warn("[booking create] missing_fields", {
+      has_starts_at: !!data.starts_at,
+      has_service_name: !!data.service_name,
+      has_service_id: !!data.service_id,
+      payload_keys: Object.keys(data),
+    });
     return { ok: false, reason: "missing_fields" };
   }
 
-  // 1. Resolver serviço pelo nome (case-insensitive)
-  const { data: serviceRow } = await supabaseAdmin
-    .from("services")
-    .select("id,name,duration_minutes,price_cents")
-    .eq("owner_user_id", profile.id)
-    .ilike("name", data.service_name)
-    .maybeSingle();
+  // 1. Resolver serviço — preferir service_id quando vier (caminho interno do reschedule),
+  // senão buscar por nome (case-insensitive).
+  let serviceRow:
+    | { id: string; name: string; duration_minutes: number; price_cents: number }
+    | null = null;
+  if (data.service_id) {
+    const { data: s } = await supabaseAdmin
+      .from("services")
+      .select("id,name,duration_minutes,price_cents")
+      .eq("id", data.service_id)
+      .eq("owner_user_id", profile.id)
+      .maybeSingle();
+    serviceRow = s ?? null;
+  }
+  if (!serviceRow && data.service_name) {
+    const { data: s } = await supabaseAdmin
+      .from("services")
+      .select("id,name,duration_minutes,price_cents")
+      .eq("owner_user_id", profile.id)
+      .ilike("name", data.service_name)
+      .maybeSingle();
+    serviceRow = s ?? null;
+  }
   if (!serviceRow) return { ok: false, reason: "service_not_found" };
 
   const tzCreate = profile.business_timezone || "America/Sao_Paulo";

@@ -1,84 +1,113 @@
+## Contexto
 
-## Diagnóstico (a partir dos logs reais)
+A mensagem anterior dizendo que "Lovable Cloud está desativado" foi um falso positivo do meu lado — o projeto usa Supabase direto (`@/integrations/supabase/client.server`) e a stack está intacta. Os testes automatizados de reagendamento passam (4/4).
 
-Os logs do worker mostram **exatamente** por que o reagendamento falha — a IA está emitindo o JSON, mas o backend o rejeita silenciosamente:
+Olhando os logs reais de produção (`server-function-logs`), o erro que está acontecendo AGORA é:
 
 ```
+[log]  [ai reschedule] payload: {"appointment_id":"5fcef71d-…","new_starts_at":"2026-05-23T15:00:00-03:00"}
 [warn] [ai reschedule] falhou: missing_fields
-[warn] [ai reschedule] parse falhou: Invalid time value
-[warn] [ai reschedule] parse falhou: Invalid time value
 ```
 
-Três problemas em cadeia:
+`missing_fields` só pode vir de dois lugares em `booking-confirmation.server.ts`:
+- linha 493 (reschedule topo): só dispara se `new_starts_at` for vazio — não é o caso, o payload tem.
+- linha 343 (`createAppointmentFromAI`): dispara se `starts_at` OU `service_name` vier vazio.
 
-1. **`Invalid time value`** — A IA está mandando `new_starts_at` num formato que `new Date()` não consegue parsear (ex.: `"2026-05-23T14:00"` sem offset, ou `"2026-05-23 14:00:00"`, ou com fuso errado). O prompt pede `YYYY-MM-DDTHH:mm:00-03:00`, mas modelos pequenos (Gemini Flash Lite) frequentemente quebram esse formato.
-2. **`missing_fields`** — Depois do 1º reagendamento, o appointment antigo foi cancelado e um NOVO foi criado com outro id. Na 2ª tentativa, a IA pega o id do CANCELADO da lista (ou simplesmente não preenche) e o backend rejeita.
-3. **Mentira para o cliente** — A IA escreve `"Reagendado!"` ANTES do JSON. Se o JSON falhar no backend, o cliente recebe o "Reagendado!" via WhatsApp, mas nada muda na agenda. Foi exatamente o que aconteceu no print do WhatsApp.
+Como o reschedule chama `createAppointmentFromAI({ service_name: svc.name, starts_at: newStart.toISOString(), ... })` e simplesmente repassa `reason`, a hipótese forte é que o relacionamento embutido `services(id,name,duration_minutes,price_cents)` na query do `oldAppt` está vindo como **array** (`svc = [{...}]`) em vez de objeto. O cast `as ServiceLite` mascara isso no TypeScript; em runtime `svc.name` é `undefined` → cascateia como `missing_fields`. O check `if (!svc)` passa porque um array vazio/preenchido não é falsy.
 
-## Plano (3 ajustes cirúrgicos, só em 2 arquivos)
+Não temos logs de `APPOINTMENT_JSON` (criação nova) caindo agora, mas a mesma classe de bug pode estar afetando todas as criações que dependem desse caminho. Precisamos diagnosticar com precisão antes de mudar mais código.
 
-**Arquivos tocados:**
-- `src/lib/booking-confirmation.server.ts` (parser de data + fallback de id)
-- `src/lib/ai-respond.server.ts` (truthful reply: se falhar, manda erro real)
+## Plano
 
-Nada em rotas, UI, kanban, agenda visual ou outras tabelas.
+### 1. Logging diagnóstico (1 arquivo)
 
----
+Em `src/lib/booking-confirmation.server.ts`:
 
-### 1) Parser de data tolerante (booking-confirmation.server.ts)
+- `createAppointmentFromAI`: ao retornar `missing_fields`, logar quais campos faltam:
+  ```ts
+  if (!data.starts_at || !data.service_name) {
+    console.warn("[booking create] missing_fields", {
+      has_starts_at: !!data.starts_at,
+      has_service_name: !!data.service_name,
+      payload_keys: Object.keys(data),
+    });
+    return { ok: false, reason: "missing_fields" };
+  }
+  ```
+- `rescheduleAppointmentFromAI`: depois de carregar `oldAppt`, logar a forma de `services` e `contacts`:
+  ```ts
+  console.log("[booking reschedule] oldAppt shape", {
+    appt_id: oldAppt.id,
+    services_is_array: Array.isArray(oldAppt.services),
+    service_name: Array.isArray(oldAppt.services) ? oldAppt.services[0]?.name : oldAppt.services?.name,
+    contact_present: !!oldAppt.contacts,
+  });
+  ```
+- Tag de fase nos retornos do reschedule para parar de mascarar:
+  - `cancelRes.reason` → `"cancel:" + reason`
+  - `createRes.reason` → `"create:" + reason`
 
-Criar uma função `parseAiDate(input, tz)` que aceita os formatos comuns que a IA emite e SEMPRE interpreta como horário de Brasília quando não houver offset:
+Em `src/lib/ai-respond.server.ts` o `friendlyReason` passa a aceitar reasons prefixadas (`startsWith("create:slot_taken")` etc.) para não quebrar a UX.
 
-- `2026-05-23T14:00:00-03:00` → ok (já tem offset)
-- `2026-05-23T14:00:00` → interpreta como tz do negócio
-- `2026-05-23T14:00` → idem
-- `2026-05-23 14:00` → idem
-- `23/05/2026 14:00` → idem
+### 2. Correção do embed singular vs array
 
-Usar essa função tanto em `createAppointmentFromAI` quanto em `rescheduleAppointmentFromAI`. Elimina o `Invalid time value`.
+Normalizar o acesso ao embed independente do que o PostgREST devolver:
 
-### 2) Resolver appointment_id quando a IA erra (booking-confirmation.server.ts)
+```ts
+const svcRaw = oldAppt.services as ServiceLite | ServiceLite[] | null;
+const svc: ServiceLite | null = Array.isArray(svcRaw) ? (svcRaw[0] ?? null) : svcRaw;
 
-Em `rescheduleAppointmentFromAI` e `cancelAppointmentFromAI`:
+const contactRaw = oldAppt.contacts as { name: string; phone: string } | { name: string; phone: string }[] | null;
+const contact = Array.isArray(contactRaw) ? (contactRaw[0] ?? null) : contactRaw;
+```
 
-- Se `appointment_id` veio vazio, ou aponta para um appointment `cancelled/completed`, ou não pertence ao `contact_id` da conversa → fazer um lookup automático:
-  - buscar o agendamento ATIVO (`status not in ('cancelled','completed')`) mais recente do `contact_id` no `owner_user_id`, no futuro
-  - se existir exatamente UM → usar esse id
-  - se existir mais de um → retornar `ambiguous_appointment` (IA precisa perguntar qual)
-  - se nenhum → retornar `no_active_appointment`
+Como fallback de segurança, se `svc` ainda vier sem `name` ou `duration_minutes`, refazer um SELECT direto em `services` por `oldAppt.service_id` antes de chamar `createAppointmentFromAI` (em vez de cascatear um erro misterioso).
 
-Isso resolve o `missing_fields` e o problema de pegar id do cancelado.
+### 3. Defesa no `createAppointmentFromAI`
 
-### 3) Resposta verdadeira ao cliente (ai-respond.server.ts)
+Quando chamado internamente (reschedule) com `service_name` vindo de embed, aceitar também `service_id` direto para curto-circuitar o `ilike` por nome:
 
-Hoje, mesmo quando `rescheduleAppointmentFromAI` retorna `{ok:false}`, o `text` da IA com "Reagendado!" é retornado normalmente e enviado pelo WhatsApp. Mudar para:
+```ts
+// no início:
+let serviceRow: ServiceLite | null = null;
+if (data.service_id) {
+  const { data: s } = await supabaseAdmin
+    .from("services")
+    .select("id,name,duration_minutes,price_cents")
+    .eq("id", data.service_id)
+    .eq("owner_user_id", profile.id)
+    .maybeSingle();
+  serviceRow = s ?? null;
+}
+if (!serviceRow && data.service_name) {
+  // caminho atual por ilike
+}
+```
 
-- Guardar o `result` (ok + reason) das três execuções: create / reschedule / cancel.
-- Se `result.ok === false`, **substituir** o texto da IA por uma frase verdadeira baseada no `reason`, ex.:
-  - `slot_taken` → "Esse horário acabou de ser ocupado, posso te oferecer outro?"
-  - `past_date` → "Esse horário já passou, qual outro fica bom pra você?"
-  - `ambiguous_appointment` → "Você tem mais de um agendamento ativo — qual deles você quer mudar? (me diga o dia/hora)"
-  - `no_active_appointment` → "Não encontrei nenhum agendamento ativo seu. Quer marcar um novo?"
-  - `bad_date` / outros → "Tive um problema técnico aqui, pode repetir a data e hora desejadas?"
-- Logar o `payload` cru recebido da IA (`console.log("[ai reschedule] payload:", m[1])`) pra facilitar debug futuro.
+E no reschedule, passar `service_id: oldAppt.service_id` junto com `service_name`. Isso elimina dependência do embed.
 
-Mesmo tratamento para `CANCEL_JSON` e `APPOINTMENT_JSON` (já existe na infraestrutura — só não estavam usando o `reason`).
+### 4. Verificar criação nova (`APPOINTMENT_JSON`)
 
-### 4) Pequeno reforço de prompt (ai-respond.server.ts)
+Reproduzir um payload típico via `invoke-server-function` no endpoint público do webhook (ou via teste unitário com supabase mockado) para confirmar que a criação nova segue funcionando depois do patch. Se aparecer outra falha, registrar em log e iterar.
 
-No `bookingLayer`, adicionar duas linhas curtas (não reescrever o prompt):
-- "Para reagendar/cancelar, use APENAS [id:...] de agendamento que NÃO esteja marcado como (CANCELADO) ou (CONCLUÍDO). Se houver mais de um ativo, pergunte ao cliente qual."
-- "`new_starts_at` DEVE ter o offset `-03:00` no fim. Exemplo: `2026-05-23T14:00:00-03:00`. Sem isso o sistema rejeita."
+### 5. Testes automatizados
 
----
+Adicionar em `src/lib/__tests__/reschedule.test.ts`:
 
-## Resultado esperado
+- Caso "embed services vem como array" → reschedule continua funcionando (regressão do bug atual).
+- Caso "service_id presente, service_name ausente" no `createAppointmentFromAI` → cria normalmente.
+- Caso "reschedule reason é prefixada" → quando o create interno falha por `slot_taken`, o reason final é `create:slot_taken`.
 
-| Cenário | Antes | Depois |
-|---|---|---|
-| IA manda data sem offset | Backend silenciosamente falha, cliente vê "Reagendado!" | Parser interpreta como tz do negócio, agenda muda |
-| IA pega id do cancelado | `missing_fields`, cliente vê "Reagendado!" | Sistema resolve para o ativo, agenda muda |
-| Slot novo já ocupado | Cliente vê "Reagendado!" mas nada muda | Cliente recebe "Esse horário acabou de ser ocupado..." |
-| Reagendamento legítimo | Mensagem dupla "Reagendado!" sem efeito | Agenda muda + 1 única confirmação correta |
+Rodar `bunx vitest run` ao final; só fechar a tarefa com tudo verde.
 
-Sem mexer em mais nada do sistema.
+### 6. Confirmação em produção
+
+Depois do deploy, pedir ao usuário para tentar de novo. Reler `server-function-logs` filtrando por `[booking reschedule]` / `[booking create]` para confirmar que o caminho do bug agora aparece com detalhe (ou desapareceu).
+
+## Arquivos afetados
+
+- `src/lib/booking-confirmation.server.ts` (logging + normalização embed + aceitar `service_id`)
+- `src/lib/ai-respond.server.ts` (`friendlyReason` aceitar prefixo)
+- `src/lib/__tests__/reschedule.test.ts` (novos casos)
+
+Nenhuma migration SQL é necessária — bug é puramente de runtime.
