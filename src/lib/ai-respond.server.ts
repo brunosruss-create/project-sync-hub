@@ -4,7 +4,7 @@ import {
   rescheduleAppointmentFromAI,
   cancelAppointmentFromAI,
 } from "@/lib/booking-confirmation.server";
-import { getBookingUrl } from "@/lib/booking-url";
+
 import { MESSAGE_DEFAULTS } from "@/lib/message-defaults";
 import { renderTemplate } from "@/lib/message-templates";
 
