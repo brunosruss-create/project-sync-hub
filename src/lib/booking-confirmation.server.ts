@@ -352,8 +352,9 @@ export async function createAppointmentFromAI(
     .maybeSingle();
   if (!serviceRow) return { ok: false, reason: "service_not_found" };
 
-  const startsAt = new Date(data.starts_at);
-  if (Number.isNaN(startsAt.getTime())) return { ok: false, reason: "bad_date" };
+  const tzCreate = profile.business_timezone || "America/Sao_Paulo";
+  const startsAt = parseAiDate(data.starts_at, tzCreate);
+  if (!startsAt) return { ok: false, reason: "bad_date" };
   const endsAt = new Date(startsAt.getTime() + serviceRow.duration_minutes * 60_000);
 
   // 2. Profissional (opcional). Se a IA não passou um, e existir só 1 ativo,
