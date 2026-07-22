@@ -37,6 +37,7 @@ import { Route as AuthenticatedSuperAdminHealthRouteImport } from './routes/_aut
 import { Route as AuthenticatedSuperAdminIaRouteImport } from './routes/_authenticated.super-admin.ia'
 import { Route as AuthenticatedSuperAdminUsersRouteImport } from './routes/_authenticated.super-admin.users'
 import { Route as AuthenticatedSuperAdminWorkspacesRouteImport } from './routes/_authenticated.super-admin.workspaces'
+import { Route as ApiInternalQueueHealthRouteImport } from './routes/api/internal/queue-health'
 import { Route as ApiPublicEvolutionInstanceIdRouteImport } from './routes/api/public/evolution.$instanceId'
 
 const IndexRoute = IndexRouteImport.update({
@@ -191,6 +192,11 @@ const AuthenticatedSuperAdminWorkspacesRoute =
     path: '/workspaces',
     getParentRoute: () => AuthenticatedSuperAdminRoute,
   } as any)
+const ApiInternalQueueHealthRoute = ApiInternalQueueHealthRouteImport.update({
+  id: '/api/internal/queue-health',
+  path: '/api/internal/queue-health',
+  getParentRoute: () => rootRouteImport,
+} as any)
 const ApiPublicEvolutionInstanceIdRoute =
   ApiPublicEvolutionInstanceIdRouteImport.update({
     id: '/api/public/evolution/$instanceId',
@@ -226,6 +232,7 @@ export interface FileRoutesByFullPath {
   '/super-admin/ia': typeof AuthenticatedSuperAdminIaRoute
   '/super-admin/users': typeof AuthenticatedSuperAdminUsersRoute
   '/super-admin/workspaces': typeof AuthenticatedSuperAdminWorkspacesRoute
+  '/api/internal/queue-health': typeof ApiInternalQueueHealthRoute
   '/api/public/evolution/$instanceId': typeof ApiPublicEvolutionInstanceIdRoute
 }
 export interface FileRoutesByTo {
@@ -256,6 +263,7 @@ export interface FileRoutesByTo {
   '/super-admin/ia': typeof AuthenticatedSuperAdminIaRoute
   '/super-admin/users': typeof AuthenticatedSuperAdminUsersRoute
   '/super-admin/workspaces': typeof AuthenticatedSuperAdminWorkspacesRoute
+  '/api/internal/queue-health': typeof ApiInternalQueueHealthRoute
   '/api/public/evolution/$instanceId': typeof ApiPublicEvolutionInstanceIdRoute
 }
 export interface FileRoutesById {
@@ -288,6 +296,7 @@ export interface FileRoutesById {
   '/_authenticated/super-admin/ia': typeof AuthenticatedSuperAdminIaRoute
   '/_authenticated/super-admin/users': typeof AuthenticatedSuperAdminUsersRoute
   '/_authenticated/super-admin/workspaces': typeof AuthenticatedSuperAdminWorkspacesRoute
+  '/api/internal/queue-health': typeof ApiInternalQueueHealthRoute
   '/api/public/evolution/$instanceId': typeof ApiPublicEvolutionInstanceIdRoute
 }
 export interface FileRouteTypes {
@@ -320,6 +329,7 @@ export interface FileRouteTypes {
     | '/super-admin/ia'
     | '/super-admin/users'
     | '/super-admin/workspaces'
+    | '/api/internal/queue-health'
     | '/api/public/evolution/$instanceId'
   fileRoutesByTo: FileRoutesByTo
   to:
@@ -350,6 +360,7 @@ export interface FileRouteTypes {
     | '/super-admin/ia'
     | '/super-admin/users'
     | '/super-admin/workspaces'
+    | '/api/internal/queue-health'
     | '/api/public/evolution/$instanceId'
   id:
     | '__root__'
@@ -381,6 +392,7 @@ export interface FileRouteTypes {
     | '/_authenticated/super-admin/ia'
     | '/_authenticated/super-admin/users'
     | '/_authenticated/super-admin/workspaces'
+    | '/api/internal/queue-health'
     | '/api/public/evolution/$instanceId'
   fileRoutesById: FileRoutesById
 }
@@ -392,6 +404,7 @@ export interface RootRouteChildren {
   ResetPasswordRoute: typeof ResetPasswordRoute
   SignupRoute: typeof SignupRoute
   AuthCallbackRoute: typeof AuthCallbackRoute
+  ApiInternalQueueHealthRoute: typeof ApiInternalQueueHealthRoute
   ApiPublicEvolutionInstanceIdRoute: typeof ApiPublicEvolutionInstanceIdRoute
 }
 
@@ -593,6 +606,13 @@ declare module '@tanstack/react-router' {
       preLoaderRoute: typeof AuthenticatedSuperAdminWorkspacesRouteImport
       parentRoute: typeof AuthenticatedSuperAdminRoute
     }
+    '/api/internal/queue-health': {
+      id: '/api/internal/queue-health'
+      path: '/api/internal/queue-health'
+      fullPath: '/api/internal/queue-health'
+      preLoaderRoute: typeof ApiInternalQueueHealthRouteImport
+      parentRoute: typeof rootRouteImport
+    }
     '/api/public/evolution/$instanceId': {
       id: '/api/public/evolution/$instanceId'
       path: '/api/public/evolution/$instanceId'
@@ -677,6 +697,7 @@ const rootRouteChildren: RootRouteChildren = {
   ResetPasswordRoute: ResetPasswordRoute,
   SignupRoute: SignupRoute,
   AuthCallbackRoute: AuthCallbackRoute,
+  ApiInternalQueueHealthRoute: ApiInternalQueueHealthRoute,
   ApiPublicEvolutionInstanceIdRoute: ApiPublicEvolutionInstanceIdRoute,
 }
 export const routeTree = rootRouteImport
