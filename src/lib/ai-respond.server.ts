@@ -826,27 +826,19 @@ export async function runAiResponse(input: AiRunInput): Promise<AiRunResult> {
   }
   const aiHours = profile.ai_working_hours as WorkingHours | null;
   const bizHours = profile.business_hours as WorkingHours | null;
-  // Existem duas telas de configuração (Negócio e IA) que salvam em campos
-  // separados e com chaves diferentes (ex: "fri" vs "friday"). Para evitar
-  // que uma sobrescreva a outra, consideramos atendendo se QUALQUER uma das
-  // configurações preenchidas indicar que estamos no horário.
-  const sources: { name: string; hours: WorkingHours }[] = [];
-  if (bizHours && typeof bizHours === "object" && Object.keys(bizHours).length > 0) {
-    sources.push({ name: "business_hours", hours: bizHours });
-  }
-  if (aiHours && typeof aiHours === "object" && Object.keys(aiHours).length > 0) {
-    sources.push({ name: "ai_working_hours", hours: aiHours });
-  }
-  console.log("[ai hours] check", {
-    tz,
-    sources: sources.map((s) => s.name),
-  });
-  const sourceResults = sources.map((s) => ({
-    name: s.name,
-    within: isWithinHours(s.hours, tz),
-  }));
-  const withinAny =
-    sourceResults.length === 0 || sourceResults.some((s) => s.within);
+  // "Horário de Funcionamento" (tela Negócio) é informativo — já é citado
+  // pra IA em buildProfessionalsLayer. Só "Horário de Atendimento da IA"
+  // (tela IA) decide quando ela responde de verdade. Se a tela IA nunca foi
+  // configurada, caímos pro horário do negócio (compat com workspaces
+  // antigos que só preencheram a tela Negócio e nunca tocaram na tela IA).
+  const aiHoursConfigured =
+    !!aiHours && typeof aiHours === "object" && Object.keys(aiHours).length > 0;
+  const bizHoursConfigured =
+    !!bizHours && typeof bizHours === "object" && Object.keys(bizHours).length > 0;
+  const gatingSource = aiHoursConfigured ? "ai_working_hours" : bizHoursConfigured ? "business_hours" : "none";
+  const gatingHours = aiHoursConfigured ? aiHours : bizHoursConfigured ? bizHours : null;
+  console.log("[ai hours] check", { tz, gatingSource });
+  const withinAny = isWithinHours(gatingHours, tz);
   if (!withinAny) {
     // SEGURANCA: a mensagem fora do horario so e enviada quando o usuario
     // optou EXPLICITAMENTE por ativar. Se nao houver coluna nem marcador
@@ -863,7 +855,7 @@ export async function runAiResponse(input: AiRunInput): Promise<AiRunResult> {
     const outEnabled = columnValue ?? jsonFallback ?? false;
     console.log("[ai hours] decision", {
       tz,
-      sourceResults,
+      gatingSource,
       column_value: columnValue,
       json_fallback: jsonFallback,
       ai_out_of_hours_enabled: outEnabled,
