@@ -38,3 +38,5 @@ package-lock.json
 *.njsproj
 *.sln
 *.sw?
+.vercel
+.env*
