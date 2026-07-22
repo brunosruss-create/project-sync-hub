@@ -8,6 +8,7 @@
     "build": "vite build",
     "build:dev": "vite build --mode development",
     "preview": "vite preview",
+    "worker": "tsx src/lib/job-worker.ts",
     "lint": "eslint .",
     "format": "prettier --write ."
   },
@@ -74,6 +75,7 @@
     "sonner": "^2.0.7",
     "tailwind-merge": "^3.5.0",
     "tailwindcss": "4.2.4",
+    "tsx": "^4.19.2",
     "tw-animate-css": "^1.3.4",
     "vaul": "^1.1.2",
     "vite-tsconfig-paths": "^6.0.2",
