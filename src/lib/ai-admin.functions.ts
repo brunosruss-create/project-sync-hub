@@ -205,6 +205,7 @@ const SegmentInputSchema = z.object({
   default_tone: z.string().max(40).optional(),
   default_transfer_keywords: z.array(z.string().max(40)).max(40).optional(),
   default_transfer_after_messages: z.number().int().min(1).max(50).optional(),
+  default_required_fields: z.array(z.string().max(64)).max(40).optional(),
   suggested_services: z
     .array(
       z.object({

@@ -13,6 +13,7 @@ import {
   getAiUsageMetrics,
 } from "@/lib/ai-admin.functions";
 import { adminCard, adminInput, adminBtn, adminBtnGhost } from "./_authenticated.super-admin";
+import { FIELD_LABELS } from "@/lib/field-labels";
 
 export const Route = createFileRoute("/_authenticated/super-admin/ia")({
   component: SuperAdminAIPage,
@@ -330,6 +331,7 @@ function SegmentEditor({
     default_assistant_name: segment.default_assistant_name ?? "Sofia",
     default_tone: segment.default_tone ?? "Amigável",
     default_transfer_keywords: segment.default_transfer_keywords ?? [],
+    default_required_fields: segment.default_required_fields ?? [],
   });
   return (
     <div
@@ -411,6 +413,49 @@ function SegmentEditor({
               })
             }
           />
+        </Field>
+        <Field label="Campos obrigatórios antes de agendar (a IA sempre pergunta se ainda não souber)">
+          <div
+            style={{
+              display: "grid",
+              gridTemplateColumns: "1fr 1fr",
+              gap: "4px 12px",
+              maxHeight: 180,
+              overflow: "auto",
+              padding: "8px 4px",
+            }}
+          >
+            {Object.entries(FIELD_LABELS).map(([key, label]) => {
+              const checked = s.default_required_fields.includes(key);
+              return (
+                <label
+                  key={key}
+                  style={{
+                    display: "flex",
+                    alignItems: "flex-start",
+                    gap: 6,
+                    fontSize: 12,
+                    cursor: "pointer",
+                  }}
+                >
+                  <input
+                    type="checkbox"
+                    checked={checked}
+                    onChange={(e) =>
+                      setS({
+                        ...s,
+                        default_required_fields: e.target.checked
+                          ? [...s.default_required_fields, key]
+                          : s.default_required_fields.filter((f: string) => f !== key),
+                      })
+                    }
+                    style={{ marginTop: 2 }}
+                  />
+                  <span>{label}</span>
+                </label>
+              );
+            })}
+          </div>
         </Field>
         <div className="flex justify-end gap-2" style={{ marginTop: 16 }}>
           <button style={adminBtnGhost} onClick={onClose}>Cancelar</button>
