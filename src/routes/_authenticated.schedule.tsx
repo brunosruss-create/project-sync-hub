@@ -1424,7 +1424,7 @@ function DetailPanel({
           />
           <DataRow label="Contato" value={contact?.name ?? "—"} />
           <DataRow label="Telefone" value={contact?.phone ?? "—"} mono />
-          <DataRow label="Serviço" value={service ? `$${service.name}` : "—"} />
+          <DataRow label="Serviço" value={service ? service.name : "—"} />
           {service && (
             <DataRow
               label="Valor"

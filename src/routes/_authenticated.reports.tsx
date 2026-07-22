@@ -73,6 +73,7 @@ function ReportsPage() {
   const [loading, setLoading] = React.useState(true);
   const [error, setError] = React.useState<string | null>(null);
   const [report, setReport] = React.useState<AnyReport | null>(null);
+  const [reportTab, setReportTab] = React.useState<typeof tab | null>(null);
 
   React.useEffect(() => {
     let cancelled = false;
@@ -84,7 +85,7 @@ function ReportsPage() {
       : tab === "services" ? getServicesReport
       : getTeamReport;
     fetcher(period as Period)
-      .then((r) => { if (!cancelled) setReport(r as AnyReport); })
+      .then((r) => { if (!cancelled) { setReport(r as AnyReport); setReportTab(tab); } })
       .catch((e) => { if (!cancelled) setError(e?.message ?? "Falha ao carregar."); })
       .finally(() => { if (!cancelled) setLoading(false); });
     return () => { cancelled = true; };
@@ -210,7 +211,7 @@ function ReportsPage() {
         })}
       </div>
 
-      {loading ? (
+      {loading || reportTab !== tab ? (
         <div style={{ display: "grid", gridTemplateColumns: "repeat(auto-fill, minmax(320px, 1fr))", gap: 12 }}>
           {Array.from({ length: 4 }).map((_, i) => <SkeletonCard key={i} />)}
         </div>

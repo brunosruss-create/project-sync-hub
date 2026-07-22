@@ -1197,14 +1197,18 @@ export async function runAiResponse(input: AiRunInput): Promise<AiRunResult> {
             if (data.contact_id) payload.contact_id = data.contact_id;
             if (!payload.client_phone && knownPhone) payload.client_phone = knownPhone;
             if (!payload.client_name && knownName) payload.client_name = knownName;
-            const r = await createAppointmentFromAI(payload, {
-              id: profile.id,
-              business_timezone: profile.business_timezone ?? null,
-              business_name: profile.business_name ?? null,
-            });
-            okResult = r.ok;
-            reason = r.reason;
-            if (!r.ok) console.warn("[ai booking] falhou:", r.reason);
+            if (data.preview) {
+              okResult = true;
+            } else {
+              const r = await createAppointmentFromAI(payload, {
+                id: profile.id,
+                business_timezone: profile.business_timezone ?? null,
+                business_name: profile.business_name ?? null,
+              });
+              okResult = r.ok;
+              reason = r.reason;
+              if (!r.ok) console.warn("[ai booking] falhou:", r.reason);
+            }
           } catch (err) {
             console.warn("[ai booking] parse/create falhou:", (err as Error)?.message);
             reason = "bad_date";
@@ -1228,17 +1232,21 @@ export async function runAiResponse(input: AiRunInput): Promise<AiRunResult> {
           try {
             console.log("[ai reschedule] payload:", m[1]);
             const payload = JSON.parse(m[1]);
-            const r = await rescheduleAppointmentFromAI(
-              { ...payload, contact_id: data.contact_id ?? null },
-              {
-                id: profile.id,
-                business_timezone: profile.business_timezone ?? null,
-                business_name: profile.business_name ?? null,
-              },
-            );
-            okResult = r.ok;
-            reason = r.reason;
-            if (!r.ok) console.warn("[ai reschedule] falhou:", r.reason);
+            if (data.preview) {
+              okResult = true;
+            } else {
+              const r = await rescheduleAppointmentFromAI(
+                { ...payload, contact_id: data.contact_id ?? null },
+                {
+                  id: profile.id,
+                  business_timezone: profile.business_timezone ?? null,
+                  business_name: profile.business_name ?? null,
+                },
+              );
+              okResult = r.ok;
+              reason = r.reason;
+              if (!r.ok) console.warn("[ai reschedule] falhou:", r.reason);
+            }
           } catch (err) {
             console.warn("[ai reschedule] parse falhou:", (err as Error)?.message);
             reason = "bad_date";
@@ -1262,17 +1270,21 @@ export async function runAiResponse(input: AiRunInput): Promise<AiRunResult> {
           try {
             console.log("[ai cancel] payload:", m[1]);
             const payload = JSON.parse(m[1]);
-            const r = await cancelAppointmentFromAI(
-              { ...payload, contact_id: data.contact_id ?? null },
-              {
-                id: profile.id,
-                business_timezone: profile.business_timezone ?? null,
-                business_name: profile.business_name ?? null,
-              },
-            );
-            okResult = r.ok;
-            reason = r.reason;
-            if (!r.ok) console.warn("[ai cancel] falhou:", r.reason);
+            if (data.preview) {
+              okResult = true;
+            } else {
+              const r = await cancelAppointmentFromAI(
+                { ...payload, contact_id: data.contact_id ?? null },
+                {
+                  id: profile.id,
+                  business_timezone: profile.business_timezone ?? null,
+                  business_name: profile.business_name ?? null,
+                },
+              );
+              okResult = r.ok;
+              reason = r.reason;
+              if (!r.ok) console.warn("[ai cancel] falhou:", r.reason);
+            }
           } catch (err) {
             console.warn("[ai cancel] parse falhou:", (err as Error)?.message);
             reason = "bad_date";
