@@ -26,9 +26,6 @@ WhatsApp  ⇄  Evolution API (Railway, 24/7)  ──webhook──▶  ZapFlow (V
 | **Supabase** | Supabase Cloud (`xrezmnaspkctuidehqqi`) | Banco, Auth (Google + senha), Storage (`chat-media`) | Se cair, o app inteiro para |
 | **Gemini** | Google | Cérebro do atendente de IA | Se cair, IA não responde (resto funciona) |
 
-Domínio antigo (Lovable): `github-vercel-bridge.lovable.app` — hospedagem própria
-da Lovable. Pode ser deprecado quando o domínio da Vercel virar o oficial.
-
 ---
 
 ## 1. Evolution API (Railway) — o coração do WhatsApp

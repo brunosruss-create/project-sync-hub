@@ -13,6 +13,7 @@ dist-ssr
 
 # Projeto usa bun.lock como lockfile canonico
 package-lock.json
+bun.lock
 .output
 .vinxi
 .tanstack/**
