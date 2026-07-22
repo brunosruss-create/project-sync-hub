@@ -17,7 +17,7 @@ import {
   Trash2,
   Bot,
 } from "lucide-react";
-import { Composer } from "./composer";
+import { Composer } from "@/components/chat/Composer";
 import { type ContactCard as Contact, formatRelative, formatPhone, initials } from "./data";
 import { ContactAvatar } from "./contact-avatar";
 import { supabase } from "@/integrations/supabase/client";
@@ -33,6 +33,7 @@ import { ForwardModal, type ForwardSource } from "./forward-modal";
 import { TransferConversationModal } from "./transfer-conversation-modal";
 import { AudioPlayerWithMe } from "@/components/chat/AudioPlayer";
 import { DateSeparator } from "@/components/chat/DateSeparator";
+import { uploadChatMedia } from "@/lib/chat-media";
 import {
   SEED_SERVICES,
   formatCurrencyBRL,
@@ -353,27 +354,13 @@ export function ConversationPanel({
     }
   };
 
-  // Upload arquivo no Storage e devolve URL pública
-  const uploadToStorage = async (file: File, ext?: string): Promise<{ url: string; path: string }> => {
-    if (!user?.id) throw new Error("Sessão expirada.");
-    const safeName = file.name.replace(/[^\w.\-]/g, "_").slice(-80);
-    const finalExt = ext ?? (safeName.includes(".") ? "" : "bin");
-    const path = `${user.id}/${Date.now()}-${crypto.randomUUID()}-${safeName}${finalExt ? "." + finalExt : ""}`;
-    const { error } = await supabase.storage
-      .from("chat-media")
-      .upload(path, file, { contentType: file.type, upsert: false });
-    if (error) throw new Error(`Upload falhou: ${error.message}`);
-    const { data } = supabase.storage.from("chat-media").getPublicUrl(path);
-    return { url: data.publicUrl, path };
-  };
-
   const handleSendAttachments = async (files: File[], caption: string) => {
     if (!contact) return;
     const quoted = buildQuoted(replyingTo);
     setReplyingTo(null);
     for (let i = 0; i < files.length; i++) {
       const f = files[i];
-      const { url } = await uploadToStorage(f);
+      const { url } = await uploadChatMedia(f, user!.id);
       const cap = i === 0 ? caption : "";
       try {
         await sendMediaFn({
@@ -395,7 +382,7 @@ export function ConversationPanel({
   const handleSendAudio = async (blob: Blob) => {
     if (!contact) return;
     const file = new File([blob], `audio-${Date.now()}.webm`, { type: "audio/webm" });
-    const { url } = await uploadToStorage(file);
+    const { url } = await uploadChatMedia(file, user!.id);
     const quoted = buildQuoted(replyingTo);
     setReplyingTo(null);
     await sendAudioFn({ data: { contactId: contact.id, url, quoted } });

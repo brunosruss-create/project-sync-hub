@@ -1,14 +1,20 @@
 import * as React from "react";
 import { ArrowLeft, MoreVertical, CalendarPlus } from "lucide-react";
+import { useServerFn } from "@tanstack/react-start";
+import { toast } from "sonner";
 import { supabase } from "@/integrations/supabase/client";
 import { ContactAvatar } from "@/features/inbox/contact-avatar";
 import { formatPhone, type ContactCard as Contact } from "@/features/inbox/data";
 import { ScheduleModal } from "@/features/inbox/schedule-modal";
 import { TransferConversationModal } from "@/features/inbox/transfer-conversation-modal";
 import { useContactActions } from "@/hooks/use-contact-actions";
+import { useAuth } from "@/hooks/use-auth";
+import { useWorkspaceOwnerId } from "@/hooks/use-workspace-owner";
+import { sendWhatsAppMessage, sendWhatsAppMedia, sendWhatsAppAudio } from "@/lib/evolution.functions";
+import { uploadChatMedia } from "@/lib/chat-media";
 import { MessageBubble, type ChatMessage } from "./MessageBubble";
 import { DateSeparator } from "./DateSeparator";
-import { MessageInput } from "./MessageInput";
+import { Composer } from "./Composer";
 
 function sameDay(a: Date, b: Date) {
   return (
@@ -32,6 +38,72 @@ export function MessageThread({
   const scrollRef = React.useRef<HTMLDivElement | null>(null);
   const nearBottomRef = React.useRef(true);
   const actions = useContactActions();
+  const { user } = useAuth();
+  const { workspaceOwnerId } = useWorkspaceOwnerId();
+  const sendViaEvolution = useServerFn(sendWhatsAppMessage);
+  const sendMediaFn = useServerFn(sendWhatsAppMedia);
+  const sendAudioFn = useServerFn(sendWhatsAppAudio);
+  const [draft, setDraft] = React.useState("");
+  const taRef = React.useRef<HTMLTextAreaElement | null>(null);
+
+  React.useEffect(() => {
+    setDraft("");
+    if (taRef.current) taRef.current.style.height = "auto";
+  }, [contact.id]);
+
+  const send = async () => {
+    const text = draft.trim();
+    if (!text) return;
+    setDraft("");
+    if (taRef.current) taRef.current.style.height = "auto";
+    try {
+      await sendViaEvolution({ data: { contactId: contact.id, text } });
+    } catch (e: any) {
+      const msg = String(e?.message ?? "");
+      if (/Evolution|conectar|conectado|configurad/i.test(msg)) {
+        const { error } = await supabase.from("messages").insert({
+          owner_user_id: workspaceOwnerId,
+          contact_id: contact.id,
+          direction: "outbound",
+          content: text,
+          message_type: "text",
+          status: "sent",
+          sent_by: user?.id ?? null,
+        });
+        if (error) console.warn("[chat] persistência ignorada:", error.message);
+        toast.warning("WhatsApp não conectado — mensagem salva localmente.");
+      } else {
+        toast.error(msg || "Falha ao enviar");
+      }
+    }
+  };
+
+  const handleSendAttachments = async (files: File[], caption: string) => {
+    for (let i = 0; i < files.length; i++) {
+      const f = files[i];
+      const { url } = await uploadChatMedia(f, user!.id);
+      const cap = i === 0 ? caption : "";
+      try {
+        await sendMediaFn({
+          data: {
+            contactId: contact.id,
+            url,
+            mime: f.type || "application/octet-stream",
+            name: f.name || `file-${Date.now()}`,
+            caption: cap || undefined,
+          },
+        });
+      } catch (e: any) {
+        toast.error(e?.message ?? "Falha no envio.");
+      }
+    }
+  };
+
+  const handleSendAudio = async (blob: Blob) => {
+    const file = new File([blob], `audio-${Date.now()}.webm`, { type: "audio/webm" });
+    const { url } = await uploadChatMedia(file, user!.id);
+    await sendAudioFn({ data: { contactId: contact.id, url } });
+  };
 
   // Carrega + subscribe (mesma lógica do conversation-panel)
   React.useEffect(() => {
@@ -387,7 +459,16 @@ export function MessageThread({
       </div>
 
       {/* Input */}
-      <MessageInput contactId={contact.id} />
+      <Composer
+        draft={draft}
+        setDraft={setDraft}
+        taRef={taRef}
+        onSend={send}
+        onSendAttachments={handleSendAttachments}
+        onSendAudio={handleSendAudio}
+        replyingTo={null}
+        onCancelReply={() => {}}
+      />
 
       {/* Modais reutilizados do kanban */}
       <ScheduleModal
