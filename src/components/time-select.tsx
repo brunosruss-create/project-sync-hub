@@ -1,4 +1,5 @@
 import * as React from "react";
+import { ChevronDown } from "lucide-react";
 
 /**
  * Gera horários "HH:MM" de 00:00 até 23:30 (ou o último múltiplo de
@@ -39,12 +40,38 @@ export function TimeSelect({
   const options = slots.includes(value) || !value ? slots : [...slots, value].sort();
 
   return (
-    <select value={value} disabled={disabled} onChange={(e) => onChange(e.target.value)} style={style}>
-      {options.map((t) => (
-        <option key={t} value={t}>
-          {t}
-        </option>
-      ))}
-    </select>
+    <div style={{ position: "relative", width: style?.width, display: "inline-block" }}>
+      <select
+        value={value}
+        disabled={disabled}
+        onChange={(e) => onChange(e.target.value)}
+        style={{
+          ...style,
+          width: "100%",
+          appearance: "none",
+          WebkitAppearance: "none",
+          paddingRight: 28,
+          cursor: disabled ? "default" : "pointer",
+        }}
+      >
+        {options.map((t) => (
+          <option key={t} value={t}>
+            {t}
+          </option>
+        ))}
+      </select>
+      <ChevronDown
+        size={14}
+        style={{
+          position: "absolute",
+          right: 8,
+          top: "50%",
+          transform: "translateY(-50%)",
+          pointerEvents: "none",
+          color: "var(--text-muted)",
+          opacity: disabled ? 0.5 : 1,
+        }}
+      />
+    </div>
   );
 }
