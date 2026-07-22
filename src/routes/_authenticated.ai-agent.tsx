@@ -13,6 +13,7 @@ import {
 } from "lucide-react";
 
 import { ManagerOnly } from "@/components/manager-only";
+import { TimeSelect } from "@/components/time-select";
 import {
   getWorkspaceAiConfig,
   updateWorkspaceAiConfig,
@@ -53,6 +54,17 @@ const DEFAULT_HOURS: WorkingHours = Object.fromEntries(
   ]),
 );
 
+const ALWAYS_OPEN_HOURS: WorkingHours = Object.fromEntries(
+  DAYS.map((d) => [d.key, { enabled: true, start: "00:00", end: "23:59" }]),
+);
+
+function isAlwaysOpen(h: WorkingHours): boolean {
+  return DAYS.every((d) => {
+    const cfg = h[d.key];
+    return cfg?.enabled === true && cfg.start === "00:00" && cfg.end === "23:59";
+  });
+}
+
 function AIAgentPage() {
   const qc = useQueryClient();
   const getConfigFn = useServerFn(getWorkspaceAiConfig);
@@ -92,6 +104,8 @@ function AIAgentPage() {
   const [scheduleInstr, setScheduleInstr] = React.useState("");
   const [enabledServices, setEnabledServices] = React.useState<string[]>([]);
   const [hours, setHours] = React.useState<WorkingHours>(DEFAULT_HOURS);
+  const [alwaysOpen, setAlwaysOpen] = React.useState(false);
+  const hoursBeforeAlwaysOpen = React.useRef<WorkingHours | null>(null);
   const [offHoursEnabled, setOffHoursEnabled] = React.useState(true);
   const [offHoursMsg, setOffHoursMsg] = React.useState("");
   const [timezone, setTimezone] = React.useState("America/Sao_Paulo");
@@ -127,7 +141,9 @@ function AIAgentPage() {
     setAutoSchedule(!!c.ai_schedule_enabled);
     setScheduleInstr(c.ai_schedule_instruction ?? "");
     const wh = (c.ai_working_hours ?? null) as WorkingHours | null;
-    setHours(wh ? { ...DEFAULT_HOURS, ...wh } : DEFAULT_HOURS);
+    const resolvedHours = wh ? { ...DEFAULT_HOURS, ...wh } : DEFAULT_HOURS;
+    setHours(resolvedHours);
+    setAlwaysOpen(isAlwaysOpen(resolvedHours));
     setOffHoursEnabled(c.ai_out_of_hours_enabled ?? false);
     setOffHoursMsg(c.ai_out_of_hours_message ?? "");
     const cAny = c as Record<string, unknown>;
@@ -157,6 +173,16 @@ function AIAgentPage() {
     setShareContactInfo((cAny.ai_can_share_contact_info as boolean | undefined) ?? true);
     setHydrated(true);
   }, [configQ.data, hydrated]);
+
+  const toggleAlwaysOpen = (checked: boolean) => {
+    if (checked) {
+      hoursBeforeAlwaysOpen.current = hours;
+      setHours(ALWAYS_OPEN_HOURS);
+    } else {
+      setHours(hoursBeforeAlwaysOpen.current ?? DEFAULT_HOURS);
+    }
+    setAlwaysOpen(checked);
+  };
 
   const saveMutation = useMutation({
     mutationFn: () =>
@@ -617,6 +643,17 @@ function AIAgentPage() {
       {/* HORÁRIO IA */}
       <Section title="Horário de atendimento da IA">
         <Card>
+          <label
+            className="flex items-center gap-2"
+            style={{ fontSize: 13, fontWeight: 500, marginBottom: 12 }}
+          >
+            <input
+              type="checkbox"
+              checked={alwaysOpen}
+              onChange={(e) => toggleAlwaysOpen(e.target.checked)}
+            />
+            Atender 24 horas, 7 dias por semana
+          </label>
           <div
             style={{
               display: "grid",
@@ -633,6 +670,7 @@ function AIAgentPage() {
                     <input
                       type="checkbox"
                       checked={h.enabled}
+                      disabled={alwaysOpen}
                       onChange={(e) =>
                         setHours({
                           ...hours,
@@ -642,30 +680,16 @@ function AIAgentPage() {
                     />
                     {d.label}
                   </label>
-                  <input
-                    type="text"
-                    inputMode="numeric"
-                    pattern="^([01][0-9]|2[0-3]):[0-5][0-9]$"
-                    placeholder="00:00"
-                    maxLength={5}
+                  <TimeSelect
                     value={h.start}
-                    disabled={!h.enabled}
-                    onChange={(e) =>
-                      setHours({ ...hours, [d.key]: { ...h, start: e.target.value } })
-                    }
+                    disabled={!h.enabled || alwaysOpen}
+                    onChange={(v) => setHours({ ...hours, [d.key]: { ...h, start: v } })}
                     style={{ ...input, height: 32 }}
                   />
-                  <input
-                    type="text"
-                    inputMode="numeric"
-                    pattern="^([01][0-9]|2[0-3]):[0-5][0-9]$"
-                    placeholder="23:00"
-                    maxLength={5}
+                  <TimeSelect
                     value={h.end}
-                    disabled={!h.enabled}
-                    onChange={(e) =>
-                      setHours({ ...hours, [d.key]: { ...h, end: e.target.value } })
-                    }
+                    disabled={!h.enabled || alwaysOpen}
+                    onChange={(v) => setHours({ ...hours, [d.key]: { ...h, end: v } })}
                     style={{ ...input, height: 32 }}
                   />
                 </React.Fragment>

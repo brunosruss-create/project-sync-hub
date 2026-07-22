@@ -21,6 +21,7 @@ import {
 } from "@/lib/onboarding.functions";
 
 import { ManagerOnly } from "@/components/manager-only";
+import { TimeSelect } from "@/components/time-select";
 
 export const Route = createFileRoute("/_authenticated/settings/workspace")({
   component: () => (
@@ -115,7 +116,15 @@ function WorkspacePage() {
     setName(p.business_name || "Meu Negócio");
     setSegmentId(p.segment_id ?? "");
     if (p.business_hours && typeof p.business_hours === "object") {
-      setHours((prev) => ({ ...prev, ...p.business_hours }));
+      // "até 00:00" é ambíguo (meia-noite = início ou fim do dia?) — migra
+      // silenciosamente pra "23:59" (fim do dia) ao carregar.
+      const migrated = Object.fromEntries(
+        Object.entries(p.business_hours).map(([k, v]) => [
+          k,
+          v.end === "00:00" ? { ...v, end: "23:59" } : v,
+        ]),
+      );
+      setHours((prev) => ({ ...prev, ...migrated }));
     }
     if (p.business_timezone) setTz(p.business_timezone);
     if (typeof p.welcome_message === "string" && p.welcome_message.length > 0) {
@@ -440,29 +449,17 @@ function WorkspacePage() {
                   />
                   {d.label}
                 </label>
-                <input
-                  type="text"
-                  inputMode="numeric"
-                  pattern="^([01][0-9]|2[0-3]):[0-5][0-9]$"
-                  placeholder="00:00"
-                  maxLength={5}
+                <TimeSelect
                   value={h.start}
                   disabled={!h.active}
-                  onChange={(e) =>
-                    setHours({ ...hours, [d.key]: { ...h, start: e.target.value } })
-                  }
+                  onChange={(v) => setHours({ ...hours, [d.key]: { ...h, start: v } })}
                   style={{ ...inputStyle, width: 110, height: 32 }}
                 />
                 <span style={{ fontSize: 12, color: "var(--text-muted)" }}>até</span>
-                <input
-                  type="text"
-                  inputMode="numeric"
-                  pattern="^([01][0-9]|2[0-3]):[0-5][0-9]$"
-                  placeholder="23:00"
-                  maxLength={5}
+                <TimeSelect
                   value={h.end}
                   disabled={!h.active}
-                  onChange={(e) => setHours({ ...hours, [d.key]: { ...h, end: e.target.value } })}
+                  onChange={(v) => setHours({ ...hours, [d.key]: { ...h, end: v } })}
                   style={{ ...inputStyle, width: 110, height: 32 }}
                 />
                 {!h.active && (
