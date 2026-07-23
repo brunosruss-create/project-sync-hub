@@ -8,10 +8,13 @@
 // Rodar com: npm run worker  (usa tsx, resolve os aliases @/* do tsconfig.json)
 import { supabaseAdmin } from "@/integrations/supabase/client.server";
 import { processMessageJob, type MessageJobPayload } from "@/lib/message-processing.server";
+import { initSentry, captureException } from "@/lib/sentry.server";
+
+initSentry("worker");
 
 const POLL_INTERVAL_MS = 1500;
 const BATCH_SIZE = 5;
-const MAX_GLOBAL_CONCURRENCY = 10; // protege a chave única do Gemini de picos
+const MAX_GLOBAL_CONCURRENCY = 18; // protege a chave única do Gemini de picos
 const PER_WORKSPACE_LIMIT_PER_MINUTE = 25; // protege 1 cliente de estourar a cota de todos
 const MAX_ATTEMPTS = 5;
 const STALE_PROCESSING_MS = 5 * 60_000; // job travado em "processing" (worker caiu no meio) volta a pending
@@ -91,6 +94,7 @@ async function runJob(job: JobRow) {
     await markDone(job.id);
   } catch (e: any) {
     console.error("[job-worker] job falhou:", job.id, e?.message ?? e);
+    captureException(e);
     await markError(job.id, job.attempts, String(e?.message ?? e));
   } finally {
     activeCount--;
@@ -130,6 +134,7 @@ async function pollLoop() {
       await pollOnce();
     } catch (e: any) {
       console.error("[job-worker] erro no loop:", e?.message ?? e);
+      captureException(e);
     }
     await new Promise((r) => setTimeout(r, POLL_INTERVAL_MS));
   }

@@ -7,6 +7,7 @@ import {
   downloadInboundMedia,
 } from "@/lib/evolution.server";
 import type { MessageJobPayload } from "@/lib/message-processing.server";
+import { captureException } from "@/lib/sentry.server";
 
 type MediaKind = "image" | "audio" | "video" | "document";
 
@@ -522,6 +523,7 @@ export const Route = createFileRoute("/api/public/evolution/$instanceId")({
           }
         } catch (e: any) {
           console.error("[evolution webhook]", e?.message ?? e);
+          captureException(e);
         }
 
         return new Response("ok", { status: 200 });
