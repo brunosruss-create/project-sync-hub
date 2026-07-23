@@ -88,6 +88,15 @@ export const evo = {
       json: body,
     }),
 
+  sendPresence: (
+    name: string,
+    body: { number: string; presence: "composing" | "recording" | "paused"; delay?: number },
+  ) =>
+    call(`/chat/sendPresence/${encodeURIComponent(name)}`, {
+      method: "POST",
+      json: body,
+    }),
+
   sendText: (
     name: string,
     body: { number: string; text: string; quoted?: any },

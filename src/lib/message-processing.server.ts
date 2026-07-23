@@ -21,6 +21,28 @@ export type MessageJobInput = {
   payload: MessageJobPayload;
 };
 
+const TYPING_BASE_MS = 1000;
+const TYPING_MS_PER_50_CHARS = 1000;
+const TYPING_MAX_MS = 12_000;
+
+// Evita responder em milissegundos (sinal claro de robô pro WhatsApp):
+// mostra "digitando..." e espera um tempo proporcional ao tamanho do texto,
+// como uma pessoa digitando de verdade faria.
+function computeTypingDelayMs(text: string): number {
+  const extra = Math.floor(text.length / 50) * TYPING_MS_PER_50_CHARS;
+  return Math.min(TYPING_BASE_MS + extra, TYPING_MAX_MS);
+}
+
+async function simulateTyping(instanceName: string, phone: string, text: string) {
+  const delayMs = computeTypingDelayMs(text);
+  try {
+    await evo.sendPresence(instanceName, { number: phone, presence: "composing", delay: delayMs });
+  } catch (e: any) {
+    console.warn("[evolution presence] sendPresence falhou:", e?.message ?? e);
+  }
+  await new Promise((resolve) => setTimeout(resolve, delayMs));
+}
+
 async function maybeSendWelcomeMessage(
   ownerUserId: string,
   contactId: string,
@@ -55,6 +77,7 @@ async function maybeSendWelcomeMessage(
     });
     let waMessageId: string | null = null;
     try {
+      await simulateTyping(instanceName, phone, welcomeText);
       const r: any = await evo.sendText(instanceName, { number: phone, text: welcomeText });
       waMessageId = r?.key?.id ?? r?.messageId ?? null;
     } catch (e: any) {
@@ -130,6 +153,7 @@ async function sendAiReplyAndPersist(
     if (!responseText) return;
     let waMessageId: string | null = null;
     try {
+      await simulateTyping(instanceName, phone, responseText);
       const r: any = await evo.sendText(instanceName, { number: phone, text: responseText });
       waMessageId = r?.key?.id ?? r?.messageId ?? null;
     } catch (e: any) {
