@@ -1,9 +1,11 @@
 import { supabaseAdmin } from "@/integrations/supabase/client.server";
 import {
   createAppointmentFromAI,
+  createAppointmentBatchFromAI,
   rescheduleAppointmentFromAI,
   cancelAppointmentFromAI,
 } from "@/lib/booking-confirmation.server";
+import { extractAppointmentPayloads } from "@/lib/appointment-json";
 
 import { MESSAGE_DEFAULTS } from "@/lib/message-defaults";
 import { renderTemplate } from "@/lib/message-templates";
@@ -78,10 +80,7 @@ export type AiRunResult =
   | { action: "send_message"; response: string; tokens_total: number }
   | { action: "error"; error: string };
 
-function isWithinHours(
-  hours: WorkingHours | null | undefined,
-  timezone: string,
-): boolean {
+function isWithinHours(hours: WorkingHours | null | undefined, timezone: string): boolean {
   if (!hours || typeof hours !== "object" || Object.keys(hours).length === 0) {
     return true;
   }
@@ -97,7 +96,13 @@ function isWithinHours(
   const parts = fmt.formatToParts(new Date());
   const wdShort = (parts.find((p) => p.type === "weekday")?.value ?? "").toLowerCase();
   const SHORT_TO_IDX: Record<string, number> = {
-    sun: 0, mon: 1, tue: 2, wed: 3, thu: 4, fri: 5, sat: 6,
+    sun: 0,
+    mon: 1,
+    tue: 2,
+    wed: 3,
+    thu: 4,
+    fri: 5,
+    sat: 6,
   };
   const dayIdx = SHORT_TO_IDX[wdShort] ?? new Date().getUTCDay();
   let hh = parseInt(parts.find((p) => p.type === "hour")?.value ?? "0", 10);
@@ -109,10 +114,19 @@ function isWithinHours(
   let cfg: DayCfg | undefined;
   let matchedKey: string | null = null;
   for (const k of candidates) {
-    if (hours[k]) { cfg = hours[k]; matchedKey = k; break; }
+    if (hours[k]) {
+      cfg = hours[k];
+      matchedKey = k;
+      break;
+    }
   }
   if (!cfg) {
-    console.log("[ai hours] dia não configurado", { tz, dayIdx, wdShort, keys: Object.keys(hours) });
+    console.log("[ai hours] dia não configurado", {
+      tz,
+      dayIdx,
+      wdShort,
+      keys: Object.keys(hours),
+    });
     return false;
   }
   const enabled = cfg.enabled ?? cfg.active ?? false;
@@ -126,35 +140,33 @@ function isWithinHours(
   const within = nowMin >= startMin && nowMin <= endMin;
   if (!within) {
     console.log("[ai hours] fora do intervalo", {
-      tz, matchedKey, nowMin, startMin, endMin,
+      tz,
+      matchedKey,
+      nowMin,
+      startMin,
+      endMin,
     });
   }
   return within;
 }
 
 const TONE_MAP: Record<string, string> = {
-  amigavel:
-    "Use linguagem cordial, próxima e acessível. Evite termos técnicos desnecessários.",
-  amigável:
-    "Use linguagem cordial, próxima e acessível. Evite termos técnicos desnecessários.",
+  amigavel: "Use linguagem cordial, próxima e acessível. Evite termos técnicos desnecessários.",
+  amigável: "Use linguagem cordial, próxima e acessível. Evite termos técnicos desnecessários.",
   formal: "Use linguagem formal e profissional.",
-  casual:
-    "Use linguagem leve, casual e próxima. Pode usar expressões do dia a dia.",
-  descontraido:
-    "Use linguagem leve, casual e próxima. Pode usar expressões do dia a dia.",
-  descontraído:
-    "Use linguagem leve, casual e próxima. Pode usar expressões do dia a dia.",
-  tecnico:
-    "Use linguagem técnica e precisa. O cliente espera respostas especializadas.",
-  técnico:
-    "Use linguagem técnica e precisa. O cliente espera respostas especializadas.",
+  casual: "Use linguagem leve, casual e próxima. Pode usar expressões do dia a dia.",
+  descontraido: "Use linguagem leve, casual e próxima. Pode usar expressões do dia a dia.",
+  descontraído: "Use linguagem leve, casual e próxima. Pode usar expressões do dia a dia.",
+  tecnico: "Use linguagem técnica e precisa. O cliente espera respostas especializadas.",
+  técnico: "Use linguagem técnica e precisa. O cliente espera respostas especializadas.",
 };
 
 function buildWorkspaceLayer(
-  p: Record<string, any> & Partial<AiBehaviorConfig> & {
-    segment_default_required_fields?: string[];
-    __is_first_message?: boolean;
-  },
+  p: Record<string, any> &
+    Partial<AiBehaviorConfig> & {
+      segment_default_required_fields?: string[];
+      __is_first_message?: boolean;
+    },
 ): string {
   const parts: string[] = [];
   const prohibitions: string[] = [];
@@ -170,9 +182,10 @@ function buildWorkspaceLayer(
   if (introduceByName && name) {
     parts.push(`Seu nome é ${name}.`);
     if (isFirst) {
-      const intro = mentionBusiness && business
-        ? `OBRIGATÓRIO: Esta é a primeira mensagem da conversa. Comece sua resposta se apresentando pelo nome ("${name}") e mencionando o negócio ("${business}"). Exemplo: "Olá! Eu sou a ${name}, do ${business}.".`
-        : `OBRIGATÓRIO: Esta é a primeira mensagem da conversa. Comece sua resposta se apresentando pelo nome. Exemplo: "Olá! Eu sou a ${name}.".`;
+      const intro =
+        mentionBusiness && business
+          ? `OBRIGATÓRIO: Esta é a primeira mensagem da conversa. Comece sua resposta se apresentando pelo nome ("${name}") e mencionando o negócio ("${business}"). Exemplo: "Olá! Eu sou a ${name}, do ${business}.".`
+          : `OBRIGATÓRIO: Esta é a primeira mensagem da conversa. Comece sua resposta se apresentando pelo nome. Exemplo: "Olá! Eu sou a ${name}.".`;
       parts.push(intro);
     } else {
       parts.push(
@@ -247,7 +260,6 @@ function buildWorkspaceLayer(
     );
   }
 
-
   if (p.ai_tone) {
     const key = String(p.ai_tone).toLowerCase();
     const toneText = TONE_MAP[key];
@@ -287,9 +299,7 @@ function buildWorkspaceLayer(
   const pricePolicy: PriceDisclosurePolicy =
     (p.ai_price_disclosure_policy as PriceDisclosurePolicy) ?? "on_request";
   if (pricePolicy === "always") {
-    parts.push(
-      `Informe os preços dos serviços proativamente quando apresentar opções ao cliente.`,
-    );
+    parts.push(`Informe os preços dos serviços proativamente quando apresentar opções ao cliente.`);
   } else if (pricePolicy === "on_request") {
     parts.push(
       `Só informe preços se o cliente perguntar de forma direta e literal sobre valores. Não cite preços, "a partir de", faixas, descontos ou estimativas espontaneamente.`,
@@ -345,13 +355,10 @@ function buildWorkspaceLayer(
   const segmentFields: string[] = Array.isArray(p.segment_default_required_fields)
     ? (p.segment_default_required_fields as string[])
     : [];
-  const requiredFields =
-    workspaceFields.length > 0 ? workspaceFields : segmentFields;
+  const requiredFields = workspaceFields.length > 0 ? workspaceFields : segmentFields;
 
   if (requiredFields.length > 0) {
-    const labels = requiredFields
-      .map((f) => FIELD_LABELS[f] ?? f)
-      .join(", ");
+    const labels = requiredFields.map((f) => FIELD_LABELS[f] ?? f).join(", ");
     parts.push(
       `Antes de qualquer ação (orçamento, agendamento, encaminhamento), colete as seguintes informações se ainda não fornecidas: ${labels}.`,
     );
@@ -359,9 +366,7 @@ function buildWorkspaceLayer(
 
   // === INSTRUÇÕES ESPECÍFICAS DO WORKSPACE ===
   if (p.ai_custom_prompt) {
-    parts.push(
-      `Instruções específicas do estabelecimento: ${p.ai_custom_prompt}`,
-    );
+    parts.push(`Instruções específicas do estabelecimento: ${p.ai_custom_prompt}`);
   }
 
   // === MENSAGEM DE BOAS-VINDAS (referência de tom) ===
@@ -423,7 +428,7 @@ function buildServicesLayer(
       "1. NÃO liste, descreva, sugira ou cite qualquer serviço — nem genérico, nem do ramo, nem do que 'normalmente' um negócio assim faz.",
       "2. NÃO use a descrição do negócio, o segmento, o nome do estabelecimento ou conhecimento geral do ramo para inferir serviços.",
       "3. Se — e SOMENTE se — o cliente perguntar QUAIS SERVIÇOS o negócio oferece, O QUE VOCÊS FAZEM, ou PREÇOS, responda no espírito de:",
-      "   \"No momento ainda não temos o catálogo de serviços cadastrado por aqui. Vou encaminhar você para um atendente humano que pode te passar todos os detalhes.\"",
+      '   "No momento ainda não temos o catálogo de serviços cadastrado por aqui. Vou encaminhar você para um atendente humano que pode te passar todos os detalhes."',
       "4. ESTA regra NÃO se aplica a perguntas sobre profissionais, horários, endereço, telefone ou agendamento — para essas, use os blocos PROFISSIONAIS, AGENDA e DADOS DE CONTATO. A ausência de catálogo NÃO impede responder essas perguntas.",
       "5. Para agendamento sem serviço específico citado: confirme dia/hora/profissional normalmente; só mencione 'não temos catálogo' se o cliente perguntar QUAL serviço escolher.",
     ].join("\n");
@@ -437,10 +442,7 @@ function buildServicesLayer(
   lines.push("");
 
   for (const s of services) {
-    const dur =
-      s.duration_minutes && s.duration_minutes > 0
-        ? `${s.duration_minutes} min`
-        : null;
+    const dur = s.duration_minutes && s.duration_minutes > 0 ? `${s.duration_minutes} min` : null;
     const header = dur ? `- ${s.name} (${dur})` : `- ${s.name}`;
     lines.push(header);
     if (s.category_id && categoryNameById[s.category_id]) {
@@ -466,10 +468,10 @@ function buildServicesLayer(
     "1. Ao apresentar os serviços, NÃO recite a lista crua. Use a Descrição de cada serviço para responder de forma natural e contextualizada ao que o cliente perguntou.",
   );
   lines.push(
-    "2. Se a pergunta for genérica (\"o que vocês fazem?\"), faça um resumo curto cobrindo os serviços disponíveis com base nas descrições.",
+    '2. Se a pergunta for genérica ("o que vocês fazem?"), faça um resumo curto cobrindo os serviços disponíveis com base nas descrições.',
   );
   lines.push(
-    "3. Se a pergunta for específica (\"vocês fazem X?\"), responda APENAS com base na descrição do serviço correspondente.",
+    '3. Se a pergunta for específica ("vocês fazem X?"), responda APENAS com base na descrição do serviço correspondente.',
   );
   lines.push(
     "4. Se o cliente pedir um serviço que NÃO está nesta lista, diga que esse serviço não consta no catálogo e ofereça encaminhar para um atendente humano. Nunca prometa algo fora desta lista.",
@@ -577,13 +579,20 @@ function buildProfessionalsLayer(
   // Resumo do horário de funcionamento (todos os profissionais seguem o mesmo).
   if (businessHours && typeof businessHours === "object") {
     const dayLabels: Record<string, string> = {
-      monday: "Seg", mon: "Seg",
-      tuesday: "Ter", tue: "Ter",
-      wednesday: "Qua", wed: "Qua",
-      thursday: "Qui", thu: "Qui",
-      friday: "Sex", fri: "Sex",
-      saturday: "Sáb", sat: "Sáb",
-      sunday: "Dom", sun: "Dom",
+      monday: "Seg",
+      mon: "Seg",
+      tuesday: "Ter",
+      tue: "Ter",
+      wednesday: "Qua",
+      wed: "Qua",
+      thursday: "Qui",
+      thu: "Qui",
+      friday: "Sex",
+      fri: "Sex",
+      saturday: "Sáb",
+      sat: "Sáb",
+      sunday: "Dom",
+      sun: "Dom",
     };
     const openDays: string[] = [];
     for (const [k, v] of Object.entries(businessHours as Record<string, DayCfg>)) {
@@ -601,7 +610,7 @@ function buildProfessionalsLayer(
 
   for (const p of pros) {
     const roleStr = p.role && p.role.trim() ? ` (${p.role.trim()})` : "";
-    lines.push(`- ${p.name}${roleStr}`);
+    lines.push(`- ${p.name}${roleStr} [id:${p.id}]`);
     const appts = (byPro.get(p.id) ?? []).slice(0, 12);
     if (appts.length === 0) {
       lines.push(`  Próximos 7 dias: sem compromissos cadastrados.`);
@@ -610,9 +619,7 @@ function buildProfessionalsLayer(
       for (const a of appts) {
         const d = new Date(a.starts_at);
         const e = new Date(a.ends_at);
-        lines.push(
-          `    • ${fmtDate.format(d)} ${fmtTime.format(d)}–${fmtTime.format(e)}`,
-        );
+        lines.push(`    • ${fmtDate.format(d)} ${fmtTime.format(d)}–${fmtTime.format(e)}`);
       }
     }
   }
@@ -634,6 +641,9 @@ function buildProfessionalsLayer(
   lines.push(
     "5. NUNCA responda 'não temos catálogo' para perguntas sobre profissionais ou horários — essa resposta é APENAS para perguntas de serviços/preços quando o catálogo está vazio.",
   );
+  lines.push(
+    "6. O `[id:...]` ao lado de cada nome é só para você usar no campo professional_id do JSON de agendamento — nunca mostre esse id para o cliente.",
+  );
 
   return lines.join("\n");
 }
@@ -643,7 +653,6 @@ function estimateCostCents(input: number, output: number) {
   return Math.max(1, Math.round(cents));
 }
 
-
 type ContactApptRow = {
   id: string;
   starts_at: string;
@@ -651,12 +660,10 @@ type ContactApptRow = {
   status: string;
   service_name: string | null;
   professional_name: string | null;
+  client_name: string | null;
 };
 
-function buildContactAppointmentsLayer(
-  rows: ContactApptRow[],
-  tz: string,
-): string | null {
+function buildContactAppointmentsLayer(rows: ContactApptRow[], tz: string): string | null {
   if (!rows || rows.length === 0) {
     return [
       "=== AGENDAMENTOS DESTE CLIENTE ===",
@@ -665,10 +672,17 @@ function buildContactAppointmentsLayer(
     ].join("\n");
   }
   const fmtDate = new Intl.DateTimeFormat("pt-BR", {
-    timeZone: tz, weekday: "long", day: "2-digit", month: "long", year: "numeric",
+    timeZone: tz,
+    weekday: "long",
+    day: "2-digit",
+    month: "long",
+    year: "numeric",
   });
   const fmtTime = new Intl.DateTimeFormat("pt-BR", {
-    timeZone: tz, hour: "2-digit", minute: "2-digit", hour12: false,
+    timeZone: tz,
+    hour: "2-digit",
+    minute: "2-digit",
+    hour12: false,
   });
   const lines: string[] = [];
   lines.push("=== AGENDAMENTOS DESTE CLIENTE (FONTE ÚNICA DE VERDADE) ===");
@@ -678,16 +692,29 @@ function buildContactAppointmentsLayer(
   lines.push("");
   for (const r of rows) {
     const d = new Date(r.starts_at);
-    const status = r.status === "cancelled" ? " (CANCELADO)" : r.status === "completed" ? " (CONCLUÍDO)" : "";
+    const status =
+      r.status === "cancelled" ? " (CANCELADO)" : r.status === "completed" ? " (CONCLUÍDO)" : "";
     const svc = r.service_name ?? "atendimento";
     const pro = r.professional_name ? ` com ${r.professional_name}` : "";
-    lines.push(`- [id:${r.id}] ${fmtDate.format(d)} às ${fmtTime.format(d)} — ${svc}${pro}${status}`);
+    const titular = r.client_name ? ` (para ${r.client_name})` : "";
+    lines.push(
+      `- [id:${r.id}] ${fmtDate.format(d)} às ${fmtTime.format(d)} — ${svc}${pro}${titular}${status}`,
+    );
   }
   lines.push("");
   lines.push("REGRAS:");
-  lines.push("1. Ao informar a consulta ao cliente, escreva data e hora em linguagem natural — NUNCA mostre o [id:...] pra ele.");
-  lines.push("2. Os IDs entre colchetes são usados APENAS por você nos blocos RESCHEDULE_JSON / CANCEL_JSON.");
-  lines.push("3. Agendamentos marcados (CANCELADO) ou (CONCLUÍDO) NÃO podem ser reagendados nem cancelados de novo — informe o cliente caso ele tente.");
+  lines.push(
+    "1. Ao informar a consulta ao cliente, escreva data e hora em linguagem natural — NUNCA mostre o [id:...] pra ele.",
+  );
+  lines.push(
+    "2. Os IDs entre colchetes são usados APENAS por você nos blocos RESCHEDULE_JSON / CANCEL_JSON.",
+  );
+  lines.push(
+    "3. Agendamentos marcados (CANCELADO) ou (CONCLUÍDO) NÃO podem ser reagendados nem cancelados de novo — informe o cliente caso ele tente.",
+  );
+  lines.push(
+    "4. Quando houver 2+ agendamentos ativos do mesmo contato (ex.: um pro cliente e um pra um familiar), use o nome entre parênteses '(para ...)', além de dia/hora, para descobrir qual o cliente quer mudar/cancelar — pergunte 'é o seu ou o de {nome}?' se não tiver certeza.",
+  );
   return lines.join("\n");
 }
 
@@ -747,14 +774,12 @@ export async function runAiResponse(input: AiRunInput): Promise<AiRunResult> {
   if (!profile) return { action: "skip", reason: "Workspace não encontrado" };
   if (!profile.ai_enabled) return { action: "skip", reason: "IA desativada" };
 
-  const segment = (profile as any).ai_segments as
-    | {
-        id: string;
-        segment_prompt: string | null;
-        default_transfer_keywords: string[] | null;
-        default_required_fields: string[] | null;
-      }
-    | null;
+  const segment = (profile as any).ai_segments as {
+    id: string;
+    segment_prompt: string | null;
+    default_transfer_keywords: string[] | null;
+    default_required_fields: string[] | null;
+  } | null;
 
   // ===== CATÁLOGO DE SERVIÇOS (fonte única de verdade) =====
   // Carrega os serviços ativos do workspace + categorias para nomear cada um.
@@ -782,7 +807,11 @@ export async function runAiResponse(input: AiRunInput): Promise<AiRunResult> {
   const pricePolicyForCatalog: PriceDisclosurePolicy =
     ((profile as any).ai_price_disclosure_policy as PriceDisclosurePolicy) ?? "on_request";
 
-  const servicesLayer = buildServicesLayer(activeServices ?? [], categoryNameById, pricePolicyForCatalog);
+  const servicesLayer = buildServicesLayer(
+    activeServices ?? [],
+    categoryNameById,
+    pricePolicyForCatalog,
+  );
 
   // ===== PROFISSIONAIS + AGENDA (próximos 7 dias) =====
   const { data: prosRows } = await supabaseAdmin
@@ -835,7 +864,11 @@ export async function runAiResponse(input: AiRunInput): Promise<AiRunResult> {
     !!aiHours && typeof aiHours === "object" && Object.keys(aiHours).length > 0;
   const bizHoursConfigured =
     !!bizHours && typeof bizHours === "object" && Object.keys(bizHours).length > 0;
-  const gatingSource = aiHoursConfigured ? "ai_working_hours" : bizHoursConfigured ? "business_hours" : "none";
+  const gatingSource = aiHoursConfigured
+    ? "ai_working_hours"
+    : bizHoursConfigured
+      ? "business_hours"
+      : "none";
   const gatingHours = aiHoursConfigured ? aiHours : bizHoursConfigured ? bizHours : null;
   console.log("[ai hours] check", { tz, gatingSource });
   const withinAny = isWithinHours(gatingHours, tz);
@@ -845,13 +878,9 @@ export async function runAiResponse(input: AiRunInput): Promise<AiRunResult> {
     // no JSON, assumimos FALSE para evitar spam quando o workspace nao
     // configurou nada (caso comum em ambientes antigos).
     const columnValue =
-      typeof profile.ai_out_of_hours_enabled === "boolean"
-        ? profile.ai_out_of_hours_enabled
-        : null;
+      typeof profile.ai_out_of_hours_enabled === "boolean" ? profile.ai_out_of_hours_enabled : null;
     const jsonFallback =
-      typeof aiHours?.__out_of_hours?.enabled === "boolean"
-        ? aiHours.__out_of_hours.enabled
-        : null;
+      typeof aiHours?.__out_of_hours?.enabled === "boolean" ? aiHours.__out_of_hours.enabled : null;
     const outEnabled = columnValue ?? jsonFallback ?? false;
     console.log("[ai hours] decision", {
       tz,
@@ -874,7 +903,7 @@ export async function runAiResponse(input: AiRunInput): Promise<AiRunResult> {
       return { action: "skip", reason: "out_of_hours_disabled" };
     }
     const rawOut =
-      (typeof profile.ai_out_of_hours_message === "string" && profile.ai_out_of_hours_message.trim())
+      typeof profile.ai_out_of_hours_message === "string" && profile.ai_out_of_hours_message.trim()
         ? profile.ai_out_of_hours_message
         : MESSAGE_DEFAULTS.out_of_hours.default;
     const out = renderTemplate(rawOut, {
@@ -947,9 +976,7 @@ export async function runAiResponse(input: AiRunInput): Promise<AiRunResult> {
     const upperWindow = new Date(Date.now() + 60 * 24 * 3600_000).toISOString();
     const { data: rows } = await supabaseAdmin
       .from("appointments")
-      .select(
-        "id,starts_at,ends_at,status,services(name),professionals(name)",
-      )
+      .select("id,starts_at,ends_at,status,client_name,services(name),professionals(name)")
       .eq("owner_user_id", data.workspace_owner_id)
       .eq("contact_id", data.contact_id)
       .gte("starts_at", lowerWindow)
@@ -963,6 +990,7 @@ export async function runAiResponse(input: AiRunInput): Promise<AiRunResult> {
       status: r.status,
       service_name: r.services?.name ?? null,
       professional_name: r.professionals?.name ?? null,
+      client_name: r.client_name ?? null,
     }));
   }
   const contactApptsLayer = data.contact_id
@@ -1000,25 +1028,28 @@ export async function runAiResponse(input: AiRunInput): Promise<AiRunResult> {
     "═══ PROTOCOLO DE 2 ETAPAS (INVIOLÁVEL) ═══",
     "Toda ação na agenda (criar / reagendar / cancelar) é feita em DUAS mensagens separadas:",
     "  ETAPA 1 (esta mensagem é APENAS texto, SEM nenhum bloco JSON):",
-    "    - Resuma a ação proposta: \"Confirmo então: {serviço} com {profissional} em {data} às {hora}, no nome de {nome}. Posso confirmar?\"",
-    "    - Para reagendar: \"Confirma que quer mudar sua consulta de {data antiga} {hora antiga} para {data nova} {hora nova}?\"",
-    "    - Para cancelar: \"Confirma o cancelamento da sua consulta de {data} às {hora}?\"",
+    '    - Resuma a ação proposta: "Confirmo então: {serviço} com {profissional} em {data} às {hora}, no nome de {nome}. Posso confirmar?"',
+    '    - Para reagendar: "Confirma que quer mudar sua consulta de {data antiga} {hora antiga} para {data nova} {hora nova}?"',
+    '    - Para cancelar: "Confirma o cancelamento da sua consulta de {data} às {hora}?"',
     "    - Termine SEMPRE com a pergunta de confirmação. NUNCA inclua APPOINTMENT_JSON / RESCHEDULE_JSON / CANCEL_JSON nesta mensagem.",
-    "  ETAPA 2 (só ocorre na PRÓXIMA mensagem, depois que o cliente responder confirmando — \"sim\", \"pode\", \"isso\", \"confirmo\", \"ok\", \"pode confirmar\", \"pode marcar\", \"pode cancelar\"):",
-    "    - Responda em UMA frase curta confirmando a execução (\"Pronto, agendado!\" / \"Reagendado!\" / \"Cancelado!\").",
+    '  ETAPA 2 (só ocorre na PRÓXIMA mensagem, depois que o cliente responder confirmando — "sim", "pode", "isso", "confirmo", "ok", "pode confirmar", "pode marcar", "pode cancelar"):',
+    '    - Responda em UMA frase curta confirmando a execução ("Pronto, agendado!" / "Reagendado!" / "Cancelado!").',
     "    - No FINAL da resposta, em UMA única linha sem markdown, emita o bloco JSON correspondente.",
     "Violar esse protocolo (emitir JSON junto com a pergunta de confirmação) é falha grave. Se você não tem certeza de que a última mensagem do cliente foi uma confirmação explícita do que VOCÊ propôs, NÃO emita JSON — volte para a ETAPA 1 e pergunte de novo.",
     "",
     "═══ DESAMBIGUAÇÃO DE INTENÇÃO ═══",
-    "- Se o cliente disser \"desmarcar\", \"cancelar\", \"não posso mais\", \"não vou mais\" → intenção é CANCELAR. NUNCA emita APPOINTMENT_JSON nesse contexto.",
-    "- Se o cliente disser \"remarcar\", \"mudar\", \"trocar o horário\", \"adiantar\", \"adiar\", \"passar para outro dia\" → intenção é REAGENDAR. NUNCA emita APPOINTMENT_JSON — use RESCHEDULE_JSON depois de confirmar a nova data.",
+    '- Se o cliente disser "desmarcar", "cancelar", "não posso mais", "não vou mais" → intenção é CANCELAR. NUNCA emita APPOINTMENT_JSON nesse contexto.',
+    '- Se o cliente disser "remarcar", "mudar", "trocar o horário", "adiantar", "adiar", "passar para outro dia" → intenção é REAGENDAR. NUNCA emita APPOINTMENT_JSON — use RESCHEDULE_JSON depois de confirmar a nova data.',
     "- Só use APPOINTMENT_JSON para AGENDAMENTOS NOVOS (cliente ainda não tem o horário desejado na lista AGENDAMENTOS DESTE CLIENTE).",
-    "- Se o cliente já tem um agendamento ativo e está pedindo OUTRO em data diferente, pergunte: \"Quer manter o de {data antiga} e marcar outro, ou trocar o horário?\" — não assuma.",
+    '- Se o cliente já tem um agendamento ativo e está pedindo OUTRO em data diferente, pergunte: "Quer manter o de {data antiga} e marcar outro, ou trocar o horário?" — não assuma.',
     "",
     "═══ COMO CRIAR (APPOINTMENT_JSON) ═══",
     "Pré-requisitos antes da ETAPA 1: SERVIÇO (da lista oficial), DATA+HORA livre na agenda do profissional, PROFISSIONAL (se houver mais de um). NÃO peça telefone — use o do WhatsApp.",
-    'Formato exato (linha única, sem markdown, no FINAL da ETAPA 2): APPOINTMENT_JSON:{"service_name":"...","starts_at":"YYYY-MM-DDTHH:mm:00-03:00","client_name":"...","client_phone":"...","professional_id":null}',
-    "- professional_id: uuid da lista PROFISSIONAIS quando souber; senão null.",
+    'Formato para 1 agendamento (linha única, sem markdown, no FINAL da ETAPA 2): APPOINTMENT_JSON:{"service_name":"...","starts_at":"YYYY-MM-DDTHH:mm:00-03:00","client_name":"...","client_phone":"...","professional_id":"..."}',
+    "Formato para MÚLTIPLOS agendamentos no mesmo turno (ex.: cliente pede um pra ele e um pra um familiar): use o MESMO marcador uma única vez, seguido de um array — APPOINTMENT_JSON:[{...},{...}]. Cada item leva seu próprio client_name (nome de quem vai ser atendido nesse item, pode ser diferente do nome de quem está no WhatsApp).",
+    '- Se o cliente pedir o MESMO horário nominal para 2+ serviços com o mesmo profissional (ex.: "os dois às 9h"), repita o mesmo starts_at em cada item do array — o sistema ajusta automaticamente o horário dos itens seguintes pra não sobrepor (soma a duração do serviço anterior). Não calcule você mesma o horário ajustado, não invente "9h e 9h30" no seu texto — só repita o horário pedido em cada item e deixe o sistema encadear.',
+    "- Se o cliente já der horários distintos para cada agendamento, use cada starts_at exatamente como pedido, sem ajuste.",
+    "- professional_id: uuid EXATO copiado do `[id:...]` da lista PROFISSIONAIS ATIVOS. OBRIGATÓRIO sempre que houver 2+ profissionais ativos, em TODOS os itens (inclusive em lote). Se não tiver certeza de qual profissional o cliente quer para qualquer um dos agendamentos, NÃO emita o JSON — volte pra ETAPA 1 e pergunte antes.",
     "",
     "═══ COMO REAGENDAR (RESCHEDULE_JSON) — substitui o horário antigo pelo novo ═══",
     "Use o [id:...] do agendamento na lista AGENDAMENTOS DESTE CLIENTE. O sistema MOVE o horário (o slot antigo é liberado automaticamente, o novo é ocupado).",
@@ -1031,17 +1062,18 @@ export async function runAiResponse(input: AiRunInput): Promise<AiRunResult> {
     'Formato exato (ETAPA 2 apenas): CANCEL_JSON:{"appointment_id":"<uuid-do-id-da-lista>","reason":"motivo curto do cliente"}',
     "",
     "═══ REGRAS FINAIS ═══",
-    "1. NO MÁXIMO UM bloco JSON por resposta (jamais dois ao mesmo tempo).",
+    "1. NO MÁXIMO UM marcador APPOINTMENT_JSON: por resposta — se houver mais de um agendamento no mesmo turno, coloque todos dentro de UM único array nesse marcador (nunca repita o marcador).",
     "2. NUNCA mostre o uuid [id:...] para o cliente — é só para você.",
-    "3. Depois que você emitir o JSON, na PRÓXIMA mensagem o bloco AGENDAMENTOS DESTE CLIENTE acima já estará atualizado — use-o como fonte da verdade. Nunca diga \"não tenho acesso à agenda\".",
-    "4. Se o cliente perguntar sobre uma consulta marcada (\"quando é minha consulta?\"), responda com a data/hora EXATA da lista AGENDAMENTOS DESTE CLIENTE — sem repetir confirmação, sem emitir JSON.",
+    '3. Depois que você emitir o JSON, na PRÓXIMA mensagem o bloco AGENDAMENTOS DESTE CLIENTE acima já estará atualizado — use-o como fonte da verdade. Nunca diga "não tenho acesso à agenda".',
+    '4. Se o cliente perguntar sobre uma consulta marcada ("quando é minha consulta?"), responda com a data/hora EXATA da lista AGENDAMENTOS DESTE CLIENTE — sem repetir confirmação, sem emitir JSON.',
   ].join("\n");
 
   const professionalsLayer = buildProfessionalsLayer(pros, upcoming, bizHours, tz);
 
-  const summarySection = data.ai_summary && data.ai_summary.trim()
-    ? `=== HISTÓRICO ANTERIOR DO CLIENTE (resumo automático) ===\n${data.ai_summary.trim()}\n=== FIM DO HISTÓRICO ANTERIOR ===`
-    : "";
+  const summarySection =
+    data.ai_summary && data.ai_summary.trim()
+      ? `=== HISTÓRICO ANTERIOR DO CLIENTE (resumo automático) ===\n${data.ai_summary.trim()}\n=== FIM DO HISTÓRICO ANTERIOR ===`
+      : "";
 
   const finalPrompt = [
     summarySection,
@@ -1138,7 +1170,10 @@ export async function runAiResponse(input: AiRunInput): Promise<AiRunResult> {
       );
 
     // Helper: traduz reason de falha em mensagem honesta pro cliente.
-    const friendlyReason = (action: "create" | "reschedule" | "cancel", reason?: string): string => {
+    const friendlyReason = (
+      action: "create" | "reschedule" | "cancel",
+      reason?: string,
+    ): string => {
       // Aceita reasons prefixadas pelo reschedule (ex.: "create:slot_taken", "cancel:appointment_not_found").
       const bare = reason?.includes(":") ? reason.split(":").slice(1).join(":") : reason;
       switch (bare) {
@@ -1161,52 +1196,68 @@ export async function runAiResponse(input: AiRunInput): Promise<AiRunResult> {
         case "missing_phone":
         case "contact_create_failed":
           return "Tive um problema ao registrar seus dados. Pode me confirmar seu nome, por favor?";
+        case "professional_required":
+          return "Preciso saber com qual profissional você quer marcar — pode me confirmar o nome?";
+        case "malformed_batch":
+          return "Tive um problema técnico ao processar os agendamentos — pode repetir os horários desejados, um de cada vez?";
         default:
           return action === "reschedule"
             ? "Não consegui concluir o reagendamento aqui. Pode tentar de novo me dizendo o novo horário?"
             : action === "cancel"
-            ? "Não consegui concluir o cancelamento aqui. Pode confirmar qual agendamento você quer cancelar?"
-            : "Não consegui concluir o agendamento aqui. Pode repetir o horário desejado?";
+              ? "Não consegui concluir o cancelamento aqui. Pode confirmar qual agendamento você quer cancelar?"
+              : "Não consegui concluir o agendamento aqui. Pode repetir o horário desejado?";
       }
     };
 
-    // Detecta bloco APPOINTMENT_JSON emitido pela IA
+    // Detecta bloco APPOINTMENT_JSON emitido pela IA (objeto único ou lote em array)
     {
-      const match = text.match(/APPOINTMENT_JSON:(\{[\s\S]*?\})\s*$/);
-      if (match) {
+      const extraction = extractAppointmentPayloads(text);
+      if (extraction) {
         const skip = asksForConfirmation || userWantsCancel || userWantsReschedule;
+        text = extraction.cleanedText;
         if (skip) {
           console.warn("[ai booking] APPOINTMENT_JSON ignorado (protocolo/intenção)", {
-            asksForConfirmation, userWantsCancel, userWantsReschedule,
+            asksForConfirmation,
+            userWantsCancel,
+            userWantsReschedule,
           });
-          text = text.replace(/APPOINTMENT_JSON:\{[\s\S]*?\}\s*$/, "").trim();
+        } else if (extraction.payloads.length === 0) {
+          // Marcador presente mas nada parseável (JSON quebrado/blob inválido).
+          if (extraction.malformedCount > 0) text = friendlyReason("create", "malformed_batch");
         } else {
-          let okResult = false;
-          let reason: string | undefined;
-          try {
-            console.log("[ai booking] payload:", match[1]);
-            const payload = JSON.parse(match[1]);
-            if (data.contact_id) payload.contact_id = data.contact_id;
-            if (!payload.client_phone && knownPhone) payload.client_phone = knownPhone;
-            if (!payload.client_name && knownName) payload.client_name = knownName;
-            if (data.preview) {
-              okResult = true;
-            } else {
-              const r = await createAppointmentFromAI(payload, {
-                id: profile.id,
-                business_timezone: profile.business_timezone ?? null,
-                business_name: profile.business_name ?? null,
-              });
-              okResult = r.ok;
-              reason = r.reason;
-              if (!r.ok) console.warn("[ai booking] falhou:", r.reason);
+          const enriched = extraction.payloads.map((p) => ({
+            ...p,
+            contact_id: data.contact_id ?? (p as any).contact_id ?? null,
+            client_phone: (p as any).client_phone || knownPhone || undefined,
+            client_name: (p as any).client_name || knownName || undefined,
+          }));
+          if (data.preview) {
+            // preview: não cria de fato, só valida que chegou até aqui.
+          } else if (enriched.length === 1) {
+            const r = await createAppointmentFromAI(enriched[0] as any, {
+              id: profile.id,
+              business_timezone: profile.business_timezone ?? null,
+              business_name: profile.business_name ?? null,
+            });
+            if (!r.ok) {
+              console.warn("[ai booking] falhou:", r.reason);
+              text = friendlyReason("create", r.reason);
             }
-          } catch (err) {
-            console.warn("[ai booking] parse/create falhou:", (err as Error)?.message);
-            reason = "bad_date";
+          } else {
+            const batch = await createAppointmentBatchFromAI(enriched as any, {
+              id: profile.id,
+              business_timezone: profile.business_timezone ?? null,
+              business_name: profile.business_name ?? null,
+            });
+            if (batch.allFailed) {
+              text = friendlyReason("create", batch.results[0]?.reason);
+            } else if (batch.anyFailed) {
+              text = batch.summaryTextForAi;
+            }
+            // sucesso total: a mensagem agregada já foi enviada por dentro
+            // de createAppointmentBatchFromAI — deixamos o "text" da IA
+            // (curto, tipo "Pronto, agendado!") como está.
           }
-          text = text.replace(/APPOINTMENT_JSON:\{[\s\S]*?\}\s*$/, "").trim();
-          if (!okResult) text = friendlyReason("create", reason);
         }
       }
     }

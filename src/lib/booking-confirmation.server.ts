@@ -2,7 +2,11 @@
 // Reusa o client Evolution já existente em src/lib/evolution.server.ts.
 import { supabaseAdmin } from "@/integrations/supabase/client.server";
 import { evo, instanceNameForOwner } from "@/lib/evolution.server";
-import { MESSAGE_DEFAULTS, type MessageKey } from "@/lib/message-defaults";
+import {
+  MESSAGE_DEFAULTS,
+  BOOKING_CONFIRMED_BATCH_DEFAULT,
+  type MessageKey,
+} from "@/lib/message-defaults";
 import { renderTemplate } from "@/lib/message-templates";
 
 type ProfileLite = {
@@ -16,6 +20,7 @@ type ServiceLite = {
   name: string;
   duration_minutes: number;
   price_cents: number;
+  buffer_minutes?: number;
 };
 
 type ProfessionalLite = {
@@ -45,15 +50,26 @@ function tzOffsetMinutes(date: Date, tz: string): number {
   const dtf = new Intl.DateTimeFormat("en-US", {
     timeZone: tz,
     hour12: false,
-    year: "numeric", month: "2-digit", day: "2-digit",
-    hour: "2-digit", minute: "2-digit", second: "2-digit",
+    year: "numeric",
+    month: "2-digit",
+    day: "2-digit",
+    hour: "2-digit",
+    minute: "2-digit",
+    second: "2-digit",
   });
   const parts = Object.fromEntries(
-    dtf.formatToParts(date).filter((p) => p.type !== "literal").map((p) => [p.type, p.value]),
+    dtf
+      .formatToParts(date)
+      .filter((p) => p.type !== "literal")
+      .map((p) => [p.type, p.value]),
   ) as Record<string, string>;
   const asUtc = Date.UTC(
-    Number(parts.year), Number(parts.month) - 1, Number(parts.day),
-    Number(parts.hour === "24" ? "0" : parts.hour), Number(parts.minute), Number(parts.second),
+    Number(parts.year),
+    Number(parts.month) - 1,
+    Number(parts.day),
+    Number(parts.hour === "24" ? "0" : parts.hour),
+    Number(parts.minute),
+    Number(parts.second),
   );
   return (asUtc - date.getTime()) / 60000;
 }
@@ -82,11 +98,19 @@ export function parseAiDate(input: string | null | undefined, tz: string): Date 
   let y: number, mo: number, d: number, h: number, mi: number, s: number;
   if (br) {
     [, , , , , ,] = br;
-    d = Number(br[1]); mo = Number(br[2]); y = Number(br[3]);
-    h = Number(br[4]); mi = Number(br[5]); s = Number(br[6] ?? 0);
+    d = Number(br[1]);
+    mo = Number(br[2]);
+    y = Number(br[3]);
+    h = Number(br[4]);
+    mi = Number(br[5]);
+    s = Number(br[6] ?? 0);
   } else if (iso) {
-    y = Number(iso[1]); mo = Number(iso[2]); d = Number(iso[3]);
-    h = Number(iso[4]); mi = Number(iso[5]); s = Number(iso[6] ?? 0);
+    y = Number(iso[1]);
+    mo = Number(iso[2]);
+    d = Number(iso[3]);
+    h = Number(iso[4]);
+    mi = Number(iso[5]);
+    s = Number(iso[6] ?? 0);
   } else {
     const fallback = new Date(raw);
     return Number.isNaN(fallback.getTime()) ? null : fallback;
@@ -105,11 +129,7 @@ export function parseAiDate(input: string | null | undefined, tz: string): Date 
 async function resolveActiveAppointment(
   ownerUserId: string,
   contactId: string | null,
-): Promise<
-  | { kind: "one"; id: string }
-  | { kind: "many" }
-  | { kind: "none" }
-> {
+): Promise<{ kind: "one"; id: string } | { kind: "many" } | { kind: "none" }> {
   if (!contactId) return { kind: "none" };
   const nowMinus1h = new Date(Date.now() - 3600_000).toISOString();
   const { data } = await supabaseAdmin
@@ -232,9 +252,7 @@ async function loadTemplate(
       ? (row[cols.text] as string)
       : MESSAGE_DEFAULTS[key].default;
   const enabled =
-    typeof row[cols.enabled] === "boolean"
-      ? (row[cols.enabled] as boolean)
-      : cols.defaultEnabled;
+    typeof row[cols.enabled] === "boolean" ? (row[cols.enabled] as boolean) : cols.defaultEnabled;
   return { enabled, text };
 }
 
@@ -339,7 +357,18 @@ export async function createAppointmentFromAI(
     silent?: boolean;
   },
   profile: { id: string; business_timezone: string | null; business_name: string | null },
-): Promise<{ ok: boolean; reason?: string; appointment_id?: string }> {
+): Promise<{
+  ok: boolean;
+  reason?: string;
+  appointment_id?: string;
+  starts_at?: string;
+  ends_at?: string;
+  buffer_minutes?: number;
+  service_name?: string;
+  professional_name?: string | null;
+  client_name?: string;
+  client_phone?: string;
+}> {
   if (!data.starts_at || (!data.service_name && !data.service_id)) {
     console.warn("[booking create] missing_fields", {
       has_starts_at: !!data.starts_at,
@@ -352,13 +381,11 @@ export async function createAppointmentFromAI(
 
   // 1. Resolver serviço — preferir service_id quando vier (caminho interno do reschedule),
   // senão buscar por nome (case-insensitive).
-  let serviceRow:
-    | { id: string; name: string; duration_minutes: number; price_cents: number }
-    | null = null;
+  let serviceRow: ServiceLite | null = null;
   if (data.service_id) {
     const { data: s } = await supabaseAdmin
       .from("services")
-      .select("id,name,duration_minutes,price_cents")
+      .select("id,name,duration_minutes,price_cents,buffer_minutes")
       .eq("id", data.service_id)
       .eq("owner_user_id", profile.id)
       .maybeSingle();
@@ -367,7 +394,7 @@ export async function createAppointmentFromAI(
   if (!serviceRow && data.service_name) {
     const { data: s } = await supabaseAdmin
       .from("services")
-      .select("id,name,duration_minutes,price_cents")
+      .select("id,name,duration_minutes,price_cents,buffer_minutes")
       .eq("owner_user_id", profile.id)
       .ilike("name", data.service_name)
       .maybeSingle();
@@ -379,9 +406,16 @@ export async function createAppointmentFromAI(
   const startsAt = parseAiDate(data.starts_at, tzCreate);
   if (!startsAt) return { ok: false, reason: "bad_date" };
   const endsAt = new Date(startsAt.getTime() + serviceRow.duration_minutes * 60_000);
+  const bufferMinutes = serviceRow.buffer_minutes ?? 0;
+  const bufferMs = bufferMinutes * 60_000;
 
-  // 2. Profissional (opcional). Se a IA não passou um, e existir só 1 ativo,
-  //    atribui automaticamente para manter a agenda consistente.
+  // 2. Profissional. Se a IA não passou um: com exatamente 1 ativo, atribui
+  //    automaticamente; com 0, segue sem profissional (negócio sem
+  //    profissionais cadastrados — comportamento pré-existente e legítimo);
+  //    com 2+ ativos e nenhum informado, RECUSA a criação — criar com
+  //    professional_id null nesse caso pularia o anti-conflito de horário
+  //    inteiro (bug de segurança: permitia sobrepor agendamentos do mesmo
+  //    profissional sem checagem nenhuma).
   let professional: { id: string; name: string } | null = null;
   if (data.professional_id) {
     const { data: pr } = await supabaseAdmin
@@ -396,9 +430,11 @@ export async function createAppointmentFromAI(
       .from("professionals")
       .select("id,name")
       .eq("owner_user_id", profile.id)
-      .eq("is_active", true)
-      .limit(2);
+      .eq("is_active", true);
     if (pros && pros.length === 1) professional = pros[0];
+    else if (pros && pros.length >= 2) {
+      return { ok: false, reason: "professional_required" };
+    }
   }
 
   // 3. Contato — preferimos o contact_id passado pelo webhook (conversa atual);
@@ -447,15 +483,16 @@ export async function createAppointmentFromAI(
     }
   }
 
-  // 4. Anti-conflito
+  // 4. Anti-conflito — janela inflada pelo buffer do serviço sendo criado
+  // agora, dos dois lados do seu próprio horário.
   if (professional) {
     const { data: conflict } = await supabaseAdmin
       .from("appointments")
       .select("id")
       .eq("owner_user_id", profile.id)
       .eq("professional_id", professional.id)
-      .lt("starts_at", endsAt.toISOString())
-      .gt("ends_at", startsAt.toISOString())
+      .lt("starts_at", new Date(endsAt.getTime() + bufferMs).toISOString())
+      .gt("ends_at", new Date(startsAt.getTime() - bufferMs).toISOString())
       .neq("status", "cancelled")
       .maybeSingle();
     if (conflict) return { ok: false, reason: "slot_taken" };
@@ -474,8 +511,9 @@ export async function createAppointmentFromAI(
       status: "scheduled",
       notes: data.notes ?? "",
       notify_whatsapp: true,
+      client_name: resolvedName || null,
     })
-    .select("id,starts_at")
+    .select("id,starts_at,ends_at")
     .single();
   if (aerr || !appt) return { ok: false, reason: "appointment_create_failed" };
 
@@ -488,7 +526,8 @@ export async function createAppointmentFromAI(
     duration_minutes: serviceRow.duration_minutes,
   });
 
-  // 7. Confirmação WA (pode ser suprimida quando chamado dentro do reschedule)
+  // 7. Confirmação WA (pode ser suprimida quando chamado dentro do reschedule
+  // ou de um lote — nesse caso quem manda a mensagem é quem chamou)
   if (!data.silent) {
     await sendBookingConfirmation({
       profile: {
@@ -503,7 +542,134 @@ export async function createAppointmentFromAI(
     });
   }
 
-  return { ok: true, appointment_id: appt.id };
+  return {
+    ok: true,
+    appointment_id: appt.id,
+    starts_at: appt.starts_at,
+    ends_at: appt.ends_at,
+    buffer_minutes: bufferMinutes,
+    service_name: serviceRow.name,
+    professional_name: professional?.name ?? null,
+    client_name: resolvedName || "Cliente",
+    client_phone: resolvedPhone,
+  };
+}
+
+type BatchItemInput = Parameters<typeof createAppointmentFromAI>[0];
+type BatchItemResult = Awaited<ReturnType<typeof createAppointmentFromAI>> & {
+  requested_starts_at?: string;
+  requested_item: BatchItemInput;
+};
+
+// Cria N agendamentos pedidos no mesmo turno de conversa (ex.: cliente pede
+// um horário pra ele e um pra um familiar). Corrige o bug relatado onde a IA
+// "confirmava" 2 agendamentos mas só 1 era criado de fato: aqui cada item é
+// realmente executado, e a mensagem final ao cliente (sendBookingConfirmationBatch)
+// reflete exatamente o que foi persistido — nunca promete mais do que aconteceu.
+//
+// Itens que pedem o MESMO profissional + MESMO horário nominal são agrupados
+// e encadeados sequencialmente (o 2º começa onde o 1º termina, considerando
+// duração + buffer do serviço) — evita literalmente sobrepor dois
+// atendimentos no mesmo instante. Itens com horários já distintos entre si
+// não são tocados.
+export async function createAppointmentBatchFromAI(
+  items: BatchItemInput[],
+  profile: { id: string; business_timezone: string | null; business_name: string | null },
+): Promise<{
+  results: BatchItemResult[];
+  allFailed: boolean;
+  anyFailed: boolean;
+  summaryTextForAi: string;
+}> {
+  const groupKey = (it: BatchItemInput) => `${it.professional_id ?? "auto"}|${it.starts_at ?? ""}`;
+  const groups = new Map<string, number[]>();
+  items.forEach((it, idx) => {
+    const key = groupKey(it);
+    const arr = groups.get(key) ?? [];
+    arr.push(idx);
+    groups.set(key, arr);
+  });
+
+  const results: BatchItemResult[] = new Array(items.length);
+
+  // Processa grupo por grupo, e dentro de cada grupo em ordem — sequencial
+  // (não Promise.all) de propósito: cada criação precisa estar persistida
+  // antes da próxima decidir seu horário/checar conflito.
+  for (const idxs of groups.values()) {
+    let cursorIso: string | undefined;
+    for (const idx of idxs) {
+      const original = items[idx];
+      const payload: BatchItemInput = { ...original, silent: true };
+      if (cursorIso) payload.starts_at = cursorIso;
+      const r = await createAppointmentFromAI(payload, profile);
+      results[idx] = { ...r, requested_starts_at: payload.starts_at, requested_item: original };
+      if (r.ok && r.ends_at) {
+        const bufferMs = (r.buffer_minutes ?? 0) * 60_000;
+        cursorIso = new Date(new Date(r.ends_at).getTime() + bufferMs).toISOString();
+      }
+      // Falhou (ex.: slot_taken): não avança o cursor — o próximo item do
+      // grupo tenta o horário nominal original (ou o último cursor válido).
+    }
+  }
+
+  const allFailed = results.every((r) => !r.ok);
+  const anyFailed = results.some((r) => !r.ok);
+
+  if (results.some((r) => r.ok)) {
+    await sendBookingConfirmationBatch({ profile, results });
+  }
+
+  const okCount = results.filter((r) => r.ok).length;
+  const summaryTextForAi =
+    anyFailed && !allFailed
+      ? `Consegui agendar ${okCount} de ${results.length} — já te mando os detalhes.`
+      : "Pronto, agendado!";
+
+  return { results, allFailed, anyFailed, summaryTextForAi };
+}
+
+// Mensagem única agregada ao cliente com TODOS os agendamentos do lote —
+// reflete os horários REAIS atribuídos (já ajustados/encadeados quando
+// aplicável) e avisa explicitamente qualquer item que não pôde ser criado.
+async function sendBookingConfirmationBatch(args: {
+  profile: { id: string; business_name: string | null; business_timezone: string | null };
+  results: BatchItemResult[];
+}) {
+  const { profile, results } = args;
+  try {
+    const tpl = await loadTemplate(profile.id, "booking_confirmed");
+    if (!tpl.enabled) return;
+    const instanceName = await getConnectedInstance(profile.id);
+    if (!instanceName) return;
+    const tz = profile.business_timezone || "America/Sao_Paulo";
+
+    const okResults = results.filter((r) => r.ok && r.starts_at);
+    if (okResults.length === 0) return;
+    const phone = normalizePhone(okResults[0].client_phone ?? "");
+    if (!phone) return;
+    const cliente = okResults[0].client_name || "Cliente";
+
+    const linhas = okResults.map(
+      (r) =>
+        `- ${r.service_name} para ${r.client_name || cliente} às ${formatTimeBR(r.starts_at!, tz)} do dia ${formatDateBR(r.starts_at!, tz)}${r.professional_name ? ` com ${r.professional_name}` : ""}`,
+    );
+    const falhas = results.filter((r) => !r.ok);
+    for (const f of falhas) {
+      const nomeServico = f.requested_item?.service_name ?? "um dos serviços";
+      linhas.push(
+        `⚠️ Não consegui agendar: ${nomeServico} (${f.reason === "slot_taken" ? "horário ficou ocupado" : "não deu pra confirmar"}) — me avise se quiser tentar outro horário.`,
+      );
+    }
+
+    const msg = renderTemplate(BOOKING_CONFIRMED_BATCH_DEFAULT, {
+      cliente,
+      negocio: profile.business_name ?? "nosso estabelecimento",
+      lista: linhas.join("\n"),
+    });
+    await evo.sendText(instanceName, { number: phone, text: msg });
+  } catch (e) {
+    console.warn("[booking] confirmação em lote WhatsApp falhou:", (e as Error)?.message ?? e);
+  }
 }
 
 // Reagendamento via IA: cancela o antigo + cria um novo (mesmo serviço, profissional
@@ -531,7 +697,8 @@ export async function rescheduleAppointmentFromAI(
       .maybeSingle();
     if (!check) needsResolve = true;
     else if (check.status === "cancelled" || check.status === "completed") needsResolve = true;
-    else if (data.contact_id && check.contact_id && check.contact_id !== data.contact_id) needsResolve = true;
+    else if (data.contact_id && check.contact_id && check.contact_id !== data.contact_id)
+      needsResolve = true;
   }
   if (needsResolve) {
     const r = await resolveActiveAppointment(profile.id, data.contact_id ?? null);
@@ -559,12 +726,10 @@ export async function rescheduleAppointmentFromAI(
   // dependendo de como ele resolve a FK. Sem isso, svc.name vira undefined e
   // cascateia como "missing_fields" em createAppointmentFromAI.
   const svcRaw = oldAppt.services as ServiceLite | ServiceLite[] | null;
-  let svc: ServiceLite | null = Array.isArray(svcRaw) ? svcRaw[0] ?? null : svcRaw;
+  let svc: ServiceLite | null = Array.isArray(svcRaw) ? (svcRaw[0] ?? null) : svcRaw;
   const contactRaw = oldAppt.contacts as
-    | { name: string; phone: string }
-    | { name: string; phone: string }[]
-    | null;
-  const contact = Array.isArray(contactRaw) ? contactRaw[0] ?? null : contactRaw;
+    { name: string; phone: string } | { name: string; phone: string }[] | null;
+  const contact = Array.isArray(contactRaw) ? (contactRaw[0] ?? null) : contactRaw;
 
   console.log("[booking reschedule] oldAppt shape", {
     appt_id: oldAppt.id,
@@ -635,10 +800,15 @@ export async function rescheduleAppointmentFromAI(
         business_name: profile.business_name,
         business_timezone: profile.business_timezone,
       },
-      appointment: { id: createRes.appointment_id ?? oldAppt.id, starts_at: newStart.toISOString() },
+      appointment: {
+        id: createRes.appointment_id ?? oldAppt.id,
+        starts_at: newStart.toISOString(),
+      },
       service: svc,
       professional: null,
-      client: contact ? { client_name: contact.name, client_phone: contact.phone } : { client_name: "Cliente", client_phone: "" },
+      client: contact
+        ? { client_name: contact.name, client_phone: contact.phone }
+        : { client_name: "Cliente", client_phone: "" },
     });
   }
   return { ok: true };
@@ -661,7 +831,8 @@ export async function cancelAppointmentFromAI(
       .maybeSingle();
     if (!check) needsResolve = true;
     else if (check.status === "cancelled" || check.status === "completed") needsResolve = true;
-    else if (data.contact_id && check.contact_id && check.contact_id !== data.contact_id) needsResolve = true;
+    else if (data.contact_id && check.contact_id && check.contact_id !== data.contact_id)
+      needsResolve = true;
   }
   if (needsResolve) {
     const r = await resolveActiveAppointment(profile.id, data.contact_id ?? null);

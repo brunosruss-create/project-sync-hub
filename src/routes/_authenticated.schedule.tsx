@@ -74,7 +74,7 @@ function SchedulePage() {
   const [view, setView] = React.useState<ViewMode>("week");
   const [cursor, setCursor] = React.useState<Date>(new Date());
   const [items, setItems] = React.useState<Appointment[]>([]);
-  
+
   const [contacts, setContacts] = React.useState<ContactCard[]>(MOCK_CONTACTS);
   const [services, setServices] = React.useState<Service[]>([]);
 
@@ -121,38 +121,47 @@ function SchedulePage() {
   // local" para que a UI da agenda mostre o mesmo wall-clock que a mensagem WA.
   const profileQ = useProfile();
   const tz =
-    ((profileQ.data as unknown as { business_timezone?: string } | null)
-      ?.business_timezone as string | undefined) || "America/Sao_Paulo";
+    ((profileQ.data as unknown as { business_timezone?: string } | null)?.business_timezone as
+      string | undefined) || "America/Sao_Paulo";
 
   // Hydrate from supabase + realtime + cross-tab events
-  const mapAppt = React.useCallback((r: any): Appointment => ({
-    id: r.id,
-    contact_id: r.contact_id ?? "",
-    service_id: r.service_id ?? "",
-    agent_id: r.professional_id ?? r.agent_id ?? "",
-    starts_at: utcToZonedLocal(new Date(r.starts_at), tz),
-    ends_at: utcToZonedLocal(new Date(r.ends_at), tz),
-    status: (r.status ?? "scheduled") as AppointmentStatus,
-    notes: r.notes ?? "",
-    notify_whatsapp: !!r.notify_whatsapp,
-  }), [tz]);
+  const mapAppt = React.useCallback(
+    (r: any): Appointment => ({
+      id: r.id,
+      contact_id: r.contact_id ?? "",
+      service_id: r.service_id ?? "",
+      agent_id: r.professional_id ?? r.agent_id ?? "",
+      starts_at: utcToZonedLocal(new Date(r.starts_at), tz),
+      ends_at: utcToZonedLocal(new Date(r.ends_at), tz),
+      status: (r.status ?? "scheduled") as AppointmentStatus,
+      notes: r.notes ?? "",
+      notify_whatsapp: !!r.notify_whatsapp,
+    }),
+    [tz],
+  );
 
   const reload = React.useCallback(async () => {
     const [{ data: appts, error: apptErr }, { data: cts }, { data: svc }] = await Promise.all([
       supabase
         .from("appointments")
-        .select("id,contact_id,service_id,agent_id,professional_id,starts_at,ends_at,status,notes,notify_whatsapp"),
-      supabase.from("contacts").select("id,name,phone,tags,priority,kanban_column,last_message,last_message_at,is_unread,assigned_agent_id"),
+        .select(
+          "id,contact_id,service_id,agent_id,professional_id,starts_at,ends_at,status,notes,notify_whatsapp",
+        ),
+      supabase
+        .from("contacts")
+        .select(
+          "id,name,phone,tags,priority,kanban_column,last_message,last_message_at,is_unread,assigned_agent_id",
+        ),
       supabase
         .from("services")
-        .select("id,category_id,name,description,price_cents,duration_minutes,color,status,created_at")
+        .select(
+          "id,category_id,name,description,price_cents,duration_minutes,buffer_minutes,color,status,created_at",
+        )
         .order("created_at", { ascending: true }),
     ]);
     if (apptErr) console.warn("[schedule] select appointments:", apptErr.message);
     setItems(
-      (appts && appts.length > 0)
-        ? appts.map(mapAppt)
-        : (import.meta.env.DEV ? MOCK_APPOINTMENTS : []),
+      appts && appts.length > 0 ? appts.map(mapAppt) : import.meta.env.DEV ? MOCK_APPOINTMENTS : [],
     );
     if (cts && cts.length > 0) {
       setContacts(
@@ -161,8 +170,8 @@ function SchedulePage() {
           name: r.name,
           phone: r.phone,
           tags: Array.isArray(r.tags) ? r.tags : [],
-          priority: (r.priority === "urgent" ? "urgent" : "normal"),
-          kanban_column: (r.kanban_column ?? "waiting"),
+          priority: r.priority === "urgent" ? "urgent" : "normal",
+          kanban_column: r.kanban_column ?? "waiting",
           lastMessage: r.last_message ?? "",
           lastMessageAt: r.last_message_at ? new Date(r.last_message_at) : new Date(),
           assignedAgent: r.assigned_agent_id ?? null,
@@ -178,46 +187,57 @@ function SchedulePage() {
         description: s.description ?? "",
         price_cents: s.price_cents ?? 0,
         duration_minutes: s.duration_minutes ?? 30,
+        buffer_minutes: s.buffer_minutes ?? 0,
         color: s.color ?? "#25C880",
         status: (s.status ?? "active") as Service["status"],
         created_at: s.created_at ? new Date(s.created_at) : new Date(),
       })),
     );
-    
   }, [mapAppt]);
 
   React.useEffect(() => {
     void reload();
     // refresh ao voltar para a aba
-    const onVis = () => { if (document.visibilityState === "visible") void reload(); };
+    const onVis = () => {
+      if (document.visibilityState === "visible") void reload();
+    };
     document.addEventListener("visibilitychange", onVis);
     // evento disparado pelo ScheduleModal (Inbox/WhatsApp)
     const onCreated = (e: Event) => {
       const detail = (e as CustomEvent).detail;
-      if (!detail?.id) { void reload(); return; }
-      setItems((prev) => prev.some((a) => a.id === detail.id) ? prev : [...prev, mapAppt(detail)]);
+      if (!detail?.id) {
+        void reload();
+        return;
+      }
+      setItems((prev) =>
+        prev.some((a) => a.id === detail.id) ? prev : [...prev, mapAppt(detail)],
+      );
     };
     window.addEventListener("zf:appointment-created", onCreated);
     // realtime
     const ch = supabase
       .channel("appointments-rt")
-      .on("postgres_changes", { event: "*", schema: "public", table: "appointments" }, (payload) => {
-        if (payload.eventType === "DELETE") {
-          const id = (payload.old as any)?.id;
-          if (id) setItems((prev) => prev.filter((a) => a.id !== id));
-          return;
-        }
-        const row = payload.new as any;
-        if (!row) return;
-        setItems((prev) => {
-          const next = mapAppt(row);
-          const i = prev.findIndex((a) => a.id === next.id);
-          if (i === -1) return [...prev, next];
-          const copy = prev.slice();
-          copy[i] = next;
-          return copy;
-        });
-      })
+      .on(
+        "postgres_changes",
+        { event: "*", schema: "public", table: "appointments" },
+        (payload) => {
+          if (payload.eventType === "DELETE") {
+            const id = (payload.old as any)?.id;
+            if (id) setItems((prev) => prev.filter((a) => a.id !== id));
+            return;
+          }
+          const row = payload.new as any;
+          if (!row) return;
+          setItems((prev) => {
+            const next = mapAppt(row);
+            const i = prev.findIndex((a) => a.id === next.id);
+            if (i === -1) return [...prev, next];
+            const copy = prev.slice();
+            copy[i] = next;
+            return copy;
+          });
+        },
+      )
       .subscribe();
     return () => {
       document.removeEventListener("visibilitychange", onVis);
@@ -238,19 +258,22 @@ function SchedulePage() {
     });
   }, [items, agentFilter, agents]);
 
-  const open = openId ? items.find((i) => i.id === openId) ?? null : null;
+  const open = openId ? (items.find((i) => i.id === openId) ?? null) : null;
 
   const notifyChangeFn = useServerFn(notifyAppointmentChange);
   const { workspaceOwnerId } = useWorkspaceOwnerId();
 
   const upsert = async (draft: Appointment) => {
-    // overlap detection
+    // overlap detection (infla a janela pelo buffer do serviço do draft, pra
+    // não deixar marcar em cima do intervalo de limpeza/preparo configurado)
+    const bufferMs =
+      (services.find((s) => s.id === draft.service_id)?.buffer_minutes ?? 0) * 60_000;
     const conflict = items.find(
       (a) =>
         a.id !== draft.id &&
         a.status !== "cancelled" &&
         a.agent_id === draft.agent_id &&
-        overlap(a, draft),
+        overlap(a, draft, bufferMs),
     );
     if (conflict) {
       nfy.error("Horário em conflito com outro agendamento desse agente.");
@@ -291,8 +314,7 @@ function SchedulePage() {
     }
     nfy.success(exists ? "Agendamento atualizado." : "Agendamento criado.");
     {
-      const rescheduled =
-        exists && previous!.starts_at.getTime() !== draft.starts_at.getTime();
+      const rescheduled = exists && previous!.starts_at.getTime() !== draft.starts_at.getTime();
       const kind: "created" | "rescheduled" | null = !exists
         ? "created"
         : rescheduled
@@ -321,8 +343,8 @@ function SchedulePage() {
     nfy.success(`Status: ${STATUS_LABEL[status]}`);
     await supabase.from("appointments").update({ status }).eq("id", id);
     if (status === "cancelled" && before && before.status !== "cancelled") {
-      void notifyChangeFn({ data: { appointmentId: id, kind: "cancelled" } }).catch(
-        (e) => console.warn("[schedule] notify cancel falhou:", e),
+      void notifyChangeFn({ data: { appointmentId: id, kind: "cancelled" } }).catch((e) =>
+        console.warn("[schedule] notify cancel falhou:", e),
       );
     }
   };
@@ -338,8 +360,7 @@ function SchedulePage() {
   const shift = (dir: 1 | -1) => {
     if (view === "day") setCursor((d) => addDays(d, dir));
     else if (view === "week") setCursor((d) => addDays(d, 7 * dir));
-    else if (view === "month")
-      setCursor((d) => new Date(d.getFullYear(), d.getMonth() + dir, 1));
+    else if (view === "month") setCursor((d) => new Date(d.getFullYear(), d.getMonth() + dir, 1));
   };
   const today = () => setCursor(new Date());
 
@@ -366,9 +387,7 @@ function SchedulePage() {
       {/* Header */}
       <div className="flex flex-wrap items-center justify-between" style={{ gap: 12 }}>
         <div>
-          <h1 style={{ fontSize: 22, fontWeight: 600, letterSpacing: "-0.015em" }}>
-            Agenda
-          </h1>
+          <h1 style={{ fontSize: 22, fontWeight: 600, letterSpacing: "-0.015em" }}>Agenda</h1>
           <p style={{ marginTop: 2, fontSize: 12, color: "var(--text-muted)" }}>
             {filtered.length} agendamento{filtered.length === 1 ? "" : "s"}
             {agentFilter !== "all" && agents.length > 0
@@ -479,9 +498,7 @@ function SchedulePage() {
             items={filtered}
             ctx={ctx}
             onOpen={(id) => setOpenId(id)}
-            onSlotClick={(starts) =>
-              setEditing({ mode: "create", preset: { starts_at: starts } })
-            }
+            onSlotClick={(starts) => setEditing({ mode: "create", preset: { starts_at: starts } })}
           />
         )}
         {view === "week" && (
@@ -490,9 +507,7 @@ function SchedulePage() {
             items={filtered}
             ctx={ctx}
             onOpen={(id) => setOpenId(id)}
-            onSlotClick={(starts) =>
-              setEditing({ mode: "create", preset: { starts_at: starts } })
-            }
+            onSlotClick={(starts) => setEditing({ mode: "create", preset: { starts_at: starts } })}
           />
         )}
         {view === "month" && (
@@ -507,9 +522,7 @@ function SchedulePage() {
             }}
           />
         )}
-        {view === "list" && (
-          <ListView items={filtered} ctx={ctx} onOpen={(id) => setOpenId(id)} />
-        )}
+        {view === "list" && <ListView items={filtered} ctx={ctx} onOpen={(id) => setOpenId(id)} />}
       </div>
 
       {editing && (
@@ -736,7 +749,10 @@ function DayView({
         onClick={(e) => {
           const rect = (e.currentTarget as HTMLDivElement).getBoundingClientRect();
           const y = e.clientY - rect.top;
-          const minutes = Math.max(0, Math.round((y - GRID_TOP_PAD) / PX_PER_MIN / SLOT_MIN) * SLOT_MIN);
+          const minutes = Math.max(
+            0,
+            Math.round((y - GRID_TOP_PAD) / PX_PER_MIN / SLOT_MIN) * SLOT_MIN,
+          );
           const starts = startOfDay(date);
           starts.setMinutes(minutes + HOUR_START * 60);
           onSlotClick(starts);
@@ -744,14 +760,7 @@ function DayView({
       >
         <HourGrid height={height}>
           {dayItems.map((a) => (
-            <EventBlock
-              key={a.id}
-              a={a}
-              ctx={ctx}
-              onOpen={onOpen}
-              left={8}
-              right={8}
-            />
+            <EventBlock key={a.id} a={a} ctx={ctx} onOpen={onOpen} left={8} right={8} />
           ))}
           <NowLine date={date} />
         </HourGrid>
@@ -794,7 +803,9 @@ function WeekView({
             boxShadow: "0 1px 0 var(--border)",
           }}
         >
-          <div style={{ width: TIME_COL_W, flexShrink: 0, borderRight: "1px solid var(--border)" }} />
+          <div
+            style={{ width: TIME_COL_W, flexShrink: 0, borderRight: "1px solid var(--border)" }}
+          />
           {days.map((d, i) => {
             const isToday = sameDay(d, new Date());
             return (
@@ -830,7 +841,9 @@ function WeekView({
                     display: "inline-flex",
                     alignItems: "center",
                     justifyContent: "center",
-                    boxShadow: isToday ? "0 2px 6px color-mix(in oklab, var(--brand-400) 40%, transparent)" : "none",
+                    boxShadow: isToday
+                      ? "0 2px 6px color-mix(in oklab, var(--brand-400) 40%, transparent)"
+                      : "none",
                   }}
                 >
                   {d.getDate()}
@@ -867,7 +880,15 @@ function WeekView({
                 >
                   <HourGrid height={height}>
                     {dayItems.map((a) => (
-                      <EventBlock key={a.id} a={a} ctx={ctx} onOpen={onOpen} left={3} right={3} compact />
+                      <EventBlock
+                        key={a.id}
+                        a={a}
+                        ctx={ctx}
+                        onOpen={onOpen}
+                        left={3}
+                        right={3}
+                        compact
+                      />
                     ))}
                     <NowLine date={d} />
                   </HourGrid>
@@ -930,8 +951,7 @@ function EventBlock({
   compact?: boolean;
 }) {
   const { contact, service, agent, color } = lookup(ctx, a);
-  const startMin =
-    a.starts_at.getHours() * 60 + a.starts_at.getMinutes() - HOUR_START * 60;
+  const startMin = a.starts_at.getHours() * 60 + a.starts_at.getMinutes() - HOUR_START * 60;
   const dur = (a.ends_at.getTime() - a.starts_at.getTime()) / 60_000;
   const top = Math.max(0, GRID_TOP_PAD + startMin * PX_PER_MIN);
   const height = Math.max(22, dur * PX_PER_MIN - 2);
@@ -967,10 +987,7 @@ function EventBlock({
       onMouseEnter={(e) => (e.currentTarget.style.transform = "scale(1.01)")}
       onMouseLeave={(e) => (e.currentTarget.style.transform = "scale(1)")}
     >
-      <div
-        className="truncate"
-        style={{ fontSize: compact ? 11 : 12, fontWeight: 600 }}
-      >
+      <div className="truncate" style={{ fontSize: compact ? 11 : 12, fontWeight: 600 }}>
         {contact?.name ?? "Sem contato"}
       </div>
       {height > 32 && (
@@ -1258,10 +1275,7 @@ function ListView({
                         {formatHM(a.starts_at)}–{formatHM(a.ends_at)}
                       </div>
                       <div className="flex-1 min-w-0">
-                        <div
-                          className="truncate"
-                          style={{ fontSize: 13, fontWeight: 500 }}
-                        >
+                        <div className="truncate" style={{ fontSize: 13, fontWeight: 500 }}>
                           {contact?.name ?? "Sem contato"}
                         </div>
                         <div
@@ -1365,9 +1379,7 @@ function DetailPanel({
           />
           <div className="flex-1 min-w-0">
             <div style={{ fontSize: 13, fontWeight: 600 }}>{contact?.name ?? "—"}</div>
-            <div style={{ fontSize: 11, color: "var(--text-muted)" }}>
-              {service?.name}
-            </div>
+            <div style={{ fontSize: 11, color: "var(--text-muted)" }}>{service?.name}</div>
           </div>
           <button
             type="button"
@@ -1414,7 +1426,11 @@ function DetailPanel({
               year: "numeric",
             })}
           />
-          <DataRow label="Horário" value={`${formatHM(appt.starts_at)} – ${formatHM(appt.ends_at)}`} mono />
+          <DataRow
+            label="Horário"
+            value={`${formatHM(appt.starts_at)} – ${formatHM(appt.ends_at)}`}
+            mono
+          />
           <DataRow
             label="Duração"
             value={`${Math.round(
@@ -1481,7 +1497,10 @@ function DetailPanel({
           }}
         >
           {!past && appt.status !== "confirmed" && (
-            <ActionBtn icon={<CheckCircle2 size={13} />} onClick={() => onStatus(appt.id, "confirmed")}>
+            <ActionBtn
+              icon={<CheckCircle2 size={13} />}
+              onClick={() => onStatus(appt.id, "confirmed")}
+            >
               Confirmar
             </ActionBtn>
           )}
@@ -1501,11 +1520,7 @@ function DetailPanel({
             </ActionLink>
           )}
           {appt.status !== "cancelled" && !past && (
-            <ActionBtn
-              icon={<X size={13} />}
-              danger
-              onClick={() => onStatus(appt.id, "cancelled")}
-            >
+            <ActionBtn icon={<X size={13} />} danger onClick={() => onStatus(appt.id, "cancelled")}>
               Cancelar
             </ActionBtn>
           )}
@@ -1658,16 +1673,14 @@ function AppointmentModal({
   ).padStart(2, "0")}`;
 
   const [contactQuery, setContactQuery] = React.useState(
-    initial ? contacts.find((c) => c.id === initial.contact_id)?.name ?? "" : "",
+    initial ? (contacts.find((c) => c.id === initial.contact_id)?.name ?? "") : "",
   );
   const [contactId, setContactId] = React.useState(initial?.contact_id ?? "");
   const [showAdd, setShowAdd] = React.useState(false);
   const [newName, setNewName] = React.useState("");
   const [newPhone, setNewPhone] = React.useState("");
 
-  const [serviceId, setServiceId] = React.useState(
-    initial?.service_id ?? services[0]?.id ?? "",
-  );
+  const [serviceId, setServiceId] = React.useState(initial?.service_id ?? services[0]?.id ?? "");
   const [agentId, setAgentId] = React.useState(initial?.agent_id ?? agents[0]?.id ?? "");
   const [date, setDate] = React.useState(toDateInput(baseDate));
   const [dateText, setDateText] = React.useState(formatDateBR(toDateInput(baseDate)));
@@ -1724,7 +1737,11 @@ function AppointmentModal({
       return;
     }
     const draft: Appointment = {
-      id: initial?.id ?? (typeof crypto !== "undefined" && crypto.randomUUID ? crypto.randomUUID() : `${Date.now()}-${Math.random().toString(36).slice(2)}`),
+      id:
+        initial?.id ??
+        (typeof crypto !== "undefined" && crypto.randomUUID
+          ? crypto.randomUUID()
+          : `${Date.now()}-${Math.random().toString(36).slice(2)}`),
       contact_id: cid,
       service_id: serviceId,
       agent_id: agentId,
@@ -1837,7 +1854,9 @@ function AppointmentModal({
                             background: "transparent",
                             textAlign: "left",
                           }}
-                          onMouseEnter={(e) => (e.currentTarget.style.background = "var(--bg-overlay)")}
+                          onMouseEnter={(e) =>
+                            (e.currentTarget.style.background = "var(--bg-overlay)")
+                          }
                           onMouseLeave={(e) => (e.currentTarget.style.background = "transparent")}
                         >
                           <span style={{ fontSize: 13, fontWeight: 500 }}>{c.name}</span>
@@ -1910,7 +1929,12 @@ function AppointmentModal({
               >
                 {services.map((s) => (
                   <option key={s.id} value={s.id}>
-                    {s.name} · {(s.price_cents / 100).toLocaleString("pt-BR", { style: "currency", currency: "BRL" })} · {s.duration_minutes}min
+                    {s.name} ·{" "}
+                    {(s.price_cents / 100).toLocaleString("pt-BR", {
+                      style: "currency",
+                      currency: "BRL",
+                    })}{" "}
+                    · {s.duration_minutes}min
                   </option>
                 ))}
               </select>
@@ -1928,7 +1952,8 @@ function AppointmentModal({
                       const raw = e.target.value.replace(/[^\d/]/g, "").slice(0, 10);
                       const d = raw.replace(/\D/g, "");
                       let masked = d;
-                      if (d.length > 4) masked = `${d.slice(0, 2)}/${d.slice(2, 4)}/${d.slice(4, 8)}`;
+                      if (d.length > 4)
+                        masked = `${d.slice(0, 2)}/${d.slice(2, 4)}/${d.slice(4, 8)}`;
                       else if (d.length > 2) masked = `${d.slice(0, 2)}/${d.slice(2)}`;
                       setDateText(masked);
                       const iso = parseDateBR(masked);
@@ -2070,9 +2095,7 @@ function AppointmentModal({
               }}
             >
               <div>
-                <div style={{ fontSize: 13, fontWeight: 500 }}>
-                  Notificar cliente via WhatsApp
-                </div>
+                <div style={{ fontSize: 13, fontWeight: 500 }}>Notificar cliente via WhatsApp</div>
                 <div style={{ fontSize: 11, color: "var(--text-muted)" }}>
                   Envia mensagem de confirmação automática.
                 </div>
@@ -2091,7 +2114,8 @@ function AppointmentModal({
                 fontFamily: "var(--font-mono, ui-monospace)",
               }}
             >
-              {starts.toLocaleString("pt-BR", { dateStyle: "medium", timeStyle: "short" })} → {formatHM(ends)} ({dur} min)
+              {starts.toLocaleString("pt-BR", { dateStyle: "medium", timeStyle: "short" })} →{" "}
+              {formatHM(ends)} ({dur} min)
             </div>
 
             {conflict && (

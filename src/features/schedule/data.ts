@@ -7,11 +7,7 @@ import {
 } from "@/features/services/data";
 
 export type AppointmentStatus =
-  | "scheduled"
-  | "confirmed"
-  | "in_progress"
-  | "completed"
-  | "cancelled";
+  "scheduled" | "confirmed" | "in_progress" | "completed" | "cancelled";
 
 export interface Agent {
   id: string;
@@ -137,8 +133,11 @@ export function startOfMonthGrid(d: Date) {
 export function isPast(d: Date) {
   return d.getTime() < Date.now();
 }
-export function overlap(a: Appointment, b: Appointment) {
-  return a.starts_at < b.ends_at && b.starts_at < a.ends_at;
+export function overlap(a: Appointment, b: Appointment, bufferMs = 0) {
+  return (
+    a.starts_at.getTime() < b.ends_at.getTime() + bufferMs &&
+    b.starts_at.getTime() < a.ends_at.getTime() + bufferMs
+  );
 }
 
 /* ---------------- mocks ---------------- */

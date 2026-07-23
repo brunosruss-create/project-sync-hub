@@ -5,11 +5,7 @@ import { supabase } from "@/integrations/supabase/client";
 import { useAuth } from "@/hooks/use-auth";
 import { useWorkspaceOwnerId } from "@/hooks/use-workspace-owner";
 import { type ContactCard } from "./data";
-import {
-  formatCurrencyBRL,
-  formatDuration,
-  type Service,
-} from "@/features/services/data";
+import { formatCurrencyBRL, formatDuration, type Service } from "@/features/services/data";
 import {
   toDateInput,
   fromDateTimeInput,
@@ -65,8 +61,8 @@ export function ScheduleModal({
   const { workspaceOwnerId } = useWorkspaceOwnerId();
   const profileQ = useProfile();
   const tz =
-    ((profileQ.data as unknown as { business_timezone?: string } | null)
-      ?.business_timezone as string | undefined) || "America/Sao_Paulo";
+    ((profileQ.data as unknown as { business_timezone?: string } | null)?.business_timezone as
+      string | undefined) || "America/Sao_Paulo";
   const notifyChangeFn = useServerFn(notifyAppointmentChange);
 
   const showContactPicker = !contact;
@@ -81,7 +77,9 @@ export function ScheduleModal({
     (async () => {
       const { data, error } = await supabase
         .from("services")
-        .select("id,category_id,name,description,price_cents,duration_minutes,color,status,created_at")
+        .select(
+          "id,category_id,name,description,price_cents,duration_minutes,buffer_minutes,color,status,created_at",
+        )
         .eq("status", "active")
         .order("created_at", { ascending: true });
       if (cancelled) return;
@@ -98,17 +96,22 @@ export function ScheduleModal({
           description: s.description ?? "",
           price_cents: s.price_cents ?? 0,
           duration_minutes: s.duration_minutes ?? 30,
+          buffer_minutes: s.buffer_minutes ?? 0,
           color: s.color ?? "#25C880",
           status: (s.status ?? "active") as Service["status"],
           created_at: s.created_at ? new Date(s.created_at) : new Date(),
         })),
       );
     })();
-    return () => { cancelled = true; };
+    return () => {
+      cancelled = true;
+    };
   }, [open]);
 
   // Contact picker (quando aberto pela agenda sem contato fixo)
-  const [contactList, setContactList] = React.useState<Array<{ id: string; name: string; phone: string }>>([]);
+  const [contactList, setContactList] = React.useState<
+    Array<{ id: string; name: string; phone: string }>
+  >([]);
   const [contactQuery, setContactQuery] = React.useState("");
   const [pickedContactId, setPickedContactId] = React.useState<string>("");
   const [showAddContact, setShowAddContact] = React.useState(false);
@@ -119,14 +122,13 @@ export function ScheduleModal({
     if (!open || !showContactPicker) return;
     let cancelled = false;
     (async () => {
-      const { data } = await supabase
-        .from("contacts")
-        .select("id,name,phone")
-        .order("name");
+      const { data } = await supabase.from("contacts").select("id,name,phone").order("name");
       if (cancelled) return;
       setContactList((data ?? []) as any);
     })();
-    return () => { cancelled = true; };
+    return () => {
+      cancelled = true;
+    };
   }, [open, showContactPicker]);
 
   const pickedContact = React.useMemo(() => {
@@ -220,7 +222,9 @@ export function ScheduleModal({
       if (ids.length > 0) setSelected(new Set(ids));
       else if (initial.service_id) setSelected(new Set([initial.service_id]));
     })();
-    return () => { cancelled = true; };
+    return () => {
+      cancelled = true;
+    };
   }, [open, initial?.id, initial?.service_id]);
 
   React.useEffect(() => {
@@ -260,10 +264,14 @@ export function ScheduleModal({
   const totalMin = selectedServices.reduce((a, s) => a + s.duration_minutes, 0);
   const totalCents = selectedServices.reduce((a, s) => a + s.price_cents, 0);
   const blockMin = Math.max(totalMin, 30);
+  // Maior buffer entre os serviços selecionados — infla a janela de conflito
+  // pra não deixar escolher um horário dentro do intervalo de limpeza/preparo.
+  const bufferMin = selectedServices.reduce((a, s) => Math.max(a, s.buffer_minutes ?? 0), 0);
 
   const slotState = React.useMemo(() => {
     const map = new Map<string, { busy: boolean; past: boolean }>();
     const now = Date.now();
+    const bufferMs = bufferMin * 60_000;
     for (const slot of SLOTS) {
       const start = fromDateTimeInput(date, slot);
       const end = new Date(start.getTime() + blockMin * 60_000);
@@ -273,12 +281,12 @@ export function ScheduleModal({
         if (b.agent_id !== agentId) return false;
         const bs = new Date(b.starts_at).getTime();
         const be = new Date(b.ends_at).getTime();
-        return start.getTime() < be && bs < end.getTime();
+        return start.getTime() < be + bufferMs && bs < end.getTime() + bufferMs;
       });
       map.set(slot, { busy: isBusy, past });
     }
     return map;
-  }, [busy, agentId, date, blockMin, initial?.id]);
+  }, [busy, agentId, date, blockMin, bufferMin, initial?.id]);
 
   const toggle = (id: string) => {
     setSelected((prev) => {
@@ -354,14 +362,15 @@ export function ScheduleModal({
     const dateStr = localStart.toLocaleDateString("pt-BR", { day: "2-digit", month: "2-digit" });
     const sysContent = `Agendado para ${dateStr} às ${time} — ${selectedServices.map((s) => s.name).join(", ")}`;
 
+    const bufferMs = bufferMin * 60_000;
     let conflictQ = supabase
       .from("appointments")
       .select("id, starts_at, ends_at")
       .eq("owner_user_id", workspaceOwnerId)
       .eq("agent_id", agentId)
       .neq("status", "cancelled")
-      .lt("starts_at", endsAtUtc.toISOString())
-      .gt("ends_at", startsAtUtc.toISOString());
+      .lt("starts_at", new Date(endsAtUtc.getTime() + bufferMs).toISOString())
+      .gt("ends_at", new Date(startsAtUtc.getTime() - bufferMs).toISOString());
     if (initial?.id) conflictQ = conflictQ.neq("id", initial.id);
     const { data: conflictRows } = await conflictQ;
     if (conflictRows && conflictRows.length > 0) {
@@ -372,10 +381,7 @@ export function ScheduleModal({
 
     const selectedIds = selectedServices.map((s) => s.id);
     if (selectedIds.length) {
-      const { data: existing } = await supabase
-        .from("services")
-        .select("id")
-        .in("id", selectedIds);
+      const { data: existing } = await supabase.from("services").select("id").in("id", selectedIds);
       const existingIds = new Set((existing ?? []).map((r: any) => r.id));
       const missing = selectedIds.filter((id) => !existingIds.has(id));
       if (missing.length) {
@@ -467,10 +473,7 @@ export function ScheduleModal({
         }
       }
 
-      await supabase
-        .from("contacts")
-        .update({ kanban_column: "scheduled" })
-        .eq("id", ctc.id);
+      await supabase.from("contacts").update({ kanban_column: "scheduled" }).eq("id", ctc.id);
 
       await supabase.from("messages").insert({
         owner_user_id: workspaceOwnerId,
@@ -542,8 +545,8 @@ export function ScheduleModal({
       setSubmitting(false);
       return;
     }
-    void notifyChangeFn({ data: { appointmentId: initial.id, kind: "cancelled" } }).catch(
-      (e) => console.warn("[schedule-modal] notify cancel falhou:", e),
+    void notifyChangeFn({ data: { appointmentId: initial.id, kind: "cancelled" } }).catch((e) =>
+      console.warn("[schedule-modal] notify cancel falhou:", e),
     );
     toast.success("Agendamento cancelado.");
     onSubmitted?.();
@@ -607,10 +610,19 @@ export function ScheduleModal({
           style={{ padding: "14px 16px", borderBottom: "1px solid var(--border)" }}
         >
           <div>
-            <div style={{ fontSize: 11, color: "var(--text-muted)", textTransform: "uppercase", letterSpacing: "0.04em" }}>
+            <div
+              style={{
+                fontSize: 11,
+                color: "var(--text-muted)",
+                textTransform: "uppercase",
+                letterSpacing: "0.04em",
+              }}
+            >
               📅 {initial ? "Editar agendamento" : "Novo agendamento"}
             </div>
-            <div style={{ fontSize: 14, fontWeight: 600, color: "var(--text-primary)", marginTop: 2 }}>
+            <div
+              style={{ fontSize: 14, fontWeight: 600, color: "var(--text-primary)", marginTop: 2 }}
+            >
               {contact?.name ?? pickedContact?.name ?? "Selecione um contato"}
             </div>
           </div>
@@ -619,14 +631,23 @@ export function ScheduleModal({
             onClick={onClose}
             aria-label="Fechar"
             className="inline-flex items-center justify-center"
-            style={{ width: 30, height: 30, borderRadius: 6, color: "var(--text-muted)", background: "transparent" }}
+            style={{
+              width: 30,
+              height: 30,
+              borderRadius: 6,
+              color: "var(--text-muted)",
+              background: "transparent",
+            }}
           >
             <X size={16} />
           </button>
         </div>
 
         {/* Body */}
-        <div className="flex-1 overflow-y-auto" style={{ padding: 16, display: "flex", flexDirection: "column", gap: 16 }}>
+        <div
+          className="flex-1 overflow-y-auto"
+          style={{ padding: 16, display: "flex", flexDirection: "column", gap: 16 }}
+        >
           {/* Contact picker (somente quando aberto sem contato fixo, ex: agenda) */}
           {showContactPicker && (
             <FieldGroup label="Contato" icon={<User size={12} />}>
@@ -658,7 +679,9 @@ export function ScheduleModal({
                       }}
                     >
                       {filteredContacts.length === 0 ? (
-                        <div style={{ padding: 10, fontSize: 12, color: "var(--text-muted)" }}>Nenhum contato encontrado</div>
+                        <div style={{ padding: 10, fontSize: 12, color: "var(--text-muted)" }}>
+                          Nenhum contato encontrado
+                        </div>
                       ) : (
                         filteredContacts.map((c) => (
                           <button
@@ -669,10 +692,21 @@ export function ScheduleModal({
                               setContactQuery(c.name);
                             }}
                             className="flex flex-col items-start w-full"
-                            style={{ gap: 2, padding: "8px 10px", background: "transparent", textAlign: "left", border: "none", cursor: "pointer" }}
+                            style={{
+                              gap: 2,
+                              padding: "8px 10px",
+                              background: "transparent",
+                              textAlign: "left",
+                              border: "none",
+                              cursor: "pointer",
+                            }}
                           >
-                            <span style={{ fontSize: 13, color: "var(--text-primary)" }}>{c.name}</span>
-                            <span style={{ fontSize: 11, color: "var(--text-muted)" }}>{c.phone}</span>
+                            <span style={{ fontSize: 13, color: "var(--text-primary)" }}>
+                              {c.name}
+                            </span>
+                            <span style={{ fontSize: 11, color: "var(--text-muted)" }}>
+                              {c.phone}
+                            </span>
                           </button>
                         ))
                       )}
@@ -681,7 +715,15 @@ export function ScheduleModal({
                   <button
                     type="button"
                     onClick={() => setShowAddContact(true)}
-                    style={{ marginTop: 6, fontSize: 11, color: "var(--brand-400)", background: "transparent", border: "none", cursor: "pointer", padding: 0 }}
+                    style={{
+                      marginTop: 6,
+                      fontSize: 11,
+                      color: "var(--brand-400)",
+                      background: "transparent",
+                      border: "none",
+                      cursor: "pointer",
+                      padding: 0,
+                    }}
                   >
                     + Adicionar novo contato
                   </button>
@@ -703,7 +745,15 @@ export function ScheduleModal({
                   <button
                     type="button"
                     onClick={() => setShowAddContact(false)}
-                    style={{ fontSize: 11, color: "var(--text-muted)", background: "transparent", border: "none", cursor: "pointer", padding: 0, alignSelf: "flex-start" }}
+                    style={{
+                      fontSize: 11,
+                      color: "var(--text-muted)",
+                      background: "transparent",
+                      border: "none",
+                      cursor: "pointer",
+                      padding: 0,
+                      alignSelf: "flex-start",
+                    }}
                   >
                     ← Buscar existente
                   </button>
@@ -713,7 +763,10 @@ export function ScheduleModal({
           )}
 
           {/* Services */}
-          <FieldGroup label="Serviços" hint={`${selectedServices.length} selecionado(s) · ${formatDuration(totalMin)} · ${formatCurrencyBRL(totalCents)}`}>
+          <FieldGroup
+            label="Serviços"
+            hint={`${selectedServices.length} selecionado(s) · ${formatDuration(totalMin)} · ${formatCurrencyBRL(totalCents)}`}
+          >
             {services.length === 0 ? (
               <div
                 style={{
@@ -776,10 +829,19 @@ export function ScheduleModal({
                         {on && <Check size={10} />}
                       </span>
                       <div className="flex-1 min-w-0">
-                        <div style={{ fontSize: 13, fontWeight: 500, color: "var(--text-primary)" }}>{s.name}</div>
-                        <div style={{ fontSize: 11, color: "var(--text-muted)" }}>{formatDuration(s.duration_minutes)}</div>
+                        <div
+                          style={{ fontSize: 13, fontWeight: 500, color: "var(--text-primary)" }}
+                        >
+                          {s.name}
+                        </div>
+                        <div style={{ fontSize: 11, color: "var(--text-muted)" }}>
+                          {formatDuration(s.duration_minutes)}
+                        </div>
                       </div>
-                      <div className="font-mono" style={{ fontSize: 12, color: "var(--text-primary)" }}>
+                      <div
+                        className="font-mono"
+                        style={{ fontSize: 12, color: "var(--text-primary)" }}
+                      >
                         {formatCurrencyBRL(s.price_cents)}
                       </div>
                     </button>
@@ -800,7 +862,8 @@ export function ScheduleModal({
                 onChange={(e) => {
                   let v = e.target.value.replace(/[^\d/]/g, "");
                   const digits = v.replace(/\D/g, "").slice(0, 8);
-                  if (digits.length >= 5) v = `${digits.slice(0, 2)}/${digits.slice(2, 4)}/${digits.slice(4)}`;
+                  if (digits.length >= 5)
+                    v = `${digits.slice(0, 2)}/${digits.slice(2, 4)}/${digits.slice(4)}`;
                   else if (digits.length >= 3) v = `${digits.slice(0, 2)}/${digits.slice(2)}`;
                   else v = digits;
                   setDateInput(v);
@@ -860,12 +923,15 @@ export function ScheduleModal({
             )}
           </FieldGroup>
 
-
           {/* Time slots */}
           <FieldGroup
             label="Horário"
             icon={<Clock size={12} />}
-            hint={busy.filter((b) => b.agent_id === agentId).length > 0 ? "Riscado = ocupado" : undefined}
+            hint={
+              busy.filter((b) => b.agent_id === agentId).length > 0
+                ? "Riscado = ocupado"
+                : undefined
+            }
           >
             <div
               style={{
@@ -886,9 +952,7 @@ export function ScheduleModal({
                     type="button"
                     onClick={() => !disabled && setTime(slot)}
                     disabled={disabled}
-                    title={
-                      st?.busy ? "Ocupado" : st?.past ? "Horário passado" : undefined
-                    }
+                    title={st?.busy ? "Ocupado" : st?.past ? "Horário passado" : undefined}
                     style={{
                       height: 28,
                       borderRadius: 4,
@@ -918,7 +982,6 @@ export function ScheduleModal({
               })}
             </div>
           </FieldGroup>
-
 
           {/* Agent */}
           <FieldGroup label="Profissional" icon={<User size={12} />}>
@@ -952,7 +1015,11 @@ export function ScheduleModal({
               className="flex items-center"
               style={{ gap: 8, cursor: "pointer", fontSize: 13, color: "var(--text-primary)" }}
             >
-              <input type="checkbox" checked={notifyWa} onChange={(e) => setNotifyWa(e.target.checked)} />
+              <input
+                type="checkbox"
+                checked={notifyWa}
+                onChange={(e) => setNotifyWa(e.target.checked)}
+              />
               <MessageCircle size={14} style={{ color: "var(--brand-400)" }} />
               Notificar pelo WhatsApp
             </label>
@@ -1104,9 +1171,7 @@ function FieldGroup({
           {icon}
           {label}
         </span>
-        {hint && (
-          <span style={{ fontSize: 11, color: "var(--text-muted)" }}>{hint}</span>
-        )}
+        {hint && <span style={{ fontSize: 11, color: "var(--text-muted)" }}>{hint}</span>}
       </div>
       {children}
     </div>
@@ -1193,24 +1258,55 @@ function MiniCalendar({
         <button
           type="button"
           onClick={() => navMonth(-1)}
-          style={{ width: 24, height: 24, borderRadius: 4, border: "none", background: "transparent", color: "var(--text-primary)", cursor: "pointer" }}
+          style={{
+            width: 24,
+            height: 24,
+            borderRadius: 4,
+            border: "none",
+            background: "transparent",
+            color: "var(--text-primary)",
+            cursor: "pointer",
+          }}
         >
           ‹
         </button>
-        <span style={{ fontSize: 12, fontWeight: 600, color: "var(--text-primary)", textTransform: "capitalize" }}>
+        <span
+          style={{
+            fontSize: 12,
+            fontWeight: 600,
+            color: "var(--text-primary)",
+            textTransform: "capitalize",
+          }}
+        >
           {monthLabel}
         </span>
         <button
           type="button"
           onClick={() => navMonth(1)}
-          style={{ width: 24, height: 24, borderRadius: 4, border: "none", background: "transparent", color: "var(--text-primary)", cursor: "pointer" }}
+          style={{
+            width: 24,
+            height: 24,
+            borderRadius: 4,
+            border: "none",
+            background: "transparent",
+            color: "var(--text-primary)",
+            cursor: "pointer",
+          }}
         >
           ›
         </button>
       </div>
       <div style={{ display: "grid", gridTemplateColumns: "repeat(7, 1fr)", gap: 2 }}>
         {dows.map((d, i) => (
-          <span key={i} style={{ fontSize: 10, color: "var(--text-muted)", textAlign: "center", padding: "2px 0" }}>
+          <span
+            key={i}
+            style={{
+              fontSize: 10,
+              color: "var(--text-muted)",
+              textAlign: "center",
+              padding: "2px 0",
+            }}
+          >
             {d}
           </span>
         ))}

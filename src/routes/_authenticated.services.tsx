@@ -9,7 +9,6 @@ import {
   type Service,
   type ServiceStatus,
   PRESET_COLORS,
-  
   SEED_CATEGORIES,
   SEED_SERVICES,
   STATUS_COLOR,
@@ -31,10 +30,7 @@ export const Route = createFileRoute("/_authenticated/services")({
   ),
 });
 
-type Editing =
-  | { mode: "create" }
-  | { mode: "edit"; service: Service }
-  | null;
+type Editing = { mode: "create" } | { mode: "edit"; service: Service } | null;
 
 function isUuid(value: string): boolean {
   return /^[0-9a-f]{8}-[0-9a-f]{4}-[1-5][0-9a-f]{3}-[89ab][0-9a-f]{3}-[0-9a-f]{12}$/i.test(value);
@@ -69,11 +65,7 @@ function ServicesPage() {
     if (!workspaceOwnerId) return;
     let cancelled = false;
     (async () => {
-      const [
-        { data: cats },
-        { data: svc, error: svcErr },
-        { data: profile },
-      ] = await Promise.all([
+      const [{ data: cats }, { data: svc, error: svcErr }, { data: profile }] = await Promise.all([
         supabase
           .from("service_categories")
           .select("id,name,color,owner_user_id")
@@ -82,7 +74,7 @@ function ServicesPage() {
         supabase
           .from("services")
           .select(
-            "id,category_id,name,description,price_cents,duration_minutes,color,status,created_at",
+            "id,category_id,name,description,price_cents,duration_minutes,buffer_minutes,color,status,created_at",
           )
           .eq("owner_user_id", workspaceOwnerId)
           .order("created_at", { ascending: true }),
@@ -97,8 +89,7 @@ function ServicesPage() {
         console.warn("[services] erro ao ler:", svcErr.message);
         notify.error(`Falha ao carregar serviços: ${svcErr.message}`);
       }
-      const segExample =
-        (profile as any)?.ai_segments?.example_service_description;
+      const segExample = (profile as any)?.ai_segments?.example_service_description;
       if (typeof segExample === "string" && segExample.trim().length > 0) {
         setDescriptionExample(segExample);
       }
@@ -117,6 +108,7 @@ function ServicesPage() {
           description: s.description ?? "",
           price_cents: s.price_cents ?? 0,
           duration_minutes: s.duration_minutes ?? 30,
+          buffer_minutes: s.buffer_minutes ?? 0,
           color: s.color ?? "#25C880",
           status: (s.status ?? "active") as ServiceStatus,
           created_at: s.created_at ? new Date(s.created_at) : new Date(),
@@ -134,15 +126,12 @@ function ServicesPage() {
       if (activeCat !== "all" && s.category_id !== activeCat) return false;
       if (query) {
         const q = query.toLowerCase();
-        if (
-          !s.name.toLowerCase().includes(q) &&
-          !s.description.toLowerCase().includes(q)
-        )
+        if (!s.name.toLowerCase().includes(q) && !s.description.toLowerCase().includes(q))
           return false;
       }
       return true;
     });
-  // eslint-disable-next-line react-hooks/exhaustive-deps
+    // eslint-disable-next-line react-hooks/exhaustive-deps
   }, [services, activeCat, query, hydrated]);
 
   const counts = React.useMemo(() => {
@@ -166,12 +155,17 @@ function ServicesPage() {
       description: draft.description,
       price_cents: draft.price_cents,
       duration_minutes: draft.duration_minutes,
-      
+      buffer_minutes: draft.buffer_minutes,
       color: draft.color,
       status: draft.status,
     };
     const query = exists
-      ? supabase.from("services").update(payload).eq("id", draft.id).select("id,created_at").single()
+      ? supabase
+          .from("services")
+          .update(payload)
+          .eq("id", draft.id)
+          .select("id,created_at")
+          .single()
       : supabase.from("services").insert(payload).select("id,created_at").single();
     const { data, error } = await query;
     if (error) {
@@ -195,10 +189,7 @@ function ServicesPage() {
       setServices((prev) => prev.filter((s) => s.id !== id));
       return;
     }
-    const { error } = await supabase
-      .from("services")
-      .update({ status: "inactive" })
-      .eq("id", id);
+    const { error } = await supabase.from("services").update({ status: "inactive" }).eq("id", id);
     if (error) {
       console.error("[services] falha ao arquivar:", error);
       notify.error(`Não foi possível arquivar: ${error.message}`);
@@ -251,12 +242,10 @@ function ServicesPage() {
       {/* Header */}
       <div className="flex flex-wrap items-center justify-between" style={{ gap: 12 }}>
         <div>
-          <h1 style={{ fontSize: 22, fontWeight: 600, letterSpacing: "-0.015em" }}>
-            Serviços
-          </h1>
+          <h1 style={{ fontSize: 22, fontWeight: 600, letterSpacing: "-0.015em" }}>Serviços</h1>
           <p style={{ marginTop: 2, fontSize: 12, color: "var(--text-muted)" }}>
-            {services.length} serviço{services.length === 1 ? "" : "s"} em{" "}
-            {categories.length} categoria{categories.length === 1 ? "" : "s"}
+            {services.length} serviço{services.length === 1 ? "" : "s"} em {categories.length}{" "}
+            categoria{categories.length === 1 ? "" : "s"}
           </p>
         </div>
 
@@ -553,7 +542,14 @@ function ServiceCard({
 
       {/* Meta */}
       <div className="flex flex-col" style={{ gap: 6, fontSize: 12 }}>
-        <MetaRow label="Tempo" value={formatDuration(service.duration_minutes)} />
+        <MetaRow
+          label="Tempo"
+          value={
+            service.buffer_minutes > 0
+              ? `${formatDuration(service.duration_minutes)} + ${service.buffer_minutes}min intervalo`
+              : formatDuration(service.duration_minutes)
+          }
+        />
         <MetaRow
           label="Valor"
           value={formatCurrencyBRL(service.price_cents)}
@@ -661,7 +657,6 @@ function MenuItem({
   );
 }
 
-
 function CategoryPill({
   active,
   onClick,
@@ -745,16 +740,10 @@ function EmptyState({ onCreate }: { onCreate: () => void }) {
           color: "var(--text-muted)",
         }}
       >
-        💡 A IA do WhatsApp usa estes serviços e suas descrições para responder
-        seus clientes. Sem nenhum serviço cadastrado, ela redireciona para
-        atendimento humano.
+        💡 A IA do WhatsApp usa estes serviços e suas descrições para responder seus clientes. Sem
+        nenhum serviço cadastrado, ela redireciona para atendimento humano.
       </div>
-      <button
-        type="button"
-        onClick={onCreate}
-        className="btn-primary"
-        style={{ marginTop: 16 }}
-      >
+      <button type="button" onClick={onCreate} className="btn-primary" style={{ marginTop: 16 }}>
         <Plus size={14} />
         Novo Serviço
       </button>
@@ -795,8 +784,9 @@ function ServiceModal({
     const m = initial?.duration_minutes ?? 30;
     return m % 60 === 0 && m >= 60 ? "h" : "min";
   });
+  const [bufferMinutes, setBufferMinutes] = React.useState(String(initial?.buffer_minutes ?? 0));
   const [color, setColor] = React.useState(initial?.color ?? PRESET_COLORS[0]);
-  
+
   const [status, setStatus] = React.useState<ServiceStatus>(initial?.status ?? "active");
   const [showNewCat, setShowNewCat] = React.useState(false);
   const [newCatName, setNewCatName] = React.useState("");
@@ -824,6 +814,7 @@ function ServiceModal({
     const cents = parseCurrencyToCents(priceText);
     const dur = Math.max(1, parseInt(durationValue, 10) || 0);
     const minutes = durationUnit === "h" ? dur * 60 : dur;
+    const buffer = Math.max(0, parseInt(bufferMinutes, 10) || 0);
 
     const draft: Service = {
       id: initial?.id ?? `srv-${Date.now()}`,
@@ -832,7 +823,7 @@ function ServiceModal({
       description: description.trim(),
       price_cents: cents,
       duration_minutes: minutes,
-      
+      buffer_minutes: buffer,
       color,
       status,
       created_at: initial?.created_at ?? new Date(),
@@ -972,11 +963,7 @@ function ServiceModal({
                       }
                     }}
                   />
-                  <button
-                    type="button"
-                    onClick={createCategory}
-                    className="btn-primary"
-                  >
+                  <button type="button" onClick={createCategory} className="btn-primary">
                     <Check size={14} /> Criar
                   </button>
                 </div>
@@ -1008,12 +995,13 @@ function ServiceModal({
                   alignItems: "flex-start",
                 }}
               >
-                <span aria-hidden style={{ flexShrink: 0 }}>💡</span>
+                <span aria-hidden style={{ flexShrink: 0 }}>
+                  💡
+                </span>
                 <span>
-                  Esta descrição é usada pela IA do WhatsApp para responder seus
-                  clientes sobre este serviço. Quanto mais específica, melhor a
-                  IA atende — sem ela, a IA não terá contexto e vai redirecionar
-                  para um atendente humano.
+                  Esta descrição é usada pela IA do WhatsApp para responder seus clientes sobre este
+                  serviço. Quanto mais específica, melhor a IA atende — sem ela, a IA não terá
+                  contexto e vai redirecionar para um atendente humano.
                 </span>
               </div>
             </ModalField>
@@ -1078,6 +1066,20 @@ function ServiceModal({
               </ModalField>
             </div>
 
+            <ModalField label="Intervalo após o atendimento (min)">
+              <input
+                value={bufferMinutes}
+                onChange={(e) => setBufferMinutes(e.target.value.replace(/\D/g, "").slice(0, 3))}
+                inputMode="numeric"
+                placeholder="0"
+                style={{ ...inputStyle, width: 120, textAlign: "right" }}
+              />
+              <div style={{ fontSize: 12, color: "var(--text-muted)", marginTop: 4 }}>
+                Tempo de folga antes do próximo atendimento do mesmo profissional (limpeza, preparo
+                etc).
+              </div>
+            </ModalField>
+
             <ModalField label="Cor">
               <div className="flex flex-wrap" style={{ gap: 6 }}>
                 {PRESET_COLORS.map((c) => (
@@ -1099,7 +1101,6 @@ function ServiceModal({
                 ))}
               </div>
             </ModalField>
-
 
             <ModalField label="Status">
               <div
@@ -1125,10 +1126,8 @@ function ServiceModal({
                       fontSize: 12,
                       fontWeight: 500,
                       background: status === s ? "var(--bg-surface)" : "transparent",
-                      color:
-                        status === s ? STATUS_COLOR[s] : "var(--text-muted)",
-                      border:
-                        status === s ? "1px solid var(--border)" : "1px solid transparent",
+                      color: status === s ? STATUS_COLOR[s] : "var(--text-muted)",
+                      border: status === s ? "1px solid var(--border)" : "1px solid transparent",
                     }}
                   >
                     {STATUS_LABEL[s]}

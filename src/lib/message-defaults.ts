@@ -19,6 +19,15 @@ export type MessageMeta = {
   default: string;
 };
 
+// Mensagem agregada enviada quando 2+ agendamentos são criados no mesmo
+// turno pela IA (ex.: cliente pede um horário pra ele e um pra um familiar).
+// Não é um MessageKey configurável na tela de Mensagens (caso raro,
+// complementar ao booking_confirmed normal) — só reaproveita o enabled/flag
+// de booking_confirmed pra respeitar se o usuário desativou confirmações.
+// {{lista}} é montado em código (não suporta loop no renderTemplate normal).
+export const BOOKING_CONFIRMED_BATCH_DEFAULT =
+  "Olá {{cliente}}!\n\n" + "Agendamentos em *{{negocio}}*:\n{{lista}}\n\n" + "Até lá! 😊";
+
 export const MESSAGE_DEFAULTS: Record<MessageKey, MessageMeta> = {
   welcome: {
     key: "welcome",
@@ -27,8 +36,7 @@ export const MESSAGE_DEFAULTS: Record<MessageKey, MessageMeta> = {
       "Enviada na primeira mensagem de um novo contato. Quando a IA está ativa, esta mensagem NÃO é enviada — a própria IA faz a saudação usando o nome do assistente e do negócio.",
     placeholders: ["{{cliente}}", "{{negocio}}"],
     preview: { cliente: "João", negocio: "Salão Bela Vista" },
-    default:
-      "Olá! Recebemos sua mensagem no {{negocio}} e já vamos te atender. 😊",
+    default: "Olá! Recebemos sua mensagem no {{negocio}} e já vamos te atender. 😊",
   },
   out_of_hours: {
     key: "out_of_hours",
@@ -43,18 +51,15 @@ export const MESSAGE_DEFAULTS: Record<MessageKey, MessageMeta> = {
   transfer: {
     key: "transfer",
     label: "Transferência para atendente",
-    description:
-      "Enviada quando a IA detecta intenção de falar com humano (palavras-chave).",
+    description: "Enviada quando a IA detecta intenção de falar com humano (palavras-chave).",
     placeholders: ["{{cliente}}"],
     preview: { cliente: "João" },
-    default:
-      "Entendi! Vou passar você para um atendente humano agora. Aguarde um momento.",
+    default: "Entendi! Vou passar você para um atendente humano agora. Aguarde um momento.",
   },
   booking_confirmed: {
     key: "booking_confirmed",
     label: "Agendamento confirmado",
-    description:
-      "Enviada ao cliente quando um agendamento é criado com sucesso.",
+    description: "Enviada ao cliente quando um agendamento é criado com sucesso.",
     placeholders: [
       "{{cliente}}",
       "{{negocio}}",
@@ -82,8 +87,7 @@ export const MESSAGE_DEFAULTS: Record<MessageKey, MessageMeta> = {
   booking_rescheduled: {
     key: "booking_rescheduled",
     label: "Agendamento reagendado",
-    description:
-      "Enviada ao cliente quando a data ou hora de um agendamento muda.",
+    description: "Enviada ao cliente quando a data ou hora de um agendamento muda.",
     placeholders: [
       "{{cliente}}",
       "{{negocio}}",
@@ -111,15 +115,8 @@ export const MESSAGE_DEFAULTS: Record<MessageKey, MessageMeta> = {
   booking_cancelled: {
     key: "booking_cancelled",
     label: "Agendamento cancelado",
-    description:
-      "Enviada ao cliente quando um agendamento é marcado como cancelado.",
-    placeholders: [
-      "{{cliente}}",
-      "{{negocio}}",
-      "{{data}}",
-      "{{hora}}",
-      "{{servico}}",
-    ],
+    description: "Enviada ao cliente quando um agendamento é marcado como cancelado.",
+    placeholders: ["{{cliente}}", "{{negocio}}", "{{data}}", "{{hora}}", "{{servico}}"],
     preview: {
       cliente: "João",
       negocio: "Salão Bela Vista",
