@@ -78,7 +78,7 @@ export function ScheduleModal({
       const { data, error } = await supabase
         .from("services")
         .select(
-          "id,category_id,name,description,price_cents,duration_minutes,buffer_minutes,color,status,created_at",
+          "id,name,description,price_cents,duration_minutes,buffer_minutes,color,status,created_at",
         )
         .eq("status", "active")
         .order("created_at", { ascending: true });
@@ -91,7 +91,6 @@ export function ScheduleModal({
       setServices(
         (data ?? []).map((s: any) => ({
           id: s.id,
-          category_id: s.category_id ?? "",
           name: s.name,
           description: s.description ?? "",
           price_cents: s.price_cents ?? 0,

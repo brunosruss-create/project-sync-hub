@@ -1,14 +1,7 @@
 export type ServiceStatus = "active" | "inactive" | "draft";
 
-export interface Category {
-  id: string;
-  name: string;
-  color: string;
-}
-
 export interface Service {
   id: string;
-  category_id: string;
   name: string;
   description: string;
   price_cents: number;
@@ -30,18 +23,9 @@ export const PRESET_COLORS = [
   "#64748B",
 ];
 
-export const SEED_CATEGORIES: Category[] = [
-  { id: "cat-1", name: "Revisão", color: "#25C880" },
-  { id: "cat-2", name: "Elétrica", color: "#F59E0B" },
-  { id: "cat-3", name: "Suspensão", color: "#3B82F6" },
-  { id: "cat-4", name: "Freios", color: "#EF4444" },
-  { id: "cat-5", name: "Estética", color: "#8B5CF6" },
-];
-
 export const SEED_SERVICES: Service[] = [
   {
     id: "srv-1",
-    category_id: "cat-1",
     name: "Revisão de Óleo",
     description: "Troca de óleo + filtro de óleo. Verificação de níveis.",
     price_cents: 8990,
@@ -53,7 +37,6 @@ export const SEED_SERVICES: Service[] = [
   },
   {
     id: "srv-2",
-    category_id: "cat-2",
     name: "Diagnóstico Elétrico",
     description: "Análise completa do sistema elétrico com scanner.",
     price_cents: 15000,
@@ -65,7 +48,6 @@ export const SEED_SERVICES: Service[] = [
   },
   {
     id: "srv-3",
-    category_id: "cat-3",
     name: "Alinhamento e Balanceamento",
     description: "Alinhamento computadorizado das 4 rodas + balanceamento.",
     price_cents: 12990,
@@ -77,7 +59,6 @@ export const SEED_SERVICES: Service[] = [
   },
   {
     id: "srv-4",
-    category_id: "cat-4",
     name: "Troca de Pastilhas",
     description: "Substituição de pastilhas dianteiras com revisão dos discos.",
     price_cents: 24500,
@@ -89,7 +70,6 @@ export const SEED_SERVICES: Service[] = [
   },
   {
     id: "srv-5",
-    category_id: "cat-5",
     name: "Polimento Completo",
     description: "Polimento de pintura + cristalização. Cera de proteção.",
     price_cents: 35000,

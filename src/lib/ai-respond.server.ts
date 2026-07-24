@@ -414,9 +414,7 @@ function buildServicesLayer(
     description: string | null;
     duration_minutes: number | null;
     price_cents: number | null;
-    category_id: string | null;
   }>,
-  categoryNameById: Record<string, string>,
   pricePolicy: PriceDisclosurePolicy,
 ): string {
   if (!services || services.length === 0) {
@@ -445,9 +443,6 @@ function buildServicesLayer(
     const dur = s.duration_minutes && s.duration_minutes > 0 ? `${s.duration_minutes} min` : null;
     const header = dur ? `- ${s.name} (${dur})` : `- ${s.name}`;
     lines.push(header);
-    if (s.category_id && categoryNameById[s.category_id]) {
-      lines.push(`  Categoria: ${categoryNameById[s.category_id]}`);
-    }
     const desc = (s.description ?? "").trim();
     if (desc) {
       lines.push(`  Descrição: ${desc}`);
@@ -782,36 +777,20 @@ export async function runAiResponse(input: AiRunInput): Promise<AiRunResult> {
   } | null;
 
   // ===== CATÁLOGO DE SERVIÇOS (fonte única de verdade) =====
-  // Carrega os serviços ativos do workspace + categorias para nomear cada um.
+  // Carrega os serviços ativos do workspace.
   // A IA NUNCA deve inferir serviços a partir de business_description,
   // segmento ou nome — só pode falar do que está aqui.
   const { data: activeServices } = await supabaseAdmin
     .from("services")
-    .select("name,description,duration_minutes,price_cents,category_id")
+    .select("name,description,duration_minutes,price_cents")
     .eq("owner_user_id", data.workspace_owner_id)
     .eq("status", "active")
     .order("name", { ascending: true });
 
-  let categoryNameById: Record<string, string> = {};
-  const categoryIds = Array.from(
-    new Set((activeServices ?? []).map((s) => s.category_id).filter(Boolean)),
-  ) as string[];
-  if (categoryIds.length > 0) {
-    const { data: cats } = await supabaseAdmin
-      .from("service_categories")
-      .select("id,name")
-      .in("id", categoryIds);
-    categoryNameById = Object.fromEntries((cats ?? []).map((c) => [c.id, c.name]));
-  }
-
   const pricePolicyForCatalog: PriceDisclosurePolicy =
     ((profile as any).ai_price_disclosure_policy as PriceDisclosurePolicy) ?? "on_request";
 
-  const servicesLayer = buildServicesLayer(
-    activeServices ?? [],
-    categoryNameById,
-    pricePolicyForCatalog,
-  );
+  const servicesLayer = buildServicesLayer(activeServices ?? [], pricePolicyForCatalog);
 
   // ===== PROFISSIONAIS + AGENDA (próximos 7 dias) =====
   const { data: prosRows } = await supabaseAdmin

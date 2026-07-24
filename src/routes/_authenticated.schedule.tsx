@@ -28,7 +28,6 @@ import {
   MOCK_CONTACTS,
   MONTHS_PT,
   PX_PER_MIN,
-  SEED_CATEGORIES,
   SLOT_MIN,
   STATUS_COLOR,
   STATUS_LABEL,
@@ -155,7 +154,7 @@ function SchedulePage() {
       supabase
         .from("services")
         .select(
-          "id,category_id,name,description,price_cents,duration_minutes,buffer_minutes,color,status,created_at",
+          "id,name,description,price_cents,duration_minutes,buffer_minutes,color,status,created_at",
         )
         .order("created_at", { ascending: true }),
     ]);
@@ -182,7 +181,6 @@ function SchedulePage() {
     setServices(
       (svc ?? []).map((s: any) => ({
         id: s.id,
-        category_id: s.category_id ?? "",
         name: s.name,
         description: s.description ?? "",
         price_cents: s.price_cents ?? 0,
@@ -650,8 +648,7 @@ function lookup(ctx: Ctx, a: Appointment) {
   const contact = ctx.contacts.find((c) => c.id === a.contact_id);
   const service = ctx.services.find((s) => s.id === a.service_id);
   const agent = ctx.agents.find((g) => g.id === a.agent_id);
-  const cat = service ? SEED_CATEGORIES.find((c) => c.id === service.category_id) : null;
-  return { contact, service, agent, color: cat?.color ?? service?.color ?? "#3B82F6" };
+  return { contact, service, agent, color: service?.color ?? "#3B82F6" };
 }
 
 const HOURS = Array.from({ length: HOUR_END - HOUR_START + 1 }, (_, i) => HOUR_START + i);

@@ -5,11 +5,9 @@ import { ConfirmDialog } from "@/components/confirm-dialog";
 import { notify } from "@/lib/notify";
 import { supabase } from "@/integrations/supabase/client";
 import {
-  type Category,
   type Service,
   type ServiceStatus,
   PRESET_COLORS,
-  SEED_CATEGORIES,
   SEED_SERVICES,
   STATUS_COLOR,
   STATUS_LABEL,
@@ -41,13 +39,11 @@ const FALLBACK_DESCRIPTION_EXAMPLE =
 
 function ServicesPage() {
   const { workspaceOwnerId } = useWorkspaceOwnerId();
-  const [categories, setCategories] = React.useState<Category[]>(SEED_CATEGORIES);
   const [services, setServices] = React.useState<Service[]>(SEED_SERVICES);
   const [descriptionExample, setDescriptionExample] = React.useState<string>(
     FALLBACK_DESCRIPTION_EXAMPLE,
   );
 
-  const [activeCat, setActiveCat] = React.useState<string>("all");
   const [query, setQuery] = React.useState("");
   const [editing, setEditing] = React.useState<Editing>(null);
 
@@ -65,16 +61,11 @@ function ServicesPage() {
     if (!workspaceOwnerId) return;
     let cancelled = false;
     (async () => {
-      const [{ data: cats }, { data: svc, error: svcErr }, { data: profile }] = await Promise.all([
-        supabase
-          .from("service_categories")
-          .select("id,name,color,owner_user_id")
-          .or(`owner_user_id.is.null,owner_user_id.eq.${workspaceOwnerId}`)
-          .order("created_at", { ascending: true }),
+      const [{ data: svc, error: svcErr }, { data: profile }] = await Promise.all([
         supabase
           .from("services")
           .select(
-            "id,category_id,name,description,price_cents,duration_minutes,buffer_minutes,color,status,created_at",
+            "id,name,description,price_cents,duration_minutes,buffer_minutes,color,status,created_at",
           )
           .eq("owner_user_id", workspaceOwnerId)
           .order("created_at", { ascending: true }),
@@ -93,17 +84,11 @@ function ServicesPage() {
       if (typeof segExample === "string" && segExample.trim().length > 0) {
         setDescriptionExample(segExample);
       }
-      if (cats && cats.length > 0) {
-        setCategories(
-          cats.map((c: any) => ({ id: c.id, name: c.name, color: c.color ?? "#25C880" })),
-        );
-      }
       // Substitui SEMPRE pelo que veio do banco (mesmo lista vazia) — assim
       // SEEDs locais não confundem o usuário fingindo que existem serviços.
       setServices(
         (svc ?? []).map((s: any) => ({
           id: s.id,
-          category_id: s.category_id ?? "",
           name: s.name,
           description: s.description ?? "",
           price_cents: s.price_cents ?? 0,
@@ -123,7 +108,6 @@ function ServicesPage() {
 
   const filtered = React.useMemo(() => {
     return services.filter((s) => {
-      if (activeCat !== "all" && s.category_id !== activeCat) return false;
       if (query) {
         const q = query.toLowerCase();
         if (!s.name.toLowerCase().includes(q) && !s.description.toLowerCase().includes(q))
@@ -132,14 +116,7 @@ function ServicesPage() {
       return true;
     });
     // eslint-disable-next-line react-hooks/exhaustive-deps
-  }, [services, activeCat, query, hydrated]);
-
-  const counts = React.useMemo(() => {
-    const m: Record<string, number> = { all: services.length };
-    for (const c of categories) m[c.id] = 0;
-    for (const s of services) m[s.category_id] = (m[s.category_id] ?? 0) + 1;
-    return m;
-  }, [services, categories]);
+  }, [services, query, hydrated]);
 
   const upsertService = async (draft: Service) => {
     if (!workspaceOwnerId) {
@@ -150,7 +127,6 @@ function ServicesPage() {
 
     const payload: Record<string, unknown> = {
       owner_user_id: workspaceOwnerId,
-      category_id: draft.category_id && isUuid(draft.category_id) ? draft.category_id : null,
       name: draft.name,
       description: draft.description,
       price_cents: draft.price_cents,
@@ -219,24 +195,6 @@ function ServicesPage() {
     notify.success("Serviço excluído.");
   };
 
-  const addCategory = async (name: string, color: string): Promise<Category> => {
-    const tempId = `cat-${Date.now()}`;
-    const { data, error } = await supabase
-      .from("service_categories")
-      .insert({ name, color, owner_user_id: workspaceOwnerId ?? undefined })
-      .select("id")
-      .single();
-    if (error || !data?.id) {
-      notify.error(`Não foi possível criar categoria: ${error?.message ?? "erro"}`);
-      const cat: Category = { id: tempId, name, color };
-      setCategories((prev) => [...prev, cat]);
-      return cat;
-    }
-    const cat: Category = { id: data.id, name, color };
-    setCategories((prev) => [...prev, cat]);
-    return cat;
-  };
-
   return (
     <div className="flex flex-col" style={{ gap: 20 }}>
       {/* Header */}
@@ -244,8 +202,7 @@ function ServicesPage() {
         <div>
           <h1 style={{ fontSize: 22, fontWeight: 600, letterSpacing: "-0.015em" }}>Serviços</h1>
           <p style={{ marginTop: 2, fontSize: 12, color: "var(--text-muted)" }}>
-            {services.length} serviço{services.length === 1 ? "" : "s"} em {categories.length}{" "}
-            categoria{categories.length === 1 ? "" : "s"}
+            {services.length} serviço{services.length === 1 ? "" : "s"}
           </p>
         </div>
 
@@ -291,41 +248,6 @@ function ServicesPage() {
         </div>
       </div>
 
-      {/* Category tabs */}
-      <div
-        className="flex flex-wrap items-center"
-        style={{
-          gap: 4,
-          padding: 4,
-          background: "var(--bg-overlay)",
-          border: "1px solid var(--border)",
-          borderRadius: 8,
-          width: "fit-content",
-          maxWidth: "100%",
-          overflowX: "auto",
-        }}
-      >
-        <CategoryPill
-          active={activeCat === "all"}
-          onClick={() => setActiveCat("all")}
-          color="var(--text-muted)"
-          count={counts.all}
-        >
-          Todos
-        </CategoryPill>
-        {categories.map((c) => (
-          <CategoryPill
-            key={c.id}
-            active={activeCat === c.id}
-            onClick={() => setActiveCat(c.id)}
-            color={c.color}
-            count={counts[c.id] ?? 0}
-          >
-            {c.name}
-          </CategoryPill>
-        ))}
-      </div>
-
       {/* Grid */}
       {filtered.length === 0 ? (
         <EmptyState onCreate={() => setEditing({ mode: "create" })} />
@@ -341,7 +263,6 @@ function ServicesPage() {
             <ServiceCard
               key={s.id}
               service={s}
-              category={categories.find((c) => c.id === s.category_id)}
               onEdit={() => setEditing({ mode: "edit", service: s })}
               onArchive={() => archiveService(s.id)}
               onDelete={() => setConfirmDelete(s)}
@@ -353,11 +274,9 @@ function ServicesPage() {
       {editing && (
         <ServiceModal
           initial={editing.mode === "edit" ? editing.service : null}
-          categories={categories}
           descriptionExample={descriptionExample}
           onClose={() => setEditing(null)}
           onSubmit={upsertService}
-          onAddCategory={addCategory}
         />
       )}
 
@@ -380,18 +299,16 @@ function ServicesPage() {
 
 function ServiceCard({
   service,
-  category,
   onEdit,
   onArchive,
   onDelete,
 }: {
   service: Service;
-  category: Category | undefined;
   onEdit: () => void;
   onArchive: () => void;
   onDelete: () => void;
 }) {
-  const accent = category?.color ?? service.color;
+  const accent = service.color;
   const [menuOpen, setMenuOpen] = React.useState(false);
   const menuRef = React.useRef<HTMLDivElement>(null);
 
@@ -531,11 +448,6 @@ function ServiceCard({
         >
           {service.name}
         </div>
-        {category && (
-          <div style={{ fontSize: 11, color: "var(--text-muted)", marginTop: 2 }}>
-            {category.name}
-          </div>
-        )}
       </div>
 
       <div style={{ height: 1, background: "var(--border)" }} />
@@ -657,60 +569,6 @@ function MenuItem({
   );
 }
 
-function CategoryPill({
-  active,
-  onClick,
-  color,
-  count,
-  children,
-}: {
-  active: boolean;
-  onClick: () => void;
-  color: string;
-  count: number;
-  children: React.ReactNode;
-}) {
-  return (
-    <button
-      type="button"
-      onClick={onClick}
-      className="inline-flex items-center"
-      style={{
-        gap: 6,
-        height: 28,
-        padding: "0 10px",
-        borderRadius: 6,
-        fontSize: 12,
-        fontWeight: 500,
-        background: active ? "var(--bg-surface)" : "transparent",
-        color: active ? "var(--text-primary)" : "var(--text-muted)",
-        border: active ? "1px solid var(--border)" : "1px solid transparent",
-      }}
-    >
-      <span
-        style={{
-          width: 6,
-          height: 6,
-          borderRadius: 999,
-          background: color,
-        }}
-      />
-      {children}
-      <span
-        style={{
-          fontSize: 10,
-          color: "var(--text-muted)",
-          background: "var(--bg-overlay)",
-          padding: "1px 5px",
-          borderRadius: 999,
-        }}
-      >
-        {count}
-      </span>
-    </button>
-  );
-}
-
 function EmptyState({ onCreate }: { onCreate: () => void }) {
   return (
     <div
@@ -755,24 +613,17 @@ function EmptyState({ onCreate }: { onCreate: () => void }) {
 
 function ServiceModal({
   initial,
-  categories,
   descriptionExample,
   onClose,
   onSubmit,
-  onAddCategory,
 }: {
   initial: Service | null;
-  categories: Category[];
   descriptionExample: string;
   onClose: () => void;
   onSubmit: (s: Service) => void;
-  onAddCategory: (name: string, color: string) => Promise<Category>;
 }) {
   const [name, setName] = React.useState(initial?.name ?? "");
   const [description, setDescription] = React.useState(initial?.description ?? "");
-  const [categoryId, setCategoryId] = React.useState(
-    initial?.category_id ?? categories[0]?.id ?? "",
-  );
   const [priceText, setPriceText] = React.useState(
     initial ? formatCurrencyInput(initial.price_cents) : "0,00",
   );
@@ -788,8 +639,6 @@ function ServiceModal({
   const [color, setColor] = React.useState(initial?.color ?? PRESET_COLORS[0]);
 
   const [status, setStatus] = React.useState<ServiceStatus>(initial?.status ?? "active");
-  const [showNewCat, setShowNewCat] = React.useState(false);
-  const [newCatName, setNewCatName] = React.useState("");
 
   // Lock scroll
   React.useEffect(() => {
@@ -818,7 +667,6 @@ function ServiceModal({
 
     const draft: Service = {
       id: initial?.id ?? `srv-${Date.now()}`,
-      category_id: categoryId,
       name: name.trim(),
       description: description.trim(),
       price_cents: cents,
@@ -829,15 +677,6 @@ function ServiceModal({
       created_at: initial?.created_at ?? new Date(),
     };
     onSubmit(draft);
-  };
-
-  const createCategory = async () => {
-    const n = newCatName.trim();
-    if (!n) return;
-    const c = await onAddCategory(n, color);
-    setCategoryId(c.id);
-    setNewCatName("");
-    setShowNewCat(false);
   };
 
   return (
@@ -912,62 +751,6 @@ function ServiceModal({
                 style={inputStyle}
                 autoFocus
               />
-            </ModalField>
-
-            <ModalField label="Categoria">
-              <div className="flex items-center" style={{ gap: 6 }}>
-                <select
-                  value={categoryId}
-                  onChange={(e) => setCategoryId(e.target.value)}
-                  style={{ ...inputStyle, flex: 1 }}
-                >
-                  <option value="">Sem categoria</option>
-                  {categories.map((c) => (
-                    <option key={c.id} value={c.id}>
-                      {c.name}
-                    </option>
-                  ))}
-                </select>
-                <button
-                  type="button"
-                  onClick={() => setShowNewCat((v) => !v)}
-                  style={{
-                    height: 36,
-                    padding: "0 10px",
-                    borderRadius: 6,
-                    border: "1px solid var(--border-strong)",
-                    background: "transparent",
-                    color: "var(--text-primary)",
-                    fontSize: 12,
-                    fontWeight: 500,
-                    display: "inline-flex",
-                    alignItems: "center",
-                    gap: 4,
-                  }}
-                >
-                  <Plus size={12} />
-                  Nova
-                </button>
-              </div>
-              {showNewCat && (
-                <div className="flex items-center" style={{ gap: 6, marginTop: 6 }}>
-                  <input
-                    value={newCatName}
-                    onChange={(e) => setNewCatName(e.target.value.slice(0, 40))}
-                    placeholder="Nome da categoria"
-                    style={{ ...inputStyle, flex: 1 }}
-                    onKeyDown={(e) => {
-                      if (e.key === "Enter") {
-                        e.preventDefault();
-                        createCategory();
-                      }
-                    }}
-                  />
-                  <button type="button" onClick={createCategory} className="btn-primary">
-                    <Check size={14} /> Criar
-                  </button>
-                </div>
-              )}
             </ModalField>
 
             <ModalField label="Descrição">

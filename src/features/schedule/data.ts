@@ -1,10 +1,5 @@
 import { MOCK_CONTACTS, type ContactCard } from "@/features/inbox/data";
-import {
-  SEED_SERVICES,
-  SEED_CATEGORIES,
-  type Service,
-  type Category,
-} from "@/features/services/data";
+import { SEED_SERVICES, type Service } from "@/features/services/data";
 
 export type AppointmentStatus =
   "scheduled" | "confirmed" | "in_progress" | "completed" | "cancelled";
@@ -50,8 +45,8 @@ export const MOCK_AGENTS: Agent[] = [
   { id: "a4", name: "Diego Mendes", color: "#8B5CF6" },
 ];
 
-export { MOCK_CONTACTS, SEED_SERVICES, SEED_CATEGORIES };
-export type { ContactCard, Service, Category };
+export { MOCK_CONTACTS, SEED_SERVICES };
+export type { ContactCard, Service };
 
 /* ---------------- helpers ---------------- */
 
