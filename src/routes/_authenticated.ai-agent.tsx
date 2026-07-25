@@ -244,6 +244,14 @@ function AIAgentPage() {
     onError: (e) => toast.error(e instanceof Error ? e.message : "Erro ao salvar"),
   });
 
+  // Sugestões do segmento + qualquer campo já marcado antes (segmento pode ter
+  // mudado depois, ou o super-admin ajustou os defaults — não some silenciosamente
+  // um requisito que já estava ativo).
+  const visibleFieldKeys = React.useMemo(
+    () => Array.from(new Set([...segmentDefaultFields, ...requiredFields])),
+    [segmentDefaultFields, requiredFields],
+  );
+
   const stats = [
     { label: "Atendimentos hoje", value: String(statsQ.data?.messages_today ?? 0) },
     { label: "Transferências", value: String(statsQ.data?.transfers_today ?? 0) },
@@ -497,39 +505,28 @@ function AIAgentPage() {
       <Section title="Informações a coletar antes de agendar">
         <Card>
           <Field label="Informações que a IA deve coletar antes de orçar/agendar">
-            <div
-              style={{
-                display: "grid",
-                gridTemplateColumns: "1fr 1fr",
-                gap: "4px 12px",
-                maxHeight: 220,
-                overflow: "auto",
-                padding: "8px 4px",
-              }}
-            >
-              {Object.entries(FIELD_LABELS).map(([key, label]) => {
-                const checked = requiredFields.includes(key);
-                return (
-                  <label
+            {visibleFieldKeys.length > 0 ? (
+              <div>
+                {visibleFieldKeys.map((key) => (
+                  <ToggleRow
                     key={key}
-                    style={{ display: "flex", alignItems: "flex-start", gap: 6, fontSize: 12, cursor: "pointer" }}
-                  >
-                    <input
-                      type="checkbox"
-                      checked={checked}
-                      onChange={(e) => {
-                        setRequiredFields((arr) =>
-                          e.target.checked ? [...arr, key] : arr.filter((f) => f !== key),
-                        );
-                        setRequiredFieldsTouched(true);
-                      }}
-                      style={{ marginTop: 2 }}
-                    />
-                    <span>{label}</span>
-                  </label>
-                );
-              })}
-            </div>
+                    label={FIELD_LABELS[key] ?? key}
+                    value={requiredFields.includes(key)}
+                    onChange={(v) => {
+                      setRequiredFields((arr) =>
+                        v ? [...arr, key] : arr.filter((f) => f !== key),
+                      );
+                      setRequiredFieldsTouched(true);
+                    }}
+                  />
+                ))}
+              </div>
+            ) : (
+              <p style={{ fontSize: 12, color: "var(--text-muted)", fontWeight: 400 }}>
+                Nenhuma pergunta sugerida para o seu segmento. Use as perguntas personalizadas
+                abaixo para pedir o que for específico do seu negócio.
+              </p>
+            )}
             {requiredFieldsTouched && (
               <button
                 type="button"
@@ -603,6 +600,13 @@ function AIAgentPage() {
                   }}
                 />
               </div>
+              <button
+                type="button"
+                onClick={addCustomQuestion}
+                style={{ ...btnSecondary, height: 30, padding: "0 10px", fontSize: 12, marginTop: 8, alignSelf: "flex-start" }}
+              >
+                + Adicionar
+              </button>
             </Field>
           </div>
         </Card>
