@@ -47,7 +47,7 @@ export const MESSAGE_DEFAULTS: Record<MessageKey, MessageMeta> = {
     placeholders: ["{{negocio}}"],
     preview: { negocio: "Salão Bela Vista" },
     default:
-      "Olá! No momento estamos fora do horário de atendimento do {{negocio}}. Retornaremos em breve.",
+      "No momento estamos fora do horário de atendimento do {{negocio}}. Retornaremos em breve.",
   },
   transfer: {
     key: "transfer",
