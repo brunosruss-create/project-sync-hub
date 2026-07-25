@@ -5,7 +5,11 @@ import {
   rescheduleAppointmentFromAI,
   cancelAppointmentFromAI,
 } from "@/lib/booking-confirmation.server";
-import { extractAppointmentPayloads } from "@/lib/appointment-json";
+import {
+  extractAppointmentPayloads,
+  extractJsonBlocks,
+  stripProtocolBlocks,
+} from "@/lib/appointment-json";
 
 import { MESSAGE_DEFAULTS } from "@/lib/message-defaults";
 import { normalizeHours, describeHours, type RawHours } from "@/lib/working-hours";
@@ -1039,7 +1043,8 @@ export async function runAiResponse(input: AiRunInput): Promise<AiRunResult> {
     '- Se o cliente já tem um agendamento ativo e está pedindo OUTRO em data diferente, pergunte: "Quer manter o de {data antiga} e marcar outro, ou trocar o horário?" — não assuma.',
     "",
     "═══ COMO CRIAR (APPOINTMENT_JSON) ═══",
-    "Pré-requisitos antes da ETAPA 1: SERVIÇO (da lista oficial), DATA+HORA livre na agenda do profissional, PROFISSIONAL (se houver mais de um). NÃO peça telefone — use o do WhatsApp.",
+    "Pré-requisitos antes da ETAPA 1: SERVIÇO (da lista oficial), DATA+HORA livre na agenda do profissional, PROFISSIONAL (se houver mais de um), e o NOME REAL de cada pessoa que será atendida. NÃO peça telefone — use o do WhatsApp.",
+    "REGRA CRÍTICA (o sistema REJEITA o agendamento se violada): client_name tem que ser o nome próprio da pessoa. Parentesco NÃO é nome — \"Mãe do Bruno\", \"minha esposa\", \"filha da Ana\", \"meu filho\" são todos REJEITADOS. Se o cliente só falou o parentesco, PERGUNTE (\"Qual o nome da sua mãe?\") ANTES de propor horário na ETAPA 1.",
     'Formato para 1 agendamento (linha única, sem markdown, no FINAL da ETAPA 2): APPOINTMENT_JSON:{"service_name":"...","starts_at":"YYYY-MM-DDTHH:mm:00-03:00","client_name":"...","client_phone":"...","professional_id":"..."}',
     "Formato para MÚLTIPLOS agendamentos no mesmo turno (ex.: cliente pede um pra ele e um pra um familiar): use o MESMO marcador uma única vez, seguido de um array — APPOINTMENT_JSON:[{...},{...}]. Cada item leva seu próprio client_name (nome de quem vai ser atendido nesse item, pode ser diferente do nome de quem está no WhatsApp).",
     "- Se o cliente pedir agendamento para outra pessoa (familiar, amigo etc.) e ainda não disse o nome real dela, PERGUNTE o nome antes de avançar para a ETAPA 1 — client_name nunca pode ser um apelido genérico como 'mãe dele', 'esposa', 'minha filha'. NÃO peça telefone da outra pessoa — o telefone do agendamento continua sendo sempre o do WhatsApp da conversa atual, independente de para quem é o atendimento.",
@@ -1052,10 +1057,12 @@ export async function runAiResponse(input: AiRunInput): Promise<AiRunResult> {
     "REGRA CRÍTICA: use APENAS [id:...] de agendamento que NÃO esteja marcado como (CANCELADO) ou (CONCLUÍDO). Se houver mais de um ativo, PERGUNTE ao cliente qual antes de emitir o JSON.",
     "REGRA CRÍTICA: `new_starts_at` DEVE terminar com o offset `-03:00`. Exemplo válido: `2026-05-23T14:00:00-03:00`. Sem isso o sistema rejeita.",
     'Formato exato (ETAPA 2 apenas): RESCHEDULE_JSON:{"appointment_id":"<uuid-do-id-da-lista>","new_starts_at":"YYYY-MM-DDTHH:mm:00-03:00"}',
+    'Para remarcar VÁRIOS agendamentos no mesmo turno (ex.: o do cliente e o de um familiar), use UM único marcador com um array: RESCHEDULE_JSON:[{...},{...}]',
     "",
     "═══ COMO CANCELAR (CANCEL_JSON) — libera o horário na agenda ═══",
     "Use o [id:...] do agendamento na lista AGENDAMENTOS DESTE CLIENTE. O sistema marca como cancelado e LIBERA o slot na agenda. Nunca use id de agendamento já (CANCELADO).",
     'Formato exato (ETAPA 2 apenas): CANCEL_JSON:{"appointment_id":"<uuid-do-id-da-lista>","reason":"motivo curto do cliente"}',
+    "Para cancelar VÁRIOS de uma vez, use UM único marcador com um array: CANCEL_JSON:[{...},{...}]",
     "",
     "═══ REGRAS FINAIS ═══",
     "1. NO MÁXIMO UM marcador APPOINTMENT_JSON: por resposta — se houver mais de um agendamento no mesmo turno, coloque todos dentro de UM único array nesse marcador (nunca repita o marcador).",
@@ -1200,6 +1207,8 @@ export async function runAiResponse(input: AiRunInput): Promise<AiRunResult> {
           return "Tive um problema ao registrar seus dados. Pode me confirmar seu nome, por favor?";
         case "professional_required":
           return "Preciso saber com qual profissional você quer marcar — pode me confirmar o nome?";
+        case "client_name_required":
+          return "Para registrar o agendamento eu preciso do nome da pessoa que vai ser atendida. Como ela se chama?";
         case "malformed_batch":
           return "Tive um problema técnico ao processar os agendamentos — pode repetir os horários desejados, um de cada vez?";
         default:
@@ -1269,87 +1278,85 @@ export async function runAiResponse(input: AiRunInput): Promise<AiRunResult> {
       }
     }
 
-    // Detecta bloco RESCHEDULE_JSON
+    // Detecta bloco RESCHEDULE_JSON. Aceita objeto único OU array — o cliente
+    // pode remarcar mais de um agendamento no mesmo turno (ex.: o dele e o de
+    // um familiar). O texto é limpo SEMPRE, mesmo com JSON quebrado.
     if (canReschedule) {
-      const m = text.match(/RESCHEDULE_JSON:(\{[\s\S]*?\})\s*$/);
-      if (m) {
+      const extraction = extractJsonBlocks(text, "RESCHEDULE_JSON:");
+      if (extraction) {
+        text = extraction.cleanedText;
         if (asksForConfirmation) {
           console.warn("[ai reschedule] ignorado: ainda pedindo confirmação");
-          text = text.replace(/RESCHEDULE_JSON:\{[\s\S]*?\}\s*$/, "").trim();
-        } else {
-          let okResult = false;
-          let confirmationSent = false;
-          let reason: string | undefined;
-          let failCtx: { professional_name?: string | null; working_hours_hint?: string } = {};
-          try {
-            console.log("[ai reschedule] payload:", m[1]);
-            const payload = JSON.parse(m[1]);
-            if (data.preview) {
-              okResult = true;
-            } else {
-              const r = await rescheduleAppointmentFromAI(
-                { ...payload, contact_id: data.contact_id ?? null },
-                {
-                  id: profile.id,
-                  business_hours: bizHours,
-                  business_timezone: profile.business_timezone ?? null,
-                  business_name: profile.business_name ?? null,
-                },
-              );
-              okResult = r.ok;
-              reason = r.reason;
-              confirmationSent = !!r.confirmation_sent;
-              failCtx = r;
-              if (!r.ok) console.warn("[ai reschedule] falhou:", r.reason);
+        } else if (extraction.payloads.length === 0) {
+          console.warn("[ai reschedule] nenhum payload parseável");
+          text = friendlyReason("reschedule", "bad_date");
+        } else if (!data.preview) {
+          let allOk = true;
+          let allConfirmed = true;
+          let firstFail: {
+            reason?: string;
+            professional_name?: string | null;
+            working_hours_hint?: string;
+          } = {};
+          // Sequencial de propósito: cada remarcação libera/ocupa slot e a
+          // próxima precisa enxergar o estado já persistido.
+          for (const payload of extraction.payloads) {
+            console.log("[ai reschedule] payload:", JSON.stringify(payload));
+            const r = await rescheduleAppointmentFromAI(
+              { ...(payload as any), contact_id: data.contact_id ?? null },
+              {
+                id: profile.id,
+                business_hours: bizHours,
+                business_timezone: profile.business_timezone ?? null,
+                business_name: profile.business_name ?? null,
+              },
+            );
+            if (!r.ok) {
+              allOk = false;
+              if (!firstFail.reason) firstFail = r;
+              console.warn("[ai reschedule] falhou:", r.reason);
             }
-          } catch (err) {
-            console.warn("[ai reschedule] parse falhou:", (err as Error)?.message);
-            reason = "bad_date";
+            if (!r.confirmation_sent) allConfirmed = false;
           }
-          text = text.replace(/RESCHEDULE_JSON:\{[\s\S]*?\}\s*$/, "").trim();
-          if (!okResult) text = friendlyReason("reschedule", reason, failCtx);
-          else if (confirmationSent) text = "";
+          if (!allOk) text = friendlyReason("reschedule", firstFail.reason, firstFail);
+          else if (allConfirmed) text = "";
         }
       }
     }
 
     // Detecta bloco CANCEL_JSON
     if (canCancel) {
-      const m = text.match(/CANCEL_JSON:(\{[\s\S]*?\})\s*$/);
-      if (m) {
+      const extraction = extractJsonBlocks(text, "CANCEL_JSON:");
+      if (extraction) {
+        text = extraction.cleanedText;
         if (asksForConfirmation) {
           console.warn("[ai cancel] ignorado: ainda pedindo confirmação");
-          text = text.replace(/CANCEL_JSON:\{[\s\S]*?\}\s*$/, "").trim();
-        } else {
-          let okResult = false;
-          let confirmationSent = false;
-          let reason: string | undefined;
-          try {
-            console.log("[ai cancel] payload:", m[1]);
-            const payload = JSON.parse(m[1]);
-            if (data.preview) {
-              okResult = true;
-            } else {
-              const r = await cancelAppointmentFromAI(
-                { ...payload, contact_id: data.contact_id ?? null },
-                {
-                  id: profile.id,
-                  business_timezone: profile.business_timezone ?? null,
-                  business_name: profile.business_name ?? null,
-                },
-              );
-              okResult = r.ok;
-              reason = r.reason;
-              confirmationSent = !!r.confirmation_sent;
-              if (!r.ok) console.warn("[ai cancel] falhou:", r.reason);
+        } else if (extraction.payloads.length === 0) {
+          console.warn("[ai cancel] nenhum payload parseável");
+          text = friendlyReason("cancel", "bad_date");
+        } else if (!data.preview) {
+          let allOk = true;
+          let allConfirmed = true;
+          let firstReason: string | undefined;
+          for (const payload of extraction.payloads) {
+            console.log("[ai cancel] payload:", JSON.stringify(payload));
+            const r = await cancelAppointmentFromAI(
+              { ...(payload as any), contact_id: data.contact_id ?? null },
+              {
+                id: profile.id,
+                business_timezone: profile.business_timezone ?? null,
+                business_name: profile.business_name ?? null,
+              },
+            );
+            if (!r.ok) {
+              allOk = false;
+              if (!firstReason) firstReason = r.reason;
+              console.warn("[ai cancel] falhou:", r.reason);
             }
-          } catch (err) {
-            console.warn("[ai cancel] parse falhou:", (err as Error)?.message);
-            reason = "bad_date";
+            if (!r.confirmation_sent) allConfirmed = false;
           }
-          text = text.replace(/CANCEL_JSON:\{[\s\S]*?\}\s*$/, "").trim();
-          if (!okResult) text = friendlyReason("cancel", reason);
-          else if (confirmationSent) text = "";
+          if (!allOk) text = friendlyReason("cancel", firstReason);
+          else if (allConfirmed) text = "";
         }
       }
     }
@@ -1371,7 +1378,16 @@ export async function runAiResponse(input: AiRunInput): Promise<AiRunResult> {
         dedup_key: dedupKey,
       });
     }
-    return { action: "send_message", response: text, tokens_total: tokensTotal };
+    // Rede de segurança: nenhum bloco de protocolo pode sair daqui pro cliente,
+    // mesmo que um parser acima não tenha casado (foi assim que um
+    // RESCHEDULE_JSON em array vazou cru, com uuids, no WhatsApp do cliente).
+    const safeText = stripProtocolBlocks(text);
+    if (safeText !== text) {
+      console.error("[ai] bloco de protocolo escapou dos parsers — texto sanitizado", {
+        original: text.slice(0, 300),
+      });
+    }
+    return { action: "send_message", response: safeText, tokens_total: tokensTotal };
   } catch (e) {
     const msg = e instanceof Error ? e.message : String(e);
     if (!data.preview) {

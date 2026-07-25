@@ -14,6 +14,7 @@ import {
   describeHours,
   type RawHours,
 } from "@/lib/working-hours";
+import { looksLikeGenericName } from "@/lib/client-name";
 
 type ProfileLite = {
   id: string;
@@ -440,6 +441,16 @@ export async function createAppointmentFromAI(
       payload_keys: Object.keys(data),
     });
     return { ok: false, reason: "missing_fields" };
+  }
+
+  // 0. Titular do agendamento precisa ser o nome REAL de quem vai ser atendido.
+  //    A IA às vezes manda o parentesco ("Mãe do Bruno") mesmo com a regra no
+  //    prompt mandando perguntar — aí a agenda fica sem saber quem é. Só vale
+  //    para nome que a IA informou explicitamente; quando ela omite, caímos no
+  //    nome do contato do WhatsApp, que é legítimo.
+  if (data.client_name && looksLikeGenericName(data.client_name)) {
+    console.warn("[booking create] client_name genérico", { client_name: data.client_name });
+    return { ok: false, reason: "client_name_required" };
   }
 
   // 1. Resolver serviço — preferir service_id quando vier (caminho interno do reschedule),

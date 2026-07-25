@@ -14,8 +14,29 @@ export type AppointmentBatchExtraction = {
   cleanedText: string;
 };
 
-export function extractAppointmentPayloads(text: string): AppointmentBatchExtraction | null {
-  const marker = "APPOINTMENT_JSON:";
+/**
+ * Remove QUALQUER bloco de protocolo (`*_JSON:` até o fim do texto).
+ *
+ * Rede de segurança de última linha: por contrato os marcadores só aparecem no
+ * fim da resposta, então tudo dali pra frente é protocolo interno. Existe
+ * porque um parser específico que não casa (ex.: regex que só aceitava objeto
+ * e recebeu array) deixava o JSON cru — com uuids — ser enviado ao cliente no
+ * WhatsApp. Nunca dependa só do parser: passe por aqui antes de responder.
+ */
+export function stripProtocolBlocks(text: string): string {
+  return text.replace(/\s*[A-Z][A-Z_]*_JSON:[\s\S]*$/, "").trim();
+}
+
+/**
+ * Extrai payloads de um marcador de protocolo, aceitando objeto único OU array,
+ * e tolerando múltiplas ocorrências do mesmo marcador (cada uma é um segmento
+ * independente). `cleanedText` sempre remove tudo a partir do 1º marcador —
+ * mesmo quando o JSON está quebrado, o cliente nunca vê o bloco.
+ */
+export function extractJsonBlocks(
+  text: string,
+  marker: string,
+): AppointmentBatchExtraction | null {
   const firstIdx = text.indexOf(marker);
   if (firstIdx === -1) return null;
 
@@ -42,6 +63,12 @@ export function extractAppointmentPayloads(text: string): AppointmentBatchExtrac
     }
   }
 
-  const cleanedText = text.slice(0, firstIdx).trim();
+  // Limpa a partir do 1º marcador e ainda passa pelo scrubber genérico, caso
+  // a resposta traga também um marcador de OUTRO tipo.
+  const cleanedText = stripProtocolBlocks(text.slice(0, firstIdx));
   return { payloads, malformedCount, cleanedText };
+}
+
+export function extractAppointmentPayloads(text: string): AppointmentBatchExtraction | null {
+  return extractJsonBlocks(text, "APPOINTMENT_JSON:");
 }
