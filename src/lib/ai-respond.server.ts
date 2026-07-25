@@ -370,7 +370,8 @@ function buildWorkspaceLayer(
   if (requiredFields.length > 0 || customQuestions.length > 0) {
     const items = [...requiredFields.map((f) => FIELD_LABELS[f] ?? f), ...customQuestions];
     parts.push(
-      `Antes de qualquer ação (orçamento, agendamento, encaminhamento), colete as seguintes informações se ainda não fornecidas: ${items.join(", ")}.`,
+      `Antes de qualquer ação (orçamento, agendamento, encaminhamento), faça as perguntas abaixo ao cliente se ele ainda não tiver informado:\n` +
+        items.map((q) => `- ${q}`).join("\n"),
     );
   }
 
