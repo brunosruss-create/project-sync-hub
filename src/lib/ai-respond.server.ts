@@ -48,6 +48,8 @@ function parseHM(v: string | undefined, fallback: number): number {
 
 type PriceDisclosurePolicy = "always" | "on_request" | "never";
 
+type PhotoSendPolicy = "never" | "on_request" | "proactive";
+
 interface AiBehaviorConfig {
   ai_introduce_by_name: boolean;
   ai_declare_as_ai: boolean;
@@ -540,32 +542,49 @@ function buildServicesLayer(
 }
 
 // Bloco condicional: só existe (e só a IA fica sabendo que a capacidade
-// existe) quando o toggle "IA pode enviar fotos" está ligado E algum serviço
-// ativo tem pelo menos uma foto cadastrada. Se desligado, este bloco não é
-// incluído no prompt — a IA nem sabe que fotos existem, maior garantia
-// contra ela tentar "inventar" o envio.
+// existe) quando algum serviço ativo tem política efetiva ≠ "never" E pelo
+// menos uma foto cadastrada. Serviços com política "never" nunca aparecem
+// aqui — a IA nem sabe que essas fotos existem, maior garantia contra ela
+// tentar "inventar" o envio. Cada serviço pode ter uma regra diferente
+// (herda o padrão do workspace quando photo_send_policy é null).
 function buildServicePhotosLayer(
   services: Array<{
     id: string;
     name: string;
     photos?: { id: string; url: string; caption: string }[] | null;
+    photo_send_policy?: PhotoSendPolicy | null;
   }>,
-  canSendPhotos: boolean,
+  workspaceDefaultPolicy: PhotoSendPolicy,
 ): string {
-  if (!canSendPhotos) return "";
-  const withPhotos = services.filter((s) => Array.isArray(s.photos) && s.photos.length > 0);
+  const withPhotos = services
+    .map((s) => ({
+      ...s,
+      effectivePolicy: s.photo_send_policy ?? workspaceDefaultPolicy,
+    }))
+    .filter(
+      (s) => s.effectivePolicy !== "never" && Array.isArray(s.photos) && s.photos.length > 0,
+    );
   if (withPhotos.length === 0) return "";
 
   const lines: string[] = [];
   lines.push("=== FOTOS DE SERVIÇOS DISPONÍVEIS ===");
   lines.push(
-    'Você pode enviar UMA foto de exemplo/resultado de um serviço, mas SOMENTE quando o cliente pedir explicitamente para ver (ex.: "tem foto?", "manda uma foto", "como fica o antes e depois?"). NUNCA envie proativamente ou sem pedido explícito. NUNCA mais de uma foto por mensagem sua.',
+    "As regras de envio variam por serviço — respeite a regra de CADA serviço abaixo. NUNCA mais de uma foto por mensagem sua.",
   );
   lines.push("");
   for (const s of withPhotos) {
     lines.push(`- Serviço "${s.name}" (service_id: "${s.id}"):`);
     for (const photo of s.photos ?? []) {
       lines.push(`  - photo_id "${photo.id}"${photo.caption ? `: ${photo.caption}` : ""}`);
+    }
+    if (s.effectivePolicy === "on_request") {
+      lines.push(
+        '  Regra: envie SOMENTE quando o cliente pedir explicitamente para ver (ex.: "tem foto?", "manda uma foto", "como fica o antes e depois?"). NUNCA envie proativamente.',
+      );
+    } else if (s.effectivePolicy === "proactive") {
+      lines.push(
+        '  Regra: quando o cliente perguntar sobre este serviço (não precisa pedir foto), você pode OFERECER mandar uma foto (ex.: "temos foto do resultado, quer ver?") — só envie depois que ele confirmar que quer ver.',
+      );
     }
   }
   lines.push("");
@@ -574,7 +593,7 @@ function buildServicePhotosLayer(
   );
   lines.push('PHOTO_JSON:{"service_id":"<service_id acima>","photo_id":"<photo_id acima>"}');
   lines.push(
-    "Se o cliente pedir foto de um serviço que NÃO está listado acima (ou o serviço não tem fotos), diga que no momento não tem foto disponível para esse serviço — nunca invente um photo_id ou service_id.",
+    "Se o cliente pedir foto de um serviço que NÃO está listado acima, ou cuja regra não permita neste momento, diga que no momento não tem foto disponível — nunca invente um photo_id ou service_id.",
   );
   return lines.join("\n");
 }
@@ -895,7 +914,9 @@ export async function runAiResponse(input: AiRunInput): Promise<AiRunResult> {
   // segmento ou nome — só pode falar do que está aqui.
   const { data: activeServices } = await supabaseAdmin
     .from("services")
-    .select("id,name,description,duration_minutes,price_cents,price_disclosure_policy,photos")
+    .select(
+      "id,name,description,duration_minutes,price_cents,price_disclosure_policy,photos,photo_send_policy",
+    )
     .eq("owner_user_id", data.workspace_owner_id)
     .eq("status", "active")
     .order("name", { ascending: true });
@@ -904,8 +925,13 @@ export async function runAiResponse(input: AiRunInput): Promise<AiRunResult> {
     ((profile as any).ai_price_disclosure_policy as PriceDisclosurePolicy) ?? "on_request";
 
   const servicesLayer = buildServicesLayer(activeServices ?? [], pricePolicyForCatalog);
-  const canSendPhotos = (profile as any).ai_can_send_photos === true;
-  const servicePhotosLayer = buildServicePhotosLayer(activeServices ?? [], canSendPhotos);
+  const photoPolicyDefault: PhotoSendPolicy =
+    ((profile as any).ai_photo_send_policy as PhotoSendPolicy) ?? "never";
+  const servicePhotosLayer = buildServicePhotosLayer(activeServices ?? [], photoPolicyDefault);
+  const anyPhotoPolicyActive = (activeServices ?? []).some((s: any) => {
+    const effective = (s.photo_send_policy as PhotoSendPolicy | null) ?? photoPolicyDefault;
+    return effective !== "never" && Array.isArray(s.photos) && s.photos.length > 0;
+  });
 
   // ===== PROFISSIONAIS + AGENDA (próximos 7 dias) =====
   const { data: prosRows } = await supabaseAdmin
@@ -1459,9 +1485,10 @@ export async function runAiResponse(input: AiRunInput): Promise<AiRunResult> {
 
     // Detecta bloco PHOTO_JSON (envio de foto de serviço). Guarda de
     // segurança extra em relação aos outros marcadores: sendServicePhotoFromAI
-    // já recheca o toggle no servidor e exige um pedido explícito de foto na
-    // última mensagem do cliente — nunca confia só no marcador da IA.
-    if (canSendPhotos) {
+    // já recheca a política efetiva do serviço no servidor e exige um pedido
+    // explícito de foto na última mensagem do cliente — nunca confia só no
+    // marcador da IA.
+    if (anyPhotoPolicyActive) {
       const extraction = extractJsonBlocks(text, "PHOTO_JSON:");
       if (extraction) {
         text = extraction.cleanedText;
@@ -1471,7 +1498,7 @@ export async function runAiResponse(input: AiRunInput): Promise<AiRunResult> {
             payload,
             profile.id,
             data.contact_id,
-            canSendPhotos,
+            photoPolicyDefault,
             data.message ?? "",
           );
           if (!r.ok) {

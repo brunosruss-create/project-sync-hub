@@ -1535,6 +1535,7 @@ function ServicesTab({ onSchedule }: { onSchedule: (serviceIds: string[]) => voi
           status: (s.status ?? "active") as ServiceStatus,
           created_at: s.created_at ? new Date(s.created_at) : new Date(),
           price_disclosure_policy: null,
+          photo_send_policy: null,
           photos: [],
         })),
       );

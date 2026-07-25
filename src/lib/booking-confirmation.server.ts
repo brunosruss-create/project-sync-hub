@@ -15,7 +15,7 @@ import {
   type RawHours,
 } from "@/lib/working-hours";
 import { looksLikeGenericName } from "@/lib/client-name";
-import { sendMediaToContact } from "@/lib/evolution.functions";
+import { sendMediaToContact } from "@/lib/evolution.server";
 
 type ProfileLite = {
   id: string;
@@ -1041,6 +1041,8 @@ export async function cancelAppointmentFromAI(
   };
 }
 
+type PhotoSendPolicy = "never" | "on_request" | "proactive";
+
 // Envia uma foto de serviço quando a IA emite o marcador PHOTO_JSON — ver
 // bloco "FOTOS DE SERVIÇOS DISPONÍVEIS" em ai-respond.server.ts. Mesma
 // filosofia das outras ações da IA neste arquivo: cadeia de validação
@@ -1049,31 +1051,41 @@ export async function sendServicePhotoFromAI(
   data: { service_id?: string; photo_id?: string },
   ownerId: string,
   contactId: string | null | undefined,
-  canSendPhotos: boolean,
+  workspaceDefaultPolicy: PhotoSendPolicy,
   lastClientMessage: string,
 ): Promise<{ ok: boolean; reason?: string }> {
-  // 1. Recheca o toggle no servidor — nunca confia que o prompt escondeu a
-  //    capacidade da IA (mesmo se ela tentar emitir o marcador por erro).
-  if (!canSendPhotos) return { ok: false, reason: "feature_disabled" };
   if (!data.service_id || !data.photo_id) return { ok: false, reason: "missing_fields" };
   if (!contactId) return { ok: false, reason: "missing_contact" };
 
-  // 2. Nunca confia só no marcador da IA — a última mensagem do cliente
-  //    precisa conter um pedido explícito de foto/exemplo (mesmo espírito do
-  //    userWantsCancel/userWantsReschedule em ai-respond.server.ts).
-  const asksForPhoto = /foto|imagem|antes.*depois|exemplo|resultado|mostr|manda/i.test(
-    lastClientMessage || "",
-  );
-  if (!asksForPhoto) return { ok: false, reason: "no_explicit_request" };
-
-  // 3. Serviço + foto precisam existir de verdade, escopados ao tenant.
+  // 1. Serviço + foto precisam existir de verdade, escopados ao tenant. A
+  //    política efetiva é por serviço (herda do workspace quando null) —
+  //    precisa buscar o serviço antes de decidir a política.
   const { data: service, error } = await supabaseAdmin
     .from("services")
-    .select("id,photos")
+    .select("id,photos,photo_send_policy")
     .eq("id", data.service_id)
     .eq("owner_user_id", ownerId)
     .maybeSingle();
   if (error || !service) return { ok: false, reason: "service_not_found" };
+
+  // 2. Recheca a política no servidor — nunca confia que o prompt escondeu a
+  //    capacidade da IA (mesmo se ela tentar emitir o marcador por erro).
+  const effectivePolicy: PhotoSendPolicy =
+    ((service as any).photo_send_policy as PhotoSendPolicy | null) ?? workspaceDefaultPolicy;
+  if (effectivePolicy === "never") return { ok: false, reason: "feature_disabled" };
+
+  // 3. Nunca confia só no marcador da IA — a última mensagem do cliente
+  //    precisa conter um pedido/confirmação explícita de foto/exemplo (mesmo
+  //    espírito do userWantsCancel/userWantsReschedule em ai-respond.server.ts).
+  //    Vale tanto para "on_request" quanto para "proactive" — a diferença
+  //    entre as duas políticas é só se a IA pode OFERECER a foto por
+  //    iniciativa própria no prompt; o envio de fato sempre exige sinal do
+  //    cliente na mensagem.
+  const asksForPhoto =
+    /foto|imagem|antes.*depois|exemplo|resultado|mostr|manda|quero ver|sim,? quero|pode mandar/i.test(
+      lastClientMessage || "",
+    );
+  if (!asksForPhoto) return { ok: false, reason: "no_explicit_request" };
 
   const photos = Array.isArray((service as any).photos) ? (service as any).photos : [];
   const photo = photos.find((p: any) => p?.id === data.photo_id);

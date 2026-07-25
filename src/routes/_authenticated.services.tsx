@@ -8,6 +8,7 @@ import {
   type Service,
   type ServiceStatus,
   type PriceDisclosurePolicy,
+  type PhotoSendPolicy,
   type ServicePhoto,
   PRESET_COLORS,
   STATUS_COLOR,
@@ -69,7 +70,7 @@ function ServicesPage() {
         supabase
           .from("services")
           .select(
-            "id,name,description,price_cents,duration_minutes,buffer_minutes,color,status,created_at,price_disclosure_policy,photos",
+            "id,name,description,price_cents,duration_minutes,buffer_minutes,color,status,created_at,price_disclosure_policy,photo_send_policy,photos",
           )
           .eq("owner_user_id", workspaceOwnerId)
           .order("created_at", { ascending: true }),
@@ -102,6 +103,7 @@ function ServicesPage() {
           status: (s.status ?? "active") as ServiceStatus,
           created_at: s.created_at ? new Date(s.created_at) : new Date(),
           price_disclosure_policy: s.price_disclosure_policy ?? null,
+          photo_send_policy: s.photo_send_policy ?? null,
           photos: Array.isArray(s.photos) ? s.photos : [],
         })),
       );
@@ -130,6 +132,8 @@ function ServicesPage() {
       return;
     }
     const exists = services.some((s) => s.id === draft.id) && isUuid(draft.id);
+    const color =
+      draft.color || PRESET_COLORS[services.length % PRESET_COLORS.length];
 
     const payload: Record<string, unknown> = {
       owner_user_id: workspaceOwnerId,
@@ -138,9 +142,10 @@ function ServicesPage() {
       price_cents: draft.price_cents,
       duration_minutes: draft.duration_minutes,
       buffer_minutes: draft.buffer_minutes,
-      color: draft.color,
+      color,
       status: draft.status,
       price_disclosure_policy: draft.price_disclosure_policy,
+      photo_send_policy: draft.photo_send_policy,
       photos: draft.photos,
     };
     const query = exists
@@ -161,7 +166,7 @@ function ServicesPage() {
     const created_at = data?.created_at ? new Date(data.created_at) : draft.created_at;
     setServices((prev) => {
       const without = prev.filter((s) => s.id !== draft.id && s.id !== finalId);
-      return [...without, { ...draft, id: finalId, created_at }];
+      return [...without, { ...draft, id: finalId, created_at, color }];
     });
     setEditing(null);
     notify.success(exists ? "Serviço atualizado." : "Serviço criado.");
@@ -631,6 +636,9 @@ function ServiceModal({
   const [priceDisclosurePolicy, setPriceDisclosurePolicy] = React.useState<
     PriceDisclosurePolicy | null
   >(initial?.price_disclosure_policy ?? null);
+  const [photoSendPolicy, setPhotoSendPolicy] = React.useState<PhotoSendPolicy | null>(
+    initial?.photo_send_policy ?? null,
+  );
   const [photos, setPhotos] = React.useState<ServicePhoto[]>(initial?.photos ?? []);
   const [uploadingPhoto, setUploadingPhoto] = React.useState(false);
   const [durationValue, setDurationValue] = React.useState(() => {
@@ -642,7 +650,6 @@ function ServiceModal({
     return m % 60 === 0 && m >= 60 ? "h" : "min";
   });
   const [bufferMinutes, setBufferMinutes] = React.useState(String(initial?.buffer_minutes ?? 0));
-  const [color, setColor] = React.useState(initial?.color ?? PRESET_COLORS[0]);
 
   const [status, setStatus] = React.useState<ServiceStatus>(initial?.status ?? "active");
 
@@ -710,10 +717,11 @@ function ServiceModal({
       price_cents: cents,
       duration_minutes: minutes,
       buffer_minutes: buffer,
-      color,
+      color: initial?.color ?? "",
       status,
       created_at: initial?.created_at ?? new Date(),
       price_disclosure_policy: priceDisclosurePolicy,
+      photo_send_policy: photoSendPolicy,
       photos,
     };
     onSubmit(draft);
@@ -899,7 +907,7 @@ function ServiceModal({
                 }
                 style={inputStyle}
               >
-                <option value="">Usar padrão do workspace (Agente IA)</option>
+                <option value="">Usar padrão do workspace (Configurações → Agente IA)</option>
                 <option value="always">Sempre, proativamente</option>
                 <option value="on_request">Apenas quando o cliente perguntar</option>
                 <option value="never">Nunca — direcionar para atendente</option>
@@ -920,28 +928,6 @@ function ServiceModal({
               </div>
             </ModalField>
 
-            <ModalField label="Cor">
-              <div className="flex flex-wrap" style={{ gap: 6 }}>
-                {PRESET_COLORS.map((c) => (
-                  <button
-                    key={c}
-                    type="button"
-                    aria-label={`Cor ${c}`}
-                    onClick={() => setColor(c)}
-                    style={{
-                      width: 26,
-                      height: 26,
-                      borderRadius: 999,
-                      background: c,
-                      border:
-                        color === c ? "2px solid var(--text-primary)" : "2px solid transparent",
-                      boxShadow: color === c ? "0 0 0 2px var(--bg-surface) inset" : "none",
-                    }}
-                  />
-                ))}
-              </div>
-            </ModalField>
-
             <ModalField label="Fotos (opcional)">
               <div
                 style={{
@@ -951,8 +937,7 @@ function ServiceModal({
                   lineHeight: 1.4,
                 }}
               >
-                A IA pode enviar essas fotos quando o cliente pedir explicitamente pra ver (ex.:
-                "antes e depois"). Precisa do toggle "IA pode enviar fotos" ligado em Agente IA.
+                Fotos que a IA pode enviar durante a conversa, conforme a política abaixo.
               </div>
               {photos.length > 0 && (
                 <div className="flex flex-col" style={{ gap: 8, marginBottom: 8 }}>
@@ -1031,6 +1016,32 @@ function ServiceModal({
                   />
                 </label>
               )}
+              <div style={{ marginTop: 10 }}>
+                <label
+                  style={{
+                    display: "block",
+                    fontSize: 11,
+                    color: "var(--text-muted)",
+                    marginBottom: 4,
+                  }}
+                >
+                  Quando a IA pode enviar fotos deste serviço?
+                </label>
+                <select
+                  value={photoSendPolicy ?? ""}
+                  onChange={(e) =>
+                    setPhotoSendPolicy(
+                      e.target.value === "" ? null : (e.target.value as PhotoSendPolicy),
+                    )
+                  }
+                  style={inputStyle}
+                >
+                  <option value="">Usar padrão do workspace (Configurações → Agente IA)</option>
+                  <option value="never">Nunca</option>
+                  <option value="on_request">Apenas quando o cliente pedir</option>
+                  <option value="proactive">Proativamente ao mencionar o serviço</option>
+                </select>
+              </div>
             </ModalField>
 
             <ModalField label="Status">

@@ -191,6 +191,7 @@ function SchedulePage() {
         status: (s.status ?? "active") as Service["status"],
         created_at: s.created_at ? new Date(s.created_at) : new Date(),
         price_disclosure_policy: null,
+        photo_send_policy: null,
         photos: [],
       })),
     );

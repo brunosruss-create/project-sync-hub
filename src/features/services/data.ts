@@ -2,6 +2,8 @@ export type ServiceStatus = "active" | "inactive" | "draft";
 
 export type PriceDisclosurePolicy = "always" | "on_request" | "never";
 
+export type PhotoSendPolicy = "never" | "on_request" | "proactive";
+
 export type ServicePhoto = { id: string; url: string; caption: string; mime: string };
 
 export interface Service {
@@ -16,8 +18,8 @@ export interface Service {
   created_at: Date;
   // null = herda a política de preço do workspace (Agente IA).
   price_disclosure_policy: PriceDisclosurePolicy | null;
-  // Fotos que a IA pode enviar quando o cliente pedir explicitamente
-  // (ver toggle "IA pode enviar fotos dos serviços?" em Agente IA).
+  // null = herda a política de envio de fotos do workspace (Agente IA).
+  photo_send_policy: PhotoSendPolicy | null;
   photos: ServicePhoto[];
 }
 
@@ -44,6 +46,7 @@ export const SEED_SERVICES: Service[] = [
     status: "active",
     created_at: new Date(),
     price_disclosure_policy: null,
+    photo_send_policy: null,
     photos: [],
   },
   {
@@ -57,6 +60,7 @@ export const SEED_SERVICES: Service[] = [
     status: "active",
     created_at: new Date(),
     price_disclosure_policy: null,
+    photo_send_policy: null,
     photos: [],
   },
   {
@@ -70,6 +74,7 @@ export const SEED_SERVICES: Service[] = [
     status: "active",
     created_at: new Date(),
     price_disclosure_policy: null,
+    photo_send_policy: null,
     photos: [],
   },
   {
@@ -83,6 +88,7 @@ export const SEED_SERVICES: Service[] = [
     status: "active",
     created_at: new Date(),
     price_disclosure_policy: null,
+    photo_send_policy: null,
     photos: [],
   },
   {
@@ -96,6 +102,7 @@ export const SEED_SERVICES: Service[] = [
     status: "draft",
     created_at: new Date(),
     price_disclosure_policy: null,
+    photo_send_policy: null,
     photos: [],
   },
 ];
