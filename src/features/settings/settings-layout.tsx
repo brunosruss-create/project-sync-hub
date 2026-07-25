@@ -8,6 +8,7 @@ import {
   MessageSquare,
   CreditCard,
   Briefcase,
+  Bot,
 } from "lucide-react";
 
 type SidebarEntry =
@@ -18,6 +19,7 @@ const items: SidebarEntry[] = [
   { kind: "section", label: "Acesso ao sistema" },
   { kind: "item", label: "Perfil", to: "/settings/profile", icon: UserIcon },
   { kind: "item", label: "Negócio", to: "/settings/workspace", icon: Building2 },
+  { kind: "item", label: "Agente IA", to: "/ai-agent", icon: Bot },
   { kind: "item", label: "Equipe", to: "/settings/team", icon: Users },
   { kind: "section", label: "Agenda" },
   { kind: "item", label: "Profissionais", to: "/settings/professionals", icon: Briefcase },
