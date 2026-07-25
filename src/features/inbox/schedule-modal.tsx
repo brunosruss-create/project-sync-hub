@@ -15,21 +15,20 @@ import {
   timeSlots,
   type Appointment,
 } from "@/features/schedule/data";
-import { utcToZonedLocal, zonedLocalToUtc } from "@/features/schedule/tz";
+import { zonedLocalToUtc } from "@/features/schedule/tz";
 import { useProfile } from "@/hooks/use-profile";
-import { effectiveHours, isWithinWorkingHours, describeHours } from "@/lib/working-hours";
+import { effectiveHours, describeHours } from "@/lib/working-hours";
+import {
+  computeSlotStates,
+  dayWindowUtc,
+  isSlotBlocked,
+  type BusyAppointment,
+} from "@/lib/appointment-availability";
 import { useServerFn } from "@tanstack/react-start";
 import { useQuery } from "@tanstack/react-query";
 import { Link } from "@tanstack/react-router";
 import { listProfessionals } from "@/lib/professionals.functions";
 import { notifyAppointmentChange } from "@/lib/appointments.functions";
-
-interface BusyAppt {
-  id: string;
-  starts_at: string;
-  ends_at: string;
-  agent_id: string | null;
-}
 
 interface Props {
   /** Quando ausente, o modal mostra um picker de contato (uso pela Agenda). */
@@ -40,7 +39,7 @@ interface Props {
   /** Modo edição: pré-preenche com dados do agendamento existente. */
   initial?: Appointment | null;
   /** Pré-preenche data/hora/profissional ao criar a partir de clique em célula da agenda. */
-  preset?: { starts_at?: Date; agent_id?: string };
+  preset?: { starts_at?: Date; professional_id?: string };
   onScheduled?: (info: { startsAt: Date; serviceIds: string[] }) => void;
   /** Disparado após criar OU editar OU cancelar com sucesso. */
   onSubmitted?: () => void;
@@ -155,18 +154,35 @@ export function ScheduleModal({
     enabled: open,
     staleTime: 30_000,
   });
-  const professionals = profQ.data ?? [];
-  const [agentId, setAgentId] = React.useState<string>("");
+  const professionals = React.useMemo(() => profQ.data ?? [], [profQ.data]);
+  const [professionalId, setProfessionalId] = React.useState<string>("");
+  // Lido pelo reset abaixo sem virar dependência dele: um refetch da lista não
+  // pode reescrever o profissional que o usuário já escolheu.
+  const professionalsRef = React.useRef(professionals);
+  professionalsRef.current = professionals;
+  // Rede de segurança para quando a lista chega DEPOIS da abertura do modal.
   React.useEffect(() => {
-    if (!agentId && professionals.length > 0) setAgentId(professionals[0].id);
-  }, [professionals, agentId]);
+    if (!professionalId && professionals.length > 0) setProfessionalId(professionals[0].id);
+  }, [professionals, professionalId]);
   const [notes, setNotes] = React.useState("");
   const [notifyWa, setNotifyWa] = React.useState(true);
   const [submitting, setSubmitting] = React.useState(false);
   const [dateInput, setDateInput] = React.useState<string>(formatDateBR(toDateInput(new Date())));
   const [dateError, setDateError] = React.useState<string | null>(null);
-  const [busy, setBusy] = React.useState<BusyAppt[]>([]);
+  const [busy, setBusy] = React.useState<BusyAppointment[]>([]);
   const [calendarOpen, setCalendarOpen] = React.useState(false);
+
+  // Chaves primitivas do prefill. `preset`/`preselectedServiceIds` chegam como
+  // literais inline, ou seja, referência nova a cada render do pai — usá-los
+  // direto na lista de dependências re-disparava o reset abaixo sempre que a
+  // Agenda ou o Inbox renderizavam (realtime, refetch), zerando o profissional
+  // escolhido no meio do preenchimento. O <select> continuava exibindo o
+  // primeiro nome da lista, então a tela mentia: parecia haver um profissional
+  // selecionado quando o estado era "", e nenhum horário aparecia como ocupado.
+  const presetStartsMs = preset?.starts_at?.getTime() ?? null;
+  const presetProId = preset?.professional_id ?? null;
+  const presetServiceKey = (preselectedServiceIds ?? []).join(",");
+  const initialId = initial?.id ?? null;
 
   // Reset / prefill ao abrir
   React.useEffect(() => {
@@ -182,7 +198,7 @@ export function ScheduleModal({
       setDate(iso);
       setDateInput(formatDateBR(iso));
       setTime(formatHM(initial.starts_at));
-      setAgentId(initial.agent_id || "");
+      setProfessionalId(initial.professional_id || "");
       setNotes(initial.notes || "");
       setNotifyWa(!!initial.notify_whatsapp);
       setContactQuery("");
@@ -199,14 +215,20 @@ export function ScheduleModal({
       } else {
         setTime("09:00");
       }
-      setAgentId(preset?.agent_id || "");
+      // Já cai no primeiro profissional aqui. Deixar "" e esperar o efeito de
+      // cima resolver não funciona: os dois rodam no mesmo commit, este roda por
+      // último, e o valor renderizado não muda — o efeito de cima nunca redispara
+      // e o modal trava sem profissional, mostrando o primeiro nome no <select>
+      // como se houvesse um escolhido (nenhum horário aparecia ocupado).
+      setProfessionalId(preset?.professional_id || professionalsRef.current[0]?.id || "");
       setNotes("");
       setNotifyWa(true);
       setContactQuery("");
       setPickedContactId("");
       setSelected(new Set(preselectedServiceIds ?? []));
     }
-  }, [open, initial, preset, preselectedServiceIds]);
+    // eslint-disable-next-line react-hooks/exhaustive-deps -- deps primitivas de propósito; ver comentário acima
+  }, [open, initialId, presetStartsMs, presetProId, presetServiceKey]);
 
   // Em modo edição: carrega serviços vinculados via appointment_services.
   React.useEffect(() => {
@@ -229,17 +251,17 @@ export function ScheduleModal({
 
   React.useEffect(() => {
     if (!open || !user?.id || !date) return;
-    const [y, mo, da] = date.split("-").map(Number);
-    const dayStart = new Date(y, (mo ?? 1) - 1, da ?? 1, 0, 0, 0, 0);
-    const dayEnd = new Date(dayStart.getTime() + 24 * 60 * 60_000);
+    // Janela do dia no fuso do NEGÓCIO, não no do navegador. O filtro cruza
+    // starts_at/ends_at para não perder o atendimento que atravessa a meia-noite.
+    const { from, to } = dayWindowUtc(date, tz);
     let cancelled = false;
     const load = async () => {
       const { data, error } = await supabase
         .from("appointments")
-        .select("id, starts_at, ends_at, agent_id, status")
+        .select("id, starts_at, ends_at, professional_id, status")
         .eq("owner_user_id", workspaceOwnerId)
-        .gte("starts_at", dayStart.toISOString())
-        .lt("starts_at", dayEnd.toISOString())
+        .lt("starts_at", to.toISOString())
+        .gt("ends_at", from.toISOString())
         .neq("status", "cancelled");
       if (cancelled) return;
       if (error) {
@@ -247,7 +269,7 @@ export function ScheduleModal({
         setBusy([]);
         return;
       }
-      setBusy((data ?? []) as BusyAppt[]);
+      setBusy((data ?? []) as BusyAppointment[]);
     };
     load();
     const ch = supabase
@@ -258,7 +280,7 @@ export function ScheduleModal({
       cancelled = true;
       supabase.removeChannel(ch);
     };
-  }, [open, user?.id, date, workspaceOwnerId]);
+  }, [open, user?.id, date, tz, workspaceOwnerId]);
 
   const selectedServices = services.filter((s) => selected.has(s.id));
   const totalMin = selectedServices.reduce((a, s) => a + s.duration_minutes, 0);
@@ -272,31 +294,26 @@ export function ScheduleModal({
   // Aqui só ALERTA — encaixe fora do horário é decisão do humano; quem bloqueia
   // de verdade é o servidor, e só no caminho da IA.
   const proHours = React.useMemo(() => {
-    const pro = professionals.find((p) => p.id === agentId);
+    const pro = professionals.find((p) => p.id === professionalId);
     const biz = (profileQ.data as { business_hours?: unknown } | null)?.business_hours;
     return effectiveHours(pro?.working_hours, biz as never);
-  }, [professionals, agentId, profileQ.data]);
+  }, [professionals, professionalId, profileQ.data]);
 
-  const slotState = React.useMemo(() => {
-    const map = new Map<string, { busy: boolean; past: boolean; outside: boolean }>();
-    const now = Date.now();
-    const bufferMs = bufferMin * 60_000;
-    for (const slot of SLOTS) {
-      const start = fromDateTimeInput(date, slot);
-      const end = new Date(start.getTime() + blockMin * 60_000);
-      const past = start.getTime() < now;
-      const isBusy = busy.some((b) => {
-        if (b.id === initial?.id) return false;
-        if (b.agent_id !== agentId) return false;
-        const bs = new Date(b.starts_at).getTime();
-        const be = new Date(b.ends_at).getTime();
-        return start.getTime() < be + bufferMs && bs < end.getTime() + bufferMs;
-      });
-      const outside = !isWithinWorkingHours(proHours, start, tz, blockMin).ok;
-      map.set(slot, { busy: isBusy, past, outside });
-    }
-    return map;
-  }, [busy, agentId, date, blockMin, bufferMin, initial?.id, proHours, tz]);
+  const slotState = React.useMemo(
+    () =>
+      computeSlotStates({
+        slots: SLOTS,
+        dateIso: date,
+        tz,
+        professionalId,
+        blockMin,
+        bufferMin,
+        busy,
+        ignoreId: initial?.id ?? null,
+        hours: proHours,
+      }),
+    [busy, professionalId, date, blockMin, bufferMin, initial?.id, proHours, tz],
+  );
 
   const toggle = (id: string) => {
     setSelected((prev) => {
@@ -316,7 +333,7 @@ export function ScheduleModal({
   }, [date, time, selectedServices, pickedContact]);
 
   const currentSlotState = slotState.get(time);
-  const slotUnavailable = !!(currentSlotState?.busy || currentSlotState?.past);
+  const slotUnavailable = isSlotBlocked(currentSlotState);
   // Fora da jornada NÃO entra em `slotUnavailable` de propósito: encaixe manual
   // continua permitido, só sinalizado.
   const outsideHours = !!currentSlotState?.outside;
@@ -324,7 +341,7 @@ export function ScheduleModal({
     selectedServices.length > 0 &&
     !!date &&
     !!time &&
-    !!agentId &&
+    !!professionalId &&
     (!!pickedContact || (showAddContact && !!newContactName.trim())) &&
     !submitting &&
     !dateError &&
@@ -380,7 +397,7 @@ export function ScheduleModal({
       .from("appointments")
       .select("id, starts_at, ends_at")
       .eq("owner_user_id", workspaceOwnerId)
-      .eq("agent_id", agentId)
+      .eq("professional_id", professionalId)
       .neq("status", "cancelled")
       .lt("starts_at", new Date(endsAtUtc.getTime() + bufferMs).toISOString())
       .gt("ends_at", new Date(startsAtUtc.getTime() - bufferMs).toISOString());
@@ -413,8 +430,7 @@ export function ScheduleModal({
         .from("appointments")
         .update({
           contact_id: ctc.id,
-          agent_id: agentId,
-          professional_id: agentId,
+          professional_id: professionalId,
           service_id: selectedServices[0]?.id ?? null,
           starts_at: startsAtUtc.toISOString(),
           ends_at: endsAtUtc.toISOString(),
@@ -448,8 +464,7 @@ export function ScheduleModal({
         .insert({
           owner_user_id: workspaceOwnerId,
           contact_id: ctc.id,
-          agent_id: agentId,
-          professional_id: agentId,
+          professional_id: professionalId,
           service_id: selectedServices[0]?.id ?? null,
           starts_at: startsAtUtc.toISOString(),
           ends_at: endsAtUtc.toISOString(),
@@ -528,8 +543,7 @@ export function ScheduleModal({
           detail: {
             id: apptId,
             contact_id: ctc.id,
-            agent_id: agentId,
-            professional_id: agentId,
+            professional_id: professionalId,
             service_id: selectedServices[0]?.id ?? null,
             starts_at: startsAtUtc.toISOString(),
             ends_at: endsAtUtc.toISOString(),
@@ -941,7 +955,7 @@ export function ScheduleModal({
             label="Horário"
             icon={<Clock size={12} />}
             hint={
-              busy.filter((b) => b.agent_id === agentId).length > 0
+              busy.filter((b) => b.professional_id === professionalId).length > 0
                 ? "Riscado = ocupado"
                 : undefined
             }
@@ -958,7 +972,7 @@ export function ScheduleModal({
               {SLOTS.map((slot) => {
                 const on = slot === time;
                 const st = slotState.get(slot);
-                const disabled = !!(st?.busy || st?.past);
+                const disabled = isSlotBlocked(st);
                 return (
                   <button
                     key={slot}
@@ -998,7 +1012,11 @@ export function ScheduleModal({
 
           {/* Agent */}
           <FieldGroup label="Profissional" icon={<User size={12} />}>
-            <select value={agentId} onChange={(e) => setAgentId(e.target.value)} style={inputStyle}>
+            <select
+              value={professionalId}
+              onChange={(e) => setProfessionalId(e.target.value)}
+              style={inputStyle}
+            >
               {professionals.length === 0 ? (
                 <option value="">Nenhum profissional cadastrado</option>
               ) : (
@@ -1069,7 +1087,9 @@ export function ScheduleModal({
             }}
           >
             ⚠️ Fora do horário de{" "}
-            <strong>{professionals.find((p) => p.id === agentId)?.name ?? "profissional"}</strong>
+            <strong>
+              {professionals.find((p) => p.id === professionalId)?.name ?? "profissional"}
+            </strong>
             {describeHours(proHours) ? ` (${describeHours(proHours)})` : ""}. Dá pra salvar mesmo
             assim — é um encaixe.
           </div>

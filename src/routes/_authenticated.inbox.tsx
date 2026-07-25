@@ -31,6 +31,9 @@ import { EditContactModal } from "@/features/inbox/edit-contact-modal";
 import { ScheduleModal } from "@/features/inbox/schedule-modal";
 import { TransferConversationModal } from "@/features/inbox/transfer-conversation-modal";
 import { supabase } from "@/integrations/supabase/client";
+import { useServerFn } from "@tanstack/react-start";
+import { useQuery } from "@tanstack/react-query";
+import { listProfessionals } from "@/lib/professionals.functions";
 import { useAuth } from "@/hooks/use-auth";
 import { useWorkspaceOwnerId } from "@/hooks/use-workspace-owner";
 import { useRole } from "@/hooks/use-role";
@@ -62,6 +65,65 @@ function InboxPage() {
     if (isAgent) setFilter("mine");
   }, [roleLoading, isAgent]);
   const [query, setQuery] = React.useState("");
+
+  // Filtro de VISUALIZAÇÃO por profissional. O vínculo conversa↔profissional é
+  // derivado dos agendamentos (quem atende o cliente), não de `assignedAgent` —
+  // esse aponta para membro da equipe com login, e profissional é outra entidade,
+  // que pode nem ter acesso ao sistema.
+  const [proFilter, setProFilter] = React.useState<string>(
+    () => (typeof window !== "undefined" && localStorage.getItem("zf:inbox-pro-filter")) || "all",
+  );
+  React.useEffect(() => {
+    localStorage.setItem("zf:inbox-pro-filter", proFilter);
+  }, [proFilter]);
+
+  const fetchProfessionals = useServerFn(listProfessionals);
+  const profQ = useQuery({
+    queryKey: ["professionals"],
+    queryFn: () => fetchProfessionals(),
+    staleTime: 30_000,
+  });
+  const professionals = React.useMemo(() => profQ.data ?? [], [profQ.data]);
+
+  // contact_id → profissional do agendamento mais recente. Acompanha a agenda em
+  // realtime para o filtro não ficar defasado depois de uma remarcação.
+  const [proByContact, setProByContact] = React.useState<Map<string, string>>(new Map());
+  React.useEffect(() => {
+    if (!workspaceOwnerId) return;
+    let cancelled = false;
+    const load = async () => {
+      const { data, error } = await supabase
+        .from("appointments")
+        .select("contact_id, professional_id, starts_at")
+        .eq("owner_user_id", workspaceOwnerId)
+        .neq("status", "cancelled")
+        .order("starts_at", { ascending: false });
+      if (cancelled) return;
+      if (error) {
+        console.warn("[inbox] mapa de profissionais:", error.message);
+        return;
+      }
+      const map = new Map<string, string>();
+      // Vem do mais recente para o mais antigo: o primeiro que aparece vence.
+      for (const r of data ?? []) {
+        if (!r.contact_id || !r.professional_id) continue;
+        if (!map.has(r.contact_id)) map.set(r.contact_id, r.professional_id);
+      }
+      setProByContact(map);
+    };
+    void load();
+    const ch = supabase
+      .channel(`inbox-appointments-${workspaceOwnerId}`)
+      .on("postgres_changes", { event: "*", schema: "public", table: "appointments" }, () =>
+        load(),
+      )
+      .subscribe();
+    return () => {
+      cancelled = true;
+      supabase.removeChannel(ch);
+    };
+  }, [workspaceOwnerId]);
+
   const [openContact, setOpenContact] = React.useState<Contact | null>(null);
   const [whatsappStatus, setWhatsappStatus] = React.useState<"connected" | "disconnected" | "loading">("loading");
   const [newContactOpen, setNewContactOpen] = React.useState(false);
@@ -412,6 +474,10 @@ function InboxPage() {
       if (filter === "mine" && c.assignedAgent !== (user?.id ?? ""))
         return false;
       if (filter === "unassigned" && c.assignedAgent) return false;
+      if (proFilter !== "all") {
+        const pro = proByContact.get(c.id);
+        if (proFilter === "none" ? !!pro : pro !== proFilter) return false;
+      }
       if (query) {
         const q = query.toLowerCase();
         if (
@@ -423,7 +489,7 @@ function InboxPage() {
       }
       return true;
     });
-  }, [contacts, filter, query, user]);
+  }, [contacts, filter, query, user, proFilter, proByContact]);
 
   const byColumn = React.useMemo(() => {
     const map: Record<string, Contact[]> = {};
@@ -604,6 +670,32 @@ function InboxPage() {
               }}
             />
           </div>
+
+          {/* Visualização por profissional — mesma lista e mesmos rótulos da Agenda. */}
+          <select
+            value={proFilter}
+            onChange={(e) => setProFilter(e.target.value)}
+            aria-label="Filtrar por profissional"
+            style={{
+              height: 32,
+              padding: "0 28px 0 10px",
+              borderRadius: 6,
+              border: "1px solid var(--border-strong)",
+              background: "var(--bg-surface)",
+              color: "var(--text-primary)",
+              fontSize: 13,
+              fontWeight: 500,
+              cursor: "pointer",
+            }}
+          >
+            <option value="all">Todos os profissionais</option>
+            <option value="none">Sem profissional</option>
+            {professionals.map((p) => (
+              <option key={p.id} value={p.id}>
+                {p.name}
+              </option>
+            ))}
+          </select>
 
           <button
             type="button"

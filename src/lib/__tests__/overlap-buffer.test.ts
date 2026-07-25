@@ -7,7 +7,7 @@ function appt(startH: number, endH: number): Appointment {
     id: "x",
     contact_id: "c",
     service_id: "s",
-    agent_id: "a",
+    professional_id: "a",
     starts_at: new Date(base.getTime() + startH * 3_600_000),
     ends_at: new Date(base.getTime() + endH * 3_600_000),
     status: "scheduled",

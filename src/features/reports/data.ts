@@ -52,7 +52,7 @@ interface MessageRow {
 interface ApptRow {
   id: string;
   service_id: string | null;
-  agent_id: string | null;
+  professional_id: string | null;
   status: string | null;
   starts_at: string;
 }
@@ -72,7 +72,7 @@ async function fetchMessages(start: Date, end: Date): Promise<MessageRow[]> {
 async function fetchAppointments(start: Date, end: Date): Promise<ApptRow[]> {
   const { data, error } = await supabase
     .from("appointments")
-    .select("id, service_id, agent_id, status, starts_at")
+    .select("id, service_id, professional_id, status, starts_at")
     .gte("starts_at", start.toISOString())
     .lt("starts_at", end.toISOString())
     .limit(10000);
@@ -215,8 +215,8 @@ export async function getServiceReport(period: Period): Promise<ServiceReport> {
     byAgent.set(m.sent_by, r);
   }
   for (const a of appts) {
-    if (a.status === "completed" && a.agent_id && byAgent.has(a.agent_id)) {
-      byAgent.get(a.agent_id)!.resolved += 1;
+    if (a.status === "completed" && a.professional_id && byAgent.has(a.professional_id)) {
+      byAgent.get(a.professional_id)!.resolved += 1;
     }
   }
   const profileIds = Array.from(byAgent.keys());

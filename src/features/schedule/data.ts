@@ -14,7 +14,8 @@ export interface Appointment {
   id: string;
   contact_id: string;
   service_id: string;
-  agent_id: string;
+  /** `professionals.id`. Espelha a coluna do banco — o legado `agent_id` saiu. */
+  professional_id: string;
   starts_at: Date;
   ends_at: Date;
   status: AppointmentStatus;
@@ -154,7 +155,7 @@ export const MOCK_APPOINTMENTS: Appointment[] = [
     id: "ap1",
     contact_id: pickContactId(0),
     service_id: SEED_SERVICES[0].id,
-    agent_id: "a1",
+    professional_id: "a1",
     starts_at: at(0, 9, 0),
     ends_at: at(0, 9, 30),
     status: "confirmed",
@@ -166,7 +167,7 @@ export const MOCK_APPOINTMENTS: Appointment[] = [
     id: "ap2",
     contact_id: pickContactId(1),
     service_id: SEED_SERVICES[1].id,
-    agent_id: "a2",
+    professional_id: "a2",
     starts_at: at(0, 10, 30),
     ends_at: at(0, 11, 30),
     status: "scheduled",
@@ -178,7 +179,7 @@ export const MOCK_APPOINTMENTS: Appointment[] = [
     id: "ap3",
     contact_id: pickContactId(2),
     service_id: SEED_SERVICES[2].id,
-    agent_id: "a1",
+    professional_id: "a1",
     starts_at: at(0, 14, 0),
     ends_at: at(0, 14, 45),
     status: "in_progress",
@@ -190,7 +191,7 @@ export const MOCK_APPOINTMENTS: Appointment[] = [
     id: "ap4",
     contact_id: pickContactId(3),
     service_id: SEED_SERVICES[3].id,
-    agent_id: "a3",
+    professional_id: "a3",
     starts_at: at(1, 11, 0),
     ends_at: at(1, 12, 30),
     status: "scheduled",
@@ -202,7 +203,7 @@ export const MOCK_APPOINTMENTS: Appointment[] = [
     id: "ap5",
     contact_id: pickContactId(4),
     service_id: SEED_SERVICES[4].id,
-    agent_id: "a4",
+    professional_id: "a4",
     starts_at: at(2, 9, 30),
     ends_at: at(2, 13, 30),
     status: "scheduled",
@@ -214,7 +215,7 @@ export const MOCK_APPOINTMENTS: Appointment[] = [
     id: "ap6",
     contact_id: pickContactId(5),
     service_id: SEED_SERVICES[0].id,
-    agent_id: "a2",
+    professional_id: "a2",
     starts_at: at(3, 16, 0),
     ends_at: at(3, 16, 30),
     status: "confirmed",
@@ -226,7 +227,7 @@ export const MOCK_APPOINTMENTS: Appointment[] = [
     id: "ap7",
     contact_id: pickContactId(6),
     service_id: SEED_SERVICES[2].id,
-    agent_id: "a1",
+    professional_id: "a1",
     starts_at: at(-1, 10, 0),
     ends_at: at(-1, 10, 45),
     status: "completed",
@@ -238,7 +239,7 @@ export const MOCK_APPOINTMENTS: Appointment[] = [
     id: "ap8",
     contact_id: pickContactId(7),
     service_id: SEED_SERVICES[3].id,
-    agent_id: "a3",
+    professional_id: "a3",
     starts_at: at(4, 14, 30),
     ends_at: at(4, 16, 0),
     status: "scheduled",

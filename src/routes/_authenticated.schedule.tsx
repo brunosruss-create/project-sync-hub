@@ -44,7 +44,6 @@ import {
   fromDateTimeInput,
   isPast,
   parseDateBR,
-  overlap,
   sameDay,
   startOfDay,
   startOfMonthGrid,
@@ -53,6 +52,7 @@ import {
   toDateInput,
 } from "@/features/schedule/data";
 import { utcToZonedLocal, zonedLocalToUtc } from "@/features/schedule/tz";
+import { effectiveHours, parseHM, DAY_ORDER, type NormalizedHours } from "@/lib/working-hours";
 import { useProfile } from "@/hooks/use-profile";
 import { ScheduleModal } from "@/features/inbox/schedule-modal";
 
@@ -129,7 +129,7 @@ function SchedulePage() {
       id: r.id,
       contact_id: r.contact_id ?? "",
       service_id: r.service_id ?? "",
-      agent_id: r.professional_id ?? r.agent_id ?? "",
+      professional_id: r.professional_id ?? "",
       starts_at: utcToZonedLocal(new Date(r.starts_at), tz),
       ends_at: utcToZonedLocal(new Date(r.ends_at), tz),
       status: (r.status ?? "scheduled") as AppointmentStatus,
@@ -145,7 +145,7 @@ function SchedulePage() {
       supabase
         .from("appointments")
         .select(
-          "id,contact_id,service_id,agent_id,professional_id,starts_at,ends_at,status,notes,notify_whatsapp,client_name",
+          "id,contact_id,service_id,professional_id,starts_at,ends_at,status,notes,notify_whatsapp,client_name",
         ),
       supabase
         .from("contacts")
@@ -252,8 +252,9 @@ function SchedulePage() {
     return items.filter((a) => {
       if (a.status === "cancelled") return false;
       if (agentFilter === "all") return true;
-      if (agentFilter === "unassigned") return !a.agent_id || !knownIds.has(a.agent_id);
-      return a.agent_id === agentFilter;
+      if (agentFilter === "unassigned")
+        return !a.professional_id || !knownIds.has(a.professional_id);
+      return a.professional_id === agentFilter;
     });
   }, [items, agentFilter, agents]);
 
@@ -261,80 +262,6 @@ function SchedulePage() {
 
   const notifyChangeFn = useServerFn(notifyAppointmentChange);
   const { workspaceOwnerId } = useWorkspaceOwnerId();
-
-  const upsert = async (draft: Appointment) => {
-    // overlap detection (infla a janela pelo buffer do serviço do draft, pra
-    // não deixar marcar em cima do intervalo de limpeza/preparo configurado)
-    const bufferMs =
-      (services.find((s) => s.id === draft.service_id)?.buffer_minutes ?? 0) * 60_000;
-    const conflict = items.find(
-      (a) =>
-        a.id !== draft.id &&
-        a.status !== "cancelled" &&
-        a.agent_id === draft.agent_id &&
-        overlap(a, draft, bufferMs),
-    );
-    if (conflict) {
-      nfy.error("Horário em conflito com outro agendamento desse agente.");
-      return false;
-    }
-    const previous = items.find((a) => a.id === draft.id) ?? null;
-    const exists = !!previous;
-    setItems((prev) =>
-      exists ? prev.map((a) => (a.id === draft.id ? draft : a)) : [...prev, draft],
-    );
-    setEditing(null);
-
-    const payload: Record<string, unknown> = {
-      id: draft.id,
-      contact_id: draft.contact_id || null,
-      service_id: draft.service_id || null,
-      agent_id: draft.agent_id || null,
-      professional_id: draft.agent_id || null,
-      starts_at: zonedLocalToUtc(draft.starts_at, tz).toISOString(),
-      ends_at: zonedLocalToUtc(draft.ends_at, tz).toISOString(),
-      status: draft.status,
-      notes: draft.notes,
-      notify_whatsapp: draft.notify_whatsapp,
-    };
-    if (workspaceOwnerId) payload.owner_user_id = workspaceOwnerId;
-
-    const { error } = await supabase.from("appointments").upsert(payload);
-    if (error) {
-      console.warn("[schedule] upsert falhou:", error.message);
-      nfy.error(`Falha ao salvar: ${error.message}`);
-      // reverte UI otimista
-      setItems((prev) =>
-        exists
-          ? prev.map((a) => (a.id === draft.id ? previous! : a))
-          : prev.filter((a) => a.id !== draft.id),
-      );
-      return false;
-    }
-    nfy.success(exists ? "Agendamento atualizado." : "Agendamento criado.");
-    {
-      const rescheduled = exists && previous!.starts_at.getTime() !== draft.starts_at.getTime();
-      const kind: "created" | "rescheduled" | null = !exists
-        ? "created"
-        : rescheduled
-          ? "rescheduled"
-          : null;
-      if (kind) {
-        const payload: {
-          appointmentId: string;
-          kind: "created" | "rescheduled";
-          previousStartsAt?: string;
-        } = { appointmentId: draft.id, kind };
-        if (kind === "rescheduled" && previous) {
-          payload.previousStartsAt = zonedLocalToUtc(previous.starts_at, tz).toISOString();
-        }
-        void notifyChangeFn({ data: payload }).catch((e) =>
-          console.warn("[schedule] notify falhou:", e),
-        );
-      }
-    }
-    return true;
-  };
 
   const setStatus = async (id: string, status: AppointmentStatus) => {
     const before = items.find((a) => a.id === id) ?? null;
@@ -379,7 +306,15 @@ function SchedulePage() {
     return "Próximos agendamentos";
   }, [view, cursor]);
 
-  const ctx = { contacts, services, agents };
+  // Jornada usada para sombrear a grade. Com um profissional filtrado mostra a
+  // dele; em "todos" cai na do negócio, que é o denominador comum.
+  const gridHours = React.useMemo(() => {
+    const biz = (profileQ.data as { business_hours?: unknown } | null)?.business_hours;
+    const pro = profQ.data?.find((p) => p.id === agentFilter);
+    return effectiveHours(pro?.working_hours, biz as never);
+  }, [profQ.data, agentFilter, profileQ.data]);
+
+  const ctx = { contacts, services, agents, hours: gridHours, tz };
 
   return (
     <div className="flex flex-col" style={{ gap: 16, height: "calc(100vh - 48px - 48px)" }}>
@@ -533,7 +468,7 @@ function SchedulePage() {
             editing.mode === "create"
               ? {
                   starts_at: editing.preset?.starts_at,
-                  agent_id: editing.preset?.agent_id,
+                  professional_id: editing.preset?.professional_id,
                 }
               : undefined
           }
@@ -643,12 +578,15 @@ interface Ctx {
   contacts: ContactCard[];
   services: Service[];
   agents: Agent[];
+  /** Jornada do profissional filtrado (ou do negócio, em "todos"). */
+  hours: NormalizedHours | null;
+  tz: string;
 }
 
 function lookup(ctx: Ctx, a: Appointment) {
   const contact = ctx.contacts.find((c) => c.id === a.contact_id);
   const service = ctx.services.find((s) => s.id === a.service_id);
-  const agent = ctx.agents.find((g) => g.id === a.agent_id);
+  const agent = ctx.agents.find((g) => g.id === a.professional_id);
   return { contact, service, agent, color: service?.color ?? "#3B82F6" };
 }
 
@@ -757,10 +695,11 @@ function DayView({
         }}
       >
         <HourGrid height={height}>
+          <UnavailableBands day={date} hours={ctx.hours} tz={ctx.tz} />
           {dayItems.map((a) => (
             <EventBlock key={a.id} a={a} ctx={ctx} onOpen={onOpen} left={8} right={8} />
           ))}
-          <NowLine date={date} />
+          <NowLine date={date} tz={ctx.tz} />
         </HourGrid>
       </div>
     </div>
@@ -877,6 +816,7 @@ function WeekView({
                   }}
                 >
                   <HourGrid height={height}>
+                    <UnavailableBands day={d} hours={ctx.hours} tz={ctx.tz} />
                     {dayItems.map((a) => (
                       <EventBlock
                         key={a.id}
@@ -888,7 +828,7 @@ function WeekView({
                         compact
                       />
                     ))}
-                    <NowLine date={d} />
+                    <NowLine date={d} tz={ctx.tz} />
                   </HourGrid>
                 </div>
               );
@@ -900,9 +840,95 @@ function WeekView({
   );
 }
 
-function NowLine({ date }: { date: Date }) {
-  if (!sameDay(date, new Date())) return null;
-  const now = new Date();
+/** Date.getDay() (0=domingo) → chave usada por working-hours. */
+const DAY_KEY_BY_INDEX = [
+  DAY_ORDER[6],
+  DAY_ORDER[0],
+  DAY_ORDER[1],
+  DAY_ORDER[2],
+  DAY_ORDER[3],
+  DAY_ORDER[4],
+  DAY_ORDER[5],
+] as const;
+
+/**
+ * Sombreia na grade o que não dá para agendar: o passado e as faixas fora da
+ * jornada. Sai da mesma configuração (`working-hours`) que o modal usa para
+ * avisar de encaixe, então as duas telas nunca discordam sobre o expediente.
+ *
+ * Só sinaliza — clicar continua abrindo o modal, porque encaixe manual é decisão
+ * do humano. Quem bloqueia por jornada é o caminho da IA.
+ */
+function UnavailableBands({
+  day,
+  hours,
+  tz,
+}: {
+  day: Date;
+  hours: NormalizedHours | null;
+  tz: string;
+}) {
+  const winStart = HOUR_START * 60;
+  const winEnd = HOUR_END * 60;
+  const bands: Array<{ from: number; to: number }> = [];
+
+  if (hours) {
+    const cfg = hours[DAY_KEY_BY_INDEX[day.getDay()]];
+    if (!cfg?.active || cfg.ranges.length === 0) {
+      bands.push({ from: winStart, to: winEnd });
+    } else {
+      // Sombreia os vãos: antes da primeira faixa, entre faixas (almoço) e
+      // depois da última.
+      let cursor = winStart;
+      for (const r of cfg.ranges) {
+        const rs = parseHM(r.start) ?? winStart;
+        const re = parseHM(r.end) ?? winEnd;
+        if (rs > cursor) bands.push({ from: cursor, to: rs });
+        cursor = Math.max(cursor, re);
+      }
+      if (cursor < winEnd) bands.push({ from: cursor, to: winEnd });
+    }
+  }
+
+  const now = utcToZonedLocal(new Date(), tz);
+  if (sameDay(day, now)) {
+    bands.push({ from: winStart, to: now.getHours() * 60 + now.getMinutes() });
+  } else if (day.getTime() < startOfDay(now).getTime()) {
+    bands.push({ from: winStart, to: winEnd });
+  }
+
+  return (
+    <>
+      {bands.map((b, i) => {
+        const from = Math.max(b.from, winStart);
+        const to = Math.min(b.to, winEnd);
+        if (to <= from) return null;
+        return (
+          <div
+            key={i}
+            aria-hidden
+            style={{
+              position: "absolute",
+              top: GRID_TOP_PAD + (from - winStart) * PX_PER_MIN,
+              left: 0,
+              right: 0,
+              height: (to - from) * PX_PER_MIN,
+              background: "var(--bg-overlay)",
+              opacity: 0.5,
+              pointerEvents: "none",
+            }}
+          />
+        );
+      })}
+    </>
+  );
+}
+
+function NowLine({ date, tz }: { date: Date; tz: string }) {
+  // As datas da grade são "phantom local" (campos = relógio do negócio), então o
+  // agora precisa vir do mesmo relógio — senão a linha desliza no fuso errado.
+  const now = utcToZonedLocal(new Date(), tz);
+  if (!sameDay(date, now)) return null;
   const minutes = now.getHours() * 60 + now.getMinutes() - HOUR_START * 60;
   if (minutes < 0 || minutes > (HOUR_END - HOUR_START) * 60) return null;
   return (
@@ -1643,610 +1669,5 @@ function ActionLink({
       {icon}
       {children}
     </Link>
-  );
-}
-
-/* ============== sub: modal ============== */
-
-function AppointmentModal({
-  initial,
-  preset,
-  contacts,
-  services,
-  agents,
-  onClose,
-  onSubmit,
-  onAddContact,
-}: {
-  initial: Appointment | null;
-  preset?: Partial<Appointment>;
-  contacts: ContactCard[];
-  services: Service[];
-  agents: Agent[];
-  onClose: () => void;
-  onSubmit: (a: Appointment) => Promise<boolean> | boolean;
-  onAddContact: (name: string, phone: string) => ContactCard;
-}) {
-  const baseDate = initial?.starts_at ?? preset?.starts_at ?? new Date();
-  const baseHM = `${String(baseDate.getHours()).padStart(2, "0")}:${String(
-    Math.round(baseDate.getMinutes() / 15) * 15,
-  ).padStart(2, "0")}`;
-
-  const [contactQuery, setContactQuery] = React.useState(
-    initial ? (contacts.find((c) => c.id === initial.contact_id)?.name ?? "") : "",
-  );
-  const [contactId, setContactId] = React.useState(initial?.contact_id ?? "");
-  const [showAdd, setShowAdd] = React.useState(false);
-  const [newName, setNewName] = React.useState("");
-  const [newPhone, setNewPhone] = React.useState("");
-
-  const [serviceId, setServiceId] = React.useState(initial?.service_id ?? services[0]?.id ?? "");
-  const [agentId, setAgentId] = React.useState(initial?.agent_id ?? agents[0]?.id ?? "");
-  const [date, setDate] = React.useState(toDateInput(baseDate));
-  const [dateText, setDateText] = React.useState(formatDateBR(toDateInput(baseDate)));
-  const dateNativeRef = React.useRef<HTMLInputElement | null>(null);
-  const [time, setTime] = React.useState(baseHM);
-  const [notes, setNotes] = React.useState(initial?.notes ?? "");
-  const [notify, setNotify] = React.useState(initial?.notify_whatsapp ?? true);
-  const [status] = React.useState<AppointmentStatus>(initial?.status ?? "scheduled");
-
-  const service = services.find((s) => s.id === serviceId);
-  const dur = service?.duration_minutes ?? 30;
-  const starts = fromDateTimeInput(date, time);
-  const ends = addMinutes(starts, dur);
-
-  // Lock scroll
-  React.useEffect(() => {
-    const prev = document.body.style.overflow;
-    document.body.style.overflow = "hidden";
-    return () => {
-      document.body.style.overflow = prev;
-    };
-  }, []);
-
-  // overlap warning (UI hint, real check in parent)
-  const conflict = React.useMemo(() => {
-    return false; // parent does final check
-  }, []);
-
-  const filteredContacts = React.useMemo(() => {
-    if (!contactQuery) return contacts.slice(0, 6);
-    const q = contactQuery.toLowerCase();
-    return contacts
-      .filter((c) => c.name.toLowerCase().includes(q) || c.phone.toLowerCase().includes(q))
-      .slice(0, 8);
-  }, [contactQuery, contacts]);
-
-  const submit = async (e: React.FormEvent) => {
-    e.preventDefault();
-    let cid = contactId;
-    if (!cid && showAdd && newName.trim()) {
-      const c = onAddContact(newName.trim(), newPhone.trim());
-      cid = c.id;
-    }
-    if (!cid) {
-      nfy.error("Selecione ou crie um contato.");
-      return;
-    }
-    if (!serviceId) {
-      nfy.error("Selecione um serviço.");
-      return;
-    }
-    if (!agentId) {
-      nfy.error("Selecione um agente.");
-      return;
-    }
-    const draft: Appointment = {
-      id:
-        initial?.id ??
-        (typeof crypto !== "undefined" && crypto.randomUUID
-          ? crypto.randomUUID()
-          : `${Date.now()}-${Math.random().toString(36).slice(2)}`),
-      contact_id: cid,
-      service_id: serviceId,
-      agent_id: agentId,
-      starts_at: starts,
-      ends_at: ends,
-      status,
-      notes: notes.trim(),
-      notify_whatsapp: notify,
-      client_name: initial?.client_name ?? null,
-    };
-    await onSubmit(draft);
-  };
-
-  return (
-    <div
-      onClick={onClose}
-      style={{
-        position: "fixed",
-        inset: 0,
-        background: "rgba(0,0,0,0.45)",
-        zIndex: 70,
-        display: "flex",
-        alignItems: "center",
-        justifyContent: "center",
-        padding: 16,
-        animation: "fadeSlideIn 150ms ease-out",
-      }}
-    >
-      <form
-        onClick={(e) => e.stopPropagation()}
-        onSubmit={submit}
-        style={{
-          width: "100%",
-          maxWidth: 520,
-          maxHeight: "calc(100vh - 32px)",
-          background: "var(--bg-surface)",
-          border: "1px solid var(--border)",
-          borderRadius: 12,
-          display: "flex",
-          flexDirection: "column",
-          boxShadow: "0 20px 50px rgba(0,0,0,0.25)",
-          animation: "fadeSlideIn 200ms ease-out",
-        }}
-      >
-        <div
-          className="flex items-center justify-between"
-          style={{ padding: "14px 16px", borderBottom: "1px solid var(--border)" }}
-        >
-          <div>
-            <div style={{ fontSize: 14, fontWeight: 600 }}>
-              {initial ? "Editar agendamento" : "Novo agendamento"}
-            </div>
-            <div style={{ fontSize: 11, color: "var(--text-muted)", marginTop: 1 }}>
-              Defina contato, serviço, data e responsável.
-            </div>
-          </div>
-          <button
-            type="button"
-            onClick={onClose}
-            aria-label="Fechar"
-            className="inline-flex items-center justify-center"
-            style={{ width: 30, height: 30, borderRadius: 6, color: "var(--text-muted)" }}
-          >
-            <X size={16} />
-          </button>
-        </div>
-
-        <div className="flex-1 overflow-y-auto" style={{ padding: 16 }}>
-          <div className="flex flex-col" style={{ gap: 12 }}>
-            {/* Contact autocomplete */}
-            <Field label="Contato" required>
-              {!showAdd ? (
-                <div style={{ position: "relative" }}>
-                  <input
-                    value={contactQuery}
-                    onChange={(e) => {
-                      setContactQuery(e.target.value);
-                      setContactId("");
-                    }}
-                    placeholder="Buscar por nome ou telefone…"
-                    style={inputStyle}
-                  />
-                  {contactQuery && !contactId && (
-                    <div
-                      style={{
-                        position: "absolute",
-                        top: 38,
-                        left: 0,
-                        right: 0,
-                        zIndex: 5,
-                        background: "var(--bg-surface)",
-                        border: "1px solid var(--border-strong)",
-                        borderRadius: 6,
-                        maxHeight: 220,
-                        overflow: "auto",
-                        boxShadow: "0 10px 30px rgba(0,0,0,0.18)",
-                      }}
-                    >
-                      {filteredContacts.map((c) => (
-                        <button
-                          key={c.id}
-                          type="button"
-                          onClick={() => {
-                            setContactId(c.id);
-                            setContactQuery(c.name);
-                          }}
-                          className="flex items-center w-full"
-                          style={{
-                            gap: 8,
-                            padding: "8px 10px",
-                            background: "transparent",
-                            textAlign: "left",
-                          }}
-                          onMouseEnter={(e) =>
-                            (e.currentTarget.style.background = "var(--bg-overlay)")
-                          }
-                          onMouseLeave={(e) => (e.currentTarget.style.background = "transparent")}
-                        >
-                          <span style={{ fontSize: 13, fontWeight: 500 }}>{c.name}</span>
-                          <span
-                            className="font-mono"
-                            style={{ fontSize: 11, color: "var(--text-muted)", marginLeft: "auto" }}
-                          >
-                            {c.phone}
-                          </span>
-                        </button>
-                      ))}
-                      <button
-                        type="button"
-                        onClick={() => {
-                          setShowAdd(true);
-                          setNewName(contactQuery);
-                        }}
-                        className="flex items-center w-full"
-                        style={{
-                          gap: 6,
-                          padding: "8px 10px",
-                          fontSize: 13,
-                          color: "var(--brand-400)",
-                          fontWeight: 500,
-                          borderTop: "1px solid var(--border)",
-                          background: "transparent",
-                          textAlign: "left",
-                        }}
-                      >
-                        <Plus size={13} /> Criar novo contato
-                      </button>
-                    </div>
-                  )}
-                </div>
-              ) : (
-                <div className="flex flex-col" style={{ gap: 6 }}>
-                  <input
-                    value={newName}
-                    onChange={(e) => setNewName(e.target.value.slice(0, 100))}
-                    placeholder="Nome completo"
-                    style={inputStyle}
-                  />
-                  <input
-                    value={newPhone}
-                    onChange={(e) => setNewPhone(e.target.value.slice(0, 30))}
-                    placeholder="Telefone com DDD"
-                    style={inputStyle}
-                  />
-                  <button
-                    type="button"
-                    onClick={() => setShowAdd(false)}
-                    style={{
-                      alignSelf: "flex-start",
-                      fontSize: 12,
-                      color: "var(--text-muted)",
-                      background: "transparent",
-                    }}
-                  >
-                    ← Voltar para busca
-                  </button>
-                </div>
-              )}
-            </Field>
-
-            <Field label="Serviço" required>
-              <select
-                value={serviceId}
-                onChange={(e) => setServiceId(e.target.value)}
-                style={inputStyle}
-              >
-                {services.map((s) => (
-                  <option key={s.id} value={s.id}>
-                    {s.name} ·{" "}
-                    {(s.price_cents / 100).toLocaleString("pt-BR", {
-                      style: "currency",
-                      currency: "BRL",
-                    })}{" "}
-                    · {s.duration_minutes}min
-                  </option>
-                ))}
-              </select>
-            </Field>
-
-            <div style={{ display: "grid", gridTemplateColumns: "1fr 1fr", gap: 12 }}>
-              <Field label="Data" required>
-                <div style={{ position: "relative" }}>
-                  <input
-                    type="text"
-                    inputMode="numeric"
-                    placeholder="dd/mm/aaaa"
-                    value={dateText}
-                    onChange={(e) => {
-                      const raw = e.target.value.replace(/[^\d/]/g, "").slice(0, 10);
-                      const d = raw.replace(/\D/g, "");
-                      let masked = d;
-                      if (d.length > 4)
-                        masked = `${d.slice(0, 2)}/${d.slice(2, 4)}/${d.slice(4, 8)}`;
-                      else if (d.length > 2) masked = `${d.slice(0, 2)}/${d.slice(2)}`;
-                      setDateText(masked);
-                      const iso = parseDateBR(masked);
-                      if (iso) setDate(iso);
-                    }}
-                    onBlur={() => {
-                      const iso = parseDateBR(dateText);
-                      if (iso) {
-                        setDate(iso);
-                        setDateText(formatDateBR(iso));
-                      } else {
-                        setDateText(formatDateBR(date));
-                      }
-                    }}
-                    style={{ ...inputStyle, paddingRight: 36 }}
-                  />
-                  <button
-                    type="button"
-                    onClick={() => {
-                      const el = dateNativeRef.current;
-                      if (!el) return;
-                      try {
-                        if (typeof el.showPicker === "function") {
-                          el.showPicker();
-                          return;
-                        }
-                      } catch {
-                        /* cross-origin iframe / not allowed — cai no focus+click */
-                      }
-                      el.focus();
-                      el.click();
-                    }}
-                    aria-label="Abrir calendário"
-                    style={{
-                      position: "absolute",
-                      right: 6,
-                      top: "50%",
-                      transform: "translateY(-50%)",
-                      width: 26,
-                      height: 26,
-                      display: "inline-flex",
-                      alignItems: "center",
-                      justifyContent: "center",
-                      borderRadius: 6,
-                      background: "transparent",
-                      color: "var(--text-muted)",
-                      zIndex: 1,
-                    }}
-                  >
-                    <CalendarClock size={15} />
-                  </button>
-                  <input
-                    ref={dateNativeRef}
-                    type="date"
-                    value={date}
-                    onChange={(e) => {
-                      const iso = e.target.value;
-                      if (iso) {
-                        setDate(iso);
-                        setDateText(formatDateBR(iso));
-                      }
-                    }}
-                    aria-label="Selecionar data"
-                    style={{
-                      position: "absolute",
-                      right: 4,
-                      top: "50%",
-                      transform: "translateY(-50%)",
-                      width: 30,
-                      height: 30,
-                      opacity: 0,
-                      cursor: "pointer",
-                      zIndex: 2,
-                      border: 0,
-                      padding: 0,
-                      background: "transparent",
-                    }}
-                  />
-                </div>
-              </Field>
-              <Field label="Horário" required>
-                <select value={time} onChange={(e) => setTime(e.target.value)} style={inputStyle}>
-                  {timeSlots(15).map((t) => (
-                    <option key={t} value={t}>
-                      {t}
-                    </option>
-                  ))}
-                </select>
-              </Field>
-            </div>
-
-            <Field label="Profissional" required>
-              {agents.length === 0 ? (
-                <div style={{ fontSize: 12, color: "var(--text-muted)" }}>
-                  Nenhum profissional cadastrado.{" "}
-                  <Link to="/settings/professionals" style={{ color: "var(--brand-400)" }}>
-                    Cadastrar agora
-                  </Link>
-                </div>
-              ) : (
-                <select
-                  value={agentId}
-                  onChange={(e) => setAgentId(e.target.value)}
-                  style={inputStyle}
-                >
-                  {agents.map((a) => (
-                    <option key={a.id} value={a.id}>
-                      {a.name}
-                    </option>
-                  ))}
-                </select>
-              )}
-            </Field>
-
-            <Field label="Observações">
-              <textarea
-                value={notes}
-                onChange={(e) => setNotes(e.target.value.slice(0, 500))}
-                rows={3}
-                placeholder="Notas internas…"
-                style={{
-                  ...inputStyle,
-                  height: "auto",
-                  padding: "8px 10px",
-                  resize: "vertical",
-                  lineHeight: 1.4,
-                }}
-              />
-            </Field>
-
-            <label
-              className="flex items-center justify-between"
-              style={{
-                padding: "10px 12px",
-                borderRadius: 8,
-                border: "1px solid var(--border)",
-                background: "var(--bg-base)",
-                cursor: "pointer",
-              }}
-            >
-              <div>
-                <div style={{ fontSize: 13, fontWeight: 500 }}>Notificar cliente via WhatsApp</div>
-                <div style={{ fontSize: 11, color: "var(--text-muted)" }}>
-                  Envia mensagem de confirmação automática.
-                </div>
-              </div>
-              <Toggle on={notify} onChange={setNotify} />
-            </label>
-
-            {/* preview line */}
-            <div
-              style={{
-                padding: 10,
-                borderRadius: 8,
-                background: "var(--bg-overlay)",
-                fontSize: 12,
-                color: "var(--text-muted)",
-                fontFamily: "var(--font-mono, ui-monospace)",
-              }}
-            >
-              {starts.toLocaleString("pt-BR", { dateStyle: "medium", timeStyle: "short" })} →{" "}
-              {formatHM(ends)} ({dur} min)
-            </div>
-
-            {conflict && (
-              <div
-                className="flex items-center"
-                style={{
-                  gap: 8,
-                  padding: 10,
-                  borderRadius: 8,
-                  background: "color-mix(in oklab, #EF4444 15%, transparent)",
-                  border: "1px solid color-mix(in oklab, #EF4444 35%, transparent)",
-                  color: "#EF4444",
-                  fontSize: 12,
-                }}
-              >
-                <AlertTriangle size={14} />
-                Esse horário já está ocupado para o agente selecionado.
-              </div>
-            )}
-          </div>
-        </div>
-
-        <div
-          className="flex items-center justify-end"
-          style={{
-            padding: "12px 16px",
-            borderTop: "1px solid var(--border)",
-            gap: 8,
-          }}
-        >
-          <button
-            type="button"
-            onClick={onClose}
-            style={{
-              height: 32,
-              padding: "0 12px",
-              borderRadius: 6,
-              border: "1px solid var(--border-strong)",
-              background: "transparent",
-              color: "var(--text-primary)",
-              fontSize: 13,
-              fontWeight: 500,
-            }}
-          >
-            Cancelar
-          </button>
-          <button type="submit" className="btn-primary">
-            <CheckCircle2 size={14} />
-            {initial ? "Salvar alterações" : "Agendar"}
-          </button>
-        </div>
-      </form>
-    </div>
-  );
-}
-
-const inputStyle: React.CSSProperties = {
-  width: "100%",
-  height: 36,
-  padding: "0 10px",
-  fontSize: 13,
-  color: "var(--text-primary)",
-  background: "var(--bg-base)",
-  border: "1px solid var(--border-strong)",
-  borderRadius: 6,
-  outline: "none",
-  fontFamily: "inherit",
-};
-
-function Field({
-  label,
-  required,
-  children,
-}: {
-  label: string;
-  required?: boolean;
-  children: React.ReactNode;
-}) {
-  return (
-    <label className="flex flex-col" style={{ gap: 4 }}>
-      <span
-        style={{
-          fontSize: 11,
-          color: "var(--text-muted)",
-          textTransform: "uppercase",
-          letterSpacing: "0.05em",
-        }}
-      >
-        {label}
-        {required && <span style={{ color: "#EF4444", marginLeft: 3 }}>*</span>}
-      </span>
-      {children}
-    </label>
-  );
-}
-
-function Toggle({ on, onChange }: { on: boolean; onChange: (v: boolean) => void }) {
-  return (
-    <button
-      type="button"
-      role="switch"
-      aria-checked={on}
-      onClick={(e) => {
-        e.preventDefault();
-        onChange(!on);
-      }}
-      style={{
-        width: 36,
-        height: 20,
-        borderRadius: 999,
-        background: on ? "var(--brand-400)" : "var(--bg-overlay)",
-        border: "1px solid var(--border-strong)",
-        position: "relative",
-        transition: "background 150ms ease",
-        flexShrink: 0,
-      }}
-    >
-      <span
-        style={{
-          position: "absolute",
-          top: 1,
-          left: on ? 17 : 1,
-          width: 16,
-          height: 16,
-          borderRadius: 999,
-          background: "#fff",
-          transition: "left 150ms ease",
-          boxShadow: "0 1px 3px rgba(0,0,0,0.25)",
-        }}
-      />
-    </button>
   );
 }
