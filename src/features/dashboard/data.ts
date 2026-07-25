@@ -1,5 +1,4 @@
 import { supabase } from "@/integrations/supabase/client";
-import { SEED_SERVICES } from "@/features/services/data";
 
 export type DashPeriod = "today" | "week" | "month" | "custom";
 
@@ -191,7 +190,7 @@ export async function getDashboardData(period: DashPeriod, currentUserId?: strin
   const allSvcIds = new Set<string>();
   for (const ids of svcIdsByAppt.values()) ids.forEach((i) => allSvcIds.add(i));
   for (const a of upcomingRows as any[]) if (a.service_id) allSvcIds.add(a.service_id);
-  const svcNameById = new Map<string, string>(SEED_SERVICES.map((s) => [s.id, s.name]));
+  const svcNameById = new Map<string, string>();
   const dbSvcIds = Array.from(allSvcIds).filter(isUuid);
   if (dbSvcIds.length) {
     const { data: svcRows } = await supabase
@@ -260,7 +259,7 @@ export async function getDashboardData(period: DashPeriod, currentUserId?: strin
     }
   }
   const topSvcIds = Array.from(new Set(asRows.map((r) => r.service_id).filter(Boolean)));
-  const topSvcNames = new Map<string, string>(SEED_SERVICES.map((s) => [s.id, s.name]));
+  const topSvcNames = new Map<string, string>();
   const topDbSvcIds = topSvcIds.filter(isUuid);
   if (topDbSvcIds.length) {
     const { data } = await supabase.from("services").select("id,name").in("id", topDbSvcIds);

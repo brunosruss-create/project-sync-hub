@@ -8,7 +8,6 @@ import {
   type Service,
   type ServiceStatus,
   PRESET_COLORS,
-  SEED_SERVICES,
   STATUS_COLOR,
   STATUS_LABEL,
   formatCurrencyBRL,
@@ -39,7 +38,7 @@ const FALLBACK_DESCRIPTION_EXAMPLE =
 
 function ServicesPage() {
   const { workspaceOwnerId } = useWorkspaceOwnerId();
-  const [services, setServices] = React.useState<Service[]>(SEED_SERVICES);
+  const [services, setServices] = React.useState<Service[]>([]);
   const [descriptionExample, setDescriptionExample] = React.useState<string>(
     FALLBACK_DESCRIPTION_EXAMPLE,
   );
@@ -160,11 +159,6 @@ function ServicesPage() {
   };
 
   const archiveService = async (id: string) => {
-    if (!isUuid(id)) {
-      // Item local (seed) — só remove da UI.
-      setServices((prev) => prev.filter((s) => s.id !== id));
-      return;
-    }
     const { error } = await supabase.from("services").update({ status: "inactive" }).eq("id", id);
     if (error) {
       console.error("[services] falha ao arquivar:", error);
@@ -180,11 +174,6 @@ function ServicesPage() {
   const [confirmDelete, setConfirmDelete] = React.useState<Service | null>(null);
 
   const deleteService = async (id: string) => {
-    if (!isUuid(id)) {
-      setServices((prev) => prev.filter((s) => s.id !== id));
-      notify.success("Serviço excluído.");
-      return;
-    }
     const { error } = await supabase.from("services").delete().eq("id", id);
     if (error) {
       console.error("[services] falha ao excluir:", error);

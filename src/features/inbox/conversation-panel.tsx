@@ -35,10 +35,10 @@ import { AudioPlayerWithMe } from "@/components/chat/AudioPlayer";
 import { DateSeparator } from "@/components/chat/DateSeparator";
 import { uploadChatMedia } from "@/lib/chat-media";
 import {
-  SEED_SERVICES,
   formatCurrencyBRL,
   formatDuration,
   type Service,
+  type ServiceStatus,
 } from "@/features/services/data";
 import { useContactActions } from "@/hooks/use-contact-actions";
 
@@ -1501,16 +1501,47 @@ function ContactTab({ contact }: { contact: Contact }) {
   );
 }
 
-const CATALOG: Array<{ id: string; name: string; price: number; minutes: number }> = [
-  { id: "s1", name: "Corte feminino", price: 80, minutes: 45 },
-  { id: "s2", name: "Coloração", price: 220, minutes: 120 },
-  { id: "s3", name: "Hidratação", price: 60, minutes: 30 },
-  { id: "s4", name: "Manicure", price: 45, minutes: 40 },
-  { id: "s5", name: "Pedicure", price: 55, minutes: 45 },
-];
-
 function ServicesTab({ onSchedule }: { onSchedule: (serviceIds: string[]) => void }) {
-  const catalog: Service[] = SEED_SERVICES.filter((s) => s.status === "active");
+  const { workspaceOwnerId } = useWorkspaceOwnerId();
+  const [catalog, setCatalog] = React.useState<Service[]>([]);
+  const [loaded, setLoaded] = React.useState(false);
+  React.useEffect(() => {
+    if (!workspaceOwnerId) return;
+    let cancelled = false;
+    (async () => {
+      const { data, error } = await supabase
+        .from("services")
+        .select(
+          "id,name,description,price_cents,duration_minutes,buffer_minutes,color,status,created_at",
+        )
+        .eq("owner_user_id", workspaceOwnerId)
+        .eq("status", "active")
+        .order("created_at", { ascending: true });
+      if (cancelled) return;
+      if (error) {
+        console.warn("[conversation-panel] erro ao carregar serviços:", error.message);
+        setLoaded(true);
+        return;
+      }
+      setCatalog(
+        (data ?? []).map((s: any) => ({
+          id: s.id,
+          name: s.name,
+          description: s.description ?? "",
+          price_cents: s.price_cents ?? 0,
+          duration_minutes: s.duration_minutes ?? 30,
+          buffer_minutes: s.buffer_minutes ?? 0,
+          color: s.color ?? "#25C880",
+          status: (s.status ?? "active") as ServiceStatus,
+          created_at: s.created_at ? new Date(s.created_at) : new Date(),
+        })),
+      );
+      setLoaded(true);
+    })();
+    return () => {
+      cancelled = true;
+    };
+  }, [workspaceOwnerId]);
   const [selected, setSelected] = React.useState<Set<string>>(new Set());
   const sel = catalog.filter((s) => selected.has(s.id));
   const totalCents = sel.reduce((a, s) => a + s.price_cents, 0);
@@ -1528,6 +1559,11 @@ function ServicesTab({ onSchedule }: { onSchedule: (serviceIds: string[]) => voi
       <p style={{ fontSize: 11, color: "var(--text-muted)", marginBottom: 4 }}>
         Marque os serviços de interesse do cliente. Eles serão pré-selecionados ao agendar.
       </p>
+      {loaded && catalog.length === 0 && (
+        <p style={{ fontSize: 12, color: "var(--text-muted)" }}>
+          Nenhum serviço ativo cadastrado. Cadastre em Serviços no menu lateral.
+        </p>
+      )}
       {catalog.map((s) => {
         const on = selected.has(s.id);
         return (
