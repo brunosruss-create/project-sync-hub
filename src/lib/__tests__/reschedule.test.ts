@@ -274,31 +274,13 @@ describe("rescheduleAppointmentFromAI", () => {
     expect(result.reason).toBe("past_date");
   });
 
-  it("{ silent: true } reagenda mas NÃO envia o template (evita duplicar com a resposta da IA)", async () => {
-    seedOldAppointmentLookups();
-    seedCancelOldSuccess();
-    seedCreateNew({ conflict: false });
-    // Nenhum fixture de profiles/whatsapp_instances enfileirado de propósito.
-
-    const result = await rescheduleAppointmentFromAI(
-      {
-        appointment_id: OLD_ID,
-        new_starts_at: "2099-12-31T14:00:00-03:00",
-        contact_id: CONTACT_ID,
-        silent: true,
-      },
-      profile,
-    );
-
-    expect(result.ok).toBe(true);
-    expect(evo.sendText).not.toHaveBeenCalled();
-  });
-
-  it("sem silent (default), continua enviando o template — comportamento do reagendamento manual não muda", async () => {
+  it("envia o template de reagendamento e grava em `messages` (aparece no inbox, seja manual ou via IA)", async () => {
     seedOldAppointmentLookups();
     seedCancelOldSuccess();
     seedCreateNew({ conflict: false });
     seedRescheduleConfirmationMessage();
+    enqueue("messages", "insert", { data: null, error: null });
+    enqueue("contacts", "update", { data: null, error: null });
 
     const result = await rescheduleAppointmentFromAI(
       {
@@ -310,6 +292,35 @@ describe("rescheduleAppointmentFromAI", () => {
     );
 
     expect(result.ok).toBe(true);
+    expect(result.confirmation_sent).toBe(true);
     expect(evo.sendText).toHaveBeenCalledTimes(1);
+
+    const msgInsert = calls.find((c) => c.table === "messages" && c.op === "insert");
+    expect(msgInsert).toBeTruthy();
+    expect((msgInsert!.payload as any).contact_id).toBe(CONTACT_ID);
+    expect((msgInsert!.payload as any).is_ai).toBe(true);
+  });
+
+  it("quando o template está desabilitado, não envia nem grava — retorna confirmation_sent: false (sem crash)", async () => {
+    seedOldAppointmentLookups();
+    seedCancelOldSuccess();
+    seedCreateNew({ conflict: false });
+    enqueue("profiles", "select", {
+      data: { msg_booking_rescheduled_text: null, msg_booking_rescheduled_enabled: false },
+    });
+
+    const result = await rescheduleAppointmentFromAI(
+      {
+        appointment_id: OLD_ID,
+        new_starts_at: "2099-12-31T14:00:00-03:00",
+        contact_id: CONTACT_ID,
+      },
+      profile,
+    );
+
+    expect(result.ok).toBe(true);
+    expect(result.confirmation_sent).toBe(false);
+    expect(evo.sendText).not.toHaveBeenCalled();
+    expect(calls.some((c) => c.table === "messages" && c.op === "insert")).toBe(false);
   });
 });

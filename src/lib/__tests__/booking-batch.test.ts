@@ -403,7 +403,7 @@ describe("createAppointmentFromAI — profissional ambíguo (bug de segurança)"
   });
 });
 
-describe("createAppointmentBatchFromAI — silent (evita duplicar com a resposta da IA)", () => {
+describe("createAppointmentBatchFromAI — confirmação persiste no inbox", () => {
   const items = [
     {
       service_id: SERVICE_ID,
@@ -423,33 +423,7 @@ describe("createAppointmentBatchFromAI — silent (evita duplicar com a resposta
     },
   ];
 
-  it("{ silent: true } cria os agendamentos mas NÃO envia o template de confirmação", async () => {
-    seedItem({
-      bufferMinutes: 0,
-      contactId: CONTACT_BRUNO,
-      startsAtIso: "2026-07-24T09:00:00-03:00",
-      endsAtIso: "2026-07-24T12:30:00.000Z",
-      apptId: "appt-1",
-    });
-    seedItem({
-      bufferMinutes: 0,
-      contactId: CONTACT_GABRIELA,
-      startsAtIso: "2026-07-24T12:30:00.000Z",
-      endsAtIso: "2026-07-24T13:00:00.000Z",
-      apptId: "appt-2",
-    });
-    // Nenhum fixture de profiles/whatsapp_instances enfileirado de propósito —
-    // se o código tentasse enviar mesmo assim, a asserção do evo.sendText abaixo pegaria.
-
-    const batch = await createAppointmentBatchFromAI(items, profile, { silent: true });
-
-    expect(batch.anyFailed).toBe(false);
-    const inserts = calls.filter((c) => c.table === "appointments" && c.op === "insert");
-    expect(inserts).toHaveLength(2);
-    expect(evo.sendText).not.toHaveBeenCalled();
-  });
-
-  it("sem silent (default), continua enviando o template — comportamento do agendamento manual não muda", async () => {
+  it("envia o template agregado e grava em `messages` com o contact_id da conversa (evita duplicar com a IA, mas fica visível no inbox)", async () => {
     seedItem({
       bufferMinutes: 0,
       contactId: CONTACT_BRUNO,
@@ -465,9 +439,45 @@ describe("createAppointmentBatchFromAI — silent (evita duplicar com a resposta
       apptId: "appt-2",
     });
     seedBatchConfirmationMessage();
+    enqueue("messages", "insert", { data: null, error: null });
+    enqueue("contacts", "update", { data: null, error: null });
 
-    await createAppointmentBatchFromAI(items, profile);
+    const batch = await createAppointmentBatchFromAI(items, profile);
 
+    expect(batch.anyFailed).toBe(false);
+    expect(batch.confirmationSent).toBe(true);
     expect(evo.sendText).toHaveBeenCalledTimes(1);
+
+    const msgInsert = calls.find((c) => c.table === "messages" && c.op === "insert");
+    expect(msgInsert).toBeTruthy();
+    expect((msgInsert!.payload as any).contact_id).toBe(CONTACT_BRUNO);
+    expect((msgInsert!.payload as any).is_ai).toBe(true);
+  });
+
+  it("quando o template está desabilitado, não envia nem grava — retorna confirmationSent: false (sem crash)", async () => {
+    seedItem({
+      bufferMinutes: 0,
+      contactId: CONTACT_BRUNO,
+      startsAtIso: "2026-07-24T09:00:00-03:00",
+      endsAtIso: "2026-07-24T12:30:00.000Z",
+      apptId: "appt-1",
+    });
+    seedItem({
+      bufferMinutes: 0,
+      contactId: CONTACT_GABRIELA,
+      startsAtIso: "2026-07-24T12:30:00.000Z",
+      endsAtIso: "2026-07-24T13:00:00.000Z",
+      apptId: "appt-2",
+    });
+    enqueue("profiles", "select", {
+      data: { msg_booking_confirmed_text: null, msg_booking_confirmed_enabled: false },
+    });
+
+    const batch = await createAppointmentBatchFromAI(items, profile);
+
+    expect(batch.anyFailed).toBe(false);
+    expect(batch.confirmationSent).toBe(false);
+    expect(evo.sendText).not.toHaveBeenCalled();
+    expect(calls.some((c) => c.table === "messages" && c.op === "insert")).toBe(false);
   });
 });

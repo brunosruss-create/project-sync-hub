@@ -195,6 +195,37 @@ async function getConnectedInstance(ownerId: string): Promise<string | null> {
   return instanceName;
 }
 
+// Grava no histórico (tabela `messages`) uma mensagem de template já enviada
+// via evo.sendText — sem isso ela sai no WhatsApp real mas nunca aparece no
+// inbox do ZapFlow. Espelha o que sendAiReplyAndPersist já faz pras respostas
+// livres da IA (message-processing.server.ts).
+async function persistOutboundMessage(
+  ownerId: string,
+  contactId: string | null | undefined,
+  content: string,
+  waMessageId: string | null,
+) {
+  if (!contactId) return;
+  await supabaseAdmin.from("messages").insert({
+    owner_user_id: ownerId,
+    contact_id: contactId,
+    direction: "outbound",
+    content,
+    message_type: "text",
+    status: "sent",
+    whatsapp_message_id: waMessageId,
+    is_ai: true,
+  });
+  await supabaseAdmin
+    .from("contacts")
+    .update({
+      last_message: content,
+      last_message_at: new Date().toISOString(),
+      last_direction: "outbound",
+    })
+    .eq("id", contactId);
+}
+
 // Lê o template + flag de uma mensagem do profile, usando os defaults
 // de message-defaults.ts como fallback. Retorna null se a mensagem
 // estiver explicitamente desativada.
@@ -262,13 +293,14 @@ export async function sendBookingReschedule(args: {
   service: ServiceLite;
   professional: ProfessionalLite;
   client: ClientLite;
-}) {
-  const { profile, appointment, service, professional, client } = args;
+  contactId?: string | null;
+}): Promise<boolean> {
+  const { profile, appointment, service, professional, client, contactId } = args;
   try {
     const tpl = await loadTemplate(profile.id, "booking_rescheduled");
-    if (!tpl.enabled) return;
+    if (!tpl.enabled) return false;
     const instanceName = await getConnectedInstance(profile.id);
-    if (!instanceName) return;
+    if (!instanceName) return false;
     const tz = profile.business_timezone || "America/Sao_Paulo";
     const msg = renderTemplate(tpl.text, {
       cliente: client.client_name,
@@ -279,9 +311,12 @@ export async function sendBookingReschedule(args: {
       profissional: professional?.name ?? "nosso profissional",
     });
     const number = normalizePhone(client.client_phone);
-    await evo.sendText(instanceName, { number, text: msg });
+    const r: any = await evo.sendText(instanceName, { number, text: msg });
+    await persistOutboundMessage(profile.id, contactId, msg, r?.key?.id ?? r?.messageId ?? null);
+    return true;
   } catch (e) {
     console.warn("[booking] reagendamento WhatsApp falhou:", (e as Error)?.message ?? e);
+    return false;
   }
 }
 
@@ -290,13 +325,14 @@ export async function sendBookingCancellation(args: {
   appointment: AppointmentLite;
   service: ServiceLite;
   client: ClientLite;
-}) {
-  const { profile, appointment, service, client } = args;
+  contactId?: string | null;
+}): Promise<boolean> {
+  const { profile, appointment, service, client, contactId } = args;
   try {
     const tpl = await loadTemplate(profile.id, "booking_cancelled");
-    if (!tpl.enabled) return;
+    if (!tpl.enabled) return false;
     const instanceName = await getConnectedInstance(profile.id);
-    if (!instanceName) return;
+    if (!instanceName) return false;
     const tz = profile.business_timezone || "America/Sao_Paulo";
     const msg = renderTemplate(tpl.text, {
       cliente: client.client_name,
@@ -306,9 +342,12 @@ export async function sendBookingCancellation(args: {
       servico: service.name,
     });
     const number = normalizePhone(client.client_phone);
-    await evo.sendText(instanceName, { number, text: msg });
+    const r: any = await evo.sendText(instanceName, { number, text: msg });
+    await persistOutboundMessage(profile.id, contactId, msg, r?.key?.id ?? r?.messageId ?? null);
+    return true;
   } catch (e) {
     console.warn("[booking] cancelamento WhatsApp falhou:", (e as Error)?.message ?? e);
+    return false;
   }
 }
 
@@ -318,13 +357,14 @@ export async function sendBookingConfirmation(args: {
   service: ServiceLite;
   professional: ProfessionalLite;
   client: ClientLite;
-}) {
-  const { profile, appointment, service, professional, client } = args;
+  contactId?: string | null;
+}): Promise<boolean> {
+  const { profile, appointment, service, professional, client, contactId } = args;
   try {
     const tpl = await loadTemplate(profile.id, "booking_confirmed");
-    if (!tpl.enabled) return;
+    if (!tpl.enabled) return false;
     const instanceName = await getConnectedInstance(profile.id);
-    if (!instanceName) return;
+    if (!instanceName) return false;
     const tz = profile.business_timezone || "America/Sao_Paulo";
     const msg = renderTemplate(tpl.text, {
       cliente: client.client_name,
@@ -335,9 +375,12 @@ export async function sendBookingConfirmation(args: {
       profissional: professional?.name ?? "nosso profissional",
     });
     const number = normalizePhone(client.client_phone);
-    await evo.sendText(instanceName, { number, text: msg });
+    const r: any = await evo.sendText(instanceName, { number, text: msg });
+    await persistOutboundMessage(profile.id, contactId, msg, r?.key?.id ?? r?.messageId ?? null);
+    return true;
   } catch (e) {
     console.warn("[booking] confirmação WhatsApp falhou:", (e as Error)?.message ?? e);
+    return false;
   }
 }
 
@@ -368,6 +411,8 @@ export async function createAppointmentFromAI(
   professional_name?: string | null;
   client_name?: string;
   client_phone?: string;
+  contact_id?: string;
+  confirmation_sent?: boolean;
 }> {
   if (!data.starts_at || (!data.service_name && !data.service_id)) {
     console.warn("[booking create] missing_fields", {
@@ -528,8 +573,9 @@ export async function createAppointmentFromAI(
 
   // 7. Confirmação WA (pode ser suprimida quando chamado dentro do reschedule
   // ou de um lote — nesse caso quem manda a mensagem é quem chamou)
+  let confirmationSent = false;
   if (!data.silent) {
-    await sendBookingConfirmation({
+    confirmationSent = await sendBookingConfirmation({
       profile: {
         id: profile.id,
         business_name: profile.business_name,
@@ -539,6 +585,7 @@ export async function createAppointmentFromAI(
       service: serviceRow,
       professional,
       client: { client_name: resolvedName || "Cliente", client_phone: resolvedPhone },
+      contactId,
     });
   }
 
@@ -552,6 +599,8 @@ export async function createAppointmentFromAI(
     professional_name: professional?.name ?? null,
     client_name: resolvedName || "Cliente",
     client_phone: resolvedPhone,
+    contact_id: contactId ?? undefined,
+    confirmation_sent: confirmationSent,
   };
 }
 
@@ -575,12 +624,12 @@ type BatchItemResult = Awaited<ReturnType<typeof createAppointmentFromAI>> & {
 export async function createAppointmentBatchFromAI(
   items: BatchItemInput[],
   profile: { id: string; business_timezone: string | null; business_name: string | null },
-  options?: { silent?: boolean },
 ): Promise<{
   results: BatchItemResult[];
   allFailed: boolean;
   anyFailed: boolean;
   summaryTextForAi: string;
+  confirmationSent: boolean;
 }> {
   const groupKey = (it: BatchItemInput) => `${it.professional_id ?? "auto"}|${it.starts_at ?? ""}`;
   const groups = new Map<string, number[]>();
@@ -616,8 +665,9 @@ export async function createAppointmentBatchFromAI(
   const allFailed = results.every((r) => !r.ok);
   const anyFailed = results.some((r) => !r.ok);
 
-  if (!options?.silent && results.some((r) => r.ok)) {
-    await sendBookingConfirmationBatch({ profile, results });
+  let confirmationSent = false;
+  if (results.some((r) => r.ok)) {
+    confirmationSent = await sendBookingConfirmationBatch({ profile, results });
   }
 
   const okCount = results.filter((r) => r.ok).length;
@@ -626,7 +676,7 @@ export async function createAppointmentBatchFromAI(
       ? `Consegui agendar ${okCount} de ${results.length} — já te mando os detalhes.`
       : "Pronto, agendado!";
 
-  return { results, allFailed, anyFailed, summaryTextForAi };
+  return { results, allFailed, anyFailed, summaryTextForAi, confirmationSent };
 }
 
 // Mensagem única agregada ao cliente com TODOS os agendamentos do lote —
@@ -635,19 +685,19 @@ export async function createAppointmentBatchFromAI(
 async function sendBookingConfirmationBatch(args: {
   profile: { id: string; business_name: string | null; business_timezone: string | null };
   results: BatchItemResult[];
-}) {
+}): Promise<boolean> {
   const { profile, results } = args;
   try {
     const tpl = await loadTemplate(profile.id, "booking_confirmed");
-    if (!tpl.enabled) return;
+    if (!tpl.enabled) return false;
     const instanceName = await getConnectedInstance(profile.id);
-    if (!instanceName) return;
+    if (!instanceName) return false;
     const tz = profile.business_timezone || "America/Sao_Paulo";
 
     const okResults = results.filter((r) => r.ok && r.starts_at);
-    if (okResults.length === 0) return;
+    if (okResults.length === 0) return false;
     const phone = normalizePhone(okResults[0].client_phone ?? "");
-    if (!phone) return;
+    if (!phone) return false;
     const cliente = okResults[0].client_name || "Cliente";
 
     const linhas = okResults.map(
@@ -667,9 +717,18 @@ async function sendBookingConfirmationBatch(args: {
       negocio: profile.business_name ?? "nosso estabelecimento",
       lista: linhas.join("\n"),
     });
-    await evo.sendText(instanceName, { number: phone, text: msg });
+    const r: any = await evo.sendText(instanceName, { number: phone, text: msg });
+    // Todos os itens do mesmo turno compartilham o contato do WhatsApp da conversa atual.
+    await persistOutboundMessage(
+      profile.id,
+      okResults[0].contact_id,
+      msg,
+      r?.key?.id ?? r?.messageId ?? null,
+    );
+    return true;
   } catch (e) {
     console.warn("[booking] confirmação em lote WhatsApp falhou:", (e as Error)?.message ?? e);
+    return false;
   }
 }
 
@@ -680,10 +739,9 @@ export async function rescheduleAppointmentFromAI(
     appointment_id?: string;
     new_starts_at?: string;
     contact_id?: string | null;
-    silent?: boolean;
   },
   profile: { id: string; business_timezone: string | null; business_name: string | null },
-): Promise<{ ok: boolean; reason?: string }> {
+): Promise<{ ok: boolean; reason?: string; confirmation_sent?: boolean }> {
   const tzR = profile.business_timezone || "America/Sao_Paulo";
   if (!data.new_starts_at) return { ok: false, reason: "missing_fields" };
   const newStart = parseAiDate(data.new_starts_at, tzR);
@@ -799,8 +857,9 @@ export async function rescheduleAppointmentFromAI(
   }
 
   // 4. Envia a única mensagem de reagendamento (antigo → novo).
-  if (!data.silent && contact) {
-    await sendBookingReschedule({
+  let confirmationSent = false;
+  if (contact) {
+    confirmationSent = await sendBookingReschedule({
       profile: {
         id: profile.id,
         business_name: profile.business_name,
@@ -815,16 +874,23 @@ export async function rescheduleAppointmentFromAI(
       client: contact
         ? { client_name: contact.name, client_phone: contact.phone }
         : { client_name: "Cliente", client_phone: "" },
+      contactId: oldAppt.contact_id ?? null,
     });
   }
-  return { ok: true };
+  return { ok: true, confirmation_sent: confirmationSent };
 }
 
 // Cancelamento via IA: marca appointment como cancelled.
 export async function cancelAppointmentFromAI(
   data: { appointment_id?: string; reason?: string; contact_id?: string | null; silent?: boolean },
   profile: { id: string; business_timezone: string | null; business_name: string | null },
-): Promise<{ ok: boolean; reason?: string; previous_status?: string; previous_notes?: string }> {
+): Promise<{
+  ok: boolean;
+  reason?: string;
+  previous_status?: string;
+  previous_notes?: string;
+  confirmation_sent?: boolean;
+}> {
   // Resolve appointment_id quando a IA não mandou ou mandou um inválido/cancelado.
   let cancelId = data.appointment_id ?? "";
   let needsResolve = !cancelId;
@@ -879,8 +945,9 @@ export async function cancelAppointmentFromAI(
 
   const svc = (appt as any).services as ServiceLite | null;
   const contact = (appt as any).contacts as { name: string; phone: string } | null;
+  let confirmationSent = false;
   if (!data.silent && svc && contact) {
-    await sendBookingCancellation({
+    confirmationSent = await sendBookingCancellation({
       profile: {
         id: profile.id,
         business_name: profile.business_name,
@@ -889,7 +956,13 @@ export async function cancelAppointmentFromAI(
       appointment: { id: appt.id, starts_at: appt.starts_at },
       service: svc,
       client: { client_name: contact.name, client_phone: contact.phone },
+      contactId: appt.contact_id ?? null,
     });
   }
-  return { ok: true, previous_status: previousStatus, previous_notes: previousNotes };
+  return {
+    ok: true,
+    previous_status: previousStatus,
+    previous_notes: previousNotes,
+    confirmation_sent: confirmationSent,
+  };
 }

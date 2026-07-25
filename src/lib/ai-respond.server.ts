@@ -1215,7 +1215,7 @@ export async function runAiResponse(input: AiRunInput): Promise<AiRunResult> {
             // preview: não cria de fato, só valida que chegou até aqui.
           } else if (enriched.length === 1) {
             const r = await createAppointmentFromAI(
-              { ...(enriched[0] as any), silent: true },
+              enriched[0] as any,
               {
                 id: profile.id,
                 business_timezone: profile.business_timezone ?? null,
@@ -1225,25 +1225,24 @@ export async function runAiResponse(input: AiRunInput): Promise<AiRunResult> {
             if (!r.ok) {
               console.warn("[ai booking] falhou:", r.reason);
               text = friendlyReason("create", r.reason);
+            } else if (r.confirmation_sent) {
+              // O template (personalizável em Configurações) já foi enviado —
+              // evita duplicar com a frase solta da IA.
+              text = "";
             }
           } else {
-            const batch = await createAppointmentBatchFromAI(
-              enriched as any,
-              {
-                id: profile.id,
-                business_timezone: profile.business_timezone ?? null,
-                business_name: profile.business_name ?? null,
-              },
-              { silent: true },
-            );
+            const batch = await createAppointmentBatchFromAI(enriched as any, {
+              id: profile.id,
+              business_timezone: profile.business_timezone ?? null,
+              business_name: profile.business_name ?? null,
+            });
             if (batch.allFailed) {
               text = friendlyReason("create", batch.results[0]?.reason);
             } else if (batch.anyFailed) {
               text = batch.summaryTextForAi;
+            } else if (batch.confirmationSent) {
+              text = "";
             }
-            // sucesso total: o template formal foi suprimido (silent) — a
-            // resposta conversacional da IA (curta, tipo "Pronto, agendado!")
-            // já é a confirmação enviada ao cliente.
           }
         }
       }
@@ -1258,6 +1257,7 @@ export async function runAiResponse(input: AiRunInput): Promise<AiRunResult> {
           text = text.replace(/RESCHEDULE_JSON:\{[\s\S]*?\}\s*$/, "").trim();
         } else {
           let okResult = false;
+          let confirmationSent = false;
           let reason: string | undefined;
           try {
             console.log("[ai reschedule] payload:", m[1]);
@@ -1266,7 +1266,7 @@ export async function runAiResponse(input: AiRunInput): Promise<AiRunResult> {
               okResult = true;
             } else {
               const r = await rescheduleAppointmentFromAI(
-                { ...payload, contact_id: data.contact_id ?? null, silent: true },
+                { ...payload, contact_id: data.contact_id ?? null },
                 {
                   id: profile.id,
                   business_timezone: profile.business_timezone ?? null,
@@ -1275,6 +1275,7 @@ export async function runAiResponse(input: AiRunInput): Promise<AiRunResult> {
               );
               okResult = r.ok;
               reason = r.reason;
+              confirmationSent = !!r.confirmation_sent;
               if (!r.ok) console.warn("[ai reschedule] falhou:", r.reason);
             }
           } catch (err) {
@@ -1283,6 +1284,7 @@ export async function runAiResponse(input: AiRunInput): Promise<AiRunResult> {
           }
           text = text.replace(/RESCHEDULE_JSON:\{[\s\S]*?\}\s*$/, "").trim();
           if (!okResult) text = friendlyReason("reschedule", reason);
+          else if (confirmationSent) text = "";
         }
       }
     }
@@ -1296,6 +1298,7 @@ export async function runAiResponse(input: AiRunInput): Promise<AiRunResult> {
           text = text.replace(/CANCEL_JSON:\{[\s\S]*?\}\s*$/, "").trim();
         } else {
           let okResult = false;
+          let confirmationSent = false;
           let reason: string | undefined;
           try {
             console.log("[ai cancel] payload:", m[1]);
@@ -1304,7 +1307,7 @@ export async function runAiResponse(input: AiRunInput): Promise<AiRunResult> {
               okResult = true;
             } else {
               const r = await cancelAppointmentFromAI(
-                { ...payload, contact_id: data.contact_id ?? null, silent: true },
+                { ...payload, contact_id: data.contact_id ?? null },
                 {
                   id: profile.id,
                   business_timezone: profile.business_timezone ?? null,
@@ -1313,6 +1316,7 @@ export async function runAiResponse(input: AiRunInput): Promise<AiRunResult> {
               );
               okResult = r.ok;
               reason = r.reason;
+              confirmationSent = !!r.confirmation_sent;
               if (!r.ok) console.warn("[ai cancel] falhou:", r.reason);
             }
           } catch (err) {
@@ -1321,6 +1325,7 @@ export async function runAiResponse(input: AiRunInput): Promise<AiRunResult> {
           }
           text = text.replace(/CANCEL_JSON:\{[\s\S]*?\}\s*$/, "").trim();
           if (!okResult) text = friendlyReason("cancel", reason);
+          else if (confirmationSent) text = "";
         }
       }
     }

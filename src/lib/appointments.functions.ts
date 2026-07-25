@@ -105,6 +105,7 @@ export const notifyAppointmentChange = createServerFn({ method: "POST" })
         service,
         professional,
         client: clientLite,
+        contactId: appt.contact_id,
       });
     } else if (kind === "rescheduled") {
       await sendBookingReschedule({
@@ -113,6 +114,7 @@ export const notifyAppointmentChange = createServerFn({ method: "POST" })
         service,
         professional,
         client: clientLite,
+        contactId: appt.contact_id,
       });
     } else {
       await sendBookingCancellation({
@@ -120,6 +122,7 @@ export const notifyAppointmentChange = createServerFn({ method: "POST" })
         appointment: appointmentLite,
         service,
         client: clientLite,
+        contactId: appt.contact_id,
       });
     }
 

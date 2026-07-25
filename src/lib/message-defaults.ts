@@ -59,7 +59,8 @@ export const MESSAGE_DEFAULTS: Record<MessageKey, MessageMeta> = {
   booking_confirmed: {
     key: "booking_confirmed",
     label: "Agendamento confirmado",
-    description: "Enviada ao cliente quando um agendamento é criado com sucesso.",
+    description:
+      "Enviada ao cliente quando um agendamento é criado com sucesso — inclusive quando é a IA que agenda dentro da conversa. Nesse caso, a IA não repete a confirmação em texto solto, só esta mensagem sai (sem duplicar saudação).",
     placeholders: [
       "{{cliente}}",
       "{{negocio}}",
@@ -87,7 +88,8 @@ export const MESSAGE_DEFAULTS: Record<MessageKey, MessageMeta> = {
   booking_rescheduled: {
     key: "booking_rescheduled",
     label: "Agendamento reagendado",
-    description: "Enviada ao cliente quando a data ou hora de um agendamento muda.",
+    description:
+      "Enviada ao cliente quando a data ou hora de um agendamento muda — inclusive quando é a IA que reagenda dentro da conversa. Nesse caso, a IA não repete a confirmação em texto solto, só esta mensagem sai (sem duplicar saudação).",
     placeholders: [
       "{{cliente}}",
       "{{negocio}}",
@@ -115,7 +117,8 @@ export const MESSAGE_DEFAULTS: Record<MessageKey, MessageMeta> = {
   booking_cancelled: {
     key: "booking_cancelled",
     label: "Agendamento cancelado",
-    description: "Enviada ao cliente quando um agendamento é marcado como cancelado.",
+    description:
+      "Enviada ao cliente quando um agendamento é marcado como cancelado — inclusive quando é a IA que cancela dentro da conversa. Nesse caso, a IA não repete a confirmação em texto solto, só esta mensagem sai (sem duplicar saudação).",
     placeholders: ["{{cliente}}", "{{negocio}}", "{{data}}", "{{hora}}", "{{servico}}"],
     preview: {
       cliente: "João",
