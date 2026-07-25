@@ -270,16 +270,27 @@ function buildWorkspaceLayer(
   // === INFORMAÇÕES GERAIS DO NEGÓCIO (Sim/Não) ===
   // Chave ausente do mapa = "não informado" — a IA nunca deve tratar isso
   // como "Não". Só entram aqui fatos que o tenant realmente preencheu.
+  // Removido (opt-out) pelo tenant = apagado de business_general_info, então
+  // já sai automaticamente daqui também.
   const generalInfo = (p as any).business_general_info as Record<string, boolean> | null;
   const giEntries = generalInfo
     ? Object.entries(generalInfo).filter(([, v]) => typeof v === "boolean")
     : [];
-  if (canShareContact && giEntries.length > 0) {
+  const customFacts = (p as any).business_general_info_custom as
+    | { id: string; label: string; value: boolean | null }[]
+    | null;
+  const customFactEntries = Array.isArray(customFacts)
+    ? customFacts.filter((f) => typeof f?.value === "boolean" && typeof f?.label === "string")
+    : [];
+  if (canShareContact && (giEntries.length > 0 || customFactEntries.length > 0)) {
     const lines: string[] = [
       "INFORMAÇÕES GERAIS DO NEGÓCIO (responda apenas se o cliente perguntar — não ofereça espontaneamente):",
     ];
     for (const [key, val] of giEntries) {
       lines.push(`- ${GENERAL_INFO_LABELS[key] ?? key}: ${val ? "Sim" : "Não"}`);
+    }
+    for (const f of customFactEntries) {
+      lines.push(`- ${f.label}: ${f.value ? "Sim" : "Não"}`);
     }
     lines.push(
       "Sobre qualquer outro fato do negócio que não esteja listado acima, diga que vai verificar com a equipe — não invente.",

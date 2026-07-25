@@ -3,7 +3,7 @@ import { createFileRoute } from "@tanstack/react-router";
 import { useQuery, useQueryClient } from "@tanstack/react-query";
 import { useServerFn } from "@tanstack/react-start";
 import { toast } from "sonner";
-import { Upload } from "lucide-react";
+import { Upload, X } from "lucide-react";
 import {
   SettingsLayout,
   FieldGroup,
@@ -22,8 +22,11 @@ import {
 
 import { ManagerOnly } from "@/components/manager-only";
 import { TimeSelect } from "@/components/time-select";
-import { YesNoRow } from "@/components/toggle-row";
+import { YesNoToggle } from "@/components/toggle-row";
+import { YesNoCatalogEditor } from "@/components/yes-no-catalog-editor";
 import { GENERAL_INFO_LABELS } from "@/lib/general-info-labels";
+
+type CustomFact = { id: string; label: string; value: boolean | null };
 
 export const Route = createFileRoute("/_authenticated/settings/workspace")({
   component: () => (
@@ -76,6 +79,11 @@ function WorkspacePage() {
   const [site, setSite] = React.useState("");
   const [generalInfo, setGeneralInfo] = React.useState<Record<string, boolean>>({});
   const [segmentGeneralInfoDefaults, setSegmentGeneralInfoDefaults] = React.useState<string[]>([]);
+  const [generalInfoIncludedOverride, setGeneralInfoIncludedOverride] = React.useState<
+    string[] | null
+  >(null);
+  const [customFacts, setCustomFacts] = React.useState<CustomFact[]>([]);
+  const [newCustomFactLabel, setNewCustomFactLabel] = React.useState("");
   const [tz, setTz] = React.useState("America/Sao_Paulo");
   const [welcomeEnabled, setWelcomeEnabled] = React.useState(false);
   const [welcome, setWelcome] = React.useState(
@@ -115,6 +123,8 @@ function WorkspacePage() {
           business_city?: string;
           business_state?: string;
           business_general_info?: Record<string, boolean>;
+          business_general_info_included?: string[] | null;
+          business_general_info_custom?: CustomFact[];
           segment_general_info_defaults?: string[];
         }
       | undefined;
@@ -156,6 +166,10 @@ function WorkspacePage() {
     setSegmentGeneralInfoDefaults(
       Array.isArray(p.segment_general_info_defaults) ? p.segment_general_info_defaults : [],
     );
+    setGeneralInfoIncludedOverride(
+      Array.isArray(p.business_general_info_included) ? p.business_general_info_included : null,
+    );
+    setCustomFacts(Array.isArray(p.business_general_info_custom) ? p.business_general_info_custom : []);
   }, [profileQ.data]);
 
   // ViaCEP lookup quando CEP completa 8 dígitos
@@ -196,10 +210,49 @@ function WorkspacePage() {
     if (digits.length === 8) void lookupCep(digits);
   };
 
+  const generalInfoIncludedKeys = generalInfoIncludedOverride ?? segmentGeneralInfoDefaults;
   const visibleGeneralInfoKeys = React.useMemo(
-    () => Array.from(new Set([...segmentGeneralInfoDefaults, ...Object.keys(generalInfo)])),
-    [segmentGeneralInfoDefaults, generalInfo],
+    () => Array.from(new Set([...generalInfoIncludedKeys, ...Object.keys(generalInfo)])),
+    [generalInfoIncludedKeys, generalInfo],
   );
+
+  const handleAddGeneralInfoKey = (key: string) => {
+    setGeneralInfoIncludedOverride([...generalInfoIncludedKeys, key]);
+  };
+
+  const handleRemoveGeneralInfoKey = (key: string) => {
+    setGeneralInfoIncludedOverride(generalInfoIncludedKeys.filter((k) => k !== key));
+    setGeneralInfo((prev) => {
+      if (!(key in prev)) return prev;
+      const next = { ...prev };
+      delete next[key];
+      return next;
+    });
+  };
+
+  const handleChangeGeneralInfoValue = (key: string, v: boolean | null) => {
+    setGeneralInfo((prev) => {
+      const next = { ...prev };
+      if (v === null) delete next[key];
+      else next[key] = v;
+      return next;
+    });
+  };
+
+  const addCustomFact = () => {
+    const label = newCustomFactLabel.trim();
+    if (!label) return;
+    setCustomFacts((prev) => [...prev, { id: crypto.randomUUID(), label, value: null }]);
+    setNewCustomFactLabel("");
+  };
+
+  const removeCustomFact = (id: string) => {
+    setCustomFacts((prev) => prev.filter((f) => f.id !== id));
+  };
+
+  const changeCustomFactValue = (id: string, v: boolean | null) => {
+    setCustomFacts((prev) => prev.map((f) => (f.id === id ? { ...f, value: v } : f)));
+  };
 
   const segments = segmentsQ.data?.segments ?? [];
   const selectedSegment = segments.find((s) => s.id === segmentId);
@@ -247,6 +300,8 @@ function WorkspacePage() {
           business_phone: phone.trim(),
           business_website: site.trim(),
           business_general_info: generalInfo,
+          business_general_info_included: generalInfoIncludedOverride,
+          business_general_info_custom: customFacts,
         },
       });
       await Promise.all([
@@ -440,29 +495,81 @@ function WorkspacePage() {
       </FieldGroup>
 
       <FieldGroup label="Informações gerais">
-        {visibleGeneralInfoKeys.length > 0 ? (
-          <div>
-            {visibleGeneralInfoKeys.map((key) => (
-              <YesNoRow
-                key={key}
-                label={GENERAL_INFO_LABELS[key] ?? key}
-                value={key in generalInfo ? generalInfo[key] : null}
-                onChange={(v) =>
-                  setGeneralInfo((prev) => {
-                    const next = { ...prev };
-                    if (v === null) delete next[key];
-                    else next[key] = v;
-                    return next;
-                  })
-                }
-              />
-            ))}
+        <p style={{ fontSize: 12, color: "var(--text-muted)", marginTop: -4 }}>
+          A IA responde essas perguntas quando o cliente perguntar (ex.: "vocês têm
+          estacionamento?"). Deixe em branco ou remova (×) o que não se aplica ao seu negócio —
+          a IA nunca inventa nem nega o que não foi informado.
+        </p>
+        <YesNoCatalogEditor
+          includedKeys={visibleGeneralInfoKeys}
+          values={generalInfo}
+          labels={GENERAL_INFO_LABELS}
+          onChangeValue={handleChangeGeneralInfoValue}
+          onRemove={handleRemoveGeneralInfoKey}
+          onAdd={handleAddGeneralInfoKey}
+          emptyText="Nenhuma informação sugerida para o seu segmento ainda — adicione do catálogo abaixo."
+        />
+
+        <div style={{ marginTop: 20, paddingTop: 16, borderTop: "1px solid var(--border)" }}>
+          <div style={{ fontSize: 13, fontWeight: 600, marginBottom: 8 }}>
+            Informações personalizadas
           </div>
-        ) : (
-          <p style={{ fontSize: 12, color: "var(--text-muted)" }}>
-            Nenhuma informação sugerida para o seu segmento ainda.
-          </p>
-        )}
+          {customFacts.length > 0 ? (
+            <div>
+              {customFacts.map((f) => (
+                <div
+                  key={f.id}
+                  className="flex items-center gap-2"
+                  style={{ padding: "8px 0", borderBottom: "1px solid var(--border)" }}
+                >
+                  <div style={{ flex: 1, fontSize: 13, fontWeight: 500 }}>{f.label}</div>
+                  <YesNoToggle value={f.value} onChange={(v) => changeCustomFactValue(f.id, v)} />
+                  <button
+                    type="button"
+                    onClick={() => removeCustomFact(f.id)}
+                    title="Remover"
+                    style={{
+                      width: 28,
+                      height: 28,
+                      borderRadius: 6,
+                      border: "1px solid var(--border)",
+                      background: "transparent",
+                      color: "var(--text-muted)",
+                      cursor: "pointer",
+                      display: "flex",
+                      alignItems: "center",
+                      justifyContent: "center",
+                      flexShrink: 0,
+                    }}
+                  >
+                    <X size={14} />
+                  </button>
+                </div>
+              ))}
+            </div>
+          ) : (
+            <p style={{ fontSize: 12, color: "var(--text-muted)" }}>
+              Nenhuma informação personalizada ainda.
+            </p>
+          )}
+          <div className="flex gap-2" style={{ marginTop: 8 }}>
+            <input
+              style={{ ...inputStyle, flex: 1 }}
+              placeholder="Ex.: Tem loja física?"
+              value={newCustomFactLabel}
+              onChange={(e) => setNewCustomFactLabel(e.target.value)}
+              onKeyDown={(e) => {
+                if (e.key === "Enter") {
+                  e.preventDefault();
+                  addCustomFact();
+                }
+              }}
+            />
+            <button type="button" style={buttonSecondary} onClick={addCustomFact}>
+              + Adicionar
+            </button>
+          </div>
+        </div>
       </FieldGroup>
 
       <FieldGroup label="Horários de funcionamento">
