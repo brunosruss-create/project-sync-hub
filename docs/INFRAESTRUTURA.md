@@ -86,6 +86,20 @@ Não há IaC — recriação é manual:
 > `vercel build --prod && vercel deploy --prebuilt --prod`.
 > Pra ligar auto-deploy: painel Vercel → Settings → Git → conectar o repo.
 
+> 🔴 **INCIDENTE (2026-07-25):** `SUPABASE_URL`/`VITE_SUPABASE_URL` (e possivelmente
+> outras) estão marcadas como tipo **"Sensitive"** na Vercel — esse tipo nunca pode
+> ser lido de volta (nem dashboard, nem `vercel env pull`, nem API). Um `vercel build
+> --prod` (build LOCAL) faz `env pull` e recebe o placeholder literal `"[SENSITIVE]"`
+> no lugar do valor real, que é embutido no bundle → produção inteira quebra com
+> `Error: Invalid supabaseUrl`.
+> **Use sempre `vercel deploy --prod` (sem `--prebuilt`, sem build local)** — isso faz
+> a Vercel buildar no servidor dela, onde as vars "Sensitive" são injetadas
+> normalmente. É mais lento (build remoto) mas não quebra.
+> Alternativa permanente: mudar o tipo das vars de "Sensitive" para "Encrypted" no
+> dashboard (Settings → Environment Variables) — aí o build local volta a funcionar.
+> Se produção cair com esse erro: `vercel ls hello-tenant-base` → `vercel promote
+> <deployment-anterior-que-funcionava>` restaura na hora.
+
 ### Env vars do ZapFlow (Vercel → Settings → Environment Variables)
 | Variável | Valor / origem |
 |---|---|
