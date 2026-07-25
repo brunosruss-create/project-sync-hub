@@ -572,58 +572,86 @@ const sendMediaInput = z.object({
   quoted: quotedInput,
 });
 
+// Lógica pura de envio de mídia, reaproveitada tanto pelo server fn público
+// abaixo (atendente humano, via UI) quanto pelo caminho servidor→servidor
+// (IA enviando foto de serviço — ver sendServicePhotoFromAI em
+// booking-confirmation.server.ts). `sentBy` é null quando quem manda é a IA
+// (não é uma ação de um usuário humano autenticado).
+export async function sendMediaToContact(params: {
+  ownerUserId: string;
+  contactId: string;
+  url: string;
+  mime: string;
+  name: string;
+  caption?: string;
+  /** null quando quem manda é a IA (não é uma ação de um usuário humano autenticado). */
+  sentBy?: string | null;
+  quoted?: z.infer<typeof quotedInput>;
+}): Promise<{ ok: true; externalId: string | null }> {
+  const instance = instanceNameForOwner(params.ownerUserId);
+  const { data: contact, error: ce } = await supabaseAdmin
+    .from("contacts")
+    .select("id,phone")
+    .eq("id", params.contactId)
+    .eq("owner_user_id", params.ownerUserId)
+    .maybeSingle();
+  if (ce || !contact?.phone) throw new Error("Contato sem telefone.");
+
+  const number = String(contact.phone).replace(/\D/g, "");
+  const isImage = params.mime.startsWith("image/");
+  const isVideo = params.mime.startsWith("video/");
+  const mediatype: "image" | "video" | "document" = isImage ? "image" : isVideo ? "video" : "document";
+
+  let externalId: string | null = null;
+  try {
+    const r: any = await evo.sendMedia(instance, {
+      number,
+      mediatype,
+      mimetype: params.mime,
+      media: params.url,
+      fileName: params.name,
+      caption: params.caption,
+      quoted: buildQuotedPayload(params.quoted),
+    });
+    externalId = r?.key?.id ?? r?.id ?? null;
+  } catch (e: any) {
+    throw new Error(`Falha no envio de mídia: ${e?.message ?? e}`);
+  }
+
+  await supabaseAdmin.from("messages").insert({
+    owner_user_id: params.ownerUserId,
+    contact_id: contact.id,
+    direction: "outbound",
+    content: params.caption ?? "",
+    message_type: mediatype === "image" ? "image" : mediatype === "video" ? "video" : "document",
+    status: "sent",
+    sent_by: params.sentBy ?? null,
+    media_url: params.url,
+    media_mime: params.mime,
+    media_name: params.name,
+    whatsapp_message_id: externalId,
+    quoted_message_id: params.quoted?.messageId ?? null,
+    quoted_preview: params.quoted?.preview ?? null,
+  });
+
+  return { ok: true, externalId };
+}
+
 export const sendWhatsAppMedia = createServerFn({ method: "POST" })
   .middleware([requireSupabaseAuth])
   .inputValidator((d) => sendMediaInput.parse(d))
-  .handler(async ({ data, context }) => {
-    const instance = instanceNameForOwner(context.userId);
-    const { data: contact, error: ce } = await supabaseAdmin
-      .from("contacts")
-      .select("id,phone")
-      .eq("id", data.contactId)
-      .eq("owner_user_id", context.userId)
-      .maybeSingle();
-    if (ce || !contact?.phone) throw new Error("Contato sem telefone.");
-
-    const number = String(contact.phone).replace(/\D/g, "");
-    const isImage = data.mime.startsWith("image/");
-    const isVideo = data.mime.startsWith("video/");
-    const mediatype: "image" | "video" | "document" = isImage ? "image" : isVideo ? "video" : "document";
-
-    let externalId: string | null = null;
-    try {
-      const r: any = await evo.sendMedia(instance, {
-        number,
-        mediatype,
-        mimetype: data.mime,
-        media: data.url,
-        fileName: data.name,
-        caption: data.caption,
-        quoted: buildQuotedPayload(data.quoted),
-      });
-      externalId = r?.key?.id ?? r?.id ?? null;
-    } catch (e: any) {
-      throw new Error(`Falha no envio de mídia: ${e?.message ?? e}`);
-    }
-
-    await supabaseAdmin.from("messages").insert({
-      owner_user_id: context.userId,
-      contact_id: contact.id,
-      direction: "outbound",
-      content: data.caption ?? "",
-      message_type: mediatype === "image" ? "image" : mediatype === "video" ? "video" : "document",
-      status: "sent",
-      sent_by: context.userId,
-      media_url: data.url,
-      media_mime: data.mime,
-      media_name: data.name,
-      whatsapp_message_id: externalId,
-      quoted_message_id: data.quoted?.messageId ?? null,
-      quoted_preview: data.quoted?.preview ?? null,
-    });
-
-    return { ok: true, externalId };
-  });
+  .handler(async ({ data, context }) =>
+    sendMediaToContact({
+      ownerUserId: context.userId,
+      contactId: data.contactId,
+      url: data.url,
+      mime: data.mime,
+      name: data.name,
+      caption: data.caption,
+      sentBy: context.userId,
+      quoted: data.quoted,
+    }),
+  );
 
 const sendAudioInput = z.object({
   contactId: z.string().uuid(),

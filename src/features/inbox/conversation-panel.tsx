@@ -1534,6 +1534,8 @@ function ServicesTab({ onSchedule }: { onSchedule: (serviceIds: string[]) => voi
           color: s.color ?? "#25C880",
           status: (s.status ?? "active") as ServiceStatus,
           created_at: s.created_at ? new Date(s.created_at) : new Date(),
+          price_disclosure_policy: null,
+          photos: [],
         })),
       );
       setLoaded(true);

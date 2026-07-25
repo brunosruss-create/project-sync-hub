@@ -4,6 +4,7 @@ import {
   createAppointmentBatchFromAI,
   rescheduleAppointmentFromAI,
   cancelAppointmentFromAI,
+  sendServicePhotoFromAI,
 } from "@/lib/booking-confirmation.server";
 import {
   extractAppointmentPayloads,
@@ -338,19 +339,16 @@ function buildWorkspaceLayer(
   }
 
   // === POLÍTICA DE PREÇOS ===
+  // Preço agora é configurável por serviço (services.price_disclosure_policy,
+  // null = herda este padrão do workspace) — a regra efetiva de cada serviço
+  // é aplicada dentro do catálogo em buildServicesLayer, não aqui. Isso
+  // permite políticas diferentes por serviço na mesma conversa (ex.: consulta
+  // sempre informa valor, cirurgia nunca).
   const pricePolicy: PriceDisclosurePolicy =
     (p.ai_price_disclosure_policy as PriceDisclosurePolicy) ?? "on_request";
-  if (pricePolicy === "always") {
-    parts.push(`Informe os preços dos serviços proativamente quando apresentar opções ao cliente.`);
-  } else if (pricePolicy === "on_request") {
-    parts.push(
-      `Só informe preços se o cliente perguntar de forma direta e literal sobre valores. Não cite preços, "a partir de", faixas, descontos ou estimativas espontaneamente.`,
-    );
-  } else if (pricePolicy === "never") {
-    prohibitions.push(
-      `OBRIGATÓRIO: NUNCA, sob nenhuma circunstância, informe valores, preços, faixas, "a partir de", estimativas, descontos, condições de pagamento ou ordens de grandeza. Se o cliente perguntar preço, responda exatamente: "Os valores são informados diretamente por um atendente. Vou encaminhar seu contato."`,
-    );
-  }
+  parts.push(
+    `Sobre preços: siga a regra indicada junto de cada serviço no CATÁLOGO OFICIAL DE SERVIÇOS abaixo — cada serviço pode ter uma política diferente.`,
+  );
 
   // === AGENDAMENTO (toggle principal) ===
   const scheduleEnabled = p.ai_schedule_enabled ?? false;
@@ -461,8 +459,9 @@ function buildServicesLayer(
     description: string | null;
     duration_minutes: number | null;
     price_cents: number | null;
+    price_disclosure_policy?: PriceDisclosurePolicy | null;
   }>,
-  pricePolicy: PriceDisclosurePolicy,
+  workspaceDefaultPolicy: PriceDisclosurePolicy,
 ): string {
   if (!services || services.length === 0) {
     return [
@@ -498,9 +497,18 @@ function buildServicesLayer(
         `  Descrição: (não informada — não invente detalhes deste serviço; se perguntarem, diga que vai pedir mais informações a um atendente)`,
       );
     }
-    if (pricePolicy === "always") {
-      const price = formatPriceBRL(s.price_cents);
-      if (price) lines.push(`  Valor: ${price}`);
+    const effectivePolicy: PriceDisclosurePolicy = s.price_disclosure_policy ?? workspaceDefaultPolicy;
+    const price = formatPriceBRL(s.price_cents);
+    if (effectivePolicy === "always" && price) {
+      lines.push(`  Valor: ${price}`);
+    } else if (effectivePolicy === "on_request" && price) {
+      lines.push(
+        `  Valor: ${price} [só informe este valor se o cliente perguntar o preço de forma direta e literal — não cite espontaneamente]`,
+      );
+    } else if (effectivePolicy === "never") {
+      lines.push(
+        `  Valor: (não revelar — se perguntado, diga que os valores são passados por um atendente)`,
+      );
     }
     lines.push("");
   }
@@ -524,7 +532,50 @@ function buildServicesLayer(
   lines.push(
     "6. NÃO use a descrição do negócio, o segmento ou o nome do estabelecimento para inferir serviços — eles servem apenas como contexto de tom de voz.",
   );
+  lines.push(
+    '7. Cada serviço tem sua própria regra de preço na linha "Valor:" acima. Onde disser "(não revelar)", isso é OBRIGATÓRIO e INVIOLÁVEL — nunca informe esse valor sob nenhuma circunstância, mesmo que o cliente insista; responda exatamente que os valores são passados por um atendente.',
+  );
 
+  return lines.join("\n");
+}
+
+// Bloco condicional: só existe (e só a IA fica sabendo que a capacidade
+// existe) quando o toggle "IA pode enviar fotos" está ligado E algum serviço
+// ativo tem pelo menos uma foto cadastrada. Se desligado, este bloco não é
+// incluído no prompt — a IA nem sabe que fotos existem, maior garantia
+// contra ela tentar "inventar" o envio.
+function buildServicePhotosLayer(
+  services: Array<{
+    id: string;
+    name: string;
+    photos?: { id: string; url: string; caption: string }[] | null;
+  }>,
+  canSendPhotos: boolean,
+): string {
+  if (!canSendPhotos) return "";
+  const withPhotos = services.filter((s) => Array.isArray(s.photos) && s.photos.length > 0);
+  if (withPhotos.length === 0) return "";
+
+  const lines: string[] = [];
+  lines.push("=== FOTOS DE SERVIÇOS DISPONÍVEIS ===");
+  lines.push(
+    'Você pode enviar UMA foto de exemplo/resultado de um serviço, mas SOMENTE quando o cliente pedir explicitamente para ver (ex.: "tem foto?", "manda uma foto", "como fica o antes e depois?"). NUNCA envie proativamente ou sem pedido explícito. NUNCA mais de uma foto por mensagem sua.',
+  );
+  lines.push("");
+  for (const s of withPhotos) {
+    lines.push(`- Serviço "${s.name}" (service_id: "${s.id}"):`);
+    for (const photo of s.photos ?? []) {
+      lines.push(`  - photo_id "${photo.id}"${photo.caption ? `: ${photo.caption}` : ""}`);
+    }
+  }
+  lines.push("");
+  lines.push(
+    "Para enviar, termine sua resposta — sem nenhum outro texto depois — com uma linha exatamente assim:",
+  );
+  lines.push('PHOTO_JSON:{"service_id":"<service_id acima>","photo_id":"<photo_id acima>"}');
+  lines.push(
+    "Se o cliente pedir foto de um serviço que NÃO está listado acima (ou o serviço não tem fotos), diga que no momento não tem foto disponível para esse serviço — nunca invente um photo_id ou service_id.",
+  );
   return lines.join("\n");
 }
 
@@ -844,7 +895,7 @@ export async function runAiResponse(input: AiRunInput): Promise<AiRunResult> {
   // segmento ou nome — só pode falar do que está aqui.
   const { data: activeServices } = await supabaseAdmin
     .from("services")
-    .select("name,description,duration_minutes,price_cents")
+    .select("id,name,description,duration_minutes,price_cents,price_disclosure_policy,photos")
     .eq("owner_user_id", data.workspace_owner_id)
     .eq("status", "active")
     .order("name", { ascending: true });
@@ -853,6 +904,8 @@ export async function runAiResponse(input: AiRunInput): Promise<AiRunResult> {
     ((profile as any).ai_price_disclosure_policy as PriceDisclosurePolicy) ?? "on_request";
 
   const servicesLayer = buildServicesLayer(activeServices ?? [], pricePolicyForCatalog);
+  const canSendPhotos = (profile as any).ai_can_send_photos === true;
+  const servicePhotosLayer = buildServicePhotosLayer(activeServices ?? [], canSendPhotos);
 
   // ===== PROFISSIONAIS + AGENDA (próximos 7 dias) =====
   const { data: prosRows } = await supabaseAdmin
@@ -1135,6 +1188,7 @@ export async function runAiResponse(input: AiRunInput): Promise<AiRunResult> {
     knownClientLayer,
     contactApptsLayer,
     servicesLayer,
+    servicePhotosLayer,
     bookingLayer,
   ]
     .filter(Boolean)
@@ -1399,6 +1453,41 @@ export async function runAiResponse(input: AiRunInput): Promise<AiRunResult> {
           }
           if (!allOk) text = friendlyReason("cancel", firstReason);
           else if (allConfirmed) text = "";
+        }
+      }
+    }
+
+    // Detecta bloco PHOTO_JSON (envio de foto de serviço). Guarda de
+    // segurança extra em relação aos outros marcadores: sendServicePhotoFromAI
+    // já recheca o toggle no servidor e exige um pedido explícito de foto na
+    // última mensagem do cliente — nunca confia só no marcador da IA.
+    if (canSendPhotos) {
+      const extraction = extractJsonBlocks(text, "PHOTO_JSON:");
+      if (extraction) {
+        text = extraction.cleanedText;
+        if (extraction.payloads.length > 0 && !data.preview) {
+          const payload = extraction.payloads[0] as { service_id?: string; photo_id?: string };
+          const r = await sendServicePhotoFromAI(
+            payload,
+            profile.id,
+            data.contact_id,
+            canSendPhotos,
+            data.message ?? "",
+          );
+          if (!r.ok) {
+            console.warn("[ai photo] falhou:", r.reason);
+            // Falhas silenciosas (marcador sem pedido explícito, feature
+            // desligada etc.) só removem o marcador, sem gerar texto extra —
+            // não é uma falha que o cliente precise saber. Só falhas
+            // "reais" (serviço/foto não encontrados, erro de envio) ganham
+            // uma resposta honesta.
+            if (r.reason === "service_not_found" || r.reason === "photo_not_found") {
+              text = "No momento não tenho uma foto desse serviço aqui, mas posso te explicar melhor!";
+            } else if (r.reason === "send_failed") {
+              text =
+                "Tive um problema técnico ao enviar a foto agora. Posso te explicar em texto, ou prefere falar com um atendente?";
+            }
+          }
         }
       }
     }

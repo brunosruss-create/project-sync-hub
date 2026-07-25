@@ -190,6 +190,8 @@ function SchedulePage() {
         color: s.color ?? "#25C880",
         status: (s.status ?? "active") as Service["status"],
         created_at: s.created_at ? new Date(s.created_at) : new Date(),
+        price_disclosure_policy: null,
+        photos: [],
       })),
     );
   }, [mapAppt]);

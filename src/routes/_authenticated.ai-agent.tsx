@@ -127,6 +127,7 @@ function AIAgentPage() {
   const [minAdvanceHours, setMinAdvanceHours] = React.useState(2);
   const [maxQuestions, setMaxQuestions] = React.useState(1);
   const [shareContactInfo, setShareContactInfo] = React.useState(true);
+  const [canSendPhotos, setCanSendPhotos] = React.useState(false);
 
   // === INFORMAÇÕES A COLETAR (campos do sistema + perguntas personalizadas) ===
   const [requiredFields, setRequiredFields] = React.useState<string[]>([]);
@@ -183,6 +184,7 @@ function AIAgentPage() {
     setMinAdvanceHours((cAny.ai_min_advance_hours as number | undefined) ?? 2);
     setMaxQuestions((cAny.ai_max_questions_per_message as number | undefined) ?? 1);
     setShareContactInfo((cAny.ai_can_share_contact_info as boolean | undefined) ?? true);
+    setCanSendPhotos((cAny.ai_can_send_photos as boolean | undefined) ?? false);
     const segDefaults = Array.isArray(configQ.data?.segment?.default_required_fields)
       ? (configQ.data!.segment!.default_required_fields as string[])
       : [];
@@ -233,6 +235,7 @@ function AIAgentPage() {
           ai_min_advance_hours: minAdvanceHours,
           ai_max_questions_per_message: maxQuestions,
           ai_can_share_contact_info: shareContactInfo,
+          ai_can_send_photos: canSendPhotos,
           ai_required_fields: requiredFieldsTouched ? requiredFields : null,
           ai_custom_questions: customQuestions,
         },
@@ -468,8 +471,14 @@ function AIAgentPage() {
             onChange={setShareContactInfo}
             hint="Quando ligado, a IA usa os dados de Configurações → Negócio para responder perguntas tipo 'onde fica?', 'qual o telefone?', 'tem site?', 'tem estacionamento?', 'aceita PIX?'. Desligue se preferir que esses dados não sejam divulgados pelo WhatsApp."
           />
+          <ToggleRow
+            label="IA pode enviar fotos dos serviços quando o cliente pedir?"
+            value={canSendPhotos}
+            onChange={setCanSendPhotos}
+            hint="Desligado por padrão. Quando ligado, a IA pode enviar uma foto cadastrada num serviço (em Serviços → editar → Fotos) só quando o cliente pedir explicitamente pra ver (ex.: 'tem foto?', 'manda um antes e depois'). Nunca envia por conta própria."
+          />
           <div style={{ marginTop: 12 }}>
-            <Field label="Quando a IA pode informar preços?">
+            <Field label="Quando a IA pode informar preços? (padrão — cada serviço pode ter sua própria regra em Serviços → editar)">
               <select
                 style={input}
                 value={pricePolicy}

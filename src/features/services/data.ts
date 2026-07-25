@@ -1,5 +1,9 @@
 export type ServiceStatus = "active" | "inactive" | "draft";
 
+export type PriceDisclosurePolicy = "always" | "on_request" | "never";
+
+export type ServicePhoto = { id: string; url: string; caption: string; mime: string };
+
 export interface Service {
   id: string;
   name: string;
@@ -10,6 +14,11 @@ export interface Service {
   color: string;
   status: ServiceStatus;
   created_at: Date;
+  // null = herda a política de preço do workspace (Agente IA).
+  price_disclosure_policy: PriceDisclosurePolicy | null;
+  // Fotos que a IA pode enviar quando o cliente pedir explicitamente
+  // (ver toggle "IA pode enviar fotos dos serviços?" em Agente IA).
+  photos: ServicePhoto[];
 }
 
 export const PRESET_COLORS = [
@@ -34,6 +43,8 @@ export const SEED_SERVICES: Service[] = [
     color: "#25C880",
     status: "active",
     created_at: new Date(),
+    price_disclosure_policy: null,
+    photos: [],
   },
   {
     id: "srv-2",
@@ -45,6 +56,8 @@ export const SEED_SERVICES: Service[] = [
     color: "#F59E0B",
     status: "active",
     created_at: new Date(),
+    price_disclosure_policy: null,
+    photos: [],
   },
   {
     id: "srv-3",
@@ -56,6 +69,8 @@ export const SEED_SERVICES: Service[] = [
     color: "#3B82F6",
     status: "active",
     created_at: new Date(),
+    price_disclosure_policy: null,
+    photos: [],
   },
   {
     id: "srv-4",
@@ -67,6 +82,8 @@ export const SEED_SERVICES: Service[] = [
     color: "#EF4444",
     status: "active",
     created_at: new Date(),
+    price_disclosure_policy: null,
+    photos: [],
   },
   {
     id: "srv-5",
@@ -78,6 +95,8 @@ export const SEED_SERVICES: Service[] = [
     color: "#8B5CF6",
     status: "draft",
     created_at: new Date(),
+    price_disclosure_policy: null,
+    photos: [],
   },
 ];
 

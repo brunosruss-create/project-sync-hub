@@ -7,6 +7,8 @@ import { supabase } from "@/integrations/supabase/client";
 import {
   type Service,
   type ServiceStatus,
+  type PriceDisclosurePolicy,
+  type ServicePhoto,
   PRESET_COLORS,
   STATUS_COLOR,
   STATUS_LABEL,
@@ -18,6 +20,9 @@ import {
 
 import { ManagerOnly } from "@/components/manager-only";
 import { useWorkspaceOwnerId } from "@/hooks/use-workspace-owner";
+import { uploadChatMedia } from "@/lib/chat-media";
+
+const MAX_SERVICE_PHOTOS = 6;
 
 export const Route = createFileRoute("/_authenticated/services")({
   component: () => (
@@ -64,7 +69,7 @@ function ServicesPage() {
         supabase
           .from("services")
           .select(
-            "id,name,description,price_cents,duration_minutes,buffer_minutes,color,status,created_at",
+            "id,name,description,price_cents,duration_minutes,buffer_minutes,color,status,created_at,price_disclosure_policy,photos",
           )
           .eq("owner_user_id", workspaceOwnerId)
           .order("created_at", { ascending: true }),
@@ -96,6 +101,8 @@ function ServicesPage() {
           color: s.color ?? "#25C880",
           status: (s.status ?? "active") as ServiceStatus,
           created_at: s.created_at ? new Date(s.created_at) : new Date(),
+          price_disclosure_policy: s.price_disclosure_policy ?? null,
+          photos: Array.isArray(s.photos) ? s.photos : [],
         })),
       );
       setHydrated(true);
@@ -133,6 +140,8 @@ function ServicesPage() {
       buffer_minutes: draft.buffer_minutes,
       color: draft.color,
       status: draft.status,
+      price_disclosure_policy: draft.price_disclosure_policy,
+      photos: draft.photos,
     };
     const query = exists
       ? supabase
@@ -264,6 +273,7 @@ function ServicesPage() {
         <ServiceModal
           initial={editing.mode === "edit" ? editing.service : null}
           descriptionExample={descriptionExample}
+          workspaceOwnerId={workspaceOwnerId}
           onClose={() => setEditing(null)}
           onSubmit={upsertService}
         />
@@ -603,11 +613,13 @@ function EmptyState({ onCreate }: { onCreate: () => void }) {
 function ServiceModal({
   initial,
   descriptionExample,
+  workspaceOwnerId,
   onClose,
   onSubmit,
 }: {
   initial: Service | null;
   descriptionExample: string;
+  workspaceOwnerId: string | null | undefined;
   onClose: () => void;
   onSubmit: (s: Service) => void;
 }) {
@@ -616,6 +628,11 @@ function ServiceModal({
   const [priceText, setPriceText] = React.useState(
     initial ? formatCurrencyInput(initial.price_cents) : "0,00",
   );
+  const [priceDisclosurePolicy, setPriceDisclosurePolicy] = React.useState<
+    PriceDisclosurePolicy | null
+  >(initial?.price_disclosure_policy ?? null);
+  const [photos, setPhotos] = React.useState<ServicePhoto[]>(initial?.photos ?? []);
+  const [uploadingPhoto, setUploadingPhoto] = React.useState(false);
   const [durationValue, setDurationValue] = React.useState(() => {
     const m = initial?.duration_minutes ?? 30;
     return m % 60 === 0 && m >= 60 ? String(m / 60) : String(m);
@@ -643,6 +660,38 @@ function ServiceModal({
     setPriceText(formatCurrencyInput(cents));
   };
 
+  const handleAddPhoto = async (file: File | undefined) => {
+    if (!file) return;
+    if (!workspaceOwnerId) {
+      notify.error("Carregando sua conta… tente novamente em instantes.");
+      return;
+    }
+    if (photos.length >= MAX_SERVICE_PHOTOS) {
+      notify.error(`Máximo de ${MAX_SERVICE_PHOTOS} fotos por serviço.`);
+      return;
+    }
+    setUploadingPhoto(true);
+    try {
+      const { url } = await uploadChatMedia(file, workspaceOwnerId);
+      setPhotos((prev) => [
+        ...prev,
+        { id: crypto.randomUUID(), url, caption: "", mime: file.type || "image/jpeg" },
+      ]);
+    } catch (e) {
+      notify.error(e instanceof Error ? e.message : "Falha ao enviar foto.");
+    } finally {
+      setUploadingPhoto(false);
+    }
+  };
+
+  const handleRemovePhoto = (id: string) => {
+    setPhotos((prev) => prev.filter((p) => p.id !== id));
+  };
+
+  const handleChangePhotoCaption = (id: string, caption: string) => {
+    setPhotos((prev) => prev.map((p) => (p.id === id ? { ...p, caption } : p)));
+  };
+
   const submit = (e: React.FormEvent) => {
     e.preventDefault();
     if (!name.trim()) {
@@ -664,6 +713,8 @@ function ServiceModal({
       color,
       status,
       created_at: initial?.created_at ?? new Date(),
+      price_disclosure_policy: priceDisclosurePolicy,
+      photos,
     };
     onSubmit(draft);
   };
@@ -838,6 +889,23 @@ function ServiceModal({
               </ModalField>
             </div>
 
+            <ModalField label="Quando a IA pode informar o preço deste serviço?">
+              <select
+                value={priceDisclosurePolicy ?? ""}
+                onChange={(e) =>
+                  setPriceDisclosurePolicy(
+                    e.target.value === "" ? null : (e.target.value as PriceDisclosurePolicy),
+                  )
+                }
+                style={inputStyle}
+              >
+                <option value="">Usar padrão do workspace (Agente IA)</option>
+                <option value="always">Sempre, proativamente</option>
+                <option value="on_request">Apenas quando o cliente perguntar</option>
+                <option value="never">Nunca — direcionar para atendente</option>
+              </select>
+            </ModalField>
+
             <ModalField label="Intervalo após o atendimento (min)">
               <input
                 value={bufferMinutes}
@@ -872,6 +940,97 @@ function ServiceModal({
                   />
                 ))}
               </div>
+            </ModalField>
+
+            <ModalField label="Fotos (opcional)">
+              <div
+                style={{
+                  fontSize: 11,
+                  color: "var(--text-muted)",
+                  marginBottom: 8,
+                  lineHeight: 1.4,
+                }}
+              >
+                A IA pode enviar essas fotos quando o cliente pedir explicitamente pra ver (ex.:
+                "antes e depois"). Precisa do toggle "IA pode enviar fotos" ligado em Agente IA.
+              </div>
+              {photos.length > 0 && (
+                <div className="flex flex-col" style={{ gap: 8, marginBottom: 8 }}>
+                  {photos.map((p) => (
+                    <div key={p.id} className="flex items-center gap-2">
+                      <img
+                        src={p.url}
+                        alt={p.caption || "Foto do serviço"}
+                        style={{
+                          width: 44,
+                          height: 44,
+                          borderRadius: 6,
+                          objectFit: "cover",
+                          border: "1px solid var(--border)",
+                          flexShrink: 0,
+                        }}
+                      />
+                      <input
+                        value={p.caption}
+                        onChange={(e) => handleChangePhotoCaption(p.id, e.target.value)}
+                        placeholder="Legenda (ex.: Antes, Depois)"
+                        style={{ ...inputStyle, flex: 1 }}
+                        maxLength={60}
+                      />
+                      <button
+                        type="button"
+                        onClick={() => handleRemovePhoto(p.id)}
+                        title="Remover foto"
+                        style={{
+                          width: 28,
+                          height: 28,
+                          borderRadius: 6,
+                          border: "1px solid var(--border)",
+                          background: "transparent",
+                          color: "var(--text-muted)",
+                          cursor: "pointer",
+                          display: "flex",
+                          alignItems: "center",
+                          justifyContent: "center",
+                          flexShrink: 0,
+                        }}
+                      >
+                        <X size={14} />
+                      </button>
+                    </div>
+                  ))}
+                </div>
+              )}
+              {photos.length < MAX_SERVICE_PHOTOS && (
+                <label
+                  style={{
+                    display: "inline-flex",
+                    alignItems: "center",
+                    gap: 6,
+                    height: 32,
+                    padding: "0 12px",
+                    borderRadius: 6,
+                    border: "1px solid var(--border)",
+                    fontSize: 12,
+                    color: "var(--text-primary)",
+                    cursor: uploadingPhoto ? "default" : "pointer",
+                    opacity: uploadingPhoto ? 0.6 : 1,
+                  }}
+                >
+                  <Plus size={14} />
+                  {uploadingPhoto ? "Enviando…" : "Adicionar foto"}
+                  <input
+                    type="file"
+                    accept="image/*"
+                    hidden
+                    disabled={uploadingPhoto}
+                    onChange={(e) => {
+                      void handleAddPhoto(e.target.files?.[0]);
+                      e.target.value = "";
+                    }}
+                  />
+                </label>
+              )}
             </ModalField>
 
             <ModalField label="Status">

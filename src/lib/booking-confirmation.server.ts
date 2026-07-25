@@ -15,6 +15,7 @@ import {
   type RawHours,
 } from "@/lib/working-hours";
 import { looksLikeGenericName } from "@/lib/client-name";
+import { sendMediaToContact } from "@/lib/evolution.functions";
 
 type ProfileLite = {
   id: string;
@@ -1038,4 +1039,59 @@ export async function cancelAppointmentFromAI(
     previous_notes: previousNotes,
     confirmation_sent: confirmationSent,
   };
+}
+
+// Envia uma foto de serviço quando a IA emite o marcador PHOTO_JSON — ver
+// bloco "FOTOS DE SERVIÇOS DISPONÍVEIS" em ai-respond.server.ts. Mesma
+// filosofia das outras ações da IA neste arquivo: cadeia de validação
+// server-side, nunca confia no que a IA preencheu, só executa se tudo bater.
+export async function sendServicePhotoFromAI(
+  data: { service_id?: string; photo_id?: string },
+  ownerId: string,
+  contactId: string | null | undefined,
+  canSendPhotos: boolean,
+  lastClientMessage: string,
+): Promise<{ ok: boolean; reason?: string }> {
+  // 1. Recheca o toggle no servidor — nunca confia que o prompt escondeu a
+  //    capacidade da IA (mesmo se ela tentar emitir o marcador por erro).
+  if (!canSendPhotos) return { ok: false, reason: "feature_disabled" };
+  if (!data.service_id || !data.photo_id) return { ok: false, reason: "missing_fields" };
+  if (!contactId) return { ok: false, reason: "missing_contact" };
+
+  // 2. Nunca confia só no marcador da IA — a última mensagem do cliente
+  //    precisa conter um pedido explícito de foto/exemplo (mesmo espírito do
+  //    userWantsCancel/userWantsReschedule em ai-respond.server.ts).
+  const asksForPhoto = /foto|imagem|antes.*depois|exemplo|resultado|mostr|manda/i.test(
+    lastClientMessage || "",
+  );
+  if (!asksForPhoto) return { ok: false, reason: "no_explicit_request" };
+
+  // 3. Serviço + foto precisam existir de verdade, escopados ao tenant.
+  const { data: service, error } = await supabaseAdmin
+    .from("services")
+    .select("id,photos")
+    .eq("id", data.service_id)
+    .eq("owner_user_id", ownerId)
+    .maybeSingle();
+  if (error || !service) return { ok: false, reason: "service_not_found" };
+
+  const photos = Array.isArray((service as any).photos) ? (service as any).photos : [];
+  const photo = photos.find((p: any) => p?.id === data.photo_id);
+  if (!photo?.url) return { ok: false, reason: "photo_not_found" };
+
+  try {
+    await sendMediaToContact({
+      ownerUserId: ownerId,
+      contactId,
+      url: photo.url,
+      mime: photo.mime || "image/jpeg",
+      name: `foto-servico-${data.photo_id}.jpg`,
+      caption: photo.caption || undefined,
+      sentBy: null,
+    });
+  } catch (e) {
+    console.warn("[sendServicePhotoFromAI] falha ao enviar:", e instanceof Error ? e.message : e);
+    return { ok: false, reason: "send_failed" };
+  }
+  return { ok: true };
 }
