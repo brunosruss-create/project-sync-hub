@@ -100,6 +100,38 @@ Não há IaC — recriação é manual:
 > Se produção cair com esse erro: `vercel ls hello-tenant-base` → `vercel promote
 > <deployment-anterior-que-funcionava>` restaura na hora.
 
+> 🔴 **INCIDENTE (2026-07-25 — root cause diferente do anterior, mesmo sintoma):**
+> Erro no console `Error: supabaseKey is required` em `evolution.functions-*.js`,
+> app inteiro quebrando com "Something went wrong!". **Não era env var da Vercel**
+> (confirmado: `VITE_SUPABASE_PUBLISHABLE_KEY` presente, tipo Encrypted, valor OK).
+> Causa real: o commit `447f006` extraiu `sendMediaToContact` como função solta
+> (fora de `createServerFn().handler()`) em `src/lib/evolution.functions.ts` —
+> arquivo importado tanto por código de servidor quanto por componentes de
+> cliente (`conversation-panel.tsx` etc.). Essa função usava `supabaseAdmin`
+> diretamente. `supabaseAdmin` (`client.server.ts`) criava o client Supabase
+> **no carregamento do módulo** (`export const supabaseAdmin = createClient(...)`).
+> Quando o bundler do TanStack Start incluiu esse módulo no bundle do
+> **navegador** (o strip de código server-only só funciona de forma confiável
+> para o corpo de `.handler()`, não para funções soltas no mesmo arquivo),
+> `process.env` no browser é `{}` → service role key vira `""` →
+> `createClient(url, "")` lança na hora, quebrando a página inteira antes de
+> qualquer render.
+> **Fix aplicado (2 camadas):**
+> 1. `sendMediaToContact` movida para `src/lib/evolution.server.ts` (arquivo
+>    já usado só a partir de handlers/server functions).
+> 2. **Defesa em profundidade** — `client.server.ts`: `supabaseAdmin` virou um
+>    `Proxy` com inicialização preguiçosa (só chama `createClient` no primeiro
+>    uso real, nunca no import). Isso protege contra qualquer repetição futura
+>    do mesmo padrão de bug (helper solto usando `supabaseAdmin` fora de um
+>    handler), mesmo que aconteça em outro arquivo.
+> **Lição:** nunca declarar um `export async function` "solto" (fora de
+> `createServerFn().handler()`) num arquivo `.functions.ts` que também é
+> importado por componentes de cliente, se essa função usa `supabaseAdmin`.
+> Colocar helpers assim em arquivos `.server.ts` dedicados.
+> **Recuperação rápida se acontecer de novo:** `npx vercel deploy --prod --force`
+> depois do fix (o `--force` é necessário — sem ele a Vercel reaproveita o
+> cache de build e reimplanta o MESMO bundle quebrado mesmo com env vars OK).
+
 ### Env vars do ZapFlow (Vercel → Settings → Environment Variables)
 | Variável | Valor / origem |
 |---|---|

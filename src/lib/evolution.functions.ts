@@ -3,7 +3,7 @@ import { getRequest, getRequestHost } from "@tanstack/react-start/server";
 import { z } from "zod";
 import { requireSupabaseAuth } from "@/integrations/supabase/auth-middleware";
 import { supabaseAdmin } from "@/integrations/supabase/client.server";
-import { evo, extractQRCode, instanceNameForOwner, normalizeQRCodeImage, tryFetchProfilePicture } from "@/lib/evolution.server";
+import { evo, extractQRCode, instanceNameForOwner, normalizeQRCodeImage, tryFetchProfilePicture, sendMediaToContact } from "@/lib/evolution.server";
 
 const WEBHOOK_EVENTS = ["MESSAGES_UPSERT", "MESSAGES_UPDATE", "SEND_MESSAGE_UPDATE", "CONNECTION_UPDATE", "QRCODE_UPDATED"];
 
@@ -571,71 +571,6 @@ const sendMediaInput = z.object({
   caption: z.string().max(1024).optional(),
   quoted: quotedInput,
 });
-
-// Lógica pura de envio de mídia, reaproveitada tanto pelo server fn público
-// abaixo (atendente humano, via UI) quanto pelo caminho servidor→servidor
-// (IA enviando foto de serviço — ver sendServicePhotoFromAI em
-// booking-confirmation.server.ts). `sentBy` é null quando quem manda é a IA
-// (não é uma ação de um usuário humano autenticado).
-export async function sendMediaToContact(params: {
-  ownerUserId: string;
-  contactId: string;
-  url: string;
-  mime: string;
-  name: string;
-  caption?: string;
-  /** null quando quem manda é a IA (não é uma ação de um usuário humano autenticado). */
-  sentBy?: string | null;
-  quoted?: z.infer<typeof quotedInput>;
-}): Promise<{ ok: true; externalId: string | null }> {
-  const instance = instanceNameForOwner(params.ownerUserId);
-  const { data: contact, error: ce } = await supabaseAdmin
-    .from("contacts")
-    .select("id,phone")
-    .eq("id", params.contactId)
-    .eq("owner_user_id", params.ownerUserId)
-    .maybeSingle();
-  if (ce || !contact?.phone) throw new Error("Contato sem telefone.");
-
-  const number = String(contact.phone).replace(/\D/g, "");
-  const isImage = params.mime.startsWith("image/");
-  const isVideo = params.mime.startsWith("video/");
-  const mediatype: "image" | "video" | "document" = isImage ? "image" : isVideo ? "video" : "document";
-
-  let externalId: string | null = null;
-  try {
-    const r: any = await evo.sendMedia(instance, {
-      number,
-      mediatype,
-      mimetype: params.mime,
-      media: params.url,
-      fileName: params.name,
-      caption: params.caption,
-      quoted: buildQuotedPayload(params.quoted),
-    });
-    externalId = r?.key?.id ?? r?.id ?? null;
-  } catch (e: any) {
-    throw new Error(`Falha no envio de mídia: ${e?.message ?? e}`);
-  }
-
-  await supabaseAdmin.from("messages").insert({
-    owner_user_id: params.ownerUserId,
-    contact_id: contact.id,
-    direction: "outbound",
-    content: params.caption ?? "",
-    message_type: mediatype === "image" ? "image" : mediatype === "video" ? "video" : "document",
-    status: "sent",
-    sent_by: params.sentBy ?? null,
-    media_url: params.url,
-    media_mime: params.mime,
-    media_name: params.name,
-    whatsapp_message_id: externalId,
-    quoted_message_id: params.quoted?.messageId ?? null,
-    quoted_preview: params.quoted?.preview ?? null,
-  });
-
-  return { ok: true, externalId };
-}
 
 export const sendWhatsAppMedia = createServerFn({ method: "POST" })
   .middleware([requireSupabaseAuth])
