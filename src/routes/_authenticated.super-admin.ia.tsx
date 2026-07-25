@@ -14,6 +14,7 @@ import {
 } from "@/lib/ai-admin.functions";
 import { adminCard, adminInput, adminBtn, adminBtnGhost } from "./_authenticated.super-admin";
 import { FIELD_LABELS } from "@/lib/field-labels";
+import { GENERAL_INFO_LABELS } from "@/lib/general-info-labels";
 import { ToggleRow } from "@/components/toggle-row";
 
 export const Route = createFileRoute("/_authenticated/super-admin/ia")({
@@ -312,6 +313,74 @@ function SegmentsTab() {
   );
 }
 
+function FieldCatalogEditor({
+  activeKeys,
+  labels,
+  onToggle,
+  emptyText,
+}: {
+  activeKeys: string[];
+  labels: Record<string, string>;
+  onToggle: (key: string, on: boolean) => void;
+  emptyText: string;
+}) {
+  const [showCatalog, setShowCatalog] = React.useState(false);
+  const [search, setSearch] = React.useState("");
+  const restKeys = Object.keys(labels)
+    .filter((k) => !activeKeys.includes(k))
+    .filter((k) => labels[k].toLowerCase().includes(search.toLowerCase()));
+  return (
+    <>
+      {activeKeys.length > 0 ? (
+        <div>
+          {activeKeys.map((key) => (
+            <ToggleRow
+              key={key}
+              label={labels[key] ?? key}
+              value={true}
+              onChange={(v) => onToggle(key, v)}
+            />
+          ))}
+        </div>
+      ) : (
+        <p style={{ fontSize: 12, color: "rgba(255,255,255,0.5)" }}>{emptyText}</p>
+      )}
+      <button
+        type="button"
+        onClick={() => setShowCatalog((v) => !v)}
+        style={{ ...adminBtnGhost, height: 30, padding: "0 10px", fontSize: 12, marginTop: 8 }}
+      >
+        {showCatalog ? "Ocultar catálogo" : "+ Adicionar campo do catálogo"}
+      </button>
+      {showCatalog && (
+        <div style={{ marginTop: 10 }}>
+          <input
+            style={{ ...adminInput, marginBottom: 6 }}
+            placeholder="Buscar campo do catálogo…"
+            value={search}
+            onChange={(e) => setSearch(e.target.value)}
+          />
+          <div style={{ maxHeight: 200, overflow: "auto" }}>
+            {restKeys.map((key) => (
+              <ToggleRow
+                key={key}
+                label={labels[key]}
+                value={false}
+                onChange={(v) => onToggle(key, v)}
+              />
+            ))}
+            {restKeys.length === 0 && (
+              <p style={{ fontSize: 12, color: "rgba(255,255,255,0.5)" }}>
+                Nenhum campo encontrado.
+              </p>
+            )}
+          </div>
+        </div>
+      )}
+    </>
+  );
+}
+
 function SegmentEditor({
   segment,
   onClose,
@@ -333,9 +402,8 @@ function SegmentEditor({
     default_tone: segment.default_tone ?? "Amigável",
     default_transfer_keywords: segment.default_transfer_keywords ?? [],
     default_required_fields: segment.default_required_fields ?? [],
+    default_general_info_fields: segment.default_general_info_fields ?? [],
   });
-  const [showCatalog, setShowCatalog] = React.useState(false);
-  const [catalogSearch, setCatalogSearch] = React.useState("");
   const toggleField = (key: string, on: boolean) =>
     setS((prev) => ({
       ...prev,
@@ -343,9 +411,13 @@ function SegmentEditor({
         ? [...prev.default_required_fields, key]
         : prev.default_required_fields.filter((f: string) => f !== key),
     }));
-  const restKeys = Object.keys(FIELD_LABELS)
-    .filter((k) => !s.default_required_fields.includes(k))
-    .filter((k) => FIELD_LABELS[k].toLowerCase().includes(catalogSearch.toLowerCase()));
+  const toggleGeneralInfo = (key: string, on: boolean) =>
+    setS((prev) => ({
+      ...prev,
+      default_general_info_fields: on
+        ? [...prev.default_general_info_fields, key]
+        : prev.default_general_info_fields.filter((f: string) => f !== key),
+    }));
   return (
     <div
       style={{
@@ -428,54 +500,20 @@ function SegmentEditor({
           />
         </Field>
         <Field label="Campos obrigatórios antes de agendar (a IA sempre pergunta se ainda não souber)">
-          {s.default_required_fields.length > 0 ? (
-            <div>
-              {s.default_required_fields.map((key: string) => (
-                <ToggleRow
-                  key={key}
-                  label={FIELD_LABELS[key] ?? key}
-                  value={true}
-                  onChange={(v) => toggleField(key, v)}
-                />
-              ))}
-            </div>
-          ) : (
-            <p style={{ fontSize: 12, color: "rgba(255,255,255,0.5)" }}>
-              Nenhum campo ativo neste segmento ainda.
-            </p>
-          )}
-          <button
-            type="button"
-            onClick={() => setShowCatalog((v) => !v)}
-            style={{ ...adminBtnGhost, height: 30, padding: "0 10px", fontSize: 12, marginTop: 8 }}
-          >
-            {showCatalog ? "Ocultar catálogo" : "+ Adicionar campo do catálogo"}
-          </button>
-          {showCatalog && (
-            <div style={{ marginTop: 10 }}>
-              <input
-                style={{ ...adminInput, marginBottom: 6 }}
-                placeholder="Buscar campo do catálogo…"
-                value={catalogSearch}
-                onChange={(e) => setCatalogSearch(e.target.value)}
-              />
-              <div style={{ maxHeight: 200, overflow: "auto" }}>
-                {restKeys.map((key) => (
-                  <ToggleRow
-                    key={key}
-                    label={FIELD_LABELS[key]}
-                    value={false}
-                    onChange={(v) => toggleField(key, v)}
-                  />
-                ))}
-                {restKeys.length === 0 && (
-                  <p style={{ fontSize: 12, color: "rgba(255,255,255,0.5)" }}>
-                    Nenhum campo encontrado.
-                  </p>
-                )}
-              </div>
-            </div>
-          )}
+          <FieldCatalogEditor
+            activeKeys={s.default_required_fields}
+            labels={FIELD_LABELS}
+            onToggle={toggleField}
+            emptyText="Nenhum campo ativo neste segmento ainda."
+          />
+        </Field>
+        <Field label="Informações gerais sugeridas (a IA responde isso se o cliente perguntar)">
+          <FieldCatalogEditor
+            activeKeys={s.default_general_info_fields}
+            labels={GENERAL_INFO_LABELS}
+            onToggle={toggleGeneralInfo}
+            emptyText="Nenhuma informação sugerida neste segmento ainda."
+          />
         </Field>
         <div className="flex justify-end gap-2" style={{ marginTop: 16 }}>
           <button style={adminBtnGhost} onClick={onClose}>Cancelar</button>

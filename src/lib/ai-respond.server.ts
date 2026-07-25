@@ -15,6 +15,7 @@ import { MESSAGE_DEFAULTS } from "@/lib/message-defaults";
 import { normalizeHours, describeHours, type RawHours } from "@/lib/working-hours";
 import { renderTemplate } from "@/lib/message-templates";
 import { FIELD_LABELS } from "@/lib/field-labels";
+import { GENERAL_INFO_LABELS } from "@/lib/general-info-labels";
 
 type DayCfg = {
   enabled?: boolean;
@@ -264,6 +265,26 @@ function buildWorkspaceLayer(
     prohibitions.push(
       "OBRIGATÓRIO: NÃO informe endereço, telefone ou site do negócio. Se o cliente perguntar onde fica, qual o telefone ou se há site, diga que pode passar o contato com um atendente humano.",
     );
+  }
+
+  // === INFORMAÇÕES GERAIS DO NEGÓCIO (Sim/Não) ===
+  // Chave ausente do mapa = "não informado" — a IA nunca deve tratar isso
+  // como "Não". Só entram aqui fatos que o tenant realmente preencheu.
+  const generalInfo = (p as any).business_general_info as Record<string, boolean> | null;
+  const giEntries = generalInfo
+    ? Object.entries(generalInfo).filter(([, v]) => typeof v === "boolean")
+    : [];
+  if (canShareContact && giEntries.length > 0) {
+    const lines: string[] = [
+      "INFORMAÇÕES GERAIS DO NEGÓCIO (responda apenas se o cliente perguntar — não ofereça espontaneamente):",
+    ];
+    for (const [key, val] of giEntries) {
+      lines.push(`- ${GENERAL_INFO_LABELS[key] ?? key}: ${val ? "Sim" : "Não"}`);
+    }
+    lines.push(
+      "Sobre qualquer outro fato do negócio que não esteja listado acima, diga que vai verificar com a equipe — não invente.",
+    );
+    parts.push(lines.join("\n"));
   }
 
   if (p.ai_tone) {

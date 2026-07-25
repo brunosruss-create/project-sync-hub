@@ -463,10 +463,10 @@ function AIAgentPage() {
             hint="Com 1 profissional ativo a IA já assume sozinha. Com 2+, ligue se quiser que a IA pergunte 'com qual profissional?' quando o cliente não citar nome. Desligado, a IA só responde sobre profissional quando o cliente perguntar pelo nome."
           />
           <ToggleRow
-            label="A IA pode informar endereço, site e telefone quando perguntada?"
+            label="A IA pode informar dados do negócio quando perguntada?"
             value={shareContactInfo}
             onChange={setShareContactInfo}
-            hint="Quando ligado, a IA usa os dados de Configurações → Negócio para responder perguntas tipo 'onde fica?', 'qual o telefone?', 'tem site?'. Desligue se preferir que esses dados não sejam divulgados pelo WhatsApp."
+            hint="Quando ligado, a IA usa os dados de Configurações → Negócio para responder perguntas tipo 'onde fica?', 'qual o telefone?', 'tem site?', 'tem estacionamento?', 'aceita PIX?'. Desligue se preferir que esses dados não sejam divulgados pelo WhatsApp."
           />
           <div style={{ marginTop: 12 }}>
             <Field label="Quando a IA pode informar preços?">

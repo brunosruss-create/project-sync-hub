@@ -22,6 +22,8 @@ import {
 
 import { ManagerOnly } from "@/components/manager-only";
 import { TimeSelect } from "@/components/time-select";
+import { YesNoRow } from "@/components/toggle-row";
+import { GENERAL_INFO_LABELS } from "@/lib/general-info-labels";
 
 export const Route = createFileRoute("/_authenticated/settings/workspace")({
   component: () => (
@@ -72,6 +74,8 @@ function WorkspacePage() {
   const [cepError, setCepError] = React.useState<string | null>(null);
   const [phone, setPhone] = React.useState("");
   const [site, setSite] = React.useState("");
+  const [generalInfo, setGeneralInfo] = React.useState<Record<string, boolean>>({});
+  const [segmentGeneralInfoDefaults, setSegmentGeneralInfoDefaults] = React.useState<string[]>([]);
   const [tz, setTz] = React.useState("America/Sao_Paulo");
   const [welcomeEnabled, setWelcomeEnabled] = React.useState(false);
   const [welcome, setWelcome] = React.useState(
@@ -110,6 +114,8 @@ function WorkspacePage() {
           business_neighborhood?: string;
           business_city?: string;
           business_state?: string;
+          business_general_info?: Record<string, boolean>;
+          segment_general_info_defaults?: string[];
         }
       | undefined;
     if (!p) return;
@@ -142,6 +148,14 @@ function WorkspacePage() {
     setStateUf(p.business_state ?? "");
     if (typeof p.business_phone === "string") setPhone(p.business_phone);
     if (typeof p.business_website === "string") setSite(p.business_website);
+    setGeneralInfo(
+      p.business_general_info && typeof p.business_general_info === "object"
+        ? p.business_general_info
+        : {},
+    );
+    setSegmentGeneralInfoDefaults(
+      Array.isArray(p.segment_general_info_defaults) ? p.segment_general_info_defaults : [],
+    );
   }, [profileQ.data]);
 
   // ViaCEP lookup quando CEP completa 8 dígitos
@@ -181,6 +195,11 @@ function WorkspacePage() {
     setCepError(null);
     if (digits.length === 8) void lookupCep(digits);
   };
+
+  const visibleGeneralInfoKeys = React.useMemo(
+    () => Array.from(new Set([...segmentGeneralInfoDefaults, ...Object.keys(generalInfo)])),
+    [segmentGeneralInfoDefaults, generalInfo],
+  );
 
   const segments = segmentsQ.data?.segments ?? [];
   const selectedSegment = segments.find((s) => s.id === segmentId);
@@ -227,6 +246,7 @@ function WorkspacePage() {
             .join(""),
           business_phone: phone.trim(),
           business_website: site.trim(),
+          business_general_info: generalInfo,
         },
       });
       await Promise.all([
@@ -340,8 +360,9 @@ function WorkspacePage() {
           }}
         >
           💡 Esses dados podem ser informados pela IA quando o cliente perguntar
-          (endereço, site, telefone). Mantenha-os atualizados — você controla se a
-          IA pode divulgá-los em <strong>Agente IA → Comportamento</strong>.
+          (endereço, site, telefone, e as informações gerais logo abaixo). Mantenha-os
+          atualizados — você controla se a IA pode divulgá-los em{" "}
+          <strong>Agente IA → Comportamento</strong>.
         </div>
 
         <Field label="CEP" hint={cepError ?? (cepLoading ? "Buscando endereço…" : undefined)}>
@@ -416,6 +437,32 @@ function WorkspacePage() {
             placeholder="https://"
           />
         </Field>
+      </FieldGroup>
+
+      <FieldGroup label="Informações gerais">
+        {visibleGeneralInfoKeys.length > 0 ? (
+          <div>
+            {visibleGeneralInfoKeys.map((key) => (
+              <YesNoRow
+                key={key}
+                label={GENERAL_INFO_LABELS[key] ?? key}
+                value={key in generalInfo ? generalInfo[key] : null}
+                onChange={(v) =>
+                  setGeneralInfo((prev) => {
+                    const next = { ...prev };
+                    if (v === null) delete next[key];
+                    else next[key] = v;
+                    return next;
+                  })
+                }
+              />
+            ))}
+          </div>
+        ) : (
+          <p style={{ fontSize: 12, color: "var(--text-muted)" }}>
+            Nenhuma informação sugerida para o seu segmento ainda.
+          </p>
+        )}
       </FieldGroup>
 
       <FieldGroup label="Horários de funcionamento">
