@@ -330,7 +330,7 @@ function AIAgentPage() {
               </div>
             </div>
           </div>
-          <BigToggle value={active} onChange={setActive} />
+          <SmallToggle value={active} onChange={setActive} />
         </div>
 
         <div
