@@ -135,6 +135,7 @@ function SchedulePage() {
       status: (r.status ?? "scheduled") as AppointmentStatus,
       notes: r.notes ?? "",
       notify_whatsapp: !!r.notify_whatsapp,
+      client_name: r.client_name ?? null,
     }),
     [tz],
   );
@@ -144,7 +145,7 @@ function SchedulePage() {
       supabase
         .from("appointments")
         .select(
-          "id,contact_id,service_id,agent_id,professional_id,starts_at,ends_at,status,notes,notify_whatsapp",
+          "id,contact_id,service_id,agent_id,professional_id,starts_at,ends_at,status,notes,notify_whatsapp,client_name",
         ),
       supabase
         .from("contacts")
@@ -985,7 +986,7 @@ function EventBlock({
       onMouseLeave={(e) => (e.currentTarget.style.transform = "scale(1)")}
     >
       <div className="truncate" style={{ fontSize: compact ? 11 : 12, fontWeight: 600 }}>
-        {contact?.name ?? "Sem contato"}
+        {a.client_name || contact?.name || "Sem contato"}
       </div>
       {height > 32 && (
         <div
@@ -1167,7 +1168,7 @@ function MonthView({
                       >
                         {formatHM(a.starts_at)}
                       </span>
-                      {contact?.name ?? "Sem contato"}
+                      {a.client_name || contact?.name || "Sem contato"}
                     </span>
                   );
                 })}
@@ -1273,7 +1274,7 @@ function ListView({
                       </div>
                       <div className="flex-1 min-w-0">
                         <div className="truncate" style={{ fontSize: 13, fontWeight: 500 }}>
-                          {contact?.name ?? "Sem contato"}
+                          {a.client_name || contact?.name || "Sem contato"}
                         </div>
                         <div
                           className="truncate"
@@ -1375,7 +1376,9 @@ function DetailPanel({
             }}
           />
           <div className="flex-1 min-w-0">
-            <div style={{ fontSize: 13, fontWeight: 600 }}>{contact?.name ?? "—"}</div>
+            <div style={{ fontSize: 13, fontWeight: 600 }}>
+              {appt.client_name || contact?.name || "—"}
+            </div>
             <div style={{ fontSize: 11, color: "var(--text-muted)" }}>{service?.name}</div>
           </div>
           <button
@@ -1435,7 +1438,7 @@ function DetailPanel({
             )} min`}
             mono
           />
-          <DataRow label="Contato" value={contact?.name ?? "—"} />
+          <DataRow label="Contato" value={appt.client_name || contact?.name || "—"} />
           <DataRow label="Telefone" value={contact?.phone ?? "—"} mono />
           <DataRow label="Serviço" value={service ? service.name : "—"} />
           {service && (
@@ -1747,6 +1750,7 @@ function AppointmentModal({
       status,
       notes: notes.trim(),
       notify_whatsapp: notify,
+      client_name: initial?.client_name ?? null,
     };
     await onSubmit(draft);
   };

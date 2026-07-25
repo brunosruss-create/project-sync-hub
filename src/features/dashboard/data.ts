@@ -93,12 +93,12 @@ export async function getDashboardData(period: DashPeriod, currentUserId?: strin
       .order("created_at", { ascending: true }).limit(10000),
     supabase.from("messages").select("id,contact_id,direction,sent_by,created_at")
       .gte("created_at", prevStart.toISOString()).lt("created_at", prevEnd.toISOString()).limit(10000),
-    supabase.from("appointments").select("id,contact_id,service_id,agent_id,status,starts_at")
+    supabase.from("appointments").select("id,contact_id,service_id,agent_id,status,starts_at,client_name")
       .gte("starts_at", start.toISOString()).lt("starts_at", end.toISOString()).limit(5000),
     supabase.from("appointments").select("id,status,starts_at")
       .gte("starts_at", prevStart.toISOString()).lt("starts_at", prevEnd.toISOString()).limit(5000),
     // Próximos agendamentos: do agora em diante, qualquer data, exceto cancelados.
-    supabase.from("appointments").select("id,contact_id,service_id,starts_at,status")
+    supabase.from("appointments").select("id,contact_id,service_id,starts_at,status,client_name")
       .gte("starts_at", nowIso)
       .neq("status", "cancelled").order("starts_at", { ascending: true }).limit(6),
     supabase.from("contacts").select("id,name,kanban_column"),
@@ -225,7 +225,7 @@ export async function getDashboardData(period: DashPeriod, currentUserId?: strin
     return {
       id: a.id,
       time,
-      client: ctMap.get(a.contact_id) || "—",
+      client: a.client_name || ctMap.get(a.contact_id) || "—",
       service: svcLabel,
     };
   });

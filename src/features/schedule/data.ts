@@ -20,6 +20,7 @@ export interface Appointment {
   status: AppointmentStatus;
   notes: string;
   notify_whatsapp: boolean;
+  client_name: string | null;
 }
 
 export const STATUS_LABEL: Record<AppointmentStatus, string> = {
@@ -159,6 +160,7 @@ export const MOCK_APPOINTMENTS: Appointment[] = [
     status: "confirmed",
     notes: "Cliente recorrente.",
     notify_whatsapp: true,
+    client_name: null,
   },
   {
     id: "ap2",
@@ -170,6 +172,7 @@ export const MOCK_APPOINTMENTS: Appointment[] = [
     status: "scheduled",
     notes: "",
     notify_whatsapp: true,
+    client_name: null,
   },
   {
     id: "ap3",
@@ -181,6 +184,7 @@ export const MOCK_APPOINTMENTS: Appointment[] = [
     status: "in_progress",
     notes: "",
     notify_whatsapp: false,
+    client_name: null,
   },
   {
     id: "ap4",
@@ -192,6 +196,7 @@ export const MOCK_APPOINTMENTS: Appointment[] = [
     status: "scheduled",
     notes: "Revisar peças com cliente antes.",
     notify_whatsapp: true,
+    client_name: null,
   },
   {
     id: "ap5",
@@ -203,6 +208,7 @@ export const MOCK_APPOINTMENTS: Appointment[] = [
     status: "scheduled",
     notes: "",
     notify_whatsapp: true,
+    client_name: null,
   },
   {
     id: "ap6",
@@ -214,6 +220,7 @@ export const MOCK_APPOINTMENTS: Appointment[] = [
     status: "confirmed",
     notes: "",
     notify_whatsapp: true,
+    client_name: null,
   },
   {
     id: "ap7",
@@ -225,6 +232,7 @@ export const MOCK_APPOINTMENTS: Appointment[] = [
     status: "completed",
     notes: "",
     notify_whatsapp: true,
+    client_name: null,
   },
   {
     id: "ap8",
@@ -236,6 +244,7 @@ export const MOCK_APPOINTMENTS: Appointment[] = [
     status: "scheduled",
     notes: "",
     notify_whatsapp: true,
+    client_name: null,
   },
 ];
 

@@ -13,6 +13,7 @@ function appt(startH: number, endH: number): Appointment {
     status: "scheduled",
     notes: "",
     notify_whatsapp: true,
+    client_name: null,
   };
 }
 

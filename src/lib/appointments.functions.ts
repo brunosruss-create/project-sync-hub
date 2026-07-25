@@ -24,7 +24,7 @@ export const notifyAppointmentChange = createServerFn({ method: "POST" })
     const { data: appt } = await supabaseAdmin
       .from("appointments")
       .select(
-        "id,owner_user_id,contact_id,service_id,professional_id,starts_at,notify_whatsapp",
+        "id,owner_user_id,contact_id,service_id,professional_id,starts_at,notify_whatsapp,client_name",
       )
       .eq("id", appointmentId)
       .maybeSingle();
@@ -94,7 +94,7 @@ export const notifyAppointmentChange = createServerFn({ method: "POST" })
     };
     const appointmentLite = { id: appt.id, starts_at: appt.starts_at };
     const clientLite = {
-      client_name: contact.name ?? "cliente",
+      client_name: appt.client_name || contact.name || "cliente",
       client_phone: contact.phone,
     };
 
