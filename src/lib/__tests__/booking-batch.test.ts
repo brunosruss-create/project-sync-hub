@@ -112,6 +112,7 @@ import {
   createAppointmentFromAI,
   createAppointmentBatchFromAI,
 } from "@/lib/booking-confirmation.server";
+import { evo } from "@/lib/evolution.server";
 
 const profile = {
   id: "ownerA",
@@ -128,6 +129,7 @@ const PHONE = "+5511999999999";
 beforeEach(() => {
   queue.clear();
   calls.length = 0;
+  (evo.sendText as any).mockClear();
 });
 
 function seedItem(opts: {
@@ -398,5 +400,74 @@ describe("createAppointmentFromAI — profissional ambíguo (bug de segurança)"
     expect(conflictChecks).toHaveLength(0);
     const inserts = calls.filter((c) => c.table === "appointments" && c.op === "insert");
     expect(inserts).toHaveLength(0);
+  });
+});
+
+describe("createAppointmentBatchFromAI — silent (evita duplicar com a resposta da IA)", () => {
+  const items = [
+    {
+      service_id: SERVICE_ID,
+      professional_id: PROF_ID,
+      starts_at: "2026-07-24T09:00:00-03:00",
+      client_name: "Bruno",
+      client_phone: PHONE,
+      contact_id: CONTACT_BRUNO,
+    },
+    {
+      service_id: SERVICE_ID,
+      professional_id: PROF_ID,
+      starts_at: "2026-07-24T09:00:00-03:00",
+      client_name: "Gabriela",
+      client_phone: PHONE,
+      contact_id: CONTACT_GABRIELA,
+    },
+  ];
+
+  it("{ silent: true } cria os agendamentos mas NÃO envia o template de confirmação", async () => {
+    seedItem({
+      bufferMinutes: 0,
+      contactId: CONTACT_BRUNO,
+      startsAtIso: "2026-07-24T09:00:00-03:00",
+      endsAtIso: "2026-07-24T12:30:00.000Z",
+      apptId: "appt-1",
+    });
+    seedItem({
+      bufferMinutes: 0,
+      contactId: CONTACT_GABRIELA,
+      startsAtIso: "2026-07-24T12:30:00.000Z",
+      endsAtIso: "2026-07-24T13:00:00.000Z",
+      apptId: "appt-2",
+    });
+    // Nenhum fixture de profiles/whatsapp_instances enfileirado de propósito —
+    // se o código tentasse enviar mesmo assim, a asserção do evo.sendText abaixo pegaria.
+
+    const batch = await createAppointmentBatchFromAI(items, profile, { silent: true });
+
+    expect(batch.anyFailed).toBe(false);
+    const inserts = calls.filter((c) => c.table === "appointments" && c.op === "insert");
+    expect(inserts).toHaveLength(2);
+    expect(evo.sendText).not.toHaveBeenCalled();
+  });
+
+  it("sem silent (default), continua enviando o template — comportamento do agendamento manual não muda", async () => {
+    seedItem({
+      bufferMinutes: 0,
+      contactId: CONTACT_BRUNO,
+      startsAtIso: "2026-07-24T09:00:00-03:00",
+      endsAtIso: "2026-07-24T12:30:00.000Z",
+      apptId: "appt-1",
+    });
+    seedItem({
+      bufferMinutes: 0,
+      contactId: CONTACT_GABRIELA,
+      startsAtIso: "2026-07-24T12:30:00.000Z",
+      endsAtIso: "2026-07-24T13:00:00.000Z",
+      apptId: "appt-2",
+    });
+    seedBatchConfirmationMessage();
+
+    await createAppointmentBatchFromAI(items, profile);
+
+    expect(evo.sendText).toHaveBeenCalledTimes(1);
   });
 });

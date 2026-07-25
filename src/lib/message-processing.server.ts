@@ -140,7 +140,7 @@ async function buildConversationContext(ownerUserId: string, contactId: string) 
   return { conversation_history, aiSummary };
 }
 
-async function sendAiReplyAndPersist(
+export async function sendAiReplyAndPersist(
   instanceName: string,
   ownerUserId: string,
   contactId: string,
@@ -148,7 +148,11 @@ async function sendAiReplyAndPersist(
   ai: AiRunResult,
   logPrefix: string,
 ) {
-  if (ai.action === "send_message" || ai.action === "send_out_of_hours") {
+  if (
+    ai.action === "send_message" ||
+    ai.action === "send_out_of_hours" ||
+    ai.action === "transfer_to_human"
+  ) {
     const responseText = ai.response?.trim();
     if (!responseText) return;
     let waMessageId: string | null = null;
@@ -177,12 +181,13 @@ async function sendAiReplyAndPersist(
         last_direction: "outbound",
       })
       .eq("id", contactId);
-  } else if (ai.action === "transfer_to_human") {
-    // não responde — deixa em waiting/unread para um humano assumir
-    await supabaseAdmin
-      .from("contacts")
-      .update({ kanban_column: "waiting", is_unread: true })
-      .eq("id", contactId);
+    if (ai.action === "transfer_to_human") {
+      // Além de enviar o aviso, deixa em waiting/unread para um humano assumir.
+      await supabaseAdmin
+        .from("contacts")
+        .update({ kanban_column: "waiting", is_unread: true })
+        .eq("id", contactId);
+    }
   } else {
     console.log(`[${logPrefix}] skipped`, ai);
   }

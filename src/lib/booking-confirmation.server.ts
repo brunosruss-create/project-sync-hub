@@ -575,6 +575,7 @@ type BatchItemResult = Awaited<ReturnType<typeof createAppointmentFromAI>> & {
 export async function createAppointmentBatchFromAI(
   items: BatchItemInput[],
   profile: { id: string; business_timezone: string | null; business_name: string | null },
+  options?: { silent?: boolean },
 ): Promise<{
   results: BatchItemResult[];
   allFailed: boolean;
@@ -615,7 +616,7 @@ export async function createAppointmentBatchFromAI(
   const allFailed = results.every((r) => !r.ok);
   const anyFailed = results.some((r) => !r.ok);
 
-  if (results.some((r) => r.ok)) {
+  if (!options?.silent && results.some((r) => r.ok)) {
     await sendBookingConfirmationBatch({ profile, results });
   }
 
@@ -675,7 +676,12 @@ async function sendBookingConfirmationBatch(args: {
 // Reagendamento via IA: cancela o antigo + cria um novo (mesmo serviço, profissional
 // e contato), com rollback se a criação falhar. Reaproveita os fluxos que já funcionam.
 export async function rescheduleAppointmentFromAI(
-  data: { appointment_id?: string; new_starts_at?: string; contact_id?: string | null },
+  data: {
+    appointment_id?: string;
+    new_starts_at?: string;
+    contact_id?: string | null;
+    silent?: boolean;
+  },
   profile: { id: string; business_timezone: string | null; business_name: string | null },
 ): Promise<{ ok: boolean; reason?: string }> {
   const tzR = profile.business_timezone || "America/Sao_Paulo";
@@ -793,7 +799,7 @@ export async function rescheduleAppointmentFromAI(
   }
 
   // 4. Envia a única mensagem de reagendamento (antigo → novo).
-  if (contact) {
+  if (!data.silent && contact) {
     await sendBookingReschedule({
       profile: {
         id: profile.id,

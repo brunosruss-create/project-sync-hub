@@ -84,17 +84,15 @@ vi.mock("@/lib/message-templates", () => ({
 
 vi.mock("@/lib/message-defaults", () => ({
   MESSAGE_DEFAULTS: {
-    msg_booking_confirmed_text: "ok",
-    msg_booking_confirmed_enabled: true,
-    msg_booking_rescheduled_text: "ok",
-    msg_booking_rescheduled_enabled: true,
-    msg_booking_cancelled_text: "ok",
-    msg_booking_cancelled_enabled: true,
+    booking_confirmed: { default: "ok {{cliente}}" },
+    booking_rescheduled: { default: "ok {{cliente}}" },
+    booking_cancelled: { default: "ok {{cliente}}" },
   },
 }));
 
 // ─── Importar DEPOIS dos mocks ───
 import { rescheduleAppointmentFromAI } from "@/lib/booking-confirmation.server";
+import { evo } from "@/lib/evolution.server";
 
 const profile = {
   id: "ownerA",
@@ -184,12 +182,21 @@ function seedRollbackUpdate() {
   enqueue("appointments", "update", { data: null, error: null });
 }
 
+function seedRescheduleConfirmationMessage() {
+  // sendBookingReschedule: loadTemplate + getConnectedInstance
+  enqueue("profiles", "select", {
+    data: { msg_booking_rescheduled_text: null, msg_booking_rescheduled_enabled: true },
+  });
+  enqueue("whatsapp_instances", "select", { data: { status: "connected" } });
+}
+
 beforeEach(() => {
   queue.clear();
   calls.length = 0;
   sendReschedule.mockClear();
   sendCancellation.mockClear();
   sendConfirmation.mockClear();
+  (evo.sendText as any).mockClear();
 });
 
 describe("rescheduleAppointmentFromAI", () => {
@@ -265,5 +272,44 @@ describe("rescheduleAppointmentFromAI", () => {
     );
     expect(result.ok).toBe(false);
     expect(result.reason).toBe("past_date");
+  });
+
+  it("{ silent: true } reagenda mas NÃO envia o template (evita duplicar com a resposta da IA)", async () => {
+    seedOldAppointmentLookups();
+    seedCancelOldSuccess();
+    seedCreateNew({ conflict: false });
+    // Nenhum fixture de profiles/whatsapp_instances enfileirado de propósito.
+
+    const result = await rescheduleAppointmentFromAI(
+      {
+        appointment_id: OLD_ID,
+        new_starts_at: "2099-12-31T14:00:00-03:00",
+        contact_id: CONTACT_ID,
+        silent: true,
+      },
+      profile,
+    );
+
+    expect(result.ok).toBe(true);
+    expect(evo.sendText).not.toHaveBeenCalled();
+  });
+
+  it("sem silent (default), continua enviando o template — comportamento do reagendamento manual não muda", async () => {
+    seedOldAppointmentLookups();
+    seedCancelOldSuccess();
+    seedCreateNew({ conflict: false });
+    seedRescheduleConfirmationMessage();
+
+    const result = await rescheduleAppointmentFromAI(
+      {
+        appointment_id: OLD_ID,
+        new_starts_at: "2099-12-31T14:00:00-03:00",
+        contact_id: CONTACT_ID,
+      },
+      profile,
+    );
+
+    expect(result.ok).toBe(true);
+    expect(evo.sendText).toHaveBeenCalledTimes(1);
   });
 });
