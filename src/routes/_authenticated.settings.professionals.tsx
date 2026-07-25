@@ -23,6 +23,11 @@ import {
   type Professional,
 } from "@/lib/professionals.functions";
 import { listTeamMembers, type TeamMember } from "@/lib/team.functions";
+import {
+  WorkingHoursEditor,
+  emptyWeek,
+} from "@/features/settings/working-hours-editor";
+import { normalizeHours, describeHours, type NormalizedHours } from "@/lib/working-hours";
 
 export const Route = createFileRoute("/_authenticated/settings/professionals")({
   component: () => (
@@ -182,6 +187,17 @@ function ProfessionalsPage() {
                     {p.role || "Sem cargo"}
                     {p.phone ? ` · ${p.phone}` : ""}
                   </div>
+                  {/* Só aparece pra quem tem jornada própria — quem herda o
+                      horário do negócio não precisa de ruído extra na lista. */}
+                  {describeHours(normalizeHours(p.working_hours)) && (
+                    <div
+                      className="truncate"
+                      style={{ fontSize: 11, color: "var(--text-muted)", marginTop: 2 }}
+                      title={describeHours(normalizeHours(p.working_hours))}
+                    >
+                      🕘 {describeHours(normalizeHours(p.working_hours))}
+                    </div>
+                  )}
                 </div>
                 <span
                   style={{
@@ -355,6 +371,7 @@ function ProfessionalModal({
     email: string;
     linked_user_id: string | null;
     is_active: boolean;
+    working_hours: NormalizedHours | null;
   }) => void;
 }) {
   const [name, setName] = React.useState(initial?.name ?? "");
@@ -364,6 +381,12 @@ function ProfessionalModal({
   const [linkEnabled, setLinkEnabled] = React.useState(!!initial?.linked_user_id);
   const [linkedUserId, setLinkedUserId] = React.useState<string>(initial?.linked_user_id ?? "");
   const [isActive, setIsActive] = React.useState(initial?.is_active ?? true);
+
+  // Jornada própria é opt-in: sem ela, o profissional herda o horário do
+  // negócio (é o caso da maioria — não faz sentido obrigar a configurar).
+  const initialHours = normalizeHours(initial?.working_hours);
+  const [ownHours, setOwnHours] = React.useState(!!initialHours);
+  const [hours, setHours] = React.useState<NormalizedHours>(initialHours ?? emptyWeek());
 
   const canSubmit = name.trim().length > 0 && !loading;
 
@@ -376,6 +399,7 @@ function ProfessionalModal({
       email: email.trim(),
       linked_user_id: linkEnabled && linkedUserId ? linkedUserId : null,
       is_active: isActive,
+      working_hours: ownHours ? hours : null,
     });
   };
 
@@ -458,6 +482,31 @@ function ProfessionalModal({
             </select>
           </Field>
         )}
+
+        <label
+          className="flex items-center justify-between"
+          style={{
+            padding: "10px 12px",
+            borderRadius: 8,
+            border: "1px solid var(--border)",
+            background: "var(--bg-base)",
+            cursor: "pointer",
+          }}
+        >
+          <div>
+            <div style={{ fontSize: 13, fontWeight: 500 }}>
+              {ownHours ? "Horário próprio" : "Segue o horário do negócio"}
+            </div>
+            <div style={{ fontSize: 11, color: "var(--text-muted)", marginTop: 2 }}>
+              {ownHours
+                ? "A IA e a agenda só marcam dentro destes horários."
+                : "Ative se esta pessoa trabalha em dias ou horários diferentes."}
+            </div>
+          </div>
+          <Toggle on={ownHours} onChange={setOwnHours} />
+        </label>
+
+        {ownHours && <WorkingHoursEditor value={hours} onChange={setHours} />}
 
         <label
           className="flex items-center justify-between"

@@ -8,6 +8,12 @@ import {
   type MessageKey,
 } from "@/lib/message-defaults";
 import { renderTemplate } from "@/lib/message-templates";
+import {
+  effectiveHours,
+  isWithinWorkingHours,
+  describeHours,
+  type RawHours,
+} from "@/lib/working-hours";
 
 type ProfileLite = {
   id: string;
@@ -36,6 +42,16 @@ type ClientLite = {
 type AppointmentLite = {
   id: string;
   starts_at: string;
+};
+
+/** Perfil mínimo que os fluxos de agendamento precisam.
+ *  `business_hours` é opcional: quando o chamador já tem o profile carregado
+ *  (caso da IA) passa junto e evita uma query; senão é buscado sob demanda. */
+type BookingProfile = {
+  id: string;
+  business_timezone: string | null;
+  business_name: string | null;
+  business_hours?: RawHours;
 };
 
 // Garante parse como UTC mesmo quando a string vier sem offset
@@ -399,7 +415,7 @@ export async function createAppointmentFromAI(
     notes?: string;
     silent?: boolean;
   },
-  profile: { id: string; business_timezone: string | null; business_name: string | null },
+  profile: BookingProfile,
 ): Promise<{
   ok: boolean;
   reason?: string;
@@ -413,6 +429,8 @@ export async function createAppointmentFromAI(
   client_phone?: string;
   contact_id?: string;
   confirmation_sent?: boolean;
+  /** Jornada efetiva do profissional, em texto — usada na mensagem de recusa. */
+  working_hours_hint?: string;
 }> {
   if (!data.starts_at || (!data.service_name && !data.service_id)) {
     console.warn("[booking create] missing_fields", {
@@ -461,11 +479,11 @@ export async function createAppointmentFromAI(
   //    professional_id null nesse caso pularia o anti-conflito de horário
   //    inteiro (bug de segurança: permitia sobrepor agendamentos do mesmo
   //    profissional sem checagem nenhuma).
-  let professional: { id: string; name: string } | null = null;
+  let professional: { id: string; name: string; working_hours?: RawHours } | null = null;
   if (data.professional_id) {
     const { data: pr } = await supabaseAdmin
       .from("professionals")
-      .select("id,name")
+      .select("id,name,working_hours")
       .eq("id", data.professional_id)
       .eq("owner_user_id", profile.id)
       .maybeSingle();
@@ -473,12 +491,43 @@ export async function createAppointmentFromAI(
   } else {
     const { data: pros } = await supabaseAdmin
       .from("professionals")
-      .select("id,name")
+      .select("id,name,working_hours")
       .eq("owner_user_id", profile.id)
       .eq("is_active", true);
     if (pros && pros.length === 1) professional = pros[0];
     else if (pros && pros.length >= 2) {
       return { ok: false, reason: "professional_required" };
+    }
+  }
+
+  // 2b. Jornada de trabalho — o atendimento inteiro (início + duração) precisa
+  //     caber na jornada efetiva do profissional (própria, ou herdada do
+  //     negócio). Sem isso a IA podia marcar em domingo/madrugada/almoço: o
+  //     horário só era "sugerido" no prompt, nada validava de fato.
+  if (professional) {
+    let bizHours = profile.business_hours;
+    if (bizHours === undefined) {
+      const { data: prow } = await supabaseAdmin
+        .from("profiles")
+        .select("business_hours")
+        .eq("id", profile.id)
+        .maybeSingle();
+      bizHours = (prow?.business_hours ?? null) as RawHours;
+    }
+    const hours = effectiveHours(professional.working_hours, bizHours);
+    const within = isWithinWorkingHours(hours, startsAt, tzCreate, serviceRow.duration_minutes);
+    if (!within.ok) {
+      console.warn("[booking create] outside_working_hours", {
+        professional: professional.name,
+        starts_at: startsAt.toISOString(),
+        reason: within.reason,
+      });
+      return {
+        ok: false,
+        reason: "outside_working_hours",
+        professional_name: professional.name,
+        working_hours_hint: describeHours(hours),
+      };
     }
   }
 
@@ -623,7 +672,7 @@ type BatchItemResult = Awaited<ReturnType<typeof createAppointmentFromAI>> & {
 // não são tocados.
 export async function createAppointmentBatchFromAI(
   items: BatchItemInput[],
-  profile: { id: string; business_timezone: string | null; business_name: string | null },
+  profile: BookingProfile,
 ): Promise<{
   results: BatchItemResult[];
   allFailed: boolean;
@@ -740,8 +789,14 @@ export async function rescheduleAppointmentFromAI(
     new_starts_at?: string;
     contact_id?: string | null;
   },
-  profile: { id: string; business_timezone: string | null; business_name: string | null },
-): Promise<{ ok: boolean; reason?: string; confirmation_sent?: boolean }> {
+  profile: BookingProfile,
+): Promise<{
+  ok: boolean;
+  reason?: string;
+  confirmation_sent?: boolean;
+  professional_name?: string | null;
+  working_hours_hint?: string;
+}> {
   const tzR = profile.business_timezone || "America/Sao_Paulo";
   if (!data.new_starts_at) return { ok: false, reason: "missing_fields" };
   const newStart = parseAiDate(data.new_starts_at, tzR);
@@ -853,7 +908,14 @@ export async function rescheduleAppointmentFromAI(
       })
       .eq("id", oldAppt.id)
       .eq("owner_user_id", profile.id);
-    return { ok: false, reason: `create:${createRes.reason ?? "failed"}` };
+    return {
+      ok: false,
+      reason: `create:${createRes.reason ?? "failed"}`,
+      // Propaga o contexto da recusa (ex.: jornada do profissional) pra IA
+      // conseguir explicar ao cliente por que o horário novo não serve.
+      professional_name: createRes.professional_name,
+      working_hours_hint: createRes.working_hours_hint,
+    };
   }
 
   // 4. Envia a única mensagem de reagendamento (antigo → novo).
@@ -883,7 +945,7 @@ export async function rescheduleAppointmentFromAI(
 // Cancelamento via IA: marca appointment como cancelled.
 export async function cancelAppointmentFromAI(
   data: { appointment_id?: string; reason?: string; contact_id?: string | null; silent?: boolean },
-  profile: { id: string; business_timezone: string | null; business_name: string | null },
+  profile: BookingProfile,
 ): Promise<{
   ok: boolean;
   reason?: string;

@@ -118,6 +118,9 @@ const profile = {
   id: "ownerA",
   business_timezone: "America/Sao_Paulo",
   business_name: "Salão Bela Vista",
+  // Passar explícito evita a query de fallback em `profiles` e deixa claro que
+  // estes testes não são sobre jornada (null = sem restrição de horário).
+  business_hours: null,
 };
 
 const SERVICE_ID = "svc-corte";
@@ -357,6 +360,122 @@ describe("createAppointmentBatchFromAI", () => {
     expect(batch.results[1].ok).toBe(false);
     expect(batch.results[1].reason).toBe("slot_taken");
     expect(batch.summaryTextForAi).toMatch(/1 de 2/);
+  });
+});
+
+describe("createAppointmentFromAI — jornada do profissional", () => {
+  // Bruno atende só Ter e Qui, 09:00–12:00.
+  const brunoHours = {
+    tue: { active: true, ranges: [{ start: "09:00", end: "12:00" }] },
+    thu: { active: true, ranges: [{ start: "09:00", end: "12:00" }] },
+  };
+
+  function seedServiceAndPro(workingHours: unknown) {
+    enqueue("services", "select", {
+      data: {
+        id: SERVICE_ID,
+        name: "Corte",
+        duration_minutes: 30,
+        price_cents: 5000,
+        buffer_minutes: 0,
+      },
+    });
+    enqueue("professionals", "select", {
+      data: { id: PROF_ID, name: "Bruno", working_hours: workingHours },
+    });
+  }
+
+  const baseInput = {
+    service_id: SERVICE_ID,
+    professional_id: PROF_ID,
+    client_name: "Cliente",
+    client_phone: PHONE,
+    contact_id: CONTACT_BRUNO,
+  };
+
+  it("recusa em dia de folga do profissional, sem chegar a inserir nada", async () => {
+    seedServiceAndPro(brunoHours);
+    // 2026-07-27 é uma segunda — Bruno não atende.
+    const r = await createAppointmentFromAI(
+      { ...baseInput, starts_at: "2026-07-27T09:00:00-03:00" },
+      profile,
+    );
+
+    expect(r.ok).toBe(false);
+    expect(r.reason).toBe("outside_working_hours");
+    // A dica volta pra IA conseguir explicar ao cliente.
+    expect(r.working_hours_hint).toContain("Ter");
+    expect(r.professional_name).toBe("Bruno");
+    expect(calls.filter((c) => c.table === "appointments" && c.op === "insert")).toHaveLength(0);
+  });
+
+  it("recusa quando o atendimento COMEÇA dentro mas TERMINA fora do expediente", async () => {
+    seedServiceAndPro(brunoHours);
+    // Terça 11:45 + 30min = 12:15, e o expediente fecha 12:00.
+    const r = await createAppointmentFromAI(
+      { ...baseInput, starts_at: "2026-07-28T11:45:00-03:00" },
+      profile,
+    );
+
+    expect(r.ok).toBe(false);
+    expect(r.reason).toBe("outside_working_hours");
+  });
+
+  it("aceita dentro da jornada e segue o fluxo normal de criação", async () => {
+    seedServiceAndPro(brunoHours);
+    enqueue("contacts", "select", {
+      data: { id: CONTACT_BRUNO, name: "Bruno", phone: PHONE },
+    });
+    enqueue("appointments", "select", { data: null }); // sem conflito
+    enqueue("appointments", "insert", {
+      data: {
+        id: "appt-ok",
+        starts_at: "2026-07-28T13:00:00.000Z",
+        ends_at: "2026-07-28T13:30:00.000Z",
+      },
+      error: null,
+    });
+    enqueue("appointment_services", "insert", { data: null, error: null });
+    seedBatchConfirmationMessage();
+    enqueue("messages", "insert", { data: null, error: null });
+    enqueue("contacts", "update", { data: null, error: null });
+
+    // Terça 10:00 — dentro de 09:00–12:00.
+    const r = await createAppointmentFromAI(
+      { ...baseInput, starts_at: "2026-07-28T10:00:00-03:00" },
+      profile,
+    );
+
+    expect(r.ok).toBe(true);
+    expect(calls.filter((c) => c.table === "appointments" && c.op === "insert")).toHaveLength(1);
+  });
+
+  it("profissional SEM jornada própria não ganha restrição nova (regressão)", async () => {
+    seedServiceAndPro(null); // herda do negócio, que aqui é null = sem restrição
+    enqueue("contacts", "select", {
+      data: { id: CONTACT_BRUNO, name: "Bruno", phone: PHONE },
+    });
+    enqueue("appointments", "select", { data: null });
+    enqueue("appointments", "insert", {
+      data: {
+        id: "appt-ok",
+        starts_at: "2026-07-26T06:00:00.000Z",
+        ends_at: "2026-07-26T06:30:00.000Z",
+      },
+      error: null,
+    });
+    enqueue("appointment_services", "insert", { data: null, error: null });
+    seedBatchConfirmationMessage();
+    enqueue("messages", "insert", { data: null, error: null });
+    enqueue("contacts", "update", { data: null, error: null });
+
+    // Domingo 03:00 da manhã — absurdo, mas nada configurado = nada bloqueia.
+    const r = await createAppointmentFromAI(
+      { ...baseInput, starts_at: "2026-07-26T03:00:00-03:00" },
+      profile,
+    );
+
+    expect(r.ok).toBe(true);
   });
 });
 

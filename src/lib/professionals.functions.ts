@@ -1,6 +1,7 @@
 import { createServerFn } from "@tanstack/react-start";
 import { z } from "zod";
 import { requireSupabaseAuth } from "@/integrations/supabase/auth-middleware";
+import type { RawHours } from "@/lib/working-hours";
 
 export type Professional = {
   id: string;
@@ -14,7 +15,23 @@ export type Professional = {
   linked_user_id: string | null;
   is_active: boolean;
   created_at: string;
+  /** Jornada semanal própria. NULL = herda o horário do negócio. */
+  working_hours: RawHours;
 };
+
+// { dia: { active, ranges: [{start,end}] } } — validado frouxo de propósito:
+// normalizeHours() já descarta faixa inválida na leitura, e travar demais aqui
+// só quebraria o salvamento por causa de um dia mal preenchido.
+const HHMM = z.string().regex(/^\d{2}:\d{2}$/);
+const WorkingHoursSchema = z
+  .record(
+    z.string(),
+    z.object({
+      active: z.boolean(),
+      ranges: z.array(z.object({ start: HHMM, end: HHMM })).max(6),
+    }),
+  )
+  .nullable();
 
 async function getOwnerId(supabase: any, userId: string): Promise<string> {
   const { data, error } = await supabase
@@ -64,6 +81,7 @@ const createSchema = z.object({
   avatar_color: z.string().max(20).nullable().optional(),
   linked_user_id: z.string().uuid().nullable().optional(),
   is_active: z.boolean().optional().default(true),
+  working_hours: WorkingHoursSchema.optional(),
 });
 
 export const createProfessional = createServerFn({ method: "POST" })
@@ -88,6 +106,7 @@ export const createProfessional = createServerFn({ method: "POST" })
         avatar_color: data.avatar_color ?? null,
         linked_user_id: data.linked_user_id ?? null,
         is_active: data.is_active ?? true,
+        working_hours: data.working_hours ?? null,
       })
       .select("*")
       .single();
@@ -105,6 +124,7 @@ const updateSchema = z.object({
   avatar_color: z.string().max(20).nullable().optional(),
   linked_user_id: z.string().uuid().nullable().optional(),
   is_active: z.boolean().optional(),
+  working_hours: WorkingHoursSchema.optional(),
 });
 
 export const updateProfessional = createServerFn({ method: "POST" })

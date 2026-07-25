@@ -8,6 +8,7 @@ import {
 import { extractAppointmentPayloads } from "@/lib/appointment-json";
 
 import { MESSAGE_DEFAULTS } from "@/lib/message-defaults";
+import { normalizeHours, describeHours, type RawHours } from "@/lib/working-hours";
 import { renderTemplate } from "@/lib/message-templates";
 import { FIELD_LABELS } from "@/lib/field-labels";
 
@@ -481,7 +482,13 @@ function buildServicesLayer(
   return lines.join("\n");
 }
 
-type ProRow = { id: string; name: string; role: string | null };
+type ProRow = {
+  id: string;
+  name: string;
+  role: string | null;
+  /** Jornada própria. NULL = segue o horário do negócio. */
+  working_hours?: RawHours;
+};
 type ApptRow = { professional_id: string | null; starts_at: string; ends_at: string };
 
 function buildNowLayer(tz: string): string {
@@ -606,6 +613,12 @@ function buildProfessionalsLayer(
   for (const p of pros) {
     const roleStr = p.role && p.role.trim() ? ` (${p.role.trim()})` : "";
     lines.push(`- ${p.name}${roleStr} [id:${p.id}]`);
+    // Jornada própria só é citada quando existe — quem herda o horário do
+    // negócio já está coberto pela linha global acima (não incha o prompt).
+    const ownHours = describeHours(normalizeHours(p.working_hours));
+    if (ownHours) {
+      lines.push(`  Jornada própria (difere do negócio): ${ownHours}`);
+    }
     const appts = (byPro.get(p.id) ?? []).slice(0, 12);
     if (appts.length === 0) {
       lines.push(`  Próximos 7 dias: sem compromissos cadastrados.`);
@@ -638,6 +651,9 @@ function buildProfessionalsLayer(
   );
   lines.push(
     "6. O `[id:...]` ao lado de cada nome é só para você usar no campo professional_id do JSON de agendamento — nunca mostre esse id para o cliente.",
+  );
+  lines.push(
+    "7. JORNADA: cada profissional só pode ser agendado DENTRO da jornada dele. Quem tem 'Jornada própria' listada acima segue APENAS aquela jornada (ignore o horário geral do negócio para essa pessoa); quem não tem, segue o horário do negócio. O atendimento inteiro precisa caber na jornada — não ofereça um horário cujo término ultrapasse o fim do expediente, nem horários que caiam em intervalo (ex.: almoço) ou em dia de folga. Se o cliente pedir um horário fora da jornada, diga que a pessoa não atende nesse horário e ofereça alternativas válidas.",
   );
 
   return lines.join("\n");
@@ -795,7 +811,7 @@ export async function runAiResponse(input: AiRunInput): Promise<AiRunResult> {
   // ===== PROFISSIONAIS + AGENDA (próximos 7 dias) =====
   const { data: prosRows } = await supabaseAdmin
     .from("professionals")
-    .select("id,name,role")
+    .select("id,name,role,working_hours")
     .eq("owner_user_id", data.workspace_owner_id)
     .eq("is_active", true)
     .order("created_at", { ascending: true });
@@ -1153,10 +1169,16 @@ export async function runAiResponse(input: AiRunInput): Promise<AiRunResult> {
     const friendlyReason = (
       action: "create" | "reschedule" | "cancel",
       reason?: string,
+      ctx?: { professional_name?: string | null; working_hours_hint?: string },
     ): string => {
       // Aceita reasons prefixadas pelo reschedule (ex.: "create:slot_taken", "cancel:appointment_not_found").
       const bare = reason?.includes(":") ? reason.split(":").slice(1).join(":") : reason;
       switch (bare) {
+        case "outside_working_hours": {
+          const quem = ctx?.professional_name ? `${ctx.professional_name} não atende` : "Não atendemos";
+          const quando = ctx?.working_hours_hint ? ` Os horários são: ${ctx.working_hours_hint}.` : "";
+          return `${quem} nesse horário.${quando} Qual outro horário fica bom pra você?`;
+        }
         case "slot_taken":
           return "Esse horário acabou de ser ocupado. Pode me dizer outro horário?";
         case "past_date":
@@ -1214,17 +1236,15 @@ export async function runAiResponse(input: AiRunInput): Promise<AiRunResult> {
           if (data.preview) {
             // preview: não cria de fato, só valida que chegou até aqui.
           } else if (enriched.length === 1) {
-            const r = await createAppointmentFromAI(
-              enriched[0] as any,
-              {
-                id: profile.id,
-                business_timezone: profile.business_timezone ?? null,
-                business_name: profile.business_name ?? null,
-              },
-            );
+            const r = await createAppointmentFromAI(enriched[0] as any, {
+              id: profile.id,
+              business_timezone: profile.business_timezone ?? null,
+              business_name: profile.business_name ?? null,
+              business_hours: bizHours,
+            });
             if (!r.ok) {
               console.warn("[ai booking] falhou:", r.reason);
-              text = friendlyReason("create", r.reason);
+              text = friendlyReason("create", r.reason, r);
             } else if (r.confirmation_sent) {
               // O template (personalizável em Configurações) já foi enviado —
               // evita duplicar com a frase solta da IA.
@@ -1235,9 +1255,10 @@ export async function runAiResponse(input: AiRunInput): Promise<AiRunResult> {
               id: profile.id,
               business_timezone: profile.business_timezone ?? null,
               business_name: profile.business_name ?? null,
+              business_hours: bizHours,
             });
             if (batch.allFailed) {
-              text = friendlyReason("create", batch.results[0]?.reason);
+              text = friendlyReason("create", batch.results[0]?.reason, batch.results[0]);
             } else if (batch.anyFailed) {
               text = batch.summaryTextForAi;
             } else if (batch.confirmationSent) {
@@ -1259,6 +1280,7 @@ export async function runAiResponse(input: AiRunInput): Promise<AiRunResult> {
           let okResult = false;
           let confirmationSent = false;
           let reason: string | undefined;
+          let failCtx: { professional_name?: string | null; working_hours_hint?: string } = {};
           try {
             console.log("[ai reschedule] payload:", m[1]);
             const payload = JSON.parse(m[1]);
@@ -1269,6 +1291,7 @@ export async function runAiResponse(input: AiRunInput): Promise<AiRunResult> {
                 { ...payload, contact_id: data.contact_id ?? null },
                 {
                   id: profile.id,
+                  business_hours: bizHours,
                   business_timezone: profile.business_timezone ?? null,
                   business_name: profile.business_name ?? null,
                 },
@@ -1276,6 +1299,7 @@ export async function runAiResponse(input: AiRunInput): Promise<AiRunResult> {
               okResult = r.ok;
               reason = r.reason;
               confirmationSent = !!r.confirmation_sent;
+              failCtx = r;
               if (!r.ok) console.warn("[ai reschedule] falhou:", r.reason);
             }
           } catch (err) {
@@ -1283,7 +1307,7 @@ export async function runAiResponse(input: AiRunInput): Promise<AiRunResult> {
             reason = "bad_date";
           }
           text = text.replace(/RESCHEDULE_JSON:\{[\s\S]*?\}\s*$/, "").trim();
-          if (!okResult) text = friendlyReason("reschedule", reason);
+          if (!okResult) text = friendlyReason("reschedule", reason, failCtx);
           else if (confirmationSent) text = "";
         }
       }

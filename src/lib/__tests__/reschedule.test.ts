@@ -98,6 +98,9 @@ const profile = {
   id: "ownerA",
   business_timezone: "America/Sao_Paulo",
   business_name: "Clínica X",
+  // Passar explícito evita a query de fallback em `profiles` e deixa claro que
+  // estes testes não são sobre jornada (null = sem restrição de horário).
+  business_hours: null,
 };
 
 const OLD_ID = "appt-old";

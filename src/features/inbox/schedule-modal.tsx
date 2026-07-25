@@ -17,6 +17,7 @@ import {
 } from "@/features/schedule/data";
 import { utcToZonedLocal, zonedLocalToUtc } from "@/features/schedule/tz";
 import { useProfile } from "@/hooks/use-profile";
+import { effectiveHours, isWithinWorkingHours, describeHours } from "@/lib/working-hours";
 import { useServerFn } from "@tanstack/react-start";
 import { useQuery } from "@tanstack/react-query";
 import { Link } from "@tanstack/react-router";
@@ -267,8 +268,17 @@ export function ScheduleModal({
   // pra não deixar escolher um horário dentro do intervalo de limpeza/preparo.
   const bufferMin = selectedServices.reduce((a, s) => Math.max(a, s.buffer_minutes ?? 0), 0);
 
+  // Jornada efetiva do profissional escolhido (própria ou herdada do negócio).
+  // Aqui só ALERTA — encaixe fora do horário é decisão do humano; quem bloqueia
+  // de verdade é o servidor, e só no caminho da IA.
+  const proHours = React.useMemo(() => {
+    const pro = professionals.find((p) => p.id === agentId);
+    const biz = (profileQ.data as { business_hours?: unknown } | null)?.business_hours;
+    return effectiveHours(pro?.working_hours, biz as never);
+  }, [professionals, agentId, profileQ.data]);
+
   const slotState = React.useMemo(() => {
-    const map = new Map<string, { busy: boolean; past: boolean }>();
+    const map = new Map<string, { busy: boolean; past: boolean; outside: boolean }>();
     const now = Date.now();
     const bufferMs = bufferMin * 60_000;
     for (const slot of SLOTS) {
@@ -282,10 +292,11 @@ export function ScheduleModal({
         const be = new Date(b.ends_at).getTime();
         return start.getTime() < be + bufferMs && bs < end.getTime() + bufferMs;
       });
-      map.set(slot, { busy: isBusy, past });
+      const outside = !isWithinWorkingHours(proHours, start, tz, blockMin).ok;
+      map.set(slot, { busy: isBusy, past, outside });
     }
     return map;
-  }, [busy, agentId, date, blockMin, bufferMin, initial?.id]);
+  }, [busy, agentId, date, blockMin, bufferMin, initial?.id, proHours, tz]);
 
   const toggle = (id: string) => {
     setSelected((prev) => {
@@ -306,6 +317,9 @@ export function ScheduleModal({
 
   const currentSlotState = slotState.get(time);
   const slotUnavailable = !!(currentSlotState?.busy || currentSlotState?.past);
+  // Fora da jornada NÃO entra em `slotUnavailable` de propósito: encaixe manual
+  // continua permitido, só sinalizado.
+  const outsideHours = !!currentSlotState?.outside;
   const canSubmit =
     selectedServices.length > 0 &&
     !!date &&
@@ -1040,6 +1054,26 @@ export function ScheduleModal({
             )}
           </div>
         </div>
+
+        {/* Aviso de encaixe: fora da jornada do profissional, mas permitido. */}
+        {outsideHours && !slotUnavailable && (
+          <div
+            style={{
+              margin: "0 12px",
+              padding: "8px 10px",
+              borderRadius: 8,
+              fontSize: 12,
+              border: "1px solid color-mix(in oklab, #F59E0B 40%, transparent)",
+              background: "color-mix(in oklab, #F59E0B 12%, transparent)",
+              color: "var(--text-primary)",
+            }}
+          >
+            ⚠️ Fora do horário de{" "}
+            <strong>{professionals.find((p) => p.id === agentId)?.name ?? "profissional"}</strong>
+            {describeHours(proHours) ? ` (${describeHours(proHours)})` : ""}. Dá pra salvar mesmo
+            assim — é um encaixe.
+          </div>
+        )}
 
         {/* Footer */}
         <div
