@@ -246,7 +246,7 @@ export const getWorkspaceProfile = createServerFn({ method: "POST" })
     const { data } = await supabaseAdmin
       .from("profiles")
       .select(
-        "business_name,business_description,segment_id,business_hours,business_timezone,welcome_message,ai_working_hours,business_address,business_phone,business_website,business_logo_url,business_cep,business_street,business_address_number,business_address_complement,business_neighborhood,business_city,business_state,business_general_info,business_general_info_included,business_general_info_custom",
+        "business_name,business_description,segment_id,business_hours,business_timezone,welcome_message,ai_working_hours,business_address,business_phone,business_website,business_logo_url,business_cep,business_street,business_address_number,business_address_complement,business_neighborhood,business_city,business_state,business_general_info,business_general_info_included,business_general_info_custom,business_general_info_notes",
       )
       .eq("id", context.userId)
       .maybeSingle();
@@ -305,8 +305,14 @@ export const getWorkspaceProfile = createServerFn({ method: "POST" })
             id: string;
             label: string;
             value: boolean | null;
+            note?: string;
           }[])
         : [],
+      business_general_info_notes:
+        (data as any)?.business_general_info_notes &&
+        typeof (data as any).business_general_info_notes === "object"
+          ? ((data as any).business_general_info_notes as Record<string, string>)
+          : {},
       segment_general_info_defaults: segmentGeneralInfoDefaults,
     };
   });
@@ -349,12 +355,14 @@ export const updateWorkspaceProfile = createServerFn({ method: "POST" })
         business_state: z.string().max(4).optional(),
         business_general_info: z.record(z.string().max(64), z.boolean()).optional(),
         business_general_info_included: z.array(z.string().max(64)).max(40).optional().nullable(),
+        business_general_info_notes: z.record(z.string().max(64), z.string().max(200)).optional(),
         business_general_info_custom: z
           .array(
             z.object({
               id: z.string().max(64),
               label: z.string().min(1).max(120),
               value: z.boolean().nullable(),
+              note: z.string().max(200).optional().nullable(),
             }),
           )
           .max(20)
@@ -379,6 +387,9 @@ export const updateWorkspaceProfile = createServerFn({ method: "POST" })
     }
     if (data.business_general_info_included !== undefined) {
       update.business_general_info_included = data.business_general_info_included;
+    }
+    if (data.business_general_info_notes !== undefined) {
+      update.business_general_info_notes = data.business_general_info_notes;
     }
     if (data.business_general_info_custom !== undefined) {
       update.business_general_info_custom = data.business_general_info_custom;

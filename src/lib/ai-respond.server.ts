@@ -276,8 +276,9 @@ function buildWorkspaceLayer(
   const giEntries = generalInfo
     ? Object.entries(generalInfo).filter(([, v]) => typeof v === "boolean")
     : [];
+  const generalInfoNotes = (p as any).business_general_info_notes as Record<string, string> | null;
   const customFacts = (p as any).business_general_info_custom as
-    | { id: string; label: string; value: boolean | null }[]
+    | { id: string; label: string; value: boolean | null; note?: string }[]
     | null;
   const customFactEntries = Array.isArray(customFacts)
     ? customFacts.filter((f) => typeof f?.value === "boolean" && typeof f?.label === "string")
@@ -287,10 +288,13 @@ function buildWorkspaceLayer(
       "INFORMAÇÕES GERAIS DO NEGÓCIO (responda apenas se o cliente perguntar — não ofereça espontaneamente):",
     ];
     for (const [key, val] of giEntries) {
-      lines.push(`- ${GENERAL_INFO_LABELS[key] ?? key}: ${val ? "Sim" : "Não"}`);
+      const note = generalInfoNotes?.[key];
+      lines.push(
+        `- ${GENERAL_INFO_LABELS[key] ?? key}: ${val ? "Sim" : "Não"}${note ? ` (${note})` : ""}`,
+      );
     }
     for (const f of customFactEntries) {
-      lines.push(`- ${f.label}: ${f.value ? "Sim" : "Não"}`);
+      lines.push(`- ${f.label}: ${f.value ? "Sim" : "Não"}${f.note ? ` (${f.note})` : ""}`);
     }
     lines.push(
       "Sobre qualquer outro fato do negócio que não esteja listado acima, diga que vai verificar com a equipe — não invente.",

@@ -10,16 +10,22 @@ import { YesNoToggle } from "./toggle-row";
 export function YesNoCatalogEditor({
   includedKeys,
   values,
+  notes,
+  notePlaceholders,
   labels,
   onChangeValue,
+  onChangeNote,
   onRemove,
   onAdd,
   emptyText,
 }: {
   includedKeys: string[];
   values: Record<string, boolean>;
+  notes: Record<string, string>;
+  notePlaceholders?: Record<string, string>;
   labels: Record<string, string>;
   onChangeValue: (key: string, v: boolean | null) => void;
+  onChangeNote: (key: string, note: string) => void;
   onRemove: (key: string) => void;
   onAdd: (key: string) => void;
   emptyText: string;
@@ -34,39 +40,60 @@ export function YesNoCatalogEditor({
     <div>
       {includedKeys.length > 0 ? (
         <div>
-          {includedKeys.map((key) => (
-            <div
-              key={key}
-              className="flex items-center gap-2"
-              style={{ padding: "8px 0", borderBottom: "1px solid var(--border)" }}
-            >
-              <div style={{ flex: 1, fontSize: 13, fontWeight: 500 }}>{labels[key] ?? key}</div>
-              <YesNoToggle
-                value={key in values ? values[key] : null}
-                onChange={(v) => onChangeValue(key, v)}
-              />
-              <button
-                type="button"
-                onClick={() => onRemove(key)}
-                title="Remover — não se aplica ao meu negócio"
-                style={{
-                  width: 28,
-                  height: 28,
-                  borderRadius: 6,
-                  border: "1px solid var(--border)",
-                  background: "transparent",
-                  color: "var(--text-muted)",
-                  cursor: "pointer",
-                  display: "flex",
-                  alignItems: "center",
-                  justifyContent: "center",
-                  flexShrink: 0,
-                }}
+          {includedKeys.map((key) => {
+            const value = key in values ? values[key] : null;
+            return (
+              <div
+                key={key}
+                style={{ padding: "8px 0", borderBottom: "1px solid var(--border)" }}
               >
-                <X size={14} />
-              </button>
-            </div>
-          ))}
+                <div className="flex items-center gap-2">
+                  <div style={{ flex: 1, fontSize: 13, fontWeight: 500 }}>{labels[key] ?? key}</div>
+                  <YesNoToggle value={value} onChange={(v) => onChangeValue(key, v)} />
+                  <button
+                    type="button"
+                    onClick={() => onRemove(key)}
+                    title="Remover — não se aplica ao meu negócio"
+                    style={{
+                      width: 28,
+                      height: 28,
+                      borderRadius: 6,
+                      border: "1px solid var(--border)",
+                      background: "transparent",
+                      color: "var(--text-muted)",
+                      cursor: "pointer",
+                      display: "flex",
+                      alignItems: "center",
+                      justifyContent: "center",
+                      flexShrink: 0,
+                    }}
+                  >
+                    <X size={14} />
+                  </button>
+                </div>
+                {value === true && (
+                  <input
+                    style={{
+                      height: 30,
+                      padding: "0 10px",
+                      borderRadius: 6,
+                      border: "1px solid var(--border)",
+                      background: "var(--bg-surface)",
+                      color: "var(--text-primary)",
+                      fontSize: 12,
+                      outline: "none",
+                      width: "100%",
+                      marginTop: 6,
+                    }}
+                    placeholder={notePlaceholders?.[key] ?? "Detalhe opcional (a IA usa isso na resposta)"}
+                    value={notes[key] ?? ""}
+                    onChange={(e) => onChangeNote(key, e.target.value)}
+                    maxLength={140}
+                  />
+                )}
+              </div>
+            );
+          })}
         </div>
       ) : (
         <p style={{ fontSize: 12, color: "var(--text-muted)" }}>{emptyText}</p>

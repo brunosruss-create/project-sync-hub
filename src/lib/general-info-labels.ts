@@ -19,5 +19,23 @@ export const GENERAL_INFO_LABELS: Record<string, string> = {
   ar_condicionado: "Possui ar-condicionado?",
   delivery: "Faz entrega/delivery?",
   agendamento_mesmo_dia: "Aceita agendamento no mesmo dia?",
-  atende_fim_de_semana: "Atende aos finais de semana?",
+  // atende_fim_de_semana removido: já é coberto por "Horários de
+  // funcionamento" (business_hours cobre cada dia da semana individualmente).
+};
+
+// Placeholder de exemplo pro campo de observação que aparece quando o tenant
+// marca "Sim" — só ilustra o tipo de detalhe esperado, nunca é preenchido
+// automaticamente nem é obrigatório.
+export const GENERAL_INFO_NOTE_PLACEHOLDERS: Record<string, string> = {
+  estacionamento: "Ex.: com manobrista",
+  aceita_cartao_credito: "Ex.: Visa, Master, Elo",
+  aceita_cartao_debito: "Ex.: todas as bandeiras",
+  oferece_parcelamento: "Ex.: até 3x sem juros",
+  aceita_convenio: "Ex.: Unimed, Bradesco Saúde",
+  acessibilidade_cadeirantes: "Ex.: rampa de acesso e banheiro adaptado",
+  atende_criancas: "Ex.: a partir de 5 anos",
+  atende_emergencias: "Ex.: apenas em horário comercial",
+  wifi_clientes: "Ex.: senha fornecida na recepção",
+  delivery: "Ex.: raio de 5km, taxa a combinar",
+  agendamento_mesmo_dia: "Ex.: sujeito à disponibilidade",
 };

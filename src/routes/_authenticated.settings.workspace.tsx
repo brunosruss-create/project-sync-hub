@@ -24,9 +24,9 @@ import { ManagerOnly } from "@/components/manager-only";
 import { TimeSelect } from "@/components/time-select";
 import { YesNoToggle } from "@/components/toggle-row";
 import { YesNoCatalogEditor } from "@/components/yes-no-catalog-editor";
-import { GENERAL_INFO_LABELS } from "@/lib/general-info-labels";
+import { GENERAL_INFO_LABELS, GENERAL_INFO_NOTE_PLACEHOLDERS } from "@/lib/general-info-labels";
 
-type CustomFact = { id: string; label: string; value: boolean | null };
+type CustomFact = { id: string; label: string; value: boolean | null; note?: string };
 
 export const Route = createFileRoute("/_authenticated/settings/workspace")({
   component: () => (
@@ -82,6 +82,7 @@ function WorkspacePage() {
   const [generalInfoIncludedOverride, setGeneralInfoIncludedOverride] = React.useState<
     string[] | null
   >(null);
+  const [generalInfoNotes, setGeneralInfoNotes] = React.useState<Record<string, string>>({});
   const [customFacts, setCustomFacts] = React.useState<CustomFact[]>([]);
   const [newCustomFactLabel, setNewCustomFactLabel] = React.useState("");
   const [tz, setTz] = React.useState("America/Sao_Paulo");
@@ -125,6 +126,7 @@ function WorkspacePage() {
           business_general_info?: Record<string, boolean>;
           business_general_info_included?: string[] | null;
           business_general_info_custom?: CustomFact[];
+          business_general_info_notes?: Record<string, string>;
           segment_general_info_defaults?: string[];
         }
       | undefined;
@@ -170,6 +172,11 @@ function WorkspacePage() {
       Array.isArray(p.business_general_info_included) ? p.business_general_info_included : null,
     );
     setCustomFacts(Array.isArray(p.business_general_info_custom) ? p.business_general_info_custom : []);
+    setGeneralInfoNotes(
+      p.business_general_info_notes && typeof p.business_general_info_notes === "object"
+        ? p.business_general_info_notes
+        : {},
+    );
   }, [profileQ.data]);
 
   // ViaCEP lookup quando CEP completa 8 dígitos
@@ -228,6 +235,12 @@ function WorkspacePage() {
       delete next[key];
       return next;
     });
+    setGeneralInfoNotes((prev) => {
+      if (!(key in prev)) return prev;
+      const next = { ...prev };
+      delete next[key];
+      return next;
+    });
   };
 
   const handleChangeGeneralInfoValue = (key: string, v: boolean | null) => {
@@ -235,6 +248,15 @@ function WorkspacePage() {
       const next = { ...prev };
       if (v === null) delete next[key];
       else next[key] = v;
+      return next;
+    });
+  };
+
+  const handleChangeGeneralInfoNote = (key: string, note: string) => {
+    setGeneralInfoNotes((prev) => {
+      const next = { ...prev };
+      if (!note) delete next[key];
+      else next[key] = note;
       return next;
     });
   };
@@ -252,6 +274,10 @@ function WorkspacePage() {
 
   const changeCustomFactValue = (id: string, v: boolean | null) => {
     setCustomFacts((prev) => prev.map((f) => (f.id === id ? { ...f, value: v } : f)));
+  };
+
+  const changeCustomFactNote = (id: string, note: string) => {
+    setCustomFacts((prev) => prev.map((f) => (f.id === id ? { ...f, note } : f)));
   };
 
   const segments = segmentsQ.data?.segments ?? [];
@@ -301,6 +327,7 @@ function WorkspacePage() {
           business_website: site.trim(),
           business_general_info: generalInfo,
           business_general_info_included: generalInfoIncludedOverride,
+          business_general_info_notes: generalInfoNotes,
           business_general_info_custom: customFacts,
         },
       });
@@ -503,8 +530,11 @@ function WorkspacePage() {
         <YesNoCatalogEditor
           includedKeys={visibleGeneralInfoKeys}
           values={generalInfo}
+          notes={generalInfoNotes}
+          notePlaceholders={GENERAL_INFO_NOTE_PLACEHOLDERS}
           labels={GENERAL_INFO_LABELS}
           onChangeValue={handleChangeGeneralInfoValue}
+          onChangeNote={handleChangeGeneralInfoNote}
           onRemove={handleRemoveGeneralInfoKey}
           onAdd={handleAddGeneralInfoKey}
           emptyText="Nenhuma informação sugerida para o seu segmento ainda — adicione do catálogo abaixo."
@@ -519,31 +549,52 @@ function WorkspacePage() {
               {customFacts.map((f) => (
                 <div
                   key={f.id}
-                  className="flex items-center gap-2"
                   style={{ padding: "8px 0", borderBottom: "1px solid var(--border)" }}
                 >
-                  <div style={{ flex: 1, fontSize: 13, fontWeight: 500 }}>{f.label}</div>
-                  <YesNoToggle value={f.value} onChange={(v) => changeCustomFactValue(f.id, v)} />
-                  <button
-                    type="button"
-                    onClick={() => removeCustomFact(f.id)}
-                    title="Remover"
-                    style={{
-                      width: 28,
-                      height: 28,
-                      borderRadius: 6,
-                      border: "1px solid var(--border)",
-                      background: "transparent",
-                      color: "var(--text-muted)",
-                      cursor: "pointer",
-                      display: "flex",
-                      alignItems: "center",
-                      justifyContent: "center",
-                      flexShrink: 0,
-                    }}
-                  >
-                    <X size={14} />
-                  </button>
+                  <div className="flex items-center gap-2">
+                    <div style={{ flex: 1, fontSize: 13, fontWeight: 500 }}>{f.label}</div>
+                    <YesNoToggle value={f.value} onChange={(v) => changeCustomFactValue(f.id, v)} />
+                    <button
+                      type="button"
+                      onClick={() => removeCustomFact(f.id)}
+                      title="Remover"
+                      style={{
+                        width: 28,
+                        height: 28,
+                        borderRadius: 6,
+                        border: "1px solid var(--border)",
+                        background: "transparent",
+                        color: "var(--text-muted)",
+                        cursor: "pointer",
+                        display: "flex",
+                        alignItems: "center",
+                        justifyContent: "center",
+                        flexShrink: 0,
+                      }}
+                    >
+                      <X size={14} />
+                    </button>
+                  </div>
+                  {f.value === true && (
+                    <input
+                      style={{
+                        height: 30,
+                        padding: "0 10px",
+                        borderRadius: 6,
+                        border: "1px solid var(--border)",
+                        background: "var(--bg-surface)",
+                        color: "var(--text-primary)",
+                        fontSize: 12,
+                        outline: "none",
+                        width: "100%",
+                        marginTop: 6,
+                      }}
+                      placeholder="Detalhe opcional (a IA usa isso na resposta)"
+                      value={f.note ?? ""}
+                      onChange={(e) => changeCustomFactNote(f.id, e.target.value)}
+                      maxLength={140}
+                    />
+                  )}
                 </div>
               ))}
             </div>
