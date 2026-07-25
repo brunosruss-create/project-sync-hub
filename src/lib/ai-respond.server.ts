@@ -55,7 +55,8 @@ interface AiBehaviorConfig {
   ai_can_reschedule: boolean;
   ai_can_cancel: boolean;
   ai_min_advance_hours: number;
-  ai_required_fields: string[];
+  ai_required_fields: string[] | null;
+  ai_custom_questions: string[];
   ai_max_questions_per_message: number;
   ai_can_share_contact_info: boolean;
 }
@@ -354,18 +355,22 @@ function buildWorkspaceLayer(
   }
 
   // === COLETA DE DADOS OBRIGATÓRIA ===
-  const workspaceFields: string[] = Array.isArray(p.ai_required_fields)
-    ? (p.ai_required_fields as string[])
-    : [];
+  // null = workspace nunca customizou -> herda do segmento. Array (mesmo
+  // vazio) = override explícito do tenant, respeita como está (permite
+  // "zero campos extras" sem cair de volta no padrão do segmento).
   const segmentFields: string[] = Array.isArray(p.segment_default_required_fields)
     ? (p.segment_default_required_fields as string[])
     : [];
-  const requiredFields = workspaceFields.length > 0 ? workspaceFields : segmentFields;
+  const requiredFields: string[] = p.ai_required_fields == null ? segmentFields : p.ai_required_fields;
 
-  if (requiredFields.length > 0) {
-    const labels = requiredFields.map((f) => FIELD_LABELS[f] ?? f).join(", ");
+  const customQuestions: string[] = Array.isArray(p.ai_custom_questions)
+    ? (p.ai_custom_questions as string[]).filter((q) => typeof q === "string" && q.trim())
+    : [];
+
+  if (requiredFields.length > 0 || customQuestions.length > 0) {
+    const items = [...requiredFields.map((f) => FIELD_LABELS[f] ?? f), ...customQuestions];
     parts.push(
-      `Antes de qualquer ação (orçamento, agendamento, encaminhamento), colete as seguintes informações se ainda não fornecidas: ${labels}.`,
+      `Antes de qualquer ação (orçamento, agendamento, encaminhamento), colete as seguintes informações se ainda não fornecidas: ${items.join(", ")}.`,
     );
   }
 

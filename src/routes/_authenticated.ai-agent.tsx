@@ -21,6 +21,7 @@ import {
 } from "@/lib/onboarding.functions";
 import { aiRespond } from "@/lib/ai-respond.functions";
 import { supabase } from "@/integrations/supabase/client";
+import { FIELD_LABELS } from "@/lib/field-labels";
 
 export const Route = createFileRoute("/_authenticated/ai-agent")({
   component: () => (
@@ -126,6 +127,16 @@ function AIAgentPage() {
   const [maxQuestions, setMaxQuestions] = React.useState(1);
   const [shareContactInfo, setShareContactInfo] = React.useState(true);
 
+  // === INFORMAÇÕES A COLETAR (campos do sistema + perguntas personalizadas) ===
+  const [requiredFields, setRequiredFields] = React.useState<string[]>([]);
+  // Só true quando o tenant realmente mexeu nos checkboxes (ou já vinha
+  // customizado do banco) — evita que salvar qualquer outra coisa da página
+  // grave os defaults do segmento como se fossem escolha do tenant.
+  const [requiredFieldsTouched, setRequiredFieldsTouched] = React.useState(false);
+  const [segmentDefaultFields, setSegmentDefaultFields] = React.useState<string[]>([]);
+  const [customQuestions, setCustomQuestions] = React.useState<string[]>([]);
+  const [cqInput, setCqInput] = React.useState("");
+
   // Hidrata form quando config chega
   React.useEffect(() => {
     const c = configQ.data?.config;
@@ -171,6 +182,16 @@ function AIAgentPage() {
     setMinAdvanceHours((cAny.ai_min_advance_hours as number | undefined) ?? 2);
     setMaxQuestions((cAny.ai_max_questions_per_message as number | undefined) ?? 1);
     setShareContactInfo((cAny.ai_can_share_contact_info as boolean | undefined) ?? true);
+    const segDefaults = Array.isArray(configQ.data?.segment?.default_required_fields)
+      ? (configQ.data!.segment!.default_required_fields as string[])
+      : [];
+    setSegmentDefaultFields(segDefaults);
+    const rf = cAny.ai_required_fields;
+    setRequiredFields(rf == null ? segDefaults : (rf as string[]));
+    setRequiredFieldsTouched(rf != null);
+    setCustomQuestions(
+      Array.isArray(cAny.ai_custom_questions) ? (cAny.ai_custom_questions as string[]) : [],
+    );
     setHydrated(true);
   }, [configQ.data, hydrated]);
 
@@ -211,6 +232,8 @@ function AIAgentPage() {
           ai_min_advance_hours: minAdvanceHours,
           ai_max_questions_per_message: maxQuestions,
           ai_can_share_contact_info: shareContactInfo,
+          ai_required_fields: requiredFieldsTouched ? requiredFields : null,
+          ai_custom_questions: customQuestions,
         },
       }),
     onSuccess: () => {
@@ -232,6 +255,13 @@ function AIAgentPage() {
     if (!v) return;
     if (!keywords.includes(v)) setKeywords([...keywords, v]);
     setKwInput("");
+  };
+
+  const addCustomQuestion = () => {
+    const v = cqInput.trim();
+    if (!v) return;
+    if (!customQuestions.includes(v)) setCustomQuestions([...customQuestions, v]);
+    setCqInput("");
   };
 
   const toggleService = (id: string) =>
@@ -458,6 +488,121 @@ function AIAgentPage() {
                   setMaxQuestions(Math.max(1, Number(e.target.value) || 1))
                 }
               />
+            </Field>
+          </div>
+        </Card>
+      </Section>
+
+      {/* INFORMAÇÕES A COLETAR */}
+      <Section title="Informações a coletar antes de agendar">
+        <Card>
+          <Field label="Informações que a IA deve coletar antes de orçar/agendar">
+            <div
+              style={{
+                display: "grid",
+                gridTemplateColumns: "1fr 1fr",
+                gap: "4px 12px",
+                maxHeight: 220,
+                overflow: "auto",
+                padding: "8px 4px",
+              }}
+            >
+              {Object.entries(FIELD_LABELS).map(([key, label]) => {
+                const checked = requiredFields.includes(key);
+                return (
+                  <label
+                    key={key}
+                    style={{ display: "flex", alignItems: "flex-start", gap: 6, fontSize: 12, cursor: "pointer" }}
+                  >
+                    <input
+                      type="checkbox"
+                      checked={checked}
+                      onChange={(e) => {
+                        setRequiredFields((arr) =>
+                          e.target.checked ? [...arr, key] : arr.filter((f) => f !== key),
+                        );
+                        setRequiredFieldsTouched(true);
+                      }}
+                      style={{ marginTop: 2 }}
+                    />
+                    <span>{label}</span>
+                  </label>
+                );
+              })}
+            </div>
+            {requiredFieldsTouched && (
+              <button
+                type="button"
+                onClick={() => {
+                  setRequiredFields(segmentDefaultFields);
+                  setRequiredFieldsTouched(false);
+                }}
+                style={{ ...btnSecondary, height: 30, padding: "0 10px", fontSize: 12, marginTop: 8 }}
+              >
+                Restaurar padrão do segmento
+              </button>
+            )}
+          </Field>
+
+          <div style={{ marginTop: 16 }}>
+            <Field label="Perguntas personalizadas">
+              <div
+                className="flex flex-wrap gap-1"
+                style={{
+                  padding: 6,
+                  border: "1px solid var(--border)",
+                  borderRadius: 6,
+                  background: "var(--bg-surface)",
+                  minHeight: 36,
+                }}
+              >
+                {customQuestions.map((q) => (
+                  <span
+                    key={q}
+                    className="inline-flex items-center gap-1"
+                    style={{
+                      padding: "2px 8px",
+                      borderRadius: 999,
+                      background: "var(--bg-overlay)",
+                      fontSize: 12,
+                    }}
+                  >
+                    {q}
+                    <button
+                      onClick={() => setCustomQuestions(customQuestions.filter((x) => x !== q))}
+                      style={{
+                        background: "transparent",
+                        border: 0,
+                        cursor: "pointer",
+                        color: "var(--text-muted)",
+                        display: "inline-flex",
+                      }}
+                    >
+                      <X size={10} />
+                    </button>
+                  </span>
+                ))}
+                <input
+                  value={cqInput}
+                  onChange={(e) => setCqInput(e.target.value)}
+                  onKeyDown={(e) => {
+                    if (e.key === "Enter") {
+                      e.preventDefault();
+                      addCustomQuestion();
+                    }
+                  }}
+                  placeholder="ex.: qual convênio você usa?"
+                  style={{
+                    flex: 1,
+                    minWidth: 120,
+                    border: 0,
+                    outline: 0,
+                    background: "transparent",
+                    fontSize: 12,
+                    color: "var(--text-primary)",
+                  }}
+                />
+              </div>
             </Field>
           </div>
         </Card>
