@@ -570,6 +570,12 @@ function buildServicePhotosLayer(
   lines.push(
     "As regras de envio variam por serviço — respeite a regra de CADA serviço abaixo. NUNCA mais de uma foto por mensagem sua.",
   );
+  lines.push(
+    "NUNCA reenvie uma foto que você já enviou nesta conversa (o histórico marca quando você já enviou).",
+  );
+  lines.push(
+    "IMPORTANTE: o CLIENTE mandar uma foto NÃO é um pedido para você enviar foto. Se o cliente enviar uma imagem (ex.: o próprio cabelo, uma referência), COMENTE o que você vê e responda a pergunta dele — só envie uma foto do serviço se ele pedir EXPLICITAMENTE para ver uma.",
+  );
   lines.push("");
   for (const s of withPhotos) {
     lines.push(`- Serviço "${s.name}" (service_id: "${s.id}"):`);
@@ -1229,9 +1235,7 @@ export async function runAiResponse(input: AiRunInput): Promise<AiRunResult> {
       inlineData: { mimeType: data.image.mimeType, data: data.image.data },
     });
     lastUserParts.push({
-      text:
-        data.message?.trim() ||
-        "O cliente enviou esta imagem. Descreva o que vê de forma útil e responda em português, dentro do seu papel de atendente — não invente serviços que não estão no catálogo.",
+      text: `O cliente enviou esta imagem${data.message?.trim() ? ` com a mensagem: "${data.message.trim()}"` : ""}. Olhe a imagem e responda em português, dentro do seu papel de atendente: comente de forma útil o que você vê e responda o que o cliente perguntou. NÃO envie uma foto de volta (o cliente mandar uma imagem não é um pedido para ver fotos) e não invente serviços fora do catálogo.`,
     });
   } else {
     lastUserParts.push({ text: data.message });
