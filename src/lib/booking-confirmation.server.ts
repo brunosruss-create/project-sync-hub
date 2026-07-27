@@ -1051,15 +1051,13 @@ export async function sendServicePhotoFromAI(
   data: { service_id?: string; photo_id?: string },
   ownerId: string,
   contactId: string | null | undefined,
-  workspaceDefaultPolicy: PhotoSendPolicy,
   lastClientMessage: string,
 ): Promise<{ ok: boolean; reason?: string }> {
   if (!data.service_id || !data.photo_id) return { ok: false, reason: "missing_fields" };
   if (!contactId) return { ok: false, reason: "missing_contact" };
 
   // 1. Serviço + foto precisam existir de verdade, escopados ao tenant. A
-  //    política efetiva é por serviço (herda do workspace quando null) —
-  //    precisa buscar o serviço antes de decidir a política.
+  //    política é por serviço — precisa buscar o serviço antes de decidir.
   const { data: service, error } = await supabaseAdmin
     .from("services")
     .select("id,photos,photo_send_policy")
@@ -1070,8 +1068,9 @@ export async function sendServicePhotoFromAI(
 
   // 2. Recheca a política no servidor — nunca confia que o prompt escondeu a
   //    capacidade da IA (mesmo se ela tentar emitir o marcador por erro).
+  //    Sem política definida, o padrão é não enviar.
   const effectivePolicy: PhotoSendPolicy =
-    ((service as any).photo_send_policy as PhotoSendPolicy | null) ?? workspaceDefaultPolicy;
+    ((service as any).photo_send_policy as PhotoSendPolicy | null) ?? "never";
   if (effectivePolicy === "never") return { ok: false, reason: "feature_disabled" };
 
   // 3. Nunca confia só no marcador da IA — a última mensagem do cliente

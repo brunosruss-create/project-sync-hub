@@ -55,7 +55,6 @@ interface AiBehaviorConfig {
   ai_declare_as_ai: boolean;
   ai_mention_business_name: boolean;
   ai_has_multiple_professionals: boolean;
-  ai_price_disclosure_policy: PriceDisclosurePolicy;
   ai_can_reschedule: boolean;
   ai_can_cancel: boolean;
   ai_min_advance_hours: number;
@@ -341,13 +340,11 @@ function buildWorkspaceLayer(
   }
 
   // === POLÍTICA DE PREÇOS ===
-  // Preço agora é configurável por serviço (services.price_disclosure_policy,
-  // null = herda este padrão do workspace) — a regra efetiva de cada serviço
-  // é aplicada dentro do catálogo em buildServicesLayer, não aqui. Isso
-  // permite políticas diferentes por serviço na mesma conversa (ex.: consulta
-  // sempre informa valor, cirurgia nunca).
-  const pricePolicy: PriceDisclosurePolicy =
-    (p.ai_price_disclosure_policy as PriceDisclosurePolicy) ?? "on_request";
+  // Preço é configurado por serviço (services.price_disclosure_policy) — a
+  // regra efetiva de cada um é aplicada dentro do catálogo em
+  // buildServicesLayer, não aqui. Isso permite políticas diferentes por
+  // serviço na mesma conversa (ex.: consulta sempre informa valor, cirurgia
+  // nunca).
   parts.push(
     `Sobre preços: siga a regra indicada junto de cada serviço no CATÁLOGO OFICIAL DE SERVIÇOS abaixo — cada serviço pode ter uma política diferente.`,
   );
@@ -463,7 +460,6 @@ function buildServicesLayer(
     price_cents: number | null;
     price_disclosure_policy?: PriceDisclosurePolicy | null;
   }>,
-  workspaceDefaultPolicy: PriceDisclosurePolicy,
 ): string {
   if (!services || services.length === 0) {
     return [
@@ -499,7 +495,9 @@ function buildServicesLayer(
         `  Descrição: (não informada — não invente detalhes deste serviço; se perguntarem, diga que vai pedir mais informações a um atendente)`,
       );
     }
-    const effectivePolicy: PriceDisclosurePolicy = s.price_disclosure_policy ?? workspaceDefaultPolicy;
+    // Serviço sem política definida cai no padrão conservador: só informa
+    // preço se o cliente perguntar direto.
+    const effectivePolicy: PriceDisclosurePolicy = s.price_disclosure_policy ?? "on_request";
     const price = formatPriceBRL(s.price_cents);
     if (effectivePolicy === "always" && price) {
       lines.push(`  Valor: ${price}`);
@@ -542,11 +540,11 @@ function buildServicesLayer(
 }
 
 // Bloco condicional: só existe (e só a IA fica sabendo que a capacidade
-// existe) quando algum serviço ativo tem política efetiva ≠ "never" E pelo
-// menos uma foto cadastrada. Serviços com política "never" nunca aparecem
-// aqui — a IA nem sabe que essas fotos existem, maior garantia contra ela
-// tentar "inventar" o envio. Cada serviço pode ter uma regra diferente
-// (herda o padrão do workspace quando photo_send_policy é null).
+// existe) quando algum serviço ativo tem política ≠ "never" E pelo menos uma
+// foto cadastrada. Serviços com política "never" nunca aparecem aqui — a IA
+// nem sabe que essas fotos existem, maior garantia contra ela tentar
+// "inventar" o envio. Cada serviço tem sua própria regra; sem valor definido
+// o padrão é não enviar.
 function buildServicePhotosLayer(
   services: Array<{
     id: string;
@@ -554,12 +552,11 @@ function buildServicePhotosLayer(
     photos?: { id: string; url: string; caption: string }[] | null;
     photo_send_policy?: PhotoSendPolicy | null;
   }>,
-  workspaceDefaultPolicy: PhotoSendPolicy,
 ): string {
   const withPhotos = services
     .map((s) => ({
       ...s,
-      effectivePolicy: s.photo_send_policy ?? workspaceDefaultPolicy,
+      effectivePolicy: s.photo_send_policy ?? "never",
     }))
     .filter(
       (s) => s.effectivePolicy !== "never" && Array.isArray(s.photos) && s.photos.length > 0,
@@ -921,15 +918,10 @@ export async function runAiResponse(input: AiRunInput): Promise<AiRunResult> {
     .eq("status", "active")
     .order("name", { ascending: true });
 
-  const pricePolicyForCatalog: PriceDisclosurePolicy =
-    ((profile as any).ai_price_disclosure_policy as PriceDisclosurePolicy) ?? "on_request";
-
-  const servicesLayer = buildServicesLayer(activeServices ?? [], pricePolicyForCatalog);
-  const photoPolicyDefault: PhotoSendPolicy =
-    ((profile as any).ai_photo_send_policy as PhotoSendPolicy) ?? "never";
-  const servicePhotosLayer = buildServicePhotosLayer(activeServices ?? [], photoPolicyDefault);
+  const servicesLayer = buildServicesLayer(activeServices ?? []);
+  const servicePhotosLayer = buildServicePhotosLayer(activeServices ?? []);
   const anyPhotoPolicyActive = (activeServices ?? []).some((s: any) => {
-    const effective = (s.photo_send_policy as PhotoSendPolicy | null) ?? photoPolicyDefault;
+    const effective = (s.photo_send_policy as PhotoSendPolicy | null) ?? "never";
     return effective !== "never" && Array.isArray(s.photos) && s.photos.length > 0;
   });
 
@@ -1498,7 +1490,6 @@ export async function runAiResponse(input: AiRunInput): Promise<AiRunResult> {
             payload,
             profile.id,
             data.contact_id,
-            photoPolicyDefault,
             data.message ?? "",
           );
           if (!r.ok) {

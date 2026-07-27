@@ -119,17 +119,11 @@ function AIAgentPage() {
   const [declareAsAi, setDeclareAsAi] = React.useState(false);
   const [mentionBusiness, setMentionBusiness] = React.useState(true);
   const [multipleProfs, setMultipleProfs] = React.useState(false);
-  const [pricePolicy, setPricePolicy] = React.useState<
-    "always" | "on_request" | "never"
-  >("on_request");
   const [canReschedule, setCanReschedule] = React.useState(false);
   const [canCancel, setCanCancel] = React.useState(false);
   const [minAdvanceHours, setMinAdvanceHours] = React.useState(2);
   const [maxQuestions, setMaxQuestions] = React.useState(1);
   const [shareContactInfo, setShareContactInfo] = React.useState(true);
-  const [photoSendPolicy, setPhotoSendPolicy] = React.useState<
-    "never" | "on_request" | "proactive"
-  >("never");
 
   // === INFORMAÇÕES A COLETAR (campos do sistema + perguntas personalizadas) ===
   const [requiredFields, setRequiredFields] = React.useState<string[]>([]);
@@ -174,25 +168,11 @@ function AIAgentPage() {
     setDeclareAsAi((cAny.ai_declare_as_ai as boolean | undefined) ?? false);
     setMentionBusiness((cAny.ai_mention_business_name as boolean | undefined) ?? true);
     setMultipleProfs((cAny.ai_has_multiple_professionals as boolean | undefined) ?? false);
-    setPricePolicy(
-      ((cAny.ai_price_disclosure_policy as
-        | "always"
-        | "on_request"
-        | "never"
-        | undefined) ?? "on_request"),
-    );
     setCanReschedule((cAny.ai_can_reschedule as boolean | undefined) ?? false);
     setCanCancel((cAny.ai_can_cancel as boolean | undefined) ?? false);
     setMinAdvanceHours((cAny.ai_min_advance_hours as number | undefined) ?? 2);
     setMaxQuestions((cAny.ai_max_questions_per_message as number | undefined) ?? 1);
     setShareContactInfo((cAny.ai_can_share_contact_info as boolean | undefined) ?? true);
-    setPhotoSendPolicy(
-      ((cAny.ai_photo_send_policy as
-        | "never"
-        | "on_request"
-        | "proactive"
-        | undefined) ?? "never"),
-    );
     const segDefaults = Array.isArray(configQ.data?.segment?.default_required_fields)
       ? (configQ.data!.segment!.default_required_fields as string[])
       : [];
@@ -237,13 +217,11 @@ function AIAgentPage() {
           ai_declare_as_ai: declareAsAi,
           ai_mention_business_name: mentionBusiness,
           ai_has_multiple_professionals: multipleProfs,
-          ai_price_disclosure_policy: pricePolicy,
           ai_can_reschedule: canReschedule,
           ai_can_cancel: canCancel,
           ai_min_advance_hours: minAdvanceHours,
           ai_max_questions_per_message: maxQuestions,
           ai_can_share_contact_info: shareContactInfo,
-          ai_photo_send_policy: photoSendPolicy,
           ai_required_fields: requiredFieldsTouched ? requiredFields : null,
           ai_custom_questions: customQuestions,
         },
@@ -479,44 +457,16 @@ function AIAgentPage() {
             onChange={setShareContactInfo}
             hint="Quando ligado, a IA usa os dados de Configurações → Negócio para responder perguntas tipo 'onde fica?', 'qual o telefone?', 'tem site?', 'tem estacionamento?', 'aceita PIX?'. Desligue se preferir que esses dados não sejam divulgados pelo WhatsApp."
           />
-          <div style={{ marginTop: 12 }}>
-            <Field label="Quando a IA pode enviar fotos de serviços? (padrão — cada serviço pode ter sua própria regra em Serviços → editar)">
-              <select
-                style={input}
-                value={photoSendPolicy}
-                onChange={(e) =>
-                  setPhotoSendPolicy(
-                    e.target.value as "never" | "on_request" | "proactive",
-                  )
-                }
-              >
-                <option value="never">Nunca</option>
-                <option value="on_request">Apenas quando o cliente pedir</option>
-                <option value="proactive">Proativamente ao mencionar o serviço</option>
-              </select>
-              <div style={{ fontSize: 12, color: "var(--text-muted)", marginTop: 4 }}>
-                Fotos são cadastradas em Serviços → editar → Fotos. Desligado por padrão. Mesmo em
-                "proativamente", a IA só envia depois que o cliente confirmar que quer ver — nunca
-                envia sem sinal do cliente na mensagem.
-              </div>
-            </Field>
-          </div>
-          <div style={{ marginTop: 12 }}>
-            <Field label="Quando a IA pode informar preços? (padrão — cada serviço pode ter sua própria regra em Serviços → editar)">
-              <select
-                style={input}
-                value={pricePolicy}
-                onChange={(e) =>
-                  setPricePolicy(
-                    e.target.value as "always" | "on_request" | "never",
-                  )
-                }
-              >
-                <option value="always">Sempre, proativamente</option>
-                <option value="on_request">Apenas quando o cliente perguntar</option>
-                <option value="never">Nunca — direcionar para atendente</option>
-              </select>
-            </Field>
+          <div
+            style={{
+              marginTop: 12,
+              fontSize: 12,
+              color: "var(--text-muted)",
+              lineHeight: 1.5,
+            }}
+          >
+            Preço e envio de fotos são configurados <strong>por serviço</strong>, em Serviços →
+            editar — cada um tem sua própria regra.
           </div>
           <div className="grid gap-3 md:grid-cols-2" style={{ marginTop: 12 }}>
             <Field label="Máximo de perguntas por mensagem (recomendado: 1)">

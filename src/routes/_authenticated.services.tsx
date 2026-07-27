@@ -633,11 +633,13 @@ function ServiceModal({
   const [priceText, setPriceText] = React.useState(
     initial ? formatCurrencyInput(initial.price_cents) : "0,00",
   );
-  const [priceDisclosurePolicy, setPriceDisclosurePolicy] = React.useState<
-    PriceDisclosurePolicy | null
-  >(initial?.price_disclosure_policy ?? null);
-  const [photoSendPolicy, setPhotoSendPolicy] = React.useState<PhotoSendPolicy | null>(
-    initial?.photo_send_policy ?? null,
+  // Serviço antigo sem política definida cai no padrão conservador — mesmo
+  // default que o servidor aplica ao montar o prompt.
+  const [priceDisclosurePolicy, setPriceDisclosurePolicy] = React.useState<PriceDisclosurePolicy>(
+    initial?.price_disclosure_policy ?? "on_request",
+  );
+  const [photoSendPolicy, setPhotoSendPolicy] = React.useState<PhotoSendPolicy>(
+    initial?.photo_send_policy ?? "never",
   );
   const [photos, setPhotos] = React.useState<ServicePhoto[]>(initial?.photos ?? []);
   const [uploadingPhoto, setUploadingPhoto] = React.useState(false);
@@ -899,15 +901,12 @@ function ServiceModal({
 
             <ModalField label="Quando a IA pode informar o preço deste serviço?">
               <select
-                value={priceDisclosurePolicy ?? ""}
+                value={priceDisclosurePolicy}
                 onChange={(e) =>
-                  setPriceDisclosurePolicy(
-                    e.target.value === "" ? null : (e.target.value as PriceDisclosurePolicy),
-                  )
+                  setPriceDisclosurePolicy(e.target.value as PriceDisclosurePolicy)
                 }
                 style={inputStyle}
               >
-                <option value="">Usar padrão do workspace (Configurações → Agente IA)</option>
                 <option value="always">Sempre, proativamente</option>
                 <option value="on_request">Apenas quando o cliente perguntar</option>
                 <option value="never">Nunca — direcionar para atendente</option>
@@ -1028,15 +1027,10 @@ function ServiceModal({
                   Quando a IA pode enviar fotos deste serviço?
                 </label>
                 <select
-                  value={photoSendPolicy ?? ""}
-                  onChange={(e) =>
-                    setPhotoSendPolicy(
-                      e.target.value === "" ? null : (e.target.value as PhotoSendPolicy),
-                    )
-                  }
+                  value={photoSendPolicy}
+                  onChange={(e) => setPhotoSendPolicy(e.target.value as PhotoSendPolicy)}
                   style={inputStyle}
                 >
-                  <option value="">Usar padrão do workspace (Configurações → Agente IA)</option>
                   <option value="never">Nunca</option>
                   <option value="on_request">Apenas quando o cliente pedir</option>
                   <option value="proactive">Proativamente ao mencionar o serviço</option>

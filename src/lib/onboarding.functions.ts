@@ -136,7 +136,7 @@ export const getWorkspaceAiConfig = createServerFn({ method: "POST" })
     const { data } = await supabaseAdmin
       .from("profiles")
       .select(
-        "ai_enabled,ai_assistant_name,ai_tone,ai_custom_prompt,ai_transfer_keywords,ai_transfer_after_messages,ai_schedule_enabled,ai_schedule_instruction,ai_working_hours,ai_out_of_hours_message,ai_enabled_service_ids,ai_timezone,business_name,business_description,business_timezone,segment_id,ai_introduce_by_name,ai_declare_as_ai,ai_mention_business_name,ai_has_multiple_professionals,ai_price_disclosure_policy,ai_can_reschedule,ai_can_cancel,ai_min_advance_hours,ai_required_fields,ai_custom_questions,ai_max_questions_per_message,ai_can_share_contact_info,ai_photo_send_policy",
+        "ai_enabled,ai_assistant_name,ai_tone,ai_custom_prompt,ai_transfer_keywords,ai_transfer_after_messages,ai_schedule_enabled,ai_schedule_instruction,ai_working_hours,ai_out_of_hours_message,ai_enabled_service_ids,ai_timezone,business_name,business_description,business_timezone,segment_id,ai_introduce_by_name,ai_declare_as_ai,ai_mention_business_name,ai_has_multiple_professionals,ai_can_reschedule,ai_can_cancel,ai_min_advance_hours,ai_required_fields,ai_custom_questions,ai_max_questions_per_message,ai_can_share_contact_info",
       )
       .eq("id", context.userId)
       .maybeSingle();
@@ -196,9 +196,6 @@ export const updateWorkspaceAiConfig = createServerFn({ method: "POST" })
         ai_declare_as_ai: z.boolean().optional(),
         ai_mention_business_name: z.boolean().optional(),
         ai_has_multiple_professionals: z.boolean().optional(),
-        ai_price_disclosure_policy: z
-          .enum(["always", "on_request", "never"])
-          .optional(),
         ai_can_reschedule: z.boolean().optional(),
         ai_can_cancel: z.boolean().optional(),
         ai_min_advance_hours: z.number().int().min(0).max(720).optional(),
@@ -206,7 +203,6 @@ export const updateWorkspaceAiConfig = createServerFn({ method: "POST" })
         ai_custom_questions: z.array(z.string().max(200)).max(20).optional(),
         ai_max_questions_per_message: z.number().int().min(1).max(5).optional(),
         ai_can_share_contact_info: z.boolean().optional(),
-        ai_photo_send_policy: z.enum(["never", "on_request", "proactive"]).optional(),
       })
       .parse(input),
   )
