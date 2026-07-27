@@ -365,6 +365,9 @@ function buildWorkspaceLayer(
     parts.push(
       `Antecedência mínima para agendamento: ${minHours} hora(s). Não aceite horários abaixo dessa antecedência.`,
     );
+    parts.push(
+      `NUNCA proponha nem confirme um dia/horário específico que o cliente não pediu. Se ele quer agendar mas ainda NÃO informou o dia E o horário, PERGUNTE qual dia e horário ele prefere — você pode oferecer 2–3 opções livres na agenda como sugestão, mas NÃO escolha um horário por ele. Só monte a confirmação (e o JSON de agendamento) depois que o cliente tiver escolhido explicitamente o horário. Faltando dia ou hora, a resposta certa é uma PERGUNTA, não uma confirmação.`,
+    );
   } else {
     prohibitions.push(
       `OBRIGATÓRIO: VOCÊ NÃO PODE AGENDAR, MARCAR, RESERVAR, CONFIRMAR NEM PROPOR HORÁRIOS de atendimento. Se o cliente pedir agendamento, responda EXATAMENTE no espírito: "Vou encaminhar seu pedido para um atendente humano confirmar o horário com você." Não invente horários, não diga "reservei", "já marquei", "confirmado para amanhã", "agendamento confirmado" — nada disso. Mesmo que o cliente insista, NÃO confirme horário algum.`,
