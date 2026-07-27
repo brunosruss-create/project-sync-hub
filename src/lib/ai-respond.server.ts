@@ -78,6 +78,8 @@ export type AiRunInput = {
   contact_phone?: string | null;
   /** Áudio (base64 + mimeType) para Gemini processar nativamente. */
   audio?: { data: string; mimeType: string } | null;
+  /** Imagem (base64 + mimeType) que o cliente enviou, para Gemini enxergar. */
+  image?: { data: string; mimeType: string } | null;
   /** Resumo automático do histórico antigo do contato (memória de longo prazo). */
   ai_summary?: string | null;
 };
@@ -1221,6 +1223,15 @@ export async function runAiResponse(input: AiRunInput): Promise<AiRunResult> {
     });
     lastUserParts.push({
       text: data.message?.trim() || "Ouça o áudio do cliente acima e responda em português.",
+    });
+  } else if (data.image?.data && data.image?.mimeType) {
+    lastUserParts.push({
+      inlineData: { mimeType: data.image.mimeType, data: data.image.data },
+    });
+    lastUserParts.push({
+      text:
+        data.message?.trim() ||
+        "O cliente enviou esta imagem. Descreva o que vê de forma útil e responda em português, dentro do seu papel de atendente — não invente serviços que não estão no catálogo.",
     });
   } else {
     lastUserParts.push({ text: data.message });

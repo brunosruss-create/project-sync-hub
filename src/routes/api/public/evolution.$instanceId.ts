@@ -457,12 +457,13 @@ export const Route = createFileRoute("/api/public/evolution/$instanceId")({
                 // (ver src/lib/job-worker.ts + src/lib/message-processing.server.ts).
                 const shouldEnqueue =
                   (mediaType === "text" && caption.trim().length > 0 && !humanInControl) ||
-                  (mediaType === "audio" && !!mediaUrl && !humanInControl);
+                  (mediaType === "audio" && !!mediaUrl && !humanInControl) ||
+                  (mediaType === "image" && !!mediaUrl && !humanInControl);
                 if (shouldEnqueue) {
                   const jobPayload: MessageJobPayload = {
                     phone,
                     pushName: pushName ?? null,
-                    mediaType: mediaType as "text" | "audio",
+                    mediaType: mediaType as "text" | "audio" | "image",
                     caption,
                     mediaUrl,
                     mediaMime,

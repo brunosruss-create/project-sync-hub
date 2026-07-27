@@ -7,7 +7,7 @@ import { renderTemplate } from "@/lib/message-templates";
 export type MessageJobPayload = {
   phone: string;
   pushName: string | null;
-  mediaType: "text" | "audio";
+  mediaType: "text" | "audio" | "image";
   caption: string;
   mediaUrl?: string | null;
   mediaMime?: string | null;
@@ -293,11 +293,66 @@ async function processAudioJob(job: MessageJobInput) {
   }
 }
 
+async function processImageJob(job: MessageJobInput) {
+  const { workspaceOwnerId, contactId, instanceName, payload } = job;
+  const { phone, pushName, caption, mediaUrl, mediaMime, waMessageId } = payload;
+  if (!mediaUrl) return;
+
+  await maybeSendWelcomeMessage(workspaceOwnerId, contactId, instanceName, phone, pushName);
+
+  try {
+    const imgResp = await fetch(mediaUrl);
+    if (!imgResp.ok) {
+      console.error("[evolution ai image] download falhou:", imgResp.status);
+      return;
+    }
+    const buf = new Uint8Array(await imgResp.arrayBuffer());
+    const MAX_BYTES = 15 * 1024 * 1024;
+    if (buf.byteLength > MAX_BYTES) {
+      console.warn("[evolution ai image] arquivo grande, ignorando", buf.byteLength);
+      return;
+    }
+    let bin = "";
+    for (let i = 0; i < buf.length; i++) bin += String.fromCharCode(buf[i]);
+    const b64 = btoa(bin);
+    // Gemini aceita jpeg/png/webp/heic/heif. WhatsApp manda quase sempre jpeg.
+    const mime = (mediaMime ?? "image/jpeg").split(";")[0].trim() || "image/jpeg";
+
+    const { conversation_history, aiSummary } = await buildConversationContext(
+      workspaceOwnerId,
+      contactId,
+    );
+    const ai = await runAiResponse({
+      workspace_owner_id: workspaceOwnerId,
+      contact_id: contactId,
+      message: caption?.trim() || "[imagem do cliente]",
+      conversation_history,
+      ai_summary: aiSummary,
+      wa_message_id: waMessageId ?? null,
+      contact_name: pushName ?? null,
+      contact_phone: phone,
+      image: { data: b64, mimeType: mime },
+    });
+    await sendAiReplyAndPersist(
+      instanceName,
+      workspaceOwnerId,
+      contactId,
+      phone,
+      ai,
+      "evolution ai image",
+    );
+  } catch (e: any) {
+    console.error("[evolution ai image] erro:", e?.message ?? e);
+  }
+}
+
 /** Processa 1 job da fila `message_jobs`: gera e envia a resposta da IA. */
 export async function processMessageJob(job: MessageJobInput): Promise<void> {
   if (job.payload.mediaType === "text") {
     await processTextJob(job);
   } else if (job.payload.mediaType === "audio") {
     await processAudioJob(job);
+  } else if (job.payload.mediaType === "image") {
+    await processImageJob(job);
   }
 }
