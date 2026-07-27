@@ -13,15 +13,24 @@ variáveis e onde encontrá-las).
 ## Visão geral
 
 ```
-WhatsApp  ⇄  Evolution API (Railway, 24/7)  ──webhook──▶  ZapFlow (Vercel)  ⇄  Supabase
-                    │                                          │                 (dados + auth + storage)
-              Postgres + Redis                          Google Gemini (IA)
-              (do Evolution)
+WhatsApp ⇄ Evolution API (Railway) ──webhook──▶ ZapFlow (Vercel) ──enfileira──▶ message_jobs (Supabase)
+                                                                                      │
+                                                                                      ▼
+                                                        Worker de fila (Railway) ──▶ Gemini (IA)
+                                                                 │                     │
+                                                                 └──── resposta ───────┘
+                                                                       (via Evolution)
 ```
+
+> ⚠️ **O Vercel NÃO responde o WhatsApp.** O webhook lá só valida, persiste e
+> **enfileira** em `message_jobs`. Quem monta o prompt, chama o Gemini e envia a
+> resposta é o **worker no Railway**. Consequência prática: `vercel deploy` **não
+> muda o comportamento da IA no WhatsApp** — só a UI. Ver seção 2.1.
 
 | Peça | Onde roda | Papel | Pode cair sem derrubar o resto? |
 |---|---|---|---|
-| **App ZapFlow** | Vercel (`hello-tenant-base.vercel.app`) | Frontend + SSR + webhook receiver | Se cair, o WhatsApp para de responder |
+| **App ZapFlow** | Vercel (`hello-tenant-base.vercel.app`) | Frontend + SSR + webhook receiver (só enfileira) | Se cair, mensagens param de entrar na fila |
+| **Worker de fila** | Railway (`npm run worker` → `src/lib/job-worker.ts`) | Consome `message_jobs`, chama Gemini, responde | **Se cair ou ficar desatualizado, a IA não responde (ou responde com código velho)** |
 | **Evolution API** | Railway (projeto `aware-love`) | Conexão persistente com o WhatsApp | **Ponto único de falha** do WhatsApp |
 | **Supabase** | Supabase Cloud (`xrezmnaspkctuidehqqi`) | Banco, Auth (Google + senha), Storage (`chat-media`) | Se cair, o app inteiro para |
 | **Gemini** | Google | Cérebro do atendente de IA | Se cair, IA não responde (resto funciona) |
@@ -71,6 +80,33 @@ Não há IaC — recriação é manual:
    (ver seção 2). Redeploy do ZapFlow.
 5. Cada usuário reconecta o WhatsApp (Configurações → WhatsApp → Reconectar → QR novo).
    A linha em `whatsapp_instances` no Supabase é reaproveitada — não precisa mexer no banco.
+
+---
+
+## 2.1 Worker de fila (Railway) — quem realmente responde a IA
+
+- **Roda:** `npm run worker` → `tsx src/lib/job-worker.ts` (config em `railway.json`,
+  builder NIXPACKS). Fica no mesmo Railway da Evolution.
+- **Faz:** puxa jobs de `message_jobs` (Supabase), chama `processMessageJob`
+  (`src/lib/message-processing.server.ts`) → `runAiResponse`
+  (`src/lib/ai-respond.server.ts`) → Gemini → envia a resposta via Evolution.
+
+> 🔴 **ARMADILHA (custou horas de debug em 2026-07-26):** o worker builda a partir do
+> **GitHub**, não do seu disco. Se você commitar local e não der `git push`, o worker
+> continua rodando código antigo — indefinidamente. O `vercel deploy` **não conserta**,
+> porque o Vercel não responde o WhatsApp (só enfileira).
+>
+> Sintoma clássico: você implementa uma capacidade nova da IA (ex.: enviar fotos),
+> testa a UI, está tudo lá — mas no WhatsApp a IA jura que não sabe fazer aquilo.
+> Foi exatamente isso: `origin/main` estava **8 commits atrás**, antes até do commit
+> que criou a feature de fotos.
+>
+> **Regra:** toda mudança que afeta o comportamento da IA (`ai-respond.server.ts`,
+> `booking-confirmation.server.ts`, `message-processing.server.ts`, prompt, políticas
+> por serviço) só vale em produção depois de **`git push origin main`**.
+>
+> **Como conferir se falta push:** `git log origin/main..HEAD --oneline` — se voltar
+> qualquer linha, o worker está desatualizado.
 
 ---
 
