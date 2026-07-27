@@ -109,18 +109,31 @@ async function maybeSendWelcomeMessage(
 async function buildConversationContext(ownerUserId: string, contactId: string) {
   const { data: history } = await supabaseAdmin
     .from("messages")
-    .select("direction,content,created_at")
+    .select("direction,content,message_type,created_at")
     .eq("owner_user_id", ownerUserId)
     .eq("contact_id", contactId)
     .order("created_at", { ascending: false })
     .limit(100);
   const conversation_history = (history ?? [])
     .reverse()
-    .filter((h) => h.content && String(h.content).trim().length > 0)
-    .map((h) => ({
-      role: h.direction === "inbound" ? ("user" as const) : ("assistant" as const),
-      content: String(h.content).slice(0, 2000),
-    }));
+    .map((h) => {
+      const role = h.direction === "inbound" ? ("user" as const) : ("assistant" as const);
+      let content = String(h.content ?? "").trim();
+      // Mensagem de foto: só a legenda (ou vazio) não deixa claro pra IA que
+      // uma imagem foi trocada. Sem isto, a IA manda a foto num turno e no
+      // seguinte jura que "não tem fotos" — não vê no histórico que já
+      // enviou. Marca explicitamente quem enviou a imagem.
+      if (h.message_type === "image") {
+        const legenda = content ? ` (legenda: "${content}")` : "";
+        content =
+          role === "assistant"
+            ? `[Você já enviou uma foto do serviço para o cliente nesta conversa${legenda}. Não diga que não tem fotos.]`
+            : `[O cliente enviou uma foto${legenda}]`;
+      }
+      return { role, content };
+    })
+    .filter((m) => m.content.length > 0)
+    .map((m) => ({ role: m.role, content: m.content.slice(0, 2000) }));
   // remove a mensagem atual do histórico (já vai como `message`)
   if (conversation_history.length > 0) conversation_history.pop();
 
