@@ -1053,35 +1053,58 @@ export async function sendServicePhotoFromAI(
   ownerId: string,
   contactId: string | null | undefined,
 ): Promise<{ ok: boolean; reason?: string }> {
-  if (!data.service_id || !data.photo_id) return { ok: false, reason: "missing_fields" };
   if (!contactId) return { ok: false, reason: "missing_contact" };
 
-  // 1. Serviço + foto precisam existir de verdade, escopados ao tenant. A
-  //    política é por serviço — precisa buscar o serviço antes de decidir.
-  const { data: service, error } = await supabaseAdmin
-    .from("services")
-    .select("id,photos,photo_send_policy")
-    .eq("id", data.service_id)
-    .eq("owner_user_id", ownerId)
-    .maybeSingle();
-  if (error || !service) return { ok: false, reason: "service_not_found" };
+  // 1. Resolve o serviço. A IA precisa ecoar o service_id (um UUID) que o
+  //    prompt lista, e modelos erram/truncam UUID com frequência — foi a
+  //    causa real das fotos nunca saírem (o guard recusava com
+  //    service_not_found/photo_not_found e o cliente recebia só o texto).
+  //    Então: tenta o id exato; se não bater e o workspace tiver exatamente
+  //    UM serviço ativo com foto, usa esse — não há ambiguidade sobre qual
+  //    era. O escopo do tenant (owner_user_id) é mantido em qualquer caminho.
+  let service: any = null;
+  if (data.service_id) {
+    const { data: exact } = await supabaseAdmin
+      .from("services")
+      .select("id,photos,photo_send_policy")
+      .eq("id", data.service_id)
+      .eq("owner_user_id", ownerId)
+      .maybeSingle();
+    service = exact ?? null;
+  }
+  if (!service) {
+    const { data: all } = await supabaseAdmin
+      .from("services")
+      .select("id,photos,photo_send_policy")
+      .eq("owner_user_id", ownerId)
+      .eq("status", "active");
+    const withPhotos = (all ?? []).filter(
+      (s: any) => Array.isArray(s.photos) && s.photos.length > 0,
+    );
+    if (withPhotos.length === 1) {
+      service = withPhotos[0];
+      console.warn(
+        "[sendServicePhotoFromAI] service_id da IA não bateu; usei o único serviço com foto:",
+        { aiSentServiceId: data.service_id, resolved: service.id },
+      );
+    }
+  }
+  if (!service) return { ok: false, reason: "service_not_found" };
 
-  // 2. Recheca a política no servidor — nunca confia que o prompt escondeu a
-  //    capacidade da IA (mesmo se ela tentar emitir o marcador por erro).
-  //    Sem política definida, o padrão é não enviar.
+  // 2. Política do dono, por serviço. Sem valor definido, não envia — nunca
+  //    confia que o prompt escondeu a capacidade (mesmo se a IA emitir o
+  //    marcador por erro).
   const effectivePolicy: PhotoSendPolicy =
-    ((service as any).photo_send_policy as PhotoSendPolicy | null) ?? "never";
+    (service.photo_send_policy as PhotoSendPolicy | null) ?? "never";
   if (effectivePolicy === "never") return { ok: false, reason: "feature_disabled" };
 
-  // 3. Anti-spam em vez de adivinhar intenção por regex.
-  //    Antes isto era um regex no texto do cliente (/foto|imagem|mostr|.../).
-  //    Dava falso-negativo demais: "Iero doto de corte" (typo de "quero
-  //    foto"), o follow-up "não veio" e o "sim" que confirma uma oferta não
-  //    casavam — a IA prometia a foto, o guard barrava calado e o cliente
-  //    recebia só o texto. Quem julga se o cliente pediu é a IA (o prompt já
-  //    instrui por política, e ela lida com typo/contexto muito melhor que
-  //    regex). O servidor garante o que de fato importa: a política do dono
-  //    (passo 2), o escopo do tenant (passo 1) e não virar spam (aqui).
+  // 3. Anti-spam em vez de adivinhar intenção por regex. Antes isto era um
+  //    regex no texto do cliente (/foto|imagem|mostr|.../) e dava
+  //    falso-negativo demais ("Iero doto de corte", "não veio", "sim") — a IA
+  //    prometia a foto, o guard barrava calado e o cliente recebia só texto.
+  //    Quem julga se o cliente pediu é a IA (o prompt instrui por política, e
+  //    ela lida com typo/contexto melhor que regex). O servidor garante o que
+  //    importa: política do dono (2), escopo do tenant (1) e não virar spam.
   const oneMinuteAgo = new Date(Date.now() - 60_000).toISOString();
   const { count: recentPhotos } = await supabaseAdmin
     .from("messages")
@@ -1093,13 +1116,16 @@ export async function sendServicePhotoFromAI(
     .gte("created_at", oneMinuteAgo);
   if ((recentPhotos ?? 0) > 0) return { ok: false, reason: "rate_limited" };
 
-  const photos = Array.isArray((service as any).photos) ? (service as any).photos : [];
-  const photo = photos.find((p: any) => p?.id === data.photo_id);
+  // 4. Resolve a foto dentro do serviço. Mesmo motivo do id do serviço: se o
+  //    photo_id não bater, cai na primeira foto — é o serviço que a IA
+  //    escolheu, mandar a primeira foto dele é melhor que não mandar nada.
+  const photos = Array.isArray(service.photos) ? service.photos : [];
+  const photo = photos.find((p: any) => p?.id === data.photo_id) ?? photos[0];
   if (!photo?.url) return { ok: false, reason: "photo_not_found" };
 
-  // WhatsApp não renderiza AVIF/HEIC como imagem — enviar assim vira falha
-  // silenciosa ou anexo de documento. Barra aqui com motivo próprio (a UI de
-  // upload já recusa esses formatos; isto pega fotos antigas).
+  // 5. WhatsApp não renderiza AVIF/HEIC como imagem — enviar assim vira falha
+  //    silenciosa ou anexo de documento. Barra aqui com motivo próprio (a UI
+  //    de upload já converte no envio; isto pega fotos antigas).
   const mime = String(photo.mime || "image/jpeg").toLowerCase();
   if (!WHATSAPP_IMAGE_MIMES.includes(mime)) {
     console.warn("[sendServicePhotoFromAI] formato não suportado pelo WhatsApp:", mime);
@@ -1112,7 +1138,7 @@ export async function sendServicePhotoFromAI(
       contactId,
       url: photo.url,
       mime,
-      name: `foto-servico-${data.photo_id}.${mime === "image/png" ? "png" : mime === "image/webp" ? "webp" : "jpg"}`,
+      name: `foto-servico-${photo.id}.${mime === "image/png" ? "png" : mime === "image/webp" ? "webp" : "jpg"}`,
       caption: photo.caption || undefined,
       sentBy: null,
     });
