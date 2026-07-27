@@ -40,6 +40,41 @@ function isUuid(value: string): boolean {
   return /^[0-9a-f]{8}-[0-9a-f]{4}-[1-5][0-9a-f]{3}-[89ab][0-9a-f]{3}-[0-9a-f]{12}$/i.test(value);
 }
 
+/**
+ * Garante um arquivo que o WhatsApp renderize como imagem. Formatos já
+ * suportados (JPG/PNG/WebP) passam sem tocar — preserva transparência do PNG.
+ * O resto (AVIF do Instagram, etc.) é redesenhado num canvas e re-exportado
+ * como JPEG. Se o browser não decodificar o formato (HEIC no Chrome, p.ex.),
+ * lança com mensagem clara em vez de subir algo que falharia no envio.
+ */
+async function toWhatsappImage(file: File): Promise<File> {
+  const mime = (file.type || "").toLowerCase();
+  if (WHATSAPP_IMAGE_MIMES.includes(mime)) return file;
+
+  let bitmap: ImageBitmap;
+  try {
+    bitmap = await createImageBitmap(file);
+  } catch {
+    throw new Error(
+      "Não consegui ler essa imagem. Tente salvar como JPG ou PNG antes de enviar.",
+    );
+  }
+  const canvas = document.createElement("canvas");
+  canvas.width = bitmap.width;
+  canvas.height = bitmap.height;
+  const ctx = canvas.getContext("2d");
+  if (!ctx) throw new Error("Falha ao processar a imagem.");
+  ctx.drawImage(bitmap, 0, 0);
+  bitmap.close();
+
+  const blob = await new Promise<Blob | null>((resolve) =>
+    canvas.toBlob(resolve, "image/jpeg", 0.9),
+  );
+  if (!blob) throw new Error("Falha ao converter a imagem.");
+  const baseName = file.name.replace(/\.[^./\\]+$/, "") || "foto";
+  return new File([blob], `${baseName}.jpg`, { type: "image/jpeg" });
+}
+
 const FALLBACK_DESCRIPTION_EXAMPLE =
   "Descreva o que está incluso, materiais usados, duração média e quaisquer pré-requisitos para o cliente.";
 
@@ -680,20 +715,17 @@ function ServiceModal({
       notify.error(`Máximo de ${MAX_SERVICE_PHOTOS} fotos por serviço.`);
       return;
     }
-    // O WhatsApp não renderiza AVIF/HEIC como imagem — aceitar aqui viraria
-    // uma falha silenciosa lá na frente, quando a IA tentasse enviar.
-    if (!WHATSAPP_IMAGE_MIMES.includes((file.type || "").toLowerCase())) {
-      notify.error(
-        "Formato não suportado pelo WhatsApp. Use JPG, PNG ou WebP (imagens baixadas do Instagram costumam vir em AVIF).",
-      );
-      return;
-    }
     setUploadingPhoto(true);
     try {
-      const { url } = await uploadChatMedia(file, workspaceOwnerId);
+      // O WhatsApp não renderiza AVIF/HEIC como imagem. Em vez de recusar
+      // (fotos baixadas do Instagram quase sempre vêm em AVIF), converte pra
+      // JPEG na hora — o cliente nem percebe. Formatos que já funcionam
+      // (JPG/PNG/WebP) passam intactos, preservando transparência do PNG.
+      const usable = await toWhatsappImage(file);
+      const { url } = await uploadChatMedia(usable, workspaceOwnerId);
       setPhotos((prev) => [
         ...prev,
-        { id: crypto.randomUUID(), url, caption: "", mime: file.type || "image/jpeg" },
+        { id: crypto.randomUUID(), url, caption: "", mime: usable.type },
       ]);
     } catch (e) {
       notify.error(e instanceof Error ? e.message : "Falha ao enviar foto.");
@@ -1014,7 +1046,7 @@ function ServiceModal({
                   {uploadingPhoto ? "Enviando…" : "Adicionar foto"}
                   <input
                     type="file"
-                    accept="image/jpeg,image/png,image/webp"
+                    accept="image/*"
                     hidden
                     disabled={uploadingPhoto}
                     onChange={(e) => {
