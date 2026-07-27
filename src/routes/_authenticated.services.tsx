@@ -11,6 +11,7 @@ import {
   type PhotoSendPolicy,
   type ServicePhoto,
   PRESET_COLORS,
+  WHATSAPP_IMAGE_MIMES,
   STATUS_COLOR,
   STATUS_LABEL,
   formatCurrencyBRL,
@@ -679,6 +680,14 @@ function ServiceModal({
       notify.error(`Máximo de ${MAX_SERVICE_PHOTOS} fotos por serviço.`);
       return;
     }
+    // O WhatsApp não renderiza AVIF/HEIC como imagem — aceitar aqui viraria
+    // uma falha silenciosa lá na frente, quando a IA tentasse enviar.
+    if (!WHATSAPP_IMAGE_MIMES.includes((file.type || "").toLowerCase())) {
+      notify.error(
+        "Formato não suportado pelo WhatsApp. Use JPG, PNG ou WebP (imagens baixadas do Instagram costumam vir em AVIF).",
+      );
+      return;
+    }
     setUploadingPhoto(true);
     try {
       const { url } = await uploadChatMedia(file, workspaceOwnerId);
@@ -1005,7 +1014,7 @@ function ServiceModal({
                   {uploadingPhoto ? "Enviando…" : "Adicionar foto"}
                   <input
                     type="file"
-                    accept="image/*"
+                    accept="image/jpeg,image/png,image/webp"
                     hidden
                     disabled={uploadingPhoto}
                     onChange={(e) => {

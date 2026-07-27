@@ -16,6 +16,7 @@ import {
 } from "@/lib/working-hours";
 import { looksLikeGenericName } from "@/lib/client-name";
 import { sendMediaToContact } from "@/lib/evolution.server";
+import { WHATSAPP_IMAGE_MIMES } from "@/features/services/data";
 
 type ProfileLite = {
   id: string;
@@ -1051,7 +1052,6 @@ export async function sendServicePhotoFromAI(
   data: { service_id?: string; photo_id?: string },
   ownerId: string,
   contactId: string | null | undefined,
-  lastClientMessage: string,
 ): Promise<{ ok: boolean; reason?: string }> {
   if (!data.service_id || !data.photo_id) return { ok: false, reason: "missing_fields" };
   if (!contactId) return { ok: false, reason: "missing_contact" };
@@ -1073,30 +1073,46 @@ export async function sendServicePhotoFromAI(
     ((service as any).photo_send_policy as PhotoSendPolicy | null) ?? "never";
   if (effectivePolicy === "never") return { ok: false, reason: "feature_disabled" };
 
-  // 3. Nunca confia só no marcador da IA — a última mensagem do cliente
-  //    precisa conter um pedido/confirmação explícita de foto/exemplo (mesmo
-  //    espírito do userWantsCancel/userWantsReschedule em ai-respond.server.ts).
-  //    Vale tanto para "on_request" quanto para "proactive" — a diferença
-  //    entre as duas políticas é só se a IA pode OFERECER a foto por
-  //    iniciativa própria no prompt; o envio de fato sempre exige sinal do
-  //    cliente na mensagem.
-  const asksForPhoto =
-    /foto|imagem|antes.*depois|exemplo|resultado|mostr|manda|quero ver|sim,? quero|pode mandar/i.test(
-      lastClientMessage || "",
-    );
-  if (!asksForPhoto) return { ok: false, reason: "no_explicit_request" };
+  // 3. Anti-spam em vez de adivinhar intenção por regex.
+  //    Antes isto era um regex no texto do cliente (/foto|imagem|mostr|.../).
+  //    Dava falso-negativo demais: "Iero doto de corte" (typo de "quero
+  //    foto"), o follow-up "não veio" e o "sim" que confirma uma oferta não
+  //    casavam — a IA prometia a foto, o guard barrava calado e o cliente
+  //    recebia só o texto. Quem julga se o cliente pediu é a IA (o prompt já
+  //    instrui por política, e ela lida com typo/contexto muito melhor que
+  //    regex). O servidor garante o que de fato importa: a política do dono
+  //    (passo 2), o escopo do tenant (passo 1) e não virar spam (aqui).
+  const oneMinuteAgo = new Date(Date.now() - 60_000).toISOString();
+  const { count: recentPhotos } = await supabaseAdmin
+    .from("messages")
+    .select("id", { count: "exact", head: true })
+    .eq("owner_user_id", ownerId)
+    .eq("contact_id", contactId)
+    .eq("direction", "outbound")
+    .eq("message_type", "image")
+    .gte("created_at", oneMinuteAgo);
+  if ((recentPhotos ?? 0) > 0) return { ok: false, reason: "rate_limited" };
 
   const photos = Array.isArray((service as any).photos) ? (service as any).photos : [];
   const photo = photos.find((p: any) => p?.id === data.photo_id);
   if (!photo?.url) return { ok: false, reason: "photo_not_found" };
+
+  // WhatsApp não renderiza AVIF/HEIC como imagem — enviar assim vira falha
+  // silenciosa ou anexo de documento. Barra aqui com motivo próprio (a UI de
+  // upload já recusa esses formatos; isto pega fotos antigas).
+  const mime = String(photo.mime || "image/jpeg").toLowerCase();
+  if (!WHATSAPP_IMAGE_MIMES.includes(mime)) {
+    console.warn("[sendServicePhotoFromAI] formato não suportado pelo WhatsApp:", mime);
+    return { ok: false, reason: "unsupported_format" };
+  }
 
   try {
     await sendMediaToContact({
       ownerUserId: ownerId,
       contactId,
       url: photo.url,
-      mime: photo.mime || "image/jpeg",
-      name: `foto-servico-${data.photo_id}.jpg`,
+      mime,
+      name: `foto-servico-${data.photo_id}.${mime === "image/png" ? "png" : mime === "image/webp" ? "webp" : "jpg"}`,
       caption: photo.caption || undefined,
       sentBy: null,
     });

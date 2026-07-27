@@ -6,6 +6,15 @@ export type PhotoSendPolicy = "never" | "on_request" | "proactive";
 
 export type ServicePhoto = { id: string; url: string; caption: string; mime: string };
 
+/**
+ * Formatos que o WhatsApp renderiza como imagem. AVIF/HEIC ficam de fora —
+ * enviar nesses formatos vira falha silenciosa ou anexo de documento.
+ * Mora aqui (módulo puro) de propósito: é usado pela UI de upload E pelo
+ * envio server-side, e este arquivo pode ser importado dos dois lados sem
+ * arrastar `supabaseAdmin` pro bundle do cliente.
+ */
+export const WHATSAPP_IMAGE_MIMES = ["image/jpeg", "image/jpg", "image/png", "image/webp"];
+
 export interface Service {
   id: string;
   name: string;

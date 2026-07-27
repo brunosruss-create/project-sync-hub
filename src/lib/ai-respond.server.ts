@@ -1477,29 +1477,27 @@ export async function runAiResponse(input: AiRunInput): Promise<AiRunResult> {
 
     // Detecta bloco PHOTO_JSON (envio de foto de serviço). Guarda de
     // segurança extra em relação aos outros marcadores: sendServicePhotoFromAI
-    // já recheca a política efetiva do serviço no servidor e exige um pedido
-    // explícito de foto na última mensagem do cliente — nunca confia só no
-    // marcador da IA.
+    // recheca no servidor a política do serviço, o escopo do tenant e o
+    // anti-spam — nunca confia só no marcador da IA.
     if (anyPhotoPolicyActive) {
       const extraction = extractJsonBlocks(text, "PHOTO_JSON:");
       if (extraction) {
         text = extraction.cleanedText;
         if (extraction.payloads.length > 0 && !data.preview) {
           const payload = extraction.payloads[0] as { service_id?: string; photo_id?: string };
-          const r = await sendServicePhotoFromAI(
-            payload,
-            profile.id,
-            data.contact_id,
-            data.message ?? "",
-          );
+          const r = await sendServicePhotoFromAI(payload, profile.id, data.contact_id);
           if (!r.ok) {
             console.warn("[ai photo] falhou:", r.reason);
-            // Falhas silenciosas (marcador sem pedido explícito, feature
-            // desligada etc.) só removem o marcador, sem gerar texto extra —
-            // não é uma falha que o cliente precise saber. Só falhas
-            // "reais" (serviço/foto não encontrados, erro de envio) ganham
-            // uma resposta honesta.
-            if (r.reason === "service_not_found" || r.reason === "photo_not_found") {
+            // Falhas silenciosas (feature desligada, anti-spam) só removem o
+            // marcador, sem gerar texto extra — não é algo que o cliente
+            // precise saber. As "reais" ganham uma resposta honesta, porque
+            // aqui a IA já prometeu a foto no texto: deixar passar calado faz
+            // ela mentir ("segue a foto" sem foto nenhuma).
+            if (
+              r.reason === "service_not_found" ||
+              r.reason === "photo_not_found" ||
+              r.reason === "unsupported_format"
+            ) {
               text = "No momento não tenho uma foto desse serviço aqui, mas posso te explicar melhor!";
             } else if (r.reason === "send_failed") {
               text =
