@@ -25,6 +25,7 @@ import { TimeSelect } from "@/components/time-select";
 import { YesNoToggle } from "@/components/toggle-row";
 import { YesNoCatalogEditor } from "@/components/yes-no-catalog-editor";
 import { GENERAL_INFO_LABELS, GENERAL_INFO_NOTE_PLACEHOLDERS } from "@/lib/general-info-labels";
+import { formatDocument, isValidDocument, type DocumentType } from "@/lib/cpf-cnpj";
 
 type CustomFact = { id: string; label: string; value: boolean | null; note?: string };
 
@@ -77,6 +78,9 @@ function WorkspacePage() {
   const [cepError, setCepError] = React.useState<string | null>(null);
   const [phone, setPhone] = React.useState("");
   const [site, setSite] = React.useState("");
+  const [documentType, setDocumentType] = React.useState<DocumentType | "">("");
+  const [documentNumber, setDocumentNumber] = React.useState("");
+  const [legalName, setLegalName] = React.useState("");
   const [generalInfo, setGeneralInfo] = React.useState<Record<string, boolean>>({});
   const [segmentGeneralInfoDefaults, setSegmentGeneralInfoDefaults] = React.useState<string[]>([]);
   const [generalInfoIncludedOverride, setGeneralInfoIncludedOverride] = React.useState<
@@ -123,6 +127,9 @@ function WorkspacePage() {
           business_neighborhood?: string;
           business_city?: string;
           business_state?: string;
+          business_document_type?: DocumentType | null;
+          business_document_number?: string;
+          business_legal_name?: string;
           business_general_info?: Record<string, boolean>;
           business_general_info_included?: string[] | null;
           business_general_info_custom?: CustomFact[];
@@ -160,6 +167,9 @@ function WorkspacePage() {
     setStateUf(p.business_state ?? "");
     if (typeof p.business_phone === "string") setPhone(p.business_phone);
     if (typeof p.business_website === "string") setSite(p.business_website);
+    setDocumentType(p.business_document_type ?? "");
+    setDocumentNumber(p.business_document_number ?? "");
+    setLegalName(p.business_legal_name ?? "");
     setGeneralInfo(
       p.business_general_info && typeof p.business_general_info === "object"
         ? p.business_general_info
@@ -216,6 +226,26 @@ function WorkspacePage() {
     setCepError(null);
     if (digits.length === 8) void lookupCep(digits);
   };
+
+  const handleDocumentTypeChange = (t: DocumentType) => {
+    setDocumentType((prev) => (prev === t ? "" : t));
+    // Re-mascara os dígitos já digitados sobre o novo tipo, sem perder o que
+    // a pessoa digitou (CPF e CNPJ têm formatos diferentes).
+    setDocumentNumber((prev) => (t === documentType ? "" : formatDocument(prev, t)));
+  };
+
+  const handleDocumentNumberChange = (v: string) => {
+    if (!documentType) return;
+    setDocumentNumber(formatDocument(v, documentType));
+  };
+
+  const documentDigits = documentNumber.replace(/\D/g, "");
+  const documentError =
+    documentType && documentDigits.length > 0 && !isValidDocument(documentNumber, documentType)
+      ? documentType === "pessoa_juridica"
+        ? "CNPJ inválido"
+        : "CPF inválido"
+      : null;
 
   const generalInfoIncludedKeys = generalInfoIncludedOverride ?? segmentGeneralInfoDefaults;
   const visibleGeneralInfoKeys = React.useMemo(
@@ -325,6 +355,9 @@ function WorkspacePage() {
             .join(""),
           business_phone: phone.trim(),
           business_website: site.trim(),
+          business_document_type: documentType || null,
+          business_document_number: documentType ? documentNumber.trim() : "",
+          business_legal_name: documentType === "pessoa_juridica" ? legalName.trim() : "",
           business_general_info: generalInfo,
           business_general_info_included: generalInfoIncludedOverride,
           business_general_info_notes: generalInfoNotes,
@@ -355,6 +388,10 @@ function WorkspacePage() {
     }
     if (!name.trim()) {
       toast.error("Informe o nome do negócio");
+      return;
+    }
+    if (documentError) {
+      toast.error(documentError);
       return;
     }
     if (segmentChanged) {
@@ -519,6 +556,77 @@ function WorkspacePage() {
             placeholder="https://"
           />
         </Field>
+      </FieldGroup>
+
+      <FieldGroup
+        label="Dados fiscais"
+        hint="Opcional. Usado só para identificação da empresa — sem emissão de nota fiscal."
+      >
+        <Field label="Tipo de documento">
+          <div className="flex items-center gap-1">
+            {(
+              [
+                { key: "pessoa_fisica" as const, label: "CPF (pessoa física)" },
+                { key: "pessoa_juridica" as const, label: "CNPJ (pessoa jurídica)" },
+              ]
+            ).map((opt) => {
+              const selected = documentType === opt.key;
+              return (
+                <button
+                  key={opt.key}
+                  type="button"
+                  onClick={() => handleDocumentTypeChange(opt.key)}
+                  style={{
+                    height: 28,
+                    padding: "0 12px",
+                    borderRadius: 6,
+                    fontSize: 12,
+                    fontWeight: 500,
+                    border: "1px solid",
+                    borderColor: selected ? "var(--brand-400)" : "var(--border)",
+                    background: selected
+                      ? "color-mix(in oklab, var(--brand-400) 15%, transparent)"
+                      : "transparent",
+                    color: selected ? "var(--brand-400)" : "var(--text-muted)",
+                    cursor: "pointer",
+                  }}
+                >
+                  {opt.label}
+                </button>
+              );
+            })}
+          </div>
+        </Field>
+        <Field label={documentType === "pessoa_juridica" ? "CNPJ" : "CPF"}>
+          <input
+            style={inputStyle}
+            value={documentNumber}
+            onChange={(e) => handleDocumentNumberChange(e.target.value)}
+            placeholder={
+              !documentType
+                ? "Selecione o tipo de documento acima"
+                : documentType === "pessoa_juridica"
+                  ? "00.000.000/0000-00"
+                  : "000.000.000-00"
+            }
+            disabled={!documentType}
+            inputMode="numeric"
+            maxLength={documentType === "pessoa_juridica" ? 18 : 14}
+          />
+          {documentError && (
+            <span style={{ fontSize: 11, color: "var(--danger)" }}>{documentError}</span>
+          )}
+        </Field>
+        {documentType === "pessoa_juridica" && (
+          <Field label="Razão Social">
+            <input
+              style={inputStyle}
+              value={legalName}
+              onChange={(e) => setLegalName(e.target.value)}
+              placeholder="Ex.: Zap Serviços LTDA"
+            />
+          </Field>
+        )}
       </FieldGroup>
 
       <FieldGroup label="Informações gerais">

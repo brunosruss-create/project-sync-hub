@@ -3,6 +3,7 @@ import { z } from "zod";
 import { requireSupabaseAuth } from "@/integrations/supabase/auth-middleware";
 import { supabaseAdmin } from "@/integrations/supabase/client.server";
 import { PRESET_COLORS } from "@/features/services/data";
+import { isValidDocument } from "@/lib/cpf-cnpj";
 
 export type BusinessHours = Record<
   string,
@@ -244,7 +245,7 @@ export const getWorkspaceProfile = createServerFn({ method: "POST" })
     const { data } = await supabaseAdmin
       .from("profiles")
       .select(
-        "business_name,business_description,segment_id,business_hours,business_timezone,welcome_message,ai_working_hours,business_address,business_phone,business_website,business_logo_url,business_cep,business_street,business_address_number,business_address_complement,business_neighborhood,business_city,business_state,business_general_info,business_general_info_included,business_general_info_custom,business_general_info_notes",
+        "business_name,business_description,segment_id,business_hours,business_timezone,welcome_message,ai_working_hours,business_address,business_phone,business_website,business_logo_url,business_cep,business_street,business_address_number,business_address_complement,business_neighborhood,business_city,business_state,business_general_info,business_general_info_included,business_general_info_custom,business_general_info_notes,business_document_type,business_document_number,business_legal_name",
       )
       .eq("id", context.userId)
       .maybeSingle();
@@ -291,6 +292,9 @@ export const getWorkspaceProfile = createServerFn({ method: "POST" })
       business_neighborhood: (data as any)?.business_neighborhood ?? "",
       business_city: (data as any)?.business_city ?? "",
       business_state: (data as any)?.business_state ?? "",
+      business_document_type: (data as any)?.business_document_type ?? null,
+      business_document_number: (data as any)?.business_document_number ?? "",
+      business_legal_name: (data as any)?.business_legal_name ?? "",
       business_general_info:
         (data as any)?.business_general_info && typeof (data as any).business_general_info === "object"
           ? ((data as any).business_general_info as Record<string, boolean>)
@@ -351,6 +355,9 @@ export const updateWorkspaceProfile = createServerFn({ method: "POST" })
         business_neighborhood: z.string().max(120).optional(),
         business_city: z.string().max(120).optional(),
         business_state: z.string().max(4).optional(),
+        business_document_type: z.enum(["pessoa_fisica", "pessoa_juridica"]).optional().nullable(),
+        business_document_number: z.string().max(20).optional().nullable(),
+        business_legal_name: z.string().max(160).optional().nullable(),
         business_general_info: z.record(z.string().max(64), z.boolean()).optional(),
         business_general_info_included: z.array(z.string().max(64)).max(40).optional().nullable(),
         business_general_info_notes: z.record(z.string().max(64), z.string().max(200)).optional(),
@@ -376,6 +383,13 @@ export const updateWorkspaceProfile = createServerFn({ method: "POST" })
       .eq("is_active", true)
       .maybeSingle();
     if (!seg) throw new Error("Segmento inválido ou inativo");
+    // Defesa em profundidade: a validação de dígito verificador já roda no
+    // cliente, mas o servidor não confia nisso — recusa aqui também.
+    if (data.business_document_number && data.business_document_type) {
+      if (!isValidDocument(data.business_document_number, data.business_document_type)) {
+        throw new Error("Documento fiscal inválido");
+      }
+    }
     const update: Record<string, unknown> = {
       business_name: data.business_name,
       segment_id: data.segment_id,
@@ -413,6 +427,13 @@ export const updateWorkspaceProfile = createServerFn({ method: "POST" })
     if (data.business_neighborhood !== undefined) update.business_neighborhood = data.business_neighborhood;
     if (data.business_city !== undefined) update.business_city = data.business_city;
     if (data.business_state !== undefined) update.business_state = data.business_state;
+    if (data.business_document_type !== undefined) {
+      update.business_document_type = data.business_document_type;
+    }
+    if (data.business_document_number !== undefined) {
+      update.business_document_number = data.business_document_number;
+    }
+    if (data.business_legal_name !== undefined) update.business_legal_name = data.business_legal_name;
     const { error } = await supabaseAdmin
       .from("profiles")
       .update(update)
