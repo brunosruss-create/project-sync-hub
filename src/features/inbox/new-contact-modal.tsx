@@ -848,7 +848,7 @@ export function NewContactModal({ open, onClose, onCreated }: Props) {
                 style={{
                   display: "inline-flex", alignItems: "center", gap: 6,
                   height: 34, padding: "0 14px", borderRadius: 8, fontSize: 13, fontWeight: 600,
-                  background: canSubmit ? "#25D366" : "color-mix(in oklab, #25D366 40%, var(--bg-overlay))",
+                  background: canSubmit ? "#3654FF" : "color-mix(in oklab, #3654FF 40%, var(--bg-overlay))",
                   color: "#0a1a10", border: 0, cursor: canSubmit ? "pointer" : "not-allowed",
                   opacity: canSubmit ? 1 : 0.7,
                 }}

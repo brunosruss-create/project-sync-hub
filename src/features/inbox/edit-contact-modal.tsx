@@ -150,7 +150,7 @@ export function EditContactModal({ open, contact, onClose, onSaved }: Props) {
           {/* Header */}
           <div style={{ display: "flex", alignItems: "center", justifyContent: "space-between", padding: "14px 16px 12px", borderBottom: "1px solid var(--border)" }}>
             <div style={{ display: "flex", gap: 10, alignItems: "center" }}>
-              <UserCog size={16} style={{ color: "var(--brand-400, #25D366)" }} />
+              <UserCog size={16} style={{ color: "var(--brand-400, #3654FF)" }} />
               <div>
                 <div style={{ fontSize: 14, fontWeight: 600, color: "var(--text-primary)" }}>Editar contato</div>
                 <div style={{ fontSize: 11, color: "var(--text-muted)", marginTop: 1 }} className="font-mono">
@@ -252,7 +252,7 @@ export function EditContactModal({ open, contact, onClose, onSaved }: Props) {
               style={{
                 display: "inline-flex", alignItems: "center", gap: 6,
                 height: 34, padding: "0 14px", borderRadius: 8, fontSize: 13, fontWeight: 600,
-                background: !saving && name.trim() ? "#25D366" : "color-mix(in oklab, #25D366 40%, var(--bg-overlay))",
+                background: !saving && name.trim() ? "#3654FF" : "color-mix(in oklab, #3654FF 40%, var(--bg-overlay))",
                 color: "#0a1a10", border: 0,
                 cursor: !saving && name.trim() ? "pointer" : "not-allowed",
                 opacity: !saving && name.trim() ? 1 : 0.7,

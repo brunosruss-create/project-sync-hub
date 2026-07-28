@@ -115,7 +115,7 @@ export function ContactCard({ contact, onClick, isOverlay, isSelected }: Props) 
             height: 18,
             padding: unread > 9 ? "0 5px" : 0,
             borderRadius: 9,
-            background: "var(--brand-400, #25D366)",
+            background: "var(--brand-400, #3654FF)",
             color: "#fff",
             fontSize: 10,
             fontWeight: 700,

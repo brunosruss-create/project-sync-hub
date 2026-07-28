@@ -919,8 +919,8 @@ function InboxPage() {
 
       {highlightId && (
         <style>{`
-          @keyframes zfPulseRing { 0%,100% { box-shadow: 0 0 0 0 var(--brand-400, #25C880); } 50% { box-shadow: 0 0 0 4px color-mix(in oklab, var(--brand-400, #25C880) 35%, transparent); } }
-          [data-contact-id="${highlightId}"] { animation: zfPulseRing 1s ease-in-out 2; border-color: var(--brand-400, #25C880) !important; }
+          @keyframes zfPulseRing { 0%,100% { box-shadow: 0 0 0 0 var(--brand-400, #3654FF); } 50% { box-shadow: 0 0 0 4px color-mix(in oklab, var(--brand-400, #3654FF) 35%, transparent); } }
+          [data-contact-id="${highlightId}"] { animation: zfPulseRing 1s ease-in-out 2; border-color: var(--brand-400, #3654FF) !important; }
         `}</style>
       )}
     </div>

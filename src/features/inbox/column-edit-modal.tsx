@@ -225,7 +225,7 @@ export function ColumnEditModal({
                     style={{
                       width: 34, height: 34, borderRadius: 6,
                       background: emoji === e ? "var(--bg-overlay)" : "var(--bg-base)",
-                      border: emoji === e ? "1px solid var(--brand-400, #25D366)" : "1px solid var(--border)",
+                      border: emoji === e ? "1px solid var(--brand-400, #3654FF)" : "1px solid var(--border)",
                       cursor: "pointer", fontSize: 18,
                     }}
                   >{e}</button>
@@ -308,7 +308,7 @@ export function ColumnEditModal({
               style={{
                 display: "inline-flex", alignItems: "center", gap: 6,
                 height: 34, padding: "0 14px", borderRadius: 8, fontSize: 13, fontWeight: 600,
-                background: !saving && label.trim() ? "#25D366" : "color-mix(in oklab, #25D366 40%, var(--bg-overlay))",
+                background: !saving && label.trim() ? "#3654FF" : "color-mix(in oklab, #3654FF 40%, var(--bg-overlay))",
                 color: "#0a1a10", border: 0,
                 cursor: !saving && label.trim() ? "pointer" : "not-allowed",
                 opacity: !saving && label.trim() ? 1 : 0.7,

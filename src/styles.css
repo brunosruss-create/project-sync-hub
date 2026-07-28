@@ -37,10 +37,12 @@
 }
 
 :root {
-  /* Brand */
-  --brand-50: #f0fff8;
-  --brand-400: #25c880;
-  --brand-600: #0e7a4e;
+  /* Brand — azul confiante (ref. Intercom/Respond.io), desacoplado do verde
+     semântico de sucesso abaixo. Antes os dois eram o mesmo #25c880: dava
+     pra confundir "ação primária" com "estado de sucesso" na mesma cor. */
+  --brand-50: #eef1ff;
+  --brand-400: #3654ff;
+  --brand-600: #2a44e0;
 
   /* Grays */
   --gray-0: #ffffff;
