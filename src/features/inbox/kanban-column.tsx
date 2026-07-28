@@ -1,27 +1,33 @@
 import * as React from "react";
 import { useDroppable } from "@dnd-kit/core";
-import { MoreVertical } from "lucide-react";
+import { MoreVertical, Clock, MessageCircle, CalendarCheck, AlertTriangle, Inbox, type LucideIcon } from "lucide-react";
 import { ContactCard } from "./contact-card";
 import type { ContactCard as Contact, KanbanColumnDef } from "./data";
 
-const EMPTY_STATES: Record<string, { icon: string; title: string; subtitle: string }> = {
+// Ícone de linha só pras 4 colunas de sistema — colunas customizadas pelo
+// usuário continuam usando o emoji livre que ele escolheu (EMPTY_STATES não
+// cobre slug custom mesmo, cai no fallback Inbox abaixo).
+export const SYSTEM_COLUMN_ICON: Record<string, LucideIcon> = {
+  waiting: Clock,
+  in_progress: MessageCircle,
+  scheduled: CalendarCheck,
+  urgent: AlertTriangle,
+};
+
+const EMPTY_STATES: Record<string, { title: string; subtitle: string }> = {
   waiting: {
-    icon: "💬",
     title: "Nenhuma conversa aguardando",
     subtitle: "Mensagens novas do WhatsApp aparecem aqui automaticamente.",
   },
   in_progress: {
-    icon: "🎧",
     title: "Sem atendimentos em andamento",
     subtitle: "Mova uma conversa para cá quando começar a atender.",
   },
   scheduled: {
-    icon: "📅",
     title: "Nenhum agendamento confirmado",
     subtitle: "Contatos com horário marcado aparecem aqui.",
   },
   urgent: {
-    icon: "✅",
     title: "Nenhuma urgência no momento",
     subtitle: "Marque conversas críticas como urgente quando necessário.",
   },
@@ -29,10 +35,10 @@ const EMPTY_STATES: Record<string, { icon: string; title: string; subtitle: stri
 
 function ColumnEmptyState({ slug }: { slug: string }) {
   const state = EMPTY_STATES[slug] ?? {
-    icon: "📭",
     title: "Nenhum card aqui",
     subtitle: "Arraste conversas para esta coluna.",
   };
+  const Icon = SYSTEM_COLUMN_ICON[slug] ?? Inbox;
   return (
     <div
       style={{
@@ -46,7 +52,7 @@ function ColumnEmptyState({ slug }: { slug: string }) {
         opacity: 0.5,
       }}
     >
-      <span style={{ fontSize: 28, lineHeight: 1 }}>{state.icon}</span>
+      <Icon size={26} style={{ color: "var(--text-muted)" }} />
       <p style={{ fontSize: 13, fontWeight: 500, marginTop: 4, color: "var(--text-primary)" }}>
         {state.title}
       </p>
@@ -69,7 +75,8 @@ type Props = {
 };
 
 export function KanbanColumn({ column, contacts, onCardClick }: Props) {
-  const { id, slug, label, emoji, color } = column;
+  const { id, slug, label, emoji, color, is_system } = column;
+  const SystemIcon = is_system ? SYSTEM_COLUMN_ICON[slug] : undefined;
   const { setNodeRef, isOver } = useDroppable({ id: slug });
   const prevCount = React.useRef(contacts.length);
   const [bump, setBump] = React.useState(false);
@@ -125,7 +132,11 @@ export function KanbanColumn({ column, contacts, onCardClick }: Props) {
             color: "var(--text-primary)",
           }}
         >
-          <span>{emoji}</span>
+          {SystemIcon ? (
+            <SystemIcon size={13} style={{ color, flexShrink: 0 }} />
+          ) : (
+            <span>{emoji}</span>
+          )}
           {label}
         </div>
         <div className="flex items-center" style={{ gap: 6 }}>
