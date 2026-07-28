@@ -1,7 +1,12 @@
 import * as React from "react";
 import { createFileRoute } from "@tanstack/react-router";
-import { Plus, Search, Pencil, Archive, X, Check, MoreVertical, Trash2 } from "lucide-react";
+import { Plus, Search, Pencil, Archive, X, Check, MoreVertical, Trash2, Wrench, AlertTriangle } from "lucide-react";
 import { ConfirmDialog } from "@/components/confirm-dialog";
+import { Modal } from "@/components/ui/modal";
+import { Button } from "@/components/ui/button";
+import { Badge } from "@/components/ui/badge";
+import { Card } from "@/components/ui/card";
+import { EmptyState as SharedEmptyState } from "@/components/empty-state";
 import { notify } from "@/lib/notify";
 import { supabase } from "@/integrations/supabase/client";
 import {
@@ -25,6 +30,12 @@ import { useWorkspaceOwnerId } from "@/hooks/use-workspace-owner";
 import { uploadChatMedia } from "@/lib/chat-media";
 
 const MAX_SERVICE_PHOTOS = 6;
+
+const SERVICE_STATUS_VARIANT: Record<ServiceStatus, "success" | "neutral" | "warning"> = {
+  active: "success",
+  inactive: "neutral",
+  draft: "warning",
+};
 
 export const Route = createFileRoute("/_authenticated/services")({
   component: () => (
@@ -289,7 +300,20 @@ function ServicesPage() {
 
       {/* Grid */}
       {filtered.length === 0 ? (
-        <EmptyState onCreate={() => setEditing({ mode: "create" })} />
+        query ? (
+          <SharedEmptyState
+            title={`Nenhum serviço encontrado para "${query}"`}
+            description="Tente outro termo ou limpe a busca."
+            action={{ label: "Limpar busca", onClick: () => setQuery("") }}
+          />
+        ) : (
+          <SharedEmptyState
+            icon={<Wrench size={40} style={{ color: "var(--brand-400)" }} aria-hidden />}
+            title="Nenhum serviço cadastrado ainda"
+            description="Comece criando seu primeiro serviço — a IA do WhatsApp usa o catálogo pra responder seus clientes. Sem nenhum serviço, ela redireciona pra atendimento humano."
+            action={{ label: "Novo Serviço", onClick: () => setEditing({ mode: "create" }) }}
+          />
+        )
       ) : (
         <div
           style={{
@@ -369,13 +393,10 @@ function ServiceCard({
   }, [menuOpen]);
 
   return (
-    <div
+    <Card
       style={{
         position: "relative",
-        background: "var(--bg-surface)",
-        border: "1px solid var(--border)",
         borderLeft: `3px solid ${accent}`,
-        borderRadius: 8,
         padding: 14,
         display: "flex",
         flexDirection: "column",
@@ -389,21 +410,9 @@ function ServiceCard({
         className="flex items-center"
         style={{ position: "absolute", top: 10, right: 10, gap: 6 }}
       >
-        <span
-          style={{
-            fontSize: 10,
-            fontWeight: 500,
-            padding: "2px 7px",
-            borderRadius: 999,
-            color: STATUS_COLOR[service.status],
-            background: `color-mix(in oklab, ${STATUS_COLOR[service.status]} 12%, transparent)`,
-            border: `1px solid color-mix(in oklab, ${STATUS_COLOR[service.status]} 30%, transparent)`,
-            textTransform: "uppercase",
-            letterSpacing: "0.04em",
-          }}
-        >
+        <Badge variant={SERVICE_STATUS_VARIANT[service.status]}>
           {STATUS_LABEL[service.status]}
-        </span>
+        </Badge>
         <div ref={menuRef} style={{ position: "relative" }}>
           <button
             type="button"
@@ -532,12 +541,12 @@ function ServiceCard({
               textAlign: "left",
             }}
           >
-            <span aria-hidden>⚠</span>
+            <AlertTriangle size={12} aria-hidden />
             Sem descrição — a IA não terá contexto para falar deste serviço
           </button>
         )}
       </div>
-    </div>
+    </Card>
   );
 }
 
@@ -606,46 +615,6 @@ function MenuItem({
       {icon}
       {label}
     </button>
-  );
-}
-
-function EmptyState({ onCreate }: { onCreate: () => void }) {
-  return (
-    <div
-      style={{
-        padding: 48,
-        border: "1px dashed var(--border-strong)",
-        borderRadius: 12,
-        textAlign: "center",
-        color: "var(--text-muted)",
-      }}
-    >
-      <div style={{ fontSize: 32, marginBottom: 8 }}>🛠️</div>
-      <div style={{ fontSize: 14, color: "var(--text-primary)", fontWeight: 500 }}>
-        Nenhum serviço encontrado
-      </div>
-      <div style={{ fontSize: 12, marginTop: 4 }}>
-        Comece criando seu primeiro serviço para o catálogo.
-      </div>
-      <div
-        style={{
-          fontSize: 11,
-          marginTop: 8,
-          maxWidth: 420,
-          marginLeft: "auto",
-          marginRight: "auto",
-          lineHeight: 1.5,
-          color: "var(--text-muted)",
-        }}
-      >
-        💡 A IA do WhatsApp usa estes serviços e suas descrições para responder seus clientes. Sem
-        nenhum serviço cadastrado, ela redireciona para atendimento humano.
-      </div>
-      <button type="button" onClick={onCreate} className="btn-primary" style={{ marginTop: 16 }}>
-        <Plus size={14} />
-        Novo Serviço
-      </button>
-    </div>
   );
 }
 
@@ -771,70 +740,29 @@ function ServiceModal({
   };
 
   return (
-    <div
-      onClick={onClose}
-      style={{
-        position: "fixed",
-        inset: 0,
-        background: "rgba(0,0,0,0.45)",
-        zIndex: 60,
-        display: "flex",
-        alignItems: "center",
-        justifyContent: "center",
-        padding: 16,
-        animation: "fadeSlideIn 150ms ease-out",
+    <Modal
+      open
+      onOpenChange={(o) => {
+        if (!o) onClose();
       }}
+      title={initial ? "Editar serviço" : "Novo serviço"}
+      description="Configure os detalhes que aparecerão no catálogo."
+      size="md"
+      footer={
+        <>
+          <Button type="button" variant="outline" onClick={onClose}>
+            Cancelar
+          </Button>
+          <Button type="submit" form="service-form">
+            <Check size={14} />
+            {initial ? "Salvar alterações" : "Criar serviço"}
+          </Button>
+        </>
+      }
     >
-      <form
-        onClick={(e) => e.stopPropagation()}
-        onSubmit={submit}
-        style={{
-          width: "100%",
-          maxWidth: 520,
-          maxHeight: "calc(100vh - 32px)",
-          background: "var(--bg-surface)",
-          border: "1px solid var(--border)",
-          borderRadius: 12,
-          display: "flex",
-          flexDirection: "column",
-          boxShadow: "0 20px 50px rgba(0,0,0,0.25)",
-          animation: "fadeSlideIn 200ms ease-out",
-        }}
-      >
-        {/* Header */}
-        <div
-          className="flex items-center justify-between"
-          style={{ padding: "14px 16px", borderBottom: "1px solid var(--border)" }}
-        >
-          <div>
-            <div style={{ fontSize: 14, fontWeight: 600 }}>
-              {initial ? "Editar serviço" : "Novo serviço"}
-            </div>
-            <div style={{ fontSize: 11, color: "var(--text-muted)", marginTop: 1 }}>
-              Configure os detalhes que aparecerão no catálogo.
-            </div>
-          </div>
-          <button
-            type="button"
-            onClick={onClose}
-            aria-label="Fechar"
-            className="inline-flex items-center justify-center"
-            style={{
-              width: 30,
-              height: 30,
-              borderRadius: 6,
-              background: "transparent",
-              color: "var(--text-muted)",
-            }}
-          >
-            <X size={16} />
-          </button>
-        </div>
-
-        {/* Body */}
-        <div className="flex-1 overflow-y-auto" style={{ padding: 16 }}>
-          <div className="flex flex-col" style={{ gap: 12 }}>
-            <ModalField label="Nome do serviço" required>
+      <form id="service-form" onSubmit={submit}>
+        <div className="flex flex-col" style={{ gap: 12 }}>
+          <ModalField label="Nome do serviço" required>
               <input
                 value={name}
                 onChange={(e) => setName(e.target.value.slice(0, 100))}
@@ -1112,41 +1040,9 @@ function ServiceModal({
                 ))}
               </div>
             </ModalField>
-          </div>
-        </div>
-
-        {/* Footer */}
-        <div
-          className="flex items-center justify-end"
-          style={{
-            padding: "12px 16px",
-            borderTop: "1px solid var(--border)",
-            gap: 8,
-          }}
-        >
-          <button
-            type="button"
-            onClick={onClose}
-            style={{
-              height: 32,
-              padding: "0 12px",
-              borderRadius: 6,
-              border: "1px solid var(--border-strong)",
-              background: "transparent",
-              color: "var(--text-primary)",
-              fontSize: 13,
-              fontWeight: 500,
-            }}
-          >
-            Cancelar
-          </button>
-          <button type="submit" className="btn-primary">
-            <Check size={14} />
-            {initial ? "Salvar alterações" : "Criar serviço"}
-          </button>
         </div>
       </form>
-    </div>
+    </Modal>
   );
 }
 
