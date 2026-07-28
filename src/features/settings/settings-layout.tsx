@@ -10,6 +10,7 @@ import {
   Briefcase,
   Bot,
 } from "lucide-react";
+import { FieldHint } from "@/components/field-hint";
 
 type SidebarEntry =
   | { kind: "section"; label: string }
@@ -179,11 +180,7 @@ export function FieldGroup({
       >
         {label}
       </legend>
-      {hint && (
-        <p style={{ fontSize: 12, color: "var(--text-muted)", marginBottom: 12 }}>
-          {hint}
-        </p>
-      )}
+      {hint && <FieldHint style={{ marginBottom: 12 }}>{hint}</FieldHint>}
       <div className="flex flex-col" style={{ gap: 12 }}>
         {children}
       </div>
@@ -208,9 +205,7 @@ export function Field({
         </span>
       )}
       {children}
-      {hint && (
-        <span style={{ fontSize: 11, color: "var(--text-muted)" }}>{hint}</span>
-      )}
+      {hint && <FieldHint style={{ fontSize: 11 }}>{hint}</FieldHint>}
     </label>
   );
 }

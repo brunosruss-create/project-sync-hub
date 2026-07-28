@@ -1,3 +1,5 @@
+import { FieldHint } from "@/components/field-hint";
+
 export function ToggleRow({
   label,
   value,
@@ -13,9 +15,7 @@ export function ToggleRow({
     <div className="flex items-start justify-between gap-4" style={{ padding: "8px 0" }}>
       <div>
         <div style={{ fontSize: 13, fontWeight: 500 }}>{label}</div>
-        {hint && (
-          <div style={{ fontSize: 12, color: "var(--text-muted)", marginTop: 2 }}>{hint}</div>
-        )}
+        {hint && <FieldHint style={{ marginTop: 2 }}>{hint}</FieldHint>}
       </div>
       <SmallToggle value={value} onChange={onChange} />
     </div>
@@ -109,9 +109,7 @@ export function YesNoRow({
     <div className="flex items-start justify-between gap-4" style={{ padding: "8px 0" }}>
       <div>
         <div style={{ fontSize: 13, fontWeight: 500 }}>{label}</div>
-        {hint && (
-          <div style={{ fontSize: 12, color: "var(--text-muted)", marginTop: 2 }}>{hint}</div>
-        )}
+        {hint && <FieldHint style={{ marginTop: 2 }}>{hint}</FieldHint>}
       </div>
       <YesNoToggle value={value} onChange={onChange} />
     </div>

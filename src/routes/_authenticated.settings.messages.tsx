@@ -10,6 +10,7 @@ import {
   card,
 } from "@/features/settings/settings-layout";
 import { ManagerOnly } from "@/components/manager-only";
+import { HintCallout } from "@/components/field-hint";
 import { notify } from "@/lib/notify";
 import {
   getMessageTemplates,
@@ -221,18 +222,11 @@ function MessageCard({
       </div>
 
       {meta.key === "welcome" && aiEnabled && value.enabled && (
-        <div
-          style={{
-            fontSize: 12,
-            color: "var(--text-secondary)",
-            background: "color-mix(in oklab, var(--brand-400) 10%, var(--bg-overlay))",
-            border: "1px solid var(--border)",
-            borderRadius: 8,
-            padding: "8px 10px",
-            marginBottom: 12,
-          }}
-        >
-          💡 A IA está ativa — esta mensagem <strong>não será enviada</strong>. A própria IA faz a saudação usando o nome do assistente e do negócio configurados em <em>Agente IA</em>.
+        <div style={{ marginBottom: 12 }}>
+          <HintCallout variant="warning">
+            A IA está ativa — esta mensagem <strong>não será enviada</strong>. A própria IA faz a
+            saudação usando o nome do assistente e do negócio configurados em <em>Agente IA</em>.
+          </HintCallout>
         </div>
       )}
 

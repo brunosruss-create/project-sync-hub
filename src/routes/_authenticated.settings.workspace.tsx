@@ -13,6 +13,7 @@ import {
   buttonPrimary,
   buttonSecondary,
 } from "@/features/settings/settings-layout";
+import { HintCallout } from "@/components/field-hint";
 import {
   listActiveSegments,
   getWorkspaceProfile,
@@ -467,22 +468,12 @@ function WorkspacePage() {
       </FieldGroup>
 
       <FieldGroup label="Contato">
-        <div
-          style={{
-            padding: "10px 12px",
-            borderRadius: 8,
-            background: "color-mix(in oklab, var(--brand-400) 8%, transparent)",
-            border: "1px solid color-mix(in oklab, var(--brand-400) 20%, transparent)",
-            fontSize: 12,
-            color: "var(--text-primary)",
-            lineHeight: 1.5,
-          }}
-        >
-          💡 Esses dados podem ser informados pela IA quando o cliente perguntar
+        <HintCallout>
+          Esses dados podem ser informados pela IA quando o cliente perguntar
           (endereço, site, telefone, e as informações gerais logo abaixo). Mantenha-os
           atualizados — você controla se a IA pode divulgá-los em{" "}
           <strong>Agente IA → Comportamento</strong>.
-        </div>
+        </HintCallout>
 
         <Field label="CEP" hint={cepError ?? (cepLoading ? "Buscando endereço…" : undefined)}>
           <input

@@ -4,6 +4,7 @@ import { supabase } from "@/integrations/supabase/client";
 import { useAuth } from "@/hooks/use-auth";
 import { notify } from "@/lib/notify";
 import { type ContactCard as Contact, formatPhone } from "./data";
+import { FieldHint } from "@/components/field-hint";
 
 interface Props {
   open: boolean;
@@ -229,10 +230,9 @@ export function EditContactModal({ open, contact, onClose, onSaved }: Props) {
               />
             </div>
 
-            <div style={{ fontSize: 11, color: "var(--text-muted)" }}>
-              💡 Telefone e coluna do Kanban não podem ser editados aqui.
-              Para mover, arraste o card.
-            </div>
+            <FieldHint>
+              Telefone e coluna do Kanban não podem ser editados aqui. Para mover, arraste o card.
+            </FieldHint>
           </div>
 
           {/* Footer */}

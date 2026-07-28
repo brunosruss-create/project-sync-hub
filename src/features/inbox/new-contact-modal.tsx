@@ -5,6 +5,7 @@ import { useAuth } from "@/hooks/use-auth";
 import { useWorkspaceOwnerId } from "@/hooks/use-workspace-owner";
 import { useProfile } from "@/hooks/use-profile";
 import { notify } from "@/lib/notify";
+import { FieldHint } from "@/components/field-hint";
 import {
   COLUMNS,
   COLUMN_COLOR,
@@ -615,9 +616,9 @@ export function NewContactModal({ open, onClose, onCreated }: Props) {
                 placeholder="Ex: Maria Silva"
                 style={textInput}
               />
-              <div style={{ marginTop: 4, fontSize: 11, color: "var(--text-muted)" }}>
-                💡 Você pode editar depois — o importante é iniciar a conversa.
-              </div>
+              <FieldHint style={{ marginTop: 4, fontSize: 11 }}>
+                Você pode editar depois — o importante é iniciar a conversa.
+              </FieldHint>
             </div>
 
             {/* Coluna inicial */}
