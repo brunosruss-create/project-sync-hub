@@ -208,9 +208,10 @@ export function ContactCard({ contact, onClick, isOverlay, isSelected }: Props) 
 
       {/* Linha 3: preview da última mensagem */}
       <div
-        className="truncate"
+        className="truncate flex items-center"
         style={{
           marginTop: 8,
+          gap: 4,
           fontSize: 13,
           fontWeight: 400,
           color: "var(--text-muted)",
@@ -218,7 +219,16 @@ export function ContactCard({ contact, onClick, isOverlay, isSelected }: Props) 
           lineHeight: 1.45,
         }}
       >
-        {formatMessagePreview(contact.lastMessage, contact.lastDirection ?? null)}
+        {(() => {
+          const preview = formatMessagePreview(contact.lastMessage, contact.lastDirection ?? null);
+          const Icon = preview.icon;
+          return (
+            <>
+              {Icon && <Icon size={12} style={{ flexShrink: 0 }} />}
+              <span className="truncate">{preview.label}</span>
+            </>
+          );
+        })()}
       </div>
 
       {/* Linha 4: tempo relativo + tags */}

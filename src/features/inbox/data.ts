@@ -1,3 +1,6 @@
+import type { LucideIcon } from "lucide-react";
+import { detectMediaKind, mediaTypeIcon, mediaKindLabel } from "@/lib/media-type-icon";
+
 // KanbanColumnId é um slug livre (string), pois colunas são dinâmicas por usuário.
 export type KanbanColumnId = string;
 
@@ -105,16 +108,18 @@ export function formatPhone(phone: string): string {
   return digits ? `+${digits}` : phone;
 }
 
+export type MessagePreview = { icon: LucideIcon | null; label: string };
+
+/** Ícone de linha (nunca emoji) + texto — quem renderiza decide o tamanho/cor do ícone. */
 export function formatMessagePreview(
   msg: string,
   direction?: "inbound" | "outbound" | null,
-): string {
+): MessagePreview {
   const text = (msg ?? "").trim();
-  if (/^\[image\]|\.(png|jpe?g|webp|gif)$/i.test(text)) return "📷 Imagem";
-  if (/^\[audio\]|\.(ogg|mp3|m4a|wav)$/i.test(text)) return "🎙️ Mensagem de voz";
-  if (/^\[file\]|\.(pdf|docx?|xlsx?|zip)$/i.test(text)) return "📄 Documento";
-  if (direction === "outbound") return `Você: ${text}`;
-  return text;
+  const kind = detectMediaKind(text);
+  if (kind) return { icon: mediaTypeIcon(kind), label: mediaKindLabel(kind) };
+  if (direction === "outbound") return { icon: null, label: `Você: ${text}` };
+  return { icon: null, label: text };
 }
 
 export function initials(name: string) {

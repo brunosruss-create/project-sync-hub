@@ -85,11 +85,15 @@ function detectFromMessageType(
   }
   return null;
 }
+// Sem emoji de propósito: este texto é GRAVADO em messages.content como
+// fallback de preview quando a mídia não tem legenda. O ícone visual vem
+// de mediaTypeIcon() na hora de renderizar, não do texto persistido — assim
+// não precisa de backfill nas mensagens antigas que já têm emoji salvo.
 const KIND_LABEL: Record<MediaKind, string> = {
-  image: "📷 Imagem",
-  audio: "🎵 Áudio",
-  video: "🎬 Vídeo",
-  document: "📎 Documento",
+  image: "Imagem",
+  audio: "Áudio",
+  video: "Vídeo",
+  document: "Documento",
 };
 
 const STATUS_RANK: Record<string, number> = { sent: 1, delivered: 2, read: 3 };

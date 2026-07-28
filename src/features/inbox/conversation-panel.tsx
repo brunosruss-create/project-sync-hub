@@ -19,6 +19,7 @@ import {
 } from "lucide-react";
 import { Composer } from "@/components/chat/Composer";
 import { type ContactCard as Contact, formatRelative, formatPhone, initials } from "./data";
+import { mediaTypeIcon, mediaKindLabel, type MediaKind } from "@/lib/media-type-icon";
 import { ContactAvatar } from "./contact-avatar";
 import { supabase } from "@/integrations/supabase/client";
 import { useAuth } from "@/hooks/use-auth";
@@ -1034,12 +1035,15 @@ function QuotedPreview({
   isMe: boolean;
 }) {
   const accent = isMe ? "var(--brand-400)" : "#9aa3af";
-  const typeLabel =
-    preview.message_type === "image" ? "📷 Foto"
-    : preview.message_type === "video" ? "🎥 Vídeo"
-    : preview.message_type === "audio" ? "🎤 Áudio"
-    : preview.message_type === "document" ? "📄 Documento"
-    : null;
+  const previewKind =
+    preview.message_type === "image" ||
+    preview.message_type === "video" ||
+    preview.message_type === "audio" ||
+    preview.message_type === "document"
+      ? (preview.message_type as MediaKind)
+      : null;
+  const TypeIcon = previewKind ? mediaTypeIcon(previewKind) : null;
+  const typeLabel = previewKind ? mediaKindLabel(previewKind) : null;
   return (
     <div
       style={{
@@ -1056,14 +1060,17 @@ function QuotedPreview({
         {preview.author || (isMe ? "Você" : "")}
       </div>
       <div
+        className="flex items-center"
         style={{
+          gap: 4,
           color: "var(--text-muted)",
           overflow: "hidden",
           textOverflow: "ellipsis",
           whiteSpace: "nowrap",
         }}
       >
-        {typeLabel || preview.content || ""}
+        {TypeIcon && <TypeIcon size={12} style={{ flexShrink: 0 }} />}
+        <span className="truncate">{typeLabel || preview.content || ""}</span>
       </div>
     </div>
   );

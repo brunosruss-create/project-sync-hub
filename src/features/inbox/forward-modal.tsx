@@ -6,6 +6,7 @@ import { useWorkspaceOwnerId } from "@/hooks/use-workspace-owner";
 import { toast } from "sonner";
 import { useServerFn } from "@tanstack/react-start";
 import { sendWhatsAppMessage, sendWhatsAppMedia, sendWhatsAppAudio } from "@/lib/evolution.functions";
+import { mediaTypeIcon, mediaKindLabel, type MediaKind } from "@/lib/media-type-icon";
 
 export interface ForwardSource {
   id: string;
@@ -215,19 +216,29 @@ export function ForwardModal({ open, source, excludeContactId, onClose }: Props)
             overflow: "hidden",
             textOverflow: "ellipsis",
             whiteSpace: "nowrap",
+            display: "flex",
+            alignItems: "center",
+            gap: 5,
           }}
         >
-          {source.message_type === "text"
-            ? source.content || "(vazio)"
-            : source.message_type === "image"
-              ? `📷 ${source.media_name ?? "Imagem"}`
-              : source.message_type === "video"
-                ? `🎥 ${source.media_name ?? "Vídeo"}`
-                : source.message_type === "audio"
-                  ? `🎤 Áudio`
-                  : source.message_type === "document"
-                    ? `📄 ${source.media_name ?? "Documento"}`
-                    : source.content}
+          {(() => {
+            const kind =
+              source.message_type === "image" ||
+              source.message_type === "video" ||
+              source.message_type === "audio" ||
+              source.message_type === "document"
+                ? (source.message_type as MediaKind)
+                : null;
+            if (!kind) return source.content || "(vazio)";
+            const Icon = mediaTypeIcon(kind);
+            const label = kind === "audio" ? "Áudio" : (source.media_name ?? mediaKindLabel(kind));
+            return (
+              <>
+                <Icon size={13} style={{ flexShrink: 0 }} />
+                <span className="truncate">{label}</span>
+              </>
+            );
+          })()}
         </div>
 
         {/* Search */}

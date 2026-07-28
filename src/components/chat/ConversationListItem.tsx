@@ -86,14 +86,24 @@ export function ConversationListItem({
           style={{ gap: 6, marginTop: 2 }}
         >
           <span
-            className="truncate flex-1"
+            className="truncate flex-1 flex items-center"
             style={{
+              gap: 4,
               fontSize: 12.5,
               color: unread > 0 ? "var(--text-primary)" : "var(--text-muted)",
               fontWeight: unread > 0 ? 500 : 400,
             }}
           >
-            {formatMessagePreview(contact.lastMessage, contact.lastDirection)}
+            {(() => {
+              const preview = formatMessagePreview(contact.lastMessage, contact.lastDirection);
+              const Icon = preview.icon;
+              return (
+                <>
+                  {Icon && <Icon size={12} style={{ flexShrink: 0 }} />}
+                  <span className="truncate">{preview.label}</span>
+                </>
+              );
+            })()}
           </span>
           {unread > 0 && (
             <span
