@@ -330,7 +330,9 @@ export async function sendZernioToContact(params: {
     body.attachmentUrl = params.attachment.url;
     body.attachmentType = mimeToAttachmentType(params.attachment.mime, params.attachment.voiceNote);
     if (params.attachment.name) body.attachmentName = params.attachment.name;
-    if (params.attachment.voiceNote) body.voiceNote = true;
+    // Instagram não suporta voiceNote (não tem conceito de "nota de voz" no DM).
+    // Mandar o flag causa rejeição da API. Áudio é enviado como attachment normal.
+    if (params.attachment.voiceNote && params.channel !== "instagram") body.voiceNote = true;
   }
   if (params.replyToExternalId) body.replyTo = params.replyToExternalId;
 

@@ -520,12 +520,18 @@ export function ConversationPanel({
   }, [contact, hasMore, messages]);
 
   const buildQuoted = (m: Message | null) => {
-    if (!m || !contact?.phone || !m.whatsapp_message_id) return undefined;
-    const number = String(contact.phone).replace(/\D/g, "");
+    if (!m || !m.whatsapp_message_id) return undefined;
+    // Canais Zernio (Instagram/WhatsApp Cloud) não têm phone obrigatório nem
+    // remoteJid — o envio via Zernio usa apenas o messageId como replyTo.
+    // Evolution precisa de phone + remoteJid pra montar a citação no Baileys.
+    const isZernioChannel =
+      contact?.channel === "whatsapp_cloud" || contact?.channel === "instagram";
+    if (!isZernioChannel && !contact?.phone) return undefined;
+    const number = contact?.phone ? String(contact.phone).replace(/\D/g, "") : "";
     return {
       messageId: m.whatsapp_message_id,
       fromMe: m.direction === "outbound",
-      remoteJid: `${number}@s.whatsapp.net`,
+      remoteJid: number ? `${number}@s.whatsapp.net` : "",
       preview: {
         content: m.content || m.media_name || "",
         message_type: m.message_type,
