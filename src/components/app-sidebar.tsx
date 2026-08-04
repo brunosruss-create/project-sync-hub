@@ -131,45 +131,42 @@ export function AppSidebar() {
           overflow: "hidden",
         }}
       >
-        {/* Logo */}
+        {/* Identidade: logo ZapFlow + workspace do cliente num bloco coeso,
+            sem régua de separação — hierarquia vem do tamanho/espaçamento. */}
         <div
-          className="flex items-center justify-center"
-          style={{
-            height: 48,
-            borderBottom: "1px solid var(--border)",
-          }}
+          className="flex flex-col items-center"
+          style={{ padding: "14px 8px 10px", gap: 6 }}
         >
+          {/* Logo do ZapFlow */}
           <div
             className="flex items-center justify-center"
             style={{
-              width: 24,
-              height: 24,
+              width: 26,
+              height: 26,
               borderRadius: "var(--radius-pill)",
               background: "var(--brand-400)",
               color: "#fff",
               fontSize: 13,
-              fontWeight: 600,
+              fontWeight: 700,
               flexShrink: 0,
             }}
           >
             Z
           </div>
-        </div>
-
-        {/* Workspace */}
-        <div style={{ padding: "8px" }}>
+          {/* Workspace do cliente */}
           <Tooltip>
             <TooltipTrigger asChild>
               <div
                 className="flex items-center justify-center"
                 style={{
-                  width: 36,
-                  height: 36,
-                  margin: "0 auto",
+                  width: 32,
+                  height: 32,
                   borderRadius: "var(--radius-pill)",
                   border: "1px solid var(--border)",
-                  fontSize: 12,
+                  fontSize: 11,
                   fontWeight: 600,
+                  color: "var(--text-muted)",
+                  cursor: "default",
                 }}
               >
                 {businessName.charAt(0).toUpperCase()}
@@ -241,7 +238,6 @@ export function AppSidebar() {
         <div
           style={{
             padding: "12px 8px",
-            borderTop: "1px solid var(--border)",
             display: "flex",
             alignItems: "center",
             justifyContent: "center",
