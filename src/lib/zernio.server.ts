@@ -102,10 +102,13 @@ export type ZernioConversation = {
 
 export type ZernioSendBody = {
   accountId: string;
-  text?: string;
-  attachments?: Array<{ url: string; type?: string; voiceNote?: boolean }>;
+  message?: string; // texto (campo correto da API — NÃO é "text")
+  attachmentUrl?: string;
+  attachmentType?: "image" | "video" | "audio" | "file";
+  attachmentName?: string;
+  voiceNote?: boolean;
   replyTo?: string; // platformMessageId da mensagem citada
-  // Instagram: permite responder fora da janela de 24h (até 7 dias).
+  // Instagram/Facebook: enviar fora da janela de 24h (HUMAN_AGENT → até 7 dias).
   messageTag?: "HUMAN_AGENT";
   messagingType?: "MESSAGE_TAG";
 };
@@ -272,22 +275,14 @@ export async function sendZernioToContact(params: {
   const conversationId = contact.external_conversation_id as string;
 
   const body: ZernioSendBody = { accountId: account.account_id as string };
-  if (params.text) body.text = params.text;
+  if (params.text) body.message = params.text;
   if (params.attachment) {
-    body.attachments = [
-      {
-        url: params.attachment.url,
-        type: params.attachment.mime,
-        ...(params.attachment.voiceNote ? { voiceNote: true } : {}),
-      },
-    ];
+    body.attachmentUrl = params.attachment.url;
+    body.attachmentType = mimeToAttachmentType(params.attachment.mime, params.attachment.voiceNote);
+    if (params.attachment.name) body.attachmentName = params.attachment.name;
+    if (params.attachment.voiceNote) body.voiceNote = true;
   }
   if (params.replyToExternalId) body.replyTo = params.replyToExternalId;
-  // Instagram: permite responder fora da janela de 24h (até 7 dias) como agente humano.
-  if (platform === "instagram") {
-    body.messageTag = "HUMAN_AGENT";
-    body.messagingType = "MESSAGE_TAG";
-  }
 
   let externalId: string | null = null;
   try {
@@ -348,4 +343,16 @@ function attachmentMessageType(
   if (m.startsWith("image/")) return "image";
   if (m.startsWith("video/")) return "video";
   return "document";
+}
+
+// Tipo de anexo que a API da Zernio espera (image/video/audio/file).
+function mimeToAttachmentType(
+  mime: string,
+  voiceNote?: boolean,
+): "image" | "video" | "audio" | "file" {
+  const m = (mime || "").toLowerCase();
+  if (voiceNote || m.startsWith("audio/")) return "audio";
+  if (m.startsWith("image/")) return "image";
+  if (m.startsWith("video/")) return "video";
+  return "file";
 }
