@@ -13,10 +13,11 @@ function nameToColor(name: string): string {
 
 type Channel = "whatsapp_evolution" | "whatsapp_cloud" | "instagram" | null | undefined;
 
-/** Badge pequeno no canto inferior-direito do avatar indicando o canal. */
+/** Badge de canal no canto inferior-esquerdo do avatar. Estilo outline:
+ *  fundo branco com o ícone na cor da marca (sem preenchimento sólido). */
 function ChannelBadge({ channel, size }: { channel: Channel; size: number }) {
   if (!channel) return null;
-  const badgeSize = Math.max(12, Math.round(size * 0.38));
+  const badgeSize = Math.max(14, Math.round(size * 0.45));
   const isWhatsApp = channel === "whatsapp_evolution" || channel === "whatsapp_cloud";
   const isInstagram = channel === "instagram";
   if (!isWhatsApp && !isInstagram) return null;
@@ -26,22 +27,23 @@ function ChannelBadge({ channel, size }: { channel: Channel; size: number }) {
       aria-label={isWhatsApp ? "WhatsApp" : "Instagram"}
       style={{
         position: "absolute",
-        bottom: -1,
-        right: -1,
+        bottom: -2,
+        left: -2,
         width: badgeSize,
         height: badgeSize,
         borderRadius: "50%",
-        background: isWhatsApp ? "#25D366" : "#E4405F",
+        background: "var(--bg-surface, #fff)",
         display: "flex",
         alignItems: "center",
         justifyContent: "center",
-        border: "1.5px solid var(--bg-surface, #fff)",
+        border: "1.5px solid var(--border, #e5e7eb)",
+        boxShadow: "0 1px 2px rgba(0,0,0,0.08)",
       }}
     >
       {isWhatsApp ? (
-        <SiWhatsapp size={Math.round(badgeSize * 0.6)} color="#fff" />
+        <SiWhatsapp size={Math.round(badgeSize * 0.6)} color="#25D366" />
       ) : (
-        <SiInstagram size={Math.round(badgeSize * 0.6)} color="#fff" />
+        <SiInstagram size={Math.round(badgeSize * 0.6)} color="#E4405F" />
       )}
     </span>
   );

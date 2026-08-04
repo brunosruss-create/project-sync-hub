@@ -675,18 +675,6 @@ export function ConversationPanel({
             >
               <div style={{ position: "relative", width: 36, height: 36, flexShrink: 0 }}>
                 <ContactAvatar name={contact.name} avatarUrl={contact.avatar} size={36} channel={contact.channel} />
-                <span
-                  style={{
-                    position: "absolute",
-                    bottom: 0,
-                    right: 0,
-                    width: 9,
-                    height: 9,
-                    borderRadius: "var(--radius-pill)",
-                    background: "var(--brand-400)",
-                    border: "2px solid var(--bg-surface)",
-                  }}
-                />
               </div>
               <div className="flex-1 min-w-0">
                 <div
@@ -699,8 +687,6 @@ export function ConversationPanel({
                   className="truncate flex items-center"
                   style={{ fontSize: 12, color: "var(--text-muted)", gap: 6, marginTop: 2 }}
                 >
-                  <span style={{ color: "var(--brand-400)", fontSize: 11 }}>● online</span>
-                  <span style={{ opacity: 0.4 }}>·</span>
                   <span className="font-mono">{formatPhone(contact.phone)}</span>
                 </div>
               </div>
