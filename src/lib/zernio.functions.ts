@@ -144,3 +144,152 @@ export const disconnectZernioAccount = createServerFn({ method: "POST" })
       .eq("platform", data.platform);
     return { ok: true };
   });
+
+// ============================================================
+// Templates do WhatsApp (Cloud API via Zernio).
+//
+// Templates são criados/aprovados pela Meta; aqui só LISTAMOS os aprovados e
+// ENVIAMOS para uma conversa (útil para re-engajar fora da janela de 24h, em
+// que o WhatsApp não permite texto livre). Só existe para whatsapp_cloud.
+// ============================================================
+import { resolveWorkspaceOwnerId } from "@/lib/workspace.server";
+
+/** Resolve o account_id da conta WhatsApp Cloud conectada do workspace. */
+async function whatsappCloudAccountId(ownerUserId: string): Promise<string> {
+  const { data } = await supabaseAdmin
+    .from("zernio_accounts")
+    .select("account_id,status")
+    .eq("owner_user_id", ownerUserId)
+    .eq("platform", "whatsapp")
+    .maybeSingle();
+  if (!data?.account_id) {
+    throw new Error("Nenhuma conta WhatsApp oficial (Zernio) conectada neste workspace.");
+  }
+  return data.account_id as string;
+}
+
+type NormalizedTemplate = {
+  name: string;
+  language: string;
+  category: string | null;
+  status: string | null;
+  // any[] (não unknown[]) porque o serializer do server fn precisa de um tipo
+  // serializável; o conteúdo dos components é definido pela Meta e passa direto.
+  components: any[];
+};
+
+function normalizeTemplates(raw: any): NormalizedTemplate[] {
+  const arr: any[] = Array.isArray(raw)
+    ? raw
+    : Array.isArray(raw?.templates)
+      ? raw.templates
+      : Array.isArray(raw?.data)
+        ? raw.data
+        : [];
+  return arr.map((t) => ({
+    name: String(t?.name ?? ""),
+    language: String(t?.language ?? t?.language_code ?? "pt_BR"),
+    category: t?.category ?? null,
+    status: t?.status ?? null,
+    components: Array.isArray(t?.components) ? t.components : [],
+  }));
+}
+
+/** Lista templates aprovados da conta WhatsApp Cloud do workspace. */
+export const listZernioTemplates = createServerFn({ method: "GET" })
+  .middleware([requireSupabaseAuth])
+  .handler(async ({ context }) => {
+    const ownerId = await resolveWorkspaceOwnerId(context.userId);
+    const accountId = await whatsappCloudAccountId(ownerId);
+    const raw = await zernio.listTemplates(accountId);
+    const templates = normalizeTemplates(raw)
+      // Só os aprovados são enviáveis. Status vem em caixa alta na Cloud API.
+      .filter((t) => !t.status || String(t.status).toUpperCase() === "APPROVED");
+    return { templates };
+  });
+
+const sendTemplateInput = z.object({
+  contactId: z.string().uuid(),
+  name: z.string().min(1).max(512),
+  language: z.string().min(2).max(16),
+  /** Valores das variáveis do corpo ({{1}}, {{2}}...), na ordem. */
+  bodyParams: z.array(z.string().max(1024)).max(20).optional(),
+  /** Texto renderizado (com variáveis já substituídas) para exibir no inbox. */
+  previewText: z.string().max(4096),
+});
+
+/**
+ * Envia um template aprovado para a conversa de um contato WhatsApp Cloud e
+ * persiste a mensagem no histórico. `previewText` é o que aparece no inbox
+ * (a Zernio não devolve o texto renderizado, então o cliente monta e envia).
+ */
+export const sendZernioTemplate = createServerFn({ method: "POST" })
+  .middleware([requireSupabaseAuth])
+  .inputValidator((d) => sendTemplateInput.parse(d))
+  .handler(async ({ data, context }) => {
+    const ownerId = await resolveWorkspaceOwnerId(context.userId);
+
+    const { data: contact } = await supabaseAdmin
+      .from("contacts")
+      .select("id,channel,external_conversation_id")
+      .eq("id", data.contactId)
+      .eq("owner_user_id", ownerId)
+      .maybeSingle();
+    if (!contact?.external_conversation_id) {
+      throw new Error("Contato sem conversa Zernio associada.");
+    }
+    if (contact.channel !== "whatsapp_cloud") {
+      throw new Error("Templates só podem ser enviados para contatos do WhatsApp oficial.");
+    }
+
+    // Monta o component de corpo a partir dos parâmetros (se houver).
+    const components =
+      data.bodyParams && data.bodyParams.length > 0
+        ? [
+            {
+              type: "body",
+              parameters: data.bodyParams.map((text) => ({ type: "text", text })),
+            },
+          ]
+        : [];
+
+    let externalId: string | null = null;
+    try {
+      const r: any = await zernio.sendTemplateToConversation(
+        contact.external_conversation_id as string,
+        [{ name: data.name, language: data.language, components }],
+      );
+      externalId =
+        r?.message?.id ??
+        r?.message?.platformMessageId ??
+        r?.data?.id ??
+        r?.id ??
+        null;
+    } catch (e: any) {
+      throw new Error(`Falha ao enviar template: ${e?.message ?? e}`);
+    }
+
+    await supabaseAdmin.from("messages").insert({
+      owner_user_id: ownerId,
+      contact_id: contact.id,
+      direction: "outbound",
+      content: data.previewText,
+      message_type: "text",
+      status: "sent",
+      sent_by: context.userId,
+      channel: "whatsapp_cloud",
+      external_conversation_id: contact.external_conversation_id,
+      whatsapp_message_id: externalId,
+    });
+
+    await supabaseAdmin
+      .from("contacts")
+      .update({
+        last_message: data.previewText,
+        last_message_at: new Date().toISOString(),
+        last_direction: "outbound",
+      })
+      .eq("id", contact.id);
+
+    return { ok: true, externalId };
+  });

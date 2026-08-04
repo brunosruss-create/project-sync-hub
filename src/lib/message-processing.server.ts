@@ -6,6 +6,7 @@ import { renderTemplate } from "@/lib/message-templates";
 // Import estático (e não dinâmico dentro do if) porque o `vi.mock` dos testes é
 // içado e só intercepta a resolução do módulo no topo.
 import { pickNextAgent } from "@/lib/rotation.server";
+import { sendZernioToContact } from "@/lib/zernio.server";
 
 export type MessageJobPayload = {
   phone: string;
@@ -53,6 +54,9 @@ async function maybeSendWelcomeMessage(
   phone: string,
   pushName: string | null,
 ) {
+  // Canais Zernio não usam presença (composing) do Evolution e a saudação da IA
+  // já é integrada quando habilitada — pula o welcome estático aqui.
+  if (instanceName.startsWith("zernio:")) return;
   try {
     const { data: profileWelcome } = await supabaseAdmin
       .from("profiles")
@@ -192,24 +196,45 @@ export async function sendAiReplyAndPersist(
   ) {
     const responseText = ai.response?.trim();
     if (!responseText) return;
-    let waMessageId: string | null = null;
-    try {
-      await simulateTyping(instanceName, phone, responseText);
-      const r: any = await evo.sendText(instanceName, { number: phone, text: responseText });
-      waMessageId = r?.key?.id ?? r?.messageId ?? null;
-    } catch (e: any) {
-      console.error(`[${logPrefix}] sendText falhou:`, e?.message ?? e);
+
+    // Roteamento por canal: instance_name "zernio:<channel>" (gravado pelo
+    // webhook da Zernio ao enfileirar) → API oficial (WhatsApp Cloud/Instagram).
+    // Qualquer outro valor → Evolution (fluxo antigo, intocado).
+    if (instanceName.startsWith("zernio:")) {
+      const channel = instanceName.slice("zernio:".length) as "whatsapp_cloud" | "instagram";
+      try {
+        // sendZernioToContact já persiste a mensagem (com is_ai quando sentBy=null).
+        await sendZernioToContact({
+          ownerUserId,
+          contactId,
+          channel,
+          text: responseText,
+          sentBy: null,
+        });
+      } catch (e: any) {
+        console.error(`[${logPrefix}] envio Zernio falhou:`, e?.message ?? e);
+      }
+    } else {
+      let waMessageId: string | null = null;
+      try {
+        await simulateTyping(instanceName, phone, responseText);
+        const r: any = await evo.sendText(instanceName, { number: phone, text: responseText });
+        waMessageId = r?.key?.id ?? r?.messageId ?? null;
+      } catch (e: any) {
+        console.error(`[${logPrefix}] sendText falhou:`, e?.message ?? e);
+      }
+      await supabaseAdmin.from("messages").insert({
+        owner_user_id: ownerUserId,
+        contact_id: contactId,
+        direction: "outbound",
+        content: responseText,
+        message_type: "text",
+        status: "sent",
+        whatsapp_message_id: waMessageId,
+        is_ai: true,
+      });
     }
-    await supabaseAdmin.from("messages").insert({
-      owner_user_id: ownerUserId,
-      contact_id: contactId,
-      direction: "outbound",
-      content: responseText,
-      message_type: "text",
-      status: "sent",
-      whatsapp_message_id: waMessageId,
-      is_ai: true,
-    });
+
     await supabaseAdmin
       .from("contacts")
       .update({

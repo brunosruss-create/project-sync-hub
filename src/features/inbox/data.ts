@@ -28,6 +28,8 @@ export interface ContactCard {
   lastDirection?: "inbound" | "outbound" | null;
   priority: "normal" | "urgent";
   kanban_column: KanbanColumnId;
+  /** Canal de origem. Ausente/null = whatsapp_evolution (contatos antigos). */
+  channel?: "whatsapp_evolution" | "whatsapp_cloud" | "instagram" | null;
   email?: string | null;
   notes?: string | null;
   is_blocked?: boolean;

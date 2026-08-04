@@ -5,7 +5,7 @@ import { requireSupabaseAuth } from "@/integrations/supabase/auth-middleware";
 import { supabaseAdmin } from "@/integrations/supabase/client.server";
 import { evo, extractQRCode, instanceNameForOwner, normalizeQRCodeImage, tryFetchProfilePicture, sendMediaToContact } from "@/lib/evolution.server";
 import { resolveWorkspaceOwnerId } from "@/lib/workspace.server";
-import { sendZernioToContact } from "@/lib/zernio.server";
+import { sendZernioToContact, zernio } from "@/lib/zernio.server";
 
 type ContactChannel = "whatsapp_evolution" | "whatsapp_cloud" | "instagram";
 
@@ -725,12 +725,19 @@ async function loadOwnedMessage(ownerId: string, messageId: string) {
   if (!msg.whatsapp_message_id) throw new Error("Mensagem sem ID externo.");
   const { data: contact } = await supabaseAdmin
     .from("contacts")
-    .select("id, phone")
+    .select("id, phone, channel, external_conversation_id")
     .eq("id", msg.contact_id)
     .eq("owner_user_id", ownerId)
     .maybeSingle();
-  if (!contact?.phone) throw new Error("Contato sem telefone.");
-  return { msg, contact };
+  if (!contact) throw new Error("Contato não encontrado.");
+  const channel = (contact.channel as string | null) ?? "whatsapp_evolution";
+  const isZernio = channel === "whatsapp_cloud" || channel === "instagram";
+  // Evolution precisa do telefone (JID); Zernio precisa da conversa externa.
+  if (!isZernio && !contact.phone) throw new Error("Contato sem telefone.");
+  if (isZernio && !contact.external_conversation_id) {
+    throw new Error("Contato sem conversa Zernio associada.");
+  }
+  return { msg, contact, channel, isZernio };
 }
 
 const reactionInput = z.object({
@@ -743,21 +750,42 @@ export const reactToMessage = createServerFn({ method: "POST" })
   .inputValidator((d) => reactionInput.parse(d))
   .handler(async ({ data, context }) => {
     const ownerId = await resolveWorkspaceOwnerId(context.userId);
-    const name = instanceNameForOwner(ownerId);
-    const { msg, contact } = await loadOwnedMessage(ownerId, data.messageId);
-    const remoteJid = jidFromPhone(contact.phone);
+    const { msg, contact, channel, isZernio } = await loadOwnedMessage(ownerId, data.messageId);
 
-    try {
-      await evo.sendReaction(name, {
-        key: {
-          id: msg.whatsapp_message_id!,
-          fromMe: msg.direction === "outbound",
-          remoteJid,
-        },
-        reaction: data.reaction,
-      });
-    } catch (e: any) {
-      throw new Error(`Falha ao reagir: ${e?.message ?? e}`);
+    // A Zernio só aceita reação no WhatsApp; Instagram devolve 400 (a Meta não
+    // expõe reações via API de DM). Bloqueamos aqui com mensagem clara em vez de
+    // deixar a chamada estourar lá na Zernio.
+    if (channel === "instagram") {
+      throw new Error("Reações não são suportadas no Instagram.");
+    }
+
+    if (isZernio) {
+      // WhatsApp Cloud via Zernio: reação por conversa + platformMessageId.
+      // Reaction vazia = remover.
+      try {
+        await zernio.addReaction(
+          contact.external_conversation_id as string,
+          msg.whatsapp_message_id!,
+          data.reaction,
+        );
+      } catch (e: any) {
+        throw new Error(`Falha ao reagir: ${e?.message ?? e}`);
+      }
+    } else {
+      const name = instanceNameForOwner(ownerId);
+      const remoteJid = jidFromPhone(contact.phone as string);
+      try {
+        await evo.sendReaction(name, {
+          key: {
+            id: msg.whatsapp_message_id!,
+            fromMe: msg.direction === "outbound",
+            remoteJid,
+          },
+          reaction: data.reaction,
+        });
+      } catch (e: any) {
+        throw new Error(`Falha ao reagir: ${e?.message ?? e}`);
+      }
     }
 
     const current: any[] = Array.isArray(msg.reactions) ? (msg.reactions as any[]) : [];
@@ -782,11 +810,14 @@ export const deleteMessageForEveryone = createServerFn({ method: "POST" })
   .handler(async ({ data, context }) => {
     const ownerId = await resolveWorkspaceOwnerId(context.userId);
     const name = instanceNameForOwner(ownerId);
-    const { msg, contact } = await loadOwnedMessage(ownerId, data.messageId);
+    const { msg, contact, isZernio } = await loadOwnedMessage(ownerId, data.messageId);
+    if (isZernio) {
+      throw new Error("Apagar para todos não é suportado neste canal.");
+    }
     if (msg.direction !== "outbound") {
       throw new Error("Só é possível apagar para todos mensagens enviadas por você.");
     }
-    const remoteJid = jidFromPhone(contact.phone);
+    const remoteJid = jidFromPhone(contact.phone as string);
 
     try {
       await evo.deleteMessageForEveryone(name, {
@@ -817,7 +848,10 @@ export const editMessage = createServerFn({ method: "POST" })
   .handler(async ({ data, context }) => {
     const ownerId = await resolveWorkspaceOwnerId(context.userId);
     const name = instanceNameForOwner(ownerId);
-    const { msg, contact } = await loadOwnedMessage(ownerId, data.messageId);
+    const { msg, contact, isZernio } = await loadOwnedMessage(ownerId, data.messageId);
+    if (isZernio) {
+      throw new Error("Editar mensagem não é suportado neste canal.");
+    }
     if (msg.direction !== "outbound") {
       throw new Error("Só é possível editar mensagens enviadas por você.");
     }

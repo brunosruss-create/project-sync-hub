@@ -13,6 +13,7 @@ import {
   Pause,
   StickyNote,
   Zap,
+  LayoutTemplate,
 } from "lucide-react";
 import Picker from "@emoji-mart/react";
 import emojiData from "@emoji-mart/data";
@@ -52,6 +53,10 @@ type Props = {
    * contato — quem sabe é o pai, então as variáveis vêm de lá já resolvidas.
    */
   templateVars?: Record<string, string>;
+  /** Só WhatsApp oficial (Zernio) tem templates. Ausente/false esconde o botão. */
+  templatesEnabled?: boolean;
+  /** Abre o modal de templates (o estado/modal vivem no pai). */
+  onOpenTemplates?: () => void;
 };
 
 export type QuickReplyOption = {
@@ -61,7 +66,7 @@ export type QuickReplyOption = {
   body: string;
 };
 
-export function Composer({ draft, setDraft, taRef, onSend, onClosePanel, onSendAttachments, onSendAudio, replyingTo, onCancelReply, mode = "reply", onModeChange, quickReplies = [], templateVars }: Props) {
+export function Composer({ draft, setDraft, taRef, onSend, onClosePanel, onSendAttachments, onSendAudio, replyingTo, onCancelReply, mode = "reply", onModeChange, quickReplies = [], templateVars, templatesEnabled = false, onOpenTemplates }: Props) {
   const isNote = mode === "note";
   const hasQuickReplies = quickReplies.length > 0;
   const hasText = draft.trim().length > 0;
@@ -598,6 +603,35 @@ export function Composer({ draft, setDraft, taRef, onSend, onClosePanel, onSendA
               >
                 <Zap size={14} />
                 Respostas
+              </button>
+            )}
+
+            {/* Templates do WhatsApp oficial: só aparece em canais Zernio
+                (whatsapp_cloud). Some no modo nota, igual às respostas. */}
+            {templatesEnabled && !isNote && (
+              <button
+                type="button"
+                aria-label="Templates do WhatsApp"
+                title="Enviar template aprovado (WhatsApp oficial)"
+                onClick={() => {
+                  setShowEmoji(false);
+                  setShowAttachMenu(false);
+                  setShowQuick(false);
+                  setSlashToken(null);
+                  onOpenTemplates?.();
+                }}
+                style={quickBtn}
+                onMouseEnter={(e) => {
+                  e.currentTarget.style.background =
+                    "color-mix(in oklab, var(--brand-400) 16%, transparent)";
+                }}
+                onMouseLeave={(e) => {
+                  e.currentTarget.style.background =
+                    "color-mix(in oklab, var(--brand-400) 9%, transparent)";
+                }}
+              >
+                <LayoutTemplate size={14} />
+                Templates
               </button>
             )}
           </div>

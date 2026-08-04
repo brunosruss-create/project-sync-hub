@@ -17,6 +17,8 @@ export type MessageActionContext = {
 type Props = {
   message: MessageActionContext;
   bubbleBg: string;
+  /** Canal do contato. Define quais ações a API suporta (ver derivação abaixo). */
+  channel?: "whatsapp_evolution" | "whatsapp_cloud" | "instagram" | null;
   onReply?: (m: MessageActionContext) => void;
   onForward?: (m: MessageActionContext) => void;
   onReact?: (m: MessageActionContext, emoji: string) => void;
@@ -29,6 +31,7 @@ const QUICK_REACTIONS = ["👍", "❤️", "😂", "😮", "😢", "🙏"];
 export function MessageActions({
   message,
   bubbleBg,
+  channel,
   onReply,
   onForward,
   onReact,
@@ -36,6 +39,15 @@ export function MessageActions({
   onDelete,
 }: Props) {
   const { isMe } = message;
+
+  // Capacidades por canal (a API rejeita o resto — ver evolution.functions.ts):
+  // - Instagram não tem reação (Meta não expõe via API de DM).
+  // - Editar e apagar-para-todos só existem no WhatsApp Evolution; nos canais
+  //   Zernio (whatsapp_cloud/instagram) a Zernio devolve 400.
+  const isZernio = channel === "whatsapp_cloud" || channel === "instagram";
+  const canReact = channel !== "instagram";
+  const canEdit = !isZernio;
+  const canDeleteForEveryone = !isZernio;
 
   const handleCopy = async () => {
     try {
@@ -111,8 +123,9 @@ export function MessageActions({
             color: "var(--text-primary)",
           }}
         >
-          {/* Reações são do WhatsApp — nota interna nunca esteve lá. */}
-          {!message.isInternal && (
+          {/* Reações são do WhatsApp — nota interna nunca esteve lá, e o
+              Instagram não suporta reação via API. */}
+          {!message.isInternal && canReact && (
           <div
             style={{
               display: "flex",
@@ -165,10 +178,10 @@ export function MessageActions({
           {hasMedia && !message.isInternal && (
             <Item icon={<Download size={15} />} label="Baixar" onSelect={handleDownload} />
           )}
-          {isMe && hasText && !message.isInternal && (
+          {isMe && hasText && !message.isInternal && canEdit && (
             <Item icon={<Pencil size={15} />} label="Editar" onSelect={() => onEdit?.(message)} />
           )}
-          {(isMe || message.isInternal) && (
+          {((isMe && canDeleteForEveryone) || message.isInternal) && (
             <>
               <DropdownMenu.Separator style={{ height: 1, background: "var(--border)", margin: "4px 0" }} />
               <Item

@@ -37,6 +37,7 @@ import { ScheduleModal } from "./schedule-modal";
 import { MessageActions } from "./message-actions";
 import { ForwardModal, type ForwardSource } from "./forward-modal";
 import { TransferConversationModal } from "./transfer-conversation-modal";
+import { TemplatePickerModal } from "./template-picker-modal";
 import { AudioPlayerWithMe } from "@/components/chat/AudioPlayer";
 import { DateSeparator } from "@/components/chat/DateSeparator";
 import { uploadChatMedia } from "@/lib/chat-media";
@@ -297,6 +298,7 @@ export function ConversationPanel({
   const [editingId, setEditingId] = React.useState<string | null>(null);
   const [forwardSource, setForwardSource] = React.useState<ForwardSource | null>(null);
   const [transferOpen, setTransferOpen] = React.useState(false);
+  const [templatesOpen, setTemplatesOpen] = React.useState(false);
   const actions = useContactActions();
   
   const open = !!contact;
@@ -853,6 +855,7 @@ export function ConversationPanel({
                         displayStatus={getVisualMessageStatus(m)}
                         contactName={contact.name}
                         contactAvatar={contact.avatar}
+                        channel={contact.channel}
                         onReply={(msg) => {
                           setReplyingTo(msg);
                           setTimeout(() => taRef.current?.focus(), 0);
@@ -957,6 +960,8 @@ export function ConversationPanel({
                   onModeChange={notesAvailable ? setComposerMode : undefined}
                   quickReplies={quickReplyOptions}
                   templateVars={templateVars}
+                  templatesEnabled={contact.channel === "whatsapp_cloud"}
+                  onOpenTemplates={() => setTemplatesOpen(true)}
                   taRef={taRef}
                   onSend={send}
                   onClosePanel={onClose}
@@ -1016,6 +1021,11 @@ export function ConversationPanel({
           }
         }}
       />
+      <TemplatePickerModal
+        open={templatesOpen}
+        contactId={contact?.id ?? null}
+        onClose={() => setTemplatesOpen(false)}
+      />
     </>
   );
 }
@@ -1027,6 +1037,7 @@ function MessageBubble({
   displayStatus,
   contactName,
   contactAvatar,
+  channel,
   onReply,
   onReact,
   editing,
@@ -1040,6 +1051,7 @@ function MessageBubble({
   displayStatus: Message["status"];
   contactName: string;
   contactAvatar?: string | null;
+  channel?: "whatsapp_evolution" | "whatsapp_cloud" | "instagram" | null;
   onReply?: (m: Message) => void;
   onReact?: (m: Message, emoji: string) => void;
   editing?: boolean;
@@ -1165,7 +1177,7 @@ function MessageBubble({
           animation: "fadeSlideIn 200ms ease-out",
         }}
       >
-        <MessageChevron isMe={isMe} bubbleBg={audioBg} message={m} onReply={onReply} onReact={onReact} onDelete={onDelete} onForward={onForward} />
+        <MessageChevron isMe={isMe} bubbleBg={audioBg} message={m} channel={channel} onReply={onReply} onReact={onReact} onDelete={onDelete} onForward={onForward} />
         {m.quoted_preview && <QuotedPreview preview={m.quoted_preview} isMe={isMe} />}
         {m.is_ai && isMe && (
           <div className="inline-flex items-center" style={{ gap: 4, fontSize: 10, fontWeight: 600, background: "color-mix(in oklab, var(--brand-400) 20%, transparent)", color: "var(--brand-400)", padding: "1px 6px", borderRadius: "var(--radius-pill)", marginBottom: 4, textTransform: "uppercase", letterSpacing: "0.04em" }}>
@@ -1221,7 +1233,7 @@ function MessageBubble({
         wordBreak: "break-word",
       }}
     >
-      <MessageChevron isMe={isMe} bubbleBg={bubbleBg} message={m} onReply={onReply} onReact={onReact} onEdit={onStartEdit} onDelete={onDelete} onForward={onForward} />
+      <MessageChevron isMe={isMe} bubbleBg={bubbleBg} message={m} channel={channel} onReply={onReply} onReact={onReact} onEdit={onStartEdit} onDelete={onDelete} onForward={onForward} />
       {m.quoted_preview && <QuotedPreview preview={m.quoted_preview} isMe={isMe} />}
       {m.is_ai && isMe && (
         <div className="inline-flex items-center" style={{ gap: 4, fontSize: 10, fontWeight: 600, background: "color-mix(in oklab, var(--brand-400) 20%, transparent)", color: "var(--brand-400)", padding: "1px 6px", borderRadius: "var(--radius-pill)", marginBottom: 4, textTransform: "uppercase", letterSpacing: "0.04em" }}>
@@ -1410,6 +1422,7 @@ function MessageChevron({
   isMe,
   bubbleBg,
   message,
+  channel,
   onReply,
   onReact,
   onEdit,
@@ -1419,6 +1432,7 @@ function MessageChevron({
   isMe: boolean;
   bubbleBg: string;
   message: Message;
+  channel?: "whatsapp_evolution" | "whatsapp_cloud" | "instagram" | null;
   onReply?: (m: Message) => void;
   onReact?: (m: Message, emoji: string) => void;
   onEdit?: () => void;
@@ -1428,6 +1442,7 @@ function MessageChevron({
   return (
     <MessageActions
       bubbleBg={bubbleBg}
+      channel={channel}
       message={{
         id: message.id,
         isMe,

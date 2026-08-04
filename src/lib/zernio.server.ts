@@ -201,7 +201,57 @@ export const zernio = {
     call(`/inbox/conversations/${encodeURIComponent(conversationId)}/typing`, {
       method: "POST",
     }),
+
+  // ---------- WhatsApp templates ----------
+  // Lista os templates aprovados da WABA associada à conta. São buscados
+  // direto da WhatsApp Cloud API (Meta), então refletem o status real.
+  listTemplates: (accountId: string) =>
+    call<any>("/whatsapp/templates", { method: "GET", query: { accountId } }),
+
+  // Envia um template aprovado dentro de uma conversa existente. `elements`
+  // carrega { name, language, components } (components preenche variáveis do
+  // header/body/botões, na ordem). Usado quando a janela de 24h já fechou.
+  sendTemplateToConversation: (
+    conversationId: string,
+    elements: Array<{ name: string; language: string; components?: unknown[] }>,
+  ) =>
+    call<any>(`/inbox/conversations/${encodeURIComponent(conversationId)}/messages`, {
+      method: "POST",
+      json: { template: { elements } },
+    }),
 };
+
+// ============================================================
+// Download de mídia recebida via Zernio.
+//
+// WhatsApp: a `url` do attachment aponta para GET /whatsapp/media/... da Zernio,
+// que é AUTENTICADO (exige Authorization: Bearer) e EXPIRA em ~7 dias (a mídia
+// vive no store da Meta, não da Zernio). Por isso baixamos no recebimento e
+// persistimos no nosso Storage — nunca guardar a URL crua da Zernio.
+// Instagram/Facebook: `url` é CDN público (o header é inofensivo, mas só
+// enviamos para hosts da Zernio para não vazar a key a terceiros).
+// ============================================================
+export async function downloadZernioMedia(
+  url: string,
+): Promise<{ buffer: Buffer; mime: string } | null> {
+  try {
+    const isZernioHost = /(^https?:\/\/)?([^/]*\.)?zernio\.com\//i.test(url);
+    const headers: Record<string, string> = {};
+    if (isZernioHost) headers.Authorization = `Bearer ${KEY()}`;
+    const res = await fetch(url, { headers });
+    if (!res.ok) {
+      console.error("[zernio media] download falhou:", res.status, url.slice(0, 80));
+      return null;
+    }
+    const mime =
+      res.headers.get("content-type")?.split(";")[0].trim() || "application/octet-stream";
+    const buffer = Buffer.from(new Uint8Array(await res.arrayBuffer()));
+    return { buffer, mime };
+  } catch (e: any) {
+    console.error("[zernio media] erro:", e?.message ?? e);
+    return null;
+  }
+}
 
 /**
  * Garante que o workspace tenha um profile Zernio dedicado. Cria sob demanda.
@@ -309,6 +359,9 @@ export async function sendZernioToContact(params: {
     whatsapp_message_id: externalId,
     quoted_message_id: params.quoted?.messageId ?? null,
     quoted_preview: params.quoted?.preview ?? null,
+    // sentBy null = enviado pela IA (job-worker). Marca is_ai para o inbox
+    // diferenciar resposta automática de mensagem de atendente humano.
+    ...(params.sentBy == null ? { is_ai: true } : {}),
   };
   if (params.attachment) {
     insert.media_url = params.attachment.url;

@@ -2,6 +2,66 @@ import { createFileRoute } from "@tanstack/react-router";
 import { createHmac, timingSafeEqual } from "node:crypto";
 import { supabaseAdmin } from "@/integrations/supabase/client.server";
 import { captureException } from "@/lib/sentry.server";
+import { downloadZernioMedia } from "@/lib/zernio.server";
+
+// Mídia recebida via WhatsApp Zernio expira em ~7 dias e exige auth para baixar
+// (ver downloadZernioMedia). Baixamos no recebimento e persistimos no Storage,
+// como o webhook da Evolution já faz — assim o inbox e a IA leem uma URL pública
+// e estável. Extensão inferida do mime para nomear o arquivo.
+const MIME_EXT: Record<string, string> = {
+  "image/jpeg": "jpg",
+  "image/jpg": "jpg",
+  "image/png": "png",
+  "image/webp": "webp",
+  "image/gif": "gif",
+  "audio/ogg": "ogg",
+  "audio/mpeg": "mp3",
+  "audio/mp4": "m4a",
+  "audio/webm": "webm",
+  "audio/wav": "wav",
+  "video/mp4": "mp4",
+  "video/webm": "webm",
+  "video/quicktime": "mov",
+  "video/3gpp": "3gp",
+  "application/pdf": "pdf",
+  "application/zip": "zip",
+};
+function extFromMime(mime: string, fallback: string): string {
+  return MIME_EXT[mime.toLowerCase()] ?? (mime.split("/")[1] ?? fallback).split(";")[0].slice(0, 5);
+}
+
+/**
+ * Baixa a mídia da Zernio e sobe pro bucket chat-media, devolvendo a URL
+ * pública estável. Best-effort: se falhar, devolve a URL crua como fallback
+ * (melhor exibir algo que pode expirar do que perder a mídia por completo).
+ */
+async function persistZernioMedia(
+  ownerUserId: string,
+  rawUrl: string,
+  declaredMime: string | null,
+): Promise<{ url: string; mime: string | null }> {
+  const dl = await downloadZernioMedia(rawUrl);
+  if (!dl) return { url: rawUrl, mime: declaredMime };
+  const mime = declaredMime || dl.mime;
+  const kind = mime.startsWith("audio/")
+    ? "audio"
+    : mime.startsWith("image/")
+      ? "image"
+      : mime.startsWith("video/")
+        ? "video"
+        : "file";
+  const ext = extFromMime(mime, kind === "audio" ? "ogg" : "bin");
+  const path = `${ownerUserId}/zernio-${Date.now()}-${crypto.randomUUID()}.${ext}`;
+  const { error: upErr } = await supabaseAdmin.storage
+    .from("chat-media")
+    .upload(path, dl.buffer, { contentType: mime, upsert: false });
+  if (upErr) {
+    console.error("[zernio webhook] storage upload falhou:", upErr.message);
+    return { url: rawUrl, mime };
+  }
+  const { data: pub } = supabaseAdmin.storage.from("chat-media").getPublicUrl(path);
+  return { url: pub.publicUrl, mime };
+}
 
 // ============================================================
 // Webhook único (nível plataforma) da Zernio.
@@ -184,8 +244,13 @@ export const Route = createFileRoute("/api/public/zernio")({
             const messageType: "text" | "image" | "audio" | "video" | "document" = first
               ? attachmentType(first)
               : "text";
-            const mediaUrl = first ? firstString(first?.url, first?.link, first?.mediaUrl) : null;
-            const mediaMime = first ? firstString(first?.mime, first?.mimetype, first?.contentType) : null;
+            const rawMediaUrl = first ? firstString(first?.url, first?.link, first?.mediaUrl) : null;
+            const declaredMime = first
+              ? firstString(first?.mime, first?.mimetype, first?.contentType)
+              : null;
+            // Preenchidas após baixar+persistir (mais abaixo, pós dedup).
+            let mediaUrl: string | null = null;
+            let mediaMime: string | null = declaredMime;
 
             const participantId = firstString(conv?.participantId, msg?.sender?.id, msg?.from?.id);
             const participantName = firstString(
@@ -225,6 +290,14 @@ export const Route = createFileRoute("/api/public/zernio")({
               if (dup) return new Response("ok", { status: 200 });
             }
 
+            // Baixa+persiste a mídia só depois do dedup (evita download à toa em
+            // reentregas do webhook). WhatsApp exige auth e expira em 7 dias.
+            if (rawMediaUrl) {
+              const persisted = await persistZernioMedia(ownerUserId, rawMediaUrl, declaredMime);
+              mediaUrl = persisted.url;
+              mediaMime = persisted.mime;
+            }
+
             const insert: Record<string, unknown> = {
               owner_user_id: ownerUserId,
               contact_id: contact.id,
@@ -243,9 +316,41 @@ export const Route = createFileRoute("/api/public/zernio")({
             const { error: mErr } = await supabaseAdmin.from("messages").insert(insert);
             if (mErr) console.error("[zernio webhook] insert message", mErr.message);
 
-            // NOTA: resposta automática da IA para canais Zernio será enfileirada
-            // aqui quando o job-worker virar channel-aware (passo 6). Por ora só
-            // persistimos para o atendente humano responder pelo inbox.
+            // ───── Enfileira resposta de IA (worker channel-aware) ─────
+            // Mesmo contrato do webhook Evolution: só enfileira se NÃO houver
+            // humano atribuído e a mídia for processável pela IA (text/audio/
+            // image). O gate de ai_enabled fica no runAiResponse (retorna skip).
+            // instance_name = "zernio:<channel>" sinaliza ao worker para enviar
+            // a resposta via Zernio em vez da Evolution.
+            const humanInControl = !!contact.assignedAgentId;
+            const aiMediaType =
+              messageType === "text" || messageType === "audio" || messageType === "image"
+                ? messageType
+                : null;
+            const hasProcessableContent =
+              (aiMediaType === "text" && text.trim().length > 0) ||
+              ((aiMediaType === "audio" || aiMediaType === "image") && !!mediaUrl);
+
+            if (!humanInControl && aiMediaType && hasProcessableContent) {
+              const jobPayload = {
+                phone: phone ?? "",
+                pushName: participantName ?? null,
+                mediaType: aiMediaType,
+                caption: text,
+                mediaUrl: mediaUrl ?? null,
+                mediaMime: mediaMime ?? null,
+                waMessageId: externalMessageId ?? null,
+              };
+              const { error: jobErr } = await supabaseAdmin.from("message_jobs").insert({
+                workspace_owner_id: ownerUserId,
+                contact_id: contact.id,
+                instance_name: `zernio:${channel}`,
+                payload: jobPayload,
+              });
+              if (jobErr) {
+                console.error("[zernio webhook] falha ao enfileirar job de IA:", jobErr.message);
+              }
+            }
           } else if (
             event === "message.delivered" ||
             event === "message.read" ||
