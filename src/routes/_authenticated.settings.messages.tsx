@@ -7,10 +7,11 @@ import {
   buttonPrimary,
   buttonSecondary,
   textareaStyle,
-  card,
 } from "@/features/settings/settings-layout";
 import { ManagerOnly } from "@/components/manager-only";
 import { HintCallout } from "@/components/field-hint";
+import { Card } from "@/components/ui/card";
+import { Badge } from "@/components/ui/badge";
 import { notify } from "@/lib/notify";
 import {
   getMessageTemplates,
@@ -34,6 +35,11 @@ export const Route = createFileRoute("/_authenticated/settings/messages")({
 });
 
 type Draft = Record<MessageKey, { enabled: boolean; text: string }>;
+
+const MESSAGE_ENABLED_VARIANT: Record<"enabled" | "disabled", "success" | "neutral"> = {
+  enabled: "success",
+  disabled: "neutral",
+};
 
 function MessagesPage() {
   const qc = useQueryClient();
@@ -183,7 +189,7 @@ function MessageCard({
   };
 
   return (
-    <div style={card}>
+    <Card style={{ padding: 20 }}>
       <div
         className="flex items-start"
         style={{ gap: 12, marginBottom: 12 }}
@@ -210,14 +216,16 @@ function MessageCard({
         </div>
         <label
           className="flex items-center"
-          style={{ gap: 6, fontSize: 12, color: "var(--text-secondary)" }}
+          style={{ gap: 8, fontSize: 12, color: "var(--text-secondary)" }}
         >
           <input
             type="checkbox"
             checked={value.enabled}
             onChange={(e) => onChange({ enabled: e.target.checked })}
           />
-          {value.enabled ? "Ativa" : "Desativada"}
+          <Badge variant={MESSAGE_ENABLED_VARIANT[value.enabled ? "enabled" : "disabled"]}>
+            {value.enabled ? "Ativa" : "Desativada"}
+          </Badge>
         </label>
       </div>
 
@@ -256,7 +264,7 @@ function MessageCard({
                 style={{
                   fontSize: 11,
                   padding: "3px 8px",
-                  borderRadius: 999,
+                  borderRadius: "var(--radius-pill)",
                   border: "1px solid var(--border)",
                   background: "var(--bg-overlay)",
                   color: "var(--text-secondary)",
@@ -274,7 +282,7 @@ function MessageCard({
               style={{
                 fontSize: 11,
                 padding: "3px 8px",
-                borderRadius: 999,
+                borderRadius: "var(--radius-pill)",
                 border: "1px solid var(--border)",
                 background: "transparent",
                 color: "var(--text-muted)",
@@ -303,7 +311,7 @@ function MessageCard({
             style={{
               minHeight: 140,
               padding: 12,
-              borderRadius: 8,
+              borderRadius: "var(--radius-card)",
               background: "color-mix(in oklab, var(--brand-400) 6%, var(--bg-overlay))",
               border: "1px solid var(--border)",
               fontSize: 13,
@@ -319,6 +327,6 @@ function MessageCard({
           </div>
         </div>
       </div>
-    </div>
+    </Card>
   );
 }

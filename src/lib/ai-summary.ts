@@ -61,13 +61,25 @@ export async function maybeUpdateAiSummary(
     const model = g.gemini_model || "gemini-3.1-flash-lite";
 
     // Mensagens antigas a resumir (as MAIS antigas do contato).
-    const { data: oldMessages } = await supabaseAdmin
+    // Nota interna fica de fora, e aqui o estrago seria pior que no histórico:
+    // este resumo é PERSISTIDO em contacts.ai_summary e reinjetado em todo
+    // turno seguinte da IA — uma anotação privada que entrasse aqui
+    // contaminaria a conversa permanentemente. A linha 80 abaixo rotula tudo
+    // que não é inbound como "Atendente:".
+    //
+    // Falha fechada: erro no filtro aborta o resumo em vez de resumir sem ele.
+    const { data: oldMessages, error: oldError } = await supabaseAdmin
       .from("messages")
       .select("direction,content,created_at")
       .eq("owner_user_id", ownerUserId)
       .eq("contact_id", contactId)
+      .eq("is_internal", false)
       .order("created_at", { ascending: true })
       .limit(MESSAGES_TO_SUMMARIZE);
+    if (oldError) {
+      console.error("[ai-summary] abortado, filtro de nota falhou:", oldError.message);
+      return;
+    }
 
     const msgs = (oldMessages ?? []).filter(
       (m: any) => m?.content && String(m.content).trim().length > 0,

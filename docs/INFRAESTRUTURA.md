@@ -189,8 +189,34 @@ Não há IaC — recriação é manual:
 - **Faz:** banco Postgres, Auth (Google OAuth + email/senha), Storage (bucket `chat-media`).
 - **Chave do Gemini:** fica na tabela `global_settings` (key `gemini_api_key`), **não** em env var.
 - **Migrations:** rodadas **manualmente** no SQL Editor. Ficam em `supabase/manual/*.sql`
-  (a maioria) e `supabase/migrations/*.sql`. ⚠️ Não há garantia de que produção = repo;
-  ao criar uma migration nova, rode-a no SQL Editor.
+  (a maioria) e `supabase/migrations/*.sql`. O Supabase CLI **não** está configurado
+  (não existe `supabase/config.toml`) — não há `db push` nem `gen types`.
+
+  **Como saber o que falta rodar:**
+
+  ```bash
+  npm run migrations:check
+  ```
+
+  Compara `supabase/manual/*.sql` com o ledger `public.schema_manual_migrations`
+  (criado em `20260803000000_migration_ledger.sql`) e lista as pendentes. Sai com
+  código 1 se houver pendência, então serve de gate antes de deploy.
+  Precisa de `SUPABASE_SERVICE_ROLE_KEY` no `.env` — o ledger tem RLS.
+
+  **Ao criar uma migration nova:** timestamp único no nome (já houve 4 colisões,
+  que deixavam a ordem de aplicação ambígua) e a última instrução registra o
+  próprio arquivo no ledger:
+
+  ```sql
+  insert into public.schema_manual_migrations (filename)
+  values ('<nome-deste-arquivo>.sql') on conflict (filename) do nothing;
+  ```
+
+  ⚠️ O ledger só conhece o que foi registrado nele. O backfill inicial
+  (`20260803000100_migration_ledger_backfill.sql`) veio com os 53 arquivos
+  históricos **comentados** de propósito, porque não havia registro de quais
+  tinham rodado — o que estiver comentado aparece como pendente. As migrations
+  do projeto são idempotentes (`if not exists`), então reaplicar é seguro.
 - **Isolamento entre empresas:** RLS por `owner_user_id` + papel (manager vê tudo,
   agente só contatos atribuídos). O frontend lê/escreve direto pelo browser confiando
   na RLS — então **RLS quebrada = vazamento entre empresas**. Ver `SEGURANCA.md`.

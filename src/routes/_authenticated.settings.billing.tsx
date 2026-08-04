@@ -2,6 +2,7 @@ import * as React from "react";
 import { createFileRoute } from "@tanstack/react-router";
 import { Check, Download, AlertTriangle } from "lucide-react";
 import { toast } from "sonner";
+import { Badge } from "@/components/ui/badge";
 import {
   SettingsLayout,
   buttonPrimary,
@@ -20,6 +21,11 @@ export const Route = createFileRoute("/_authenticated/settings/billing")({
 });
 
 type PlanKey = "trial" | "starter" | "pro" | "enterprise";
+
+const INVOICE_STATUS_VARIANT: Record<string, "success" | "neutral" | "warning"> = {
+  "Pago": "success",
+  "Pendente": "warning",
+};
 
 const PLANS: {
   key: PlanKey;
@@ -90,22 +96,13 @@ function BillingPage() {
               Trial gratuito
             </h2>
             {current === "trial" && (
-              <div
-                className="inline-flex items-center gap-2"
-                style={{
-                  marginTop: 8,
-                  padding: "6px 12px",
-                  borderRadius: 999,
-                  fontSize: 12,
-                  fontWeight: 500,
-                  background: trialUrgent
-                    ? "color-mix(in oklab, #EF4444 18%, transparent)"
-                    : "color-mix(in oklab, #F59E0B 18%, transparent)",
-                  color: trialUrgent ? "#EF4444" : "#F59E0B",
-                }}
-              >
-                {trialUrgent && <AlertTriangle size={12} />}
-                {trialDaysLeft} {trialDaysLeft === 1 ? "dia restante" : "dias restantes"} no trial
+              <div className="inline-flex items-center gap-2" style={{ marginTop: 8 }}>
+                <Badge variant={trialUrgent ? "warning" : "neutral"}>
+                  <span className="inline-flex items-center gap-2">
+                    {trialUrgent && <AlertTriangle size={12} />}
+                    {trialDaysLeft} {trialDaysLeft === 1 ? "dia restante" : "dias restantes"} no trial
+                  </span>
+                </Badge>
               </div>
             )}
           </div>
@@ -116,7 +113,7 @@ function BillingPage() {
           style={{
             marginTop: 20,
             display: "grid",
-            gridTemplateColumns: "repeat(auto-fit, minmax(200px, 1fr))",
+            gridTemplateColumns: "repeat(auto-fit, minmax(min(200px, 100%), 1fr))",
             gap: 16,
           }}
         >
@@ -132,7 +129,7 @@ function BillingPage() {
       <div
         style={{
           display: "grid",
-          gridTemplateColumns: "repeat(auto-fit, minmax(220px, 1fr))",
+          gridTemplateColumns: "repeat(auto-fit, minmax(min(220px, 100%), 1fr))",
           gap: 12,
           marginBottom: 32,
         }}
@@ -155,7 +152,7 @@ function BillingPage() {
                   top: -10,
                   right: 16,
                   padding: "2px 10px",
-                  borderRadius: 999,
+                  borderRadius: "var(--radius-pill)",
                   background: "var(--brand-400)",
                   color: "#fff",
                   fontSize: 11,
@@ -218,17 +215,9 @@ function BillingPage() {
                 <td style={{ padding: "10px 4px", color: "var(--text-muted)" }}>{inv.date}</td>
                 <td style={{ padding: "10px 4px" }}>{inv.amount}</td>
                 <td style={{ padding: "10px 4px" }}>
-                  <span
-                    style={{
-                      fontSize: 11,
-                      padding: "3px 8px",
-                      borderRadius: 999,
-                      background: "color-mix(in oklab, #10B981 18%, transparent)",
-                      color: "#10B981",
-                    }}
-                  >
+                  <Badge variant={INVOICE_STATUS_VARIANT[inv.status] ?? "neutral"}>
                     {inv.status}
-                  </span>
+                  </Badge>
                 </td>
                 <td style={{ padding: "10px 4px", textAlign: "right" }}>
                   <button
@@ -266,7 +255,7 @@ function UsageBar({ label, used, total }: { label: string; used: number; total: 
       <div
         style={{
           height: 6,
-          borderRadius: 999,
+          borderRadius: "var(--radius-pill)",
           background: "var(--bg-overlay)",
           overflow: "hidden",
         }}

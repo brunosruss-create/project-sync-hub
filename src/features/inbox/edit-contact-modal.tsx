@@ -1,8 +1,9 @@
 import * as React from "react";
 import { X, Loader2, UserCog } from "lucide-react";
+import { useServerFn } from "@tanstack/react-start";
 import { supabase } from "@/integrations/supabase/client";
-import { useAuth } from "@/hooks/use-auth";
 import { notify } from "@/lib/notify";
+import { assignContact, listAssignableMembers } from "@/lib/assignment.functions";
 import { type ContactCard as Contact, formatPhone } from "./data";
 import { FieldHint } from "@/components/field-hint";
 
@@ -14,7 +15,8 @@ interface Props {
 }
 
 export function EditContactModal({ open, contact, onClose, onSaved }: Props) {
-  const { user } = useAuth();
+  const listMembersFn = useServerFn(listAssignableMembers);
+  const assignFn = useServerFn(assignContact);
   const [name, setName] = React.useState("");
   const [tags, setTags] = React.useState<string[]>([]);
   const [tagDraft, setTagDraft] = React.useState("");
@@ -35,7 +37,6 @@ export function EditContactModal({ open, contact, onClose, onSaved }: Props) {
 
     // Carrega notes e lista de agentes
     void (async () => {
-      if (!user?.id) return;
       const { data } = await supabase
         .from("contacts")
         .select("notes")
@@ -47,13 +48,28 @@ export function EditContactModal({ open, contact, onClose, onSaved }: Props) {
     })();
 
     void (async () => {
-      // Lista simples: o próprio usuário (single-tenant)
-      const me = user?.email?.split("@")[0] ?? "Eu";
-      setAgents([{ id: user?.id ?? "", label: `Eu (${me})` }]);
+      // Antes daqui saía uma lista fixa com só o próprio usuário, comentada
+      // como "single-tenant" — texto de quando o produto não tinha equipe.
+      // Na prática o seletor não conseguia atribuir a mais ninguém.
+      try {
+        const membros = await listMembersFn();
+        setAgents(
+          membros.map((m) => ({
+            id: m.user_id,
+            label: m.is_self
+              ? `Eu (${m.full_name || m.email})`
+              : m.full_name || m.email || m.user_id.slice(0, 8),
+          })),
+        );
+      } catch (e) {
+        console.warn("[editar contato] falha ao listar membros:", e);
+        setAgents([]);
+      }
     })();
 
     setTimeout(() => nameRef.current?.focus(), 60);
-  }, [open, contact?.id, user?.id]);
+    // eslint-disable-next-line react-hooks/exhaustive-deps
+  }, [open, contact?.id]);
 
   React.useEffect(() => {
     if (!open) return;
@@ -81,11 +97,7 @@ export function EditContactModal({ open, contact, onClose, onSaved }: Props) {
       return;
     }
     setSaving(true);
-    const payload: Record<string, any> = {
-      name: finalName,
-      tags,
-      assigned_agent_id: assignedAgent,
-    };
+    const payload: Record<string, any> = { name: finalName, tags };
 
     let { error } = await supabase
       .from("contacts")
@@ -103,13 +115,28 @@ export function EditContactModal({ open, contact, onClose, onSaved }: Props) {
       setSaving(false);
       return;
     }
+
+    // Responsável vai pelo caminho único de atribuição, não junto do update
+    // acima: escrever `assigned_agent_id` direto do navegador pulava a guarda
+    // de manager e a validação de "essa pessoa é membro deste workspace".
+    if (assignedAgent !== (contact.assignedAgent ?? "")) {
+      try {
+        await assignFn({
+          data: { contactId: contact.id, agentUserId: assignedAgent || null },
+        });
+      } catch (e: any) {
+        notify.error(e?.message ?? "Falha ao alterar o responsável.");
+        setSaving(false);
+        return;
+      }
+    }
     onSaved({
       name: finalName,
       tags: [...tags],
       assignedAgent,
       notes: notes || null,
     });
-    notify.success("Contato atualizado ✓");
+    notify.success("Contato atualizado");
     setSaving(false);
     onClose();
   }
@@ -141,7 +168,7 @@ export function EditContactModal({ open, contact, onClose, onSaved }: Props) {
             width: 400, maxWidth: "100%",
             background: "var(--bg-surface)",
             border: "1px solid var(--border-strong)",
-            borderRadius: 12,
+            borderRadius: "var(--radius-modal)",
             boxShadow: "0 24px 48px rgba(0,0,0,.4)",
             display: "flex", flexDirection: "column",
             maxHeight: "calc(100vh - 32px)",
@@ -159,7 +186,7 @@ export function EditContactModal({ open, contact, onClose, onSaved }: Props) {
                 </div>
               </div>
             </div>
-            <button onClick={onClose} aria-label="Fechar" style={{ background: "transparent", border: 0, color: "var(--text-muted)", cursor: "pointer", padding: 4, borderRadius: 6 }}>
+            <button onClick={onClose} aria-label="Fechar" style={{ background: "transparent", border: 0, color: "var(--text-muted)", cursor: "pointer", padding: 4, borderRadius: "var(--radius-control)" }}>
               <X size={16} />
             </button>
           </div>
@@ -241,7 +268,7 @@ export function EditContactModal({ open, contact, onClose, onSaved }: Props) {
               type="button"
               onClick={onClose}
               disabled={saving}
-              style={{ height: 34, padding: "0 14px", borderRadius: 8, fontSize: 13, fontWeight: 500, background: "transparent", color: "var(--text-primary)", border: "1px solid var(--border-strong)", cursor: "pointer" }}
+              style={{ height: 34, padding: "0 14px", borderRadius: "var(--radius-card)", fontSize: 13, fontWeight: 500, background: "transparent", color: "var(--text-primary)", border: "1px solid var(--border-strong)", cursor: "pointer" }}
             >
               Cancelar
             </button>
@@ -251,7 +278,7 @@ export function EditContactModal({ open, contact, onClose, onSaved }: Props) {
               disabled={saving || !name.trim()}
               style={{
                 display: "inline-flex", alignItems: "center", gap: 6,
-                height: 34, padding: "0 14px", borderRadius: 8, fontSize: 13, fontWeight: 600,
+                height: 34, padding: "0 14px", borderRadius: "var(--radius-card)", fontSize: 13, fontWeight: 600,
                 background: !saving && name.trim() ? "#3654FF" : "color-mix(in oklab, #3654FF 40%, var(--bg-overlay))",
                 color: "#0a1a10", border: 0,
                 cursor: !saving && name.trim() ? "pointer" : "not-allowed",
@@ -274,16 +301,16 @@ const lbl: React.CSSProperties = {
 const input: React.CSSProperties = {
   width: "100%", height: 38, padding: "0 12px", fontSize: 14,
   color: "var(--text-primary)", background: "var(--bg-base)",
-  border: "1px solid var(--border-strong)", borderRadius: 8, outline: "none",
+  border: "1px solid var(--border-strong)", borderRadius: "var(--radius-card)", outline: "none",
 };
 const chipsBox: React.CSSProperties = {
   display: "flex", flexWrap: "wrap", gap: 6, alignItems: "center",
   padding: 6, minHeight: 38, background: "var(--bg-base)",
-  border: "1px solid var(--border-strong)", borderRadius: 8,
+  border: "1px solid var(--border-strong)", borderRadius: "var(--radius-card)",
 };
 const chip: React.CSSProperties = {
   display: "inline-flex", alignItems: "center", gap: 4,
-  padding: "2px 8px", borderRadius: 999,
+  padding: "2px 8px", borderRadius: "var(--radius-pill)",
   background: "var(--bg-overlay)", border: "1px solid var(--border)",
   fontSize: 12, color: "var(--text-primary)",
 };

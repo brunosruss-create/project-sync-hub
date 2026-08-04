@@ -57,7 +57,7 @@ export function YesNoCatalogEditor({
                     style={{
                       width: 28,
                       height: 28,
-                      borderRadius: 6,
+                      borderRadius: "var(--radius-pill)",
                       border: "1px solid var(--border)",
                       background: "transparent",
                       color: "var(--text-muted)",
@@ -76,7 +76,7 @@ export function YesNoCatalogEditor({
                     style={{
                       height: 30,
                       padding: "0 10px",
-                      borderRadius: 6,
+                      borderRadius: "var(--radius-control)",
                       border: "1px solid var(--border)",
                       background: "var(--bg-surface)",
                       color: "var(--text-primary)",
@@ -106,7 +106,7 @@ export function YesNoCatalogEditor({
           padding: "0 10px",
           fontSize: 12,
           marginTop: 8,
-          borderRadius: 6,
+          borderRadius: "var(--radius-pill)",
           border: "1px solid var(--border)",
           background: "transparent",
           color: "var(--text-primary)",
@@ -121,7 +121,7 @@ export function YesNoCatalogEditor({
             style={{
               height: 36,
               padding: "0 10px",
-              borderRadius: 6,
+              borderRadius: "var(--radius-control)",
               border: "1px solid var(--border)",
               background: "var(--bg-surface)",
               color: "var(--text-primary)",
@@ -147,9 +147,9 @@ export function YesNoCatalogEditor({
                   onClick={() => onAdd(key)}
                   style={{
                     height: 26,
-                    padding: "0 10px",
+                    padding: "0 12px",
                     fontSize: 12,
-                    borderRadius: 6,
+                    borderRadius: "var(--radius-pill)",
                     border: "1px solid var(--border)",
                     background: "transparent",
                     color: "var(--brand-400)",

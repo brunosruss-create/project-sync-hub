@@ -16,9 +16,12 @@ import {
   Shield,
   LogOut,
   Bot,
+  Moon,
+  Sun,
 } from "lucide-react";
 import { useAuth } from "@/hooks/use-auth";
 import { useIsSuperAdmin } from "@/hooks/use-is-super-admin";
+import { useTheme } from "@/hooks/use-theme";
 
 export const Route = createFileRoute("/_authenticated/super-admin")({
   component: SuperAdminLayout,
@@ -37,6 +40,7 @@ function SuperAdminLayout() {
   const navigate = useNavigate();
   const path = useRouterState({ select: (s) => s.location.pathname });
   const { isSuperAdmin, loading: checking } = useIsSuperAdmin();
+  const { theme, toggle } = useTheme();
   const [denied, setDenied] = React.useState(false);
 
   React.useEffect(() => {
@@ -56,7 +60,7 @@ function SuperAdminLayout() {
     return (
       <div
         className="flex min-h-screen items-center justify-center"
-        style={{ background: "#0A0A0A", color: "#fff" }}
+        style={{ background: "var(--bg-surface)", color: "var(--text-primary)" }}
       >
         <p style={{ fontSize: 13, opacity: 0.6 }}>Verificando permissões…</p>
       </div>
@@ -68,26 +72,26 @@ function SuperAdminLayout() {
   return (
     <div
       className="fixed inset-0 flex"
-      style={{ background: "#050505", color: "#fff", fontFamily: "inherit" }}
+      style={{ background: "var(--bg-base)", color: "var(--text-primary)", fontFamily: "inherit" }}
     >
       {/* Sidebar */}
       <aside
         className="hidden md:flex flex-col shrink-0"
         style={{
           width: 240,
-          background: "#0A0A0A",
-          borderRight: "1px solid #1F1F23",
+          background: "var(--bg-surface)",
+          borderRight: "1px solid var(--border)",
         }}
       >
         <div
           className="flex items-center gap-2"
-          style={{ height: 56, padding: "0 16px", borderBottom: "1px solid #1F1F23" }}
+          style={{ height: 56, padding: "0 16px", borderBottom: "1px solid var(--border)" }}
         >
           <div
             style={{
               width: 26,
               height: 26,
-              borderRadius: 6,
+              borderRadius: "var(--radius-pill)",
               background: "#7C3AED",
               display: "flex",
               alignItems: "center",
@@ -112,10 +116,10 @@ function SuperAdminLayout() {
                     style={{
                       height: 34,
                       padding: "0 10px",
-                      borderRadius: 6,
+                      borderRadius: "var(--radius-control)",
                       fontSize: 13,
                       fontWeight: 500,
-                      color: active ? "#fff" : "rgba(255,255,255,0.7)",
+                      color: active ? "var(--text-primary)" : "var(--text-muted)",
                       background: active
                         ? "color-mix(in oklab, #7C3AED 25%, transparent)"
                         : "transparent",
@@ -123,7 +127,7 @@ function SuperAdminLayout() {
                       paddingLeft: active ? 8 : 10,
                     }}
                     onMouseEnter={(e) => {
-                      if (!active) e.currentTarget.style.background = "#15151A";
+                      if (!active) e.currentTarget.style.background = "var(--bg-overlay)";
                     }}
                     onMouseLeave={(e) => {
                       if (!active) e.currentTarget.style.background = "transparent";
@@ -138,15 +142,15 @@ function SuperAdminLayout() {
           </ul>
         </nav>
 
-        <div style={{ padding: 12, borderTop: "1px solid #1F1F23" }}>
+        <div style={{ padding: 12, borderTop: "1px solid var(--border)" }}>
           <Link
             to="/dashboard"
             className="flex items-center gap-2"
             style={{
               padding: "8px 10px",
-              borderRadius: 6,
+              borderRadius: "var(--radius-control)",
               fontSize: 12,
-              color: "rgba(255,255,255,0.5)",
+              color: "var(--text-muted)",
             }}
           >
             <LogOut size={13} /> Voltar ao app
@@ -160,8 +164,8 @@ function SuperAdminLayout() {
           style={{
             height: 56,
             padding: "0 24px",
-            borderBottom: "1px solid #1F1F23",
-            background: "#0A0A0A",
+            borderBottom: "1px solid var(--border)",
+            background: "var(--bg-surface)",
           }}
         >
           <div className="flex items-center gap-3">
@@ -173,7 +177,7 @@ function SuperAdminLayout() {
                 textTransform: "uppercase",
                 letterSpacing: "0.08em",
                 padding: "3px 8px",
-                borderRadius: 999,
+                borderRadius: "var(--radius-pill)",
                 background: "color-mix(in oklab, #7C3AED 25%, transparent)",
                 color: "#A78BFA",
                 border: "1px solid color-mix(in oklab, #7C3AED 50%, transparent)",
@@ -182,14 +186,33 @@ function SuperAdminLayout() {
               Super Admin
             </span>
           </div>
-          <span style={{ fontSize: 12, color: "rgba(255,255,255,0.5)" }}>
-            {user?.email}
-          </span>
+          <div className="flex items-center gap-3">
+            <span style={{ fontSize: 12, color: "var(--text-muted)" }}>
+              {user?.email}
+            </span>
+            <button
+              type="button"
+              onClick={toggle}
+              aria-label="Alternar tema"
+              className="inline-flex items-center justify-center transition-colors"
+              style={{
+                width: 32,
+                height: 32,
+                borderRadius: "var(--radius-pill)",
+                color: "var(--text-muted)",
+                background: "transparent",
+              }}
+              onMouseEnter={(e) => (e.currentTarget.style.background = "var(--bg-overlay)")}
+              onMouseLeave={(e) => (e.currentTarget.style.background = "transparent")}
+            >
+              {theme === "dark" ? <Sun size={16} /> : <Moon size={16} />}
+            </button>
+          </div>
         </header>
 
         <main
           className="flex-1 overflow-y-auto"
-          style={{ padding: 24, background: "#050505" }}
+          style={{ padding: 24, background: "var(--bg-base)" }}
         >
           <Outlet />
         </main>
@@ -200,19 +223,19 @@ function SuperAdminLayout() {
 
 // Re-export shared admin styles
 export const adminCard: React.CSSProperties = {
-  background: "#0A0A0A",
-  border: "1px solid #1F1F23",
-  borderRadius: 10,
+  background: "var(--bg-surface)",
+  border: "1px solid var(--border)",
+  borderRadius: "var(--radius-card)",
   padding: 16,
 };
 
 export const adminInput: React.CSSProperties = {
   height: 34,
   padding: "0 10px",
-  borderRadius: 6,
-  border: "1px solid #1F1F23",
-  background: "#0A0A0A",
-  color: "#fff",
+  borderRadius: "var(--radius-control)",
+  border: "1px solid var(--border)",
+  background: "var(--bg-surface)",
+  color: "var(--text-primary)",
   fontSize: 13,
   outline: "none",
 };
@@ -220,7 +243,7 @@ export const adminInput: React.CSSProperties = {
 export const adminBtn: React.CSSProperties = {
   height: 32,
   padding: "0 12px",
-  borderRadius: 6,
+  borderRadius: "var(--radius-control)",
   background: "#7C3AED",
   color: "#fff",
   fontSize: 12,
@@ -232,14 +255,14 @@ export const adminBtn: React.CSSProperties = {
 export const adminBtnGhost: React.CSSProperties = {
   ...adminBtn,
   background: "transparent",
-  border: "1px solid #1F1F23",
-  color: "rgba(255,255,255,0.85)",
+  border: "1px solid var(--border)",
+  color: "var(--text-primary)",
 };
 
 export const adminBtnDanger: React.CSSProperties = {
   ...adminBtnGhost,
   color: "#F87171",
-  borderColor: "color-mix(in oklab, #EF4444 40%, #1F1F23)",
+  borderColor: "color-mix(in oklab, #EF4444 40%, var(--border))",
 };
 
 export { redirect };

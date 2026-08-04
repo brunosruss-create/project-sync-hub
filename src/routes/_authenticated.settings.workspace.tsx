@@ -22,6 +22,8 @@ import {
 } from "@/lib/onboarding.functions";
 
 import { ManagerOnly } from "@/components/manager-only";
+import { Card } from "@/components/ui/card";
+import { ConfirmDialog } from "@/components/confirm-dialog";
 import { TimeSelect } from "@/components/time-select";
 import { YesNoToggle } from "@/components/toggle-row";
 import { YesNoCatalogEditor } from "@/components/yes-no-catalog-editor";
@@ -421,7 +423,7 @@ function WorkspacePage() {
             style={{
               width: 64,
               height: 64,
-              borderRadius: 12,
+              borderRadius: "var(--radius-modal)",
               background: "var(--bg-overlay)",
               display: "flex",
               alignItems: "center",
@@ -569,8 +571,8 @@ function WorkspacePage() {
                   onClick={() => handleDocumentTypeChange(opt.key)}
                   style={{
                     height: 28,
-                    padding: "0 12px",
-                    borderRadius: 6,
+                    padding: "0 14px",
+                    borderRadius: "var(--radius-pill)",
                     fontSize: 12,
                     fontWeight: 500,
                     border: "1px solid",
@@ -660,7 +662,7 @@ function WorkspacePage() {
                       style={{
                         width: 28,
                         height: 28,
-                        borderRadius: 6,
+                        borderRadius: "var(--radius-pill)",
                         border: "1px solid var(--border)",
                         background: "transparent",
                         color: "var(--text-muted)",
@@ -679,7 +681,7 @@ function WorkspacePage() {
                       style={{
                         height: 30,
                         padding: "0 10px",
-                        borderRadius: 6,
+                        borderRadius: "var(--radius-control)",
                         border: "1px solid var(--border)",
                         background: "var(--bg-surface)",
                         color: "var(--text-primary)",
@@ -723,14 +725,7 @@ function WorkspacePage() {
       </FieldGroup>
 
       <FieldGroup label="Horários de funcionamento">
-        <div
-          className="flex flex-col"
-          style={{
-            border: "1px solid var(--border)",
-            borderRadius: 8,
-            overflow: "hidden",
-          }}
-        >
+        <Card className="flex flex-col" style={{ overflow: "hidden", padding: 0 }}>
           {DAYS.map((d, i) => {
             const h = hours[d.key];
             return (
@@ -774,7 +769,7 @@ function WorkspacePage() {
               </div>
             );
           })}
-        </div>
+        </Card>
         <Field label="Fuso horário">
           <select style={inputStyle} value={tz} onChange={(e) => setTz(e.target.value)}>
             <option value="America/Sao_Paulo">America/Sao_Paulo (GMT-3)</option>
@@ -804,59 +799,15 @@ function WorkspacePage() {
         </Field>
       </FieldGroup>
 
-      {confirmSwitch && (
-        <div
-          onClick={() => !saving && setConfirmSwitch(null)}
-          style={{
-            position: "fixed",
-            inset: 0,
-            background: "rgba(0,0,0,0.5)",
-            zIndex: 60,
-            display: "flex",
-            alignItems: "center",
-            justifyContent: "center",
-            padding: 16,
-          }}
-        >
-          <div
-            onClick={(e) => e.stopPropagation()}
-            style={{
-              background: "var(--bg-surface)",
-              border: "1px solid var(--border)",
-              borderRadius: 12,
-              maxWidth: 460,
-              width: "100%",
-              padding: 20,
-            }}
-          >
-            <h3 style={{ fontSize: 16, fontWeight: 600, marginBottom: 8 }}>
-              Trocar para “{confirmSwitch.name}”?
-            </h3>
-            <p style={{ fontSize: 13, color: "var(--text-muted)", lineHeight: 1.5 }}>
-              Os defaults da IA (nome do assistente, tom de voz, palavras-chave de
-              transferência e número de mensagens antes de transferir) serão
-              substituídos pelos do novo segmento. Suas customizações atuais serão
-              sobrescritas.
-            </p>
-            <div className="flex justify-end gap-2" style={{ marginTop: 20 }}>
-              <button
-                style={buttonSecondary}
-                disabled={saving}
-                onClick={() => setConfirmSwitch(null)}
-              >
-                Cancelar
-              </button>
-              <button
-                style={buttonPrimary}
-                disabled={saving}
-                onClick={() => persist(true)}
-              >
-                {saving ? "Aplicando…" : "Sim, trocar segmento"}
-              </button>
-            </div>
-          </div>
-        </div>
-      )}
+      <ConfirmDialog
+        open={!!confirmSwitch}
+        onClose={() => !saving && setConfirmSwitch(null)}
+        onConfirm={() => persist(true)}
+        title={`Trocar para "${confirmSwitch?.name ?? ""}"?`}
+        description="Os defaults da IA (nome do assistente, tom de voz, palavras-chave de transferência e número de mensagens antes de transferir) serão substituídos pelos do novo segmento. Suas customizações atuais serão sobrescritas."
+        confirmLabel="Sim, trocar segmento"
+        destructive={false}
+      />
     </SettingsLayout>
   );
 }

@@ -20,7 +20,7 @@ function Landing() {
               style={{
                 width: 24,
                 height: 24,
-                borderRadius: 6,
+                borderRadius: "var(--radius-pill)",
                 background: "var(--brand-400)",
                 color: "#fff",
                 fontSize: 13,
@@ -49,7 +49,7 @@ function Landing() {
             style={{
               gap: 6,
               padding: "4px 10px",
-              borderRadius: 999,
+              borderRadius: "var(--radius-pill)",
               border: "1px solid var(--border)",
               background: "var(--bg-surface)",
               fontSize: 12,
@@ -60,7 +60,7 @@ function Landing() {
               style={{
                 width: 6,
                 height: 6,
-                borderRadius: 999,
+                borderRadius: "var(--radius-pill)",
                 background: "var(--brand-400)",
               }}
             />
@@ -113,7 +113,7 @@ function Landing() {
               key={title}
               style={{
                 padding: 20,
-                borderRadius: 8,
+                borderRadius: "var(--radius-card)",
                 border: "1px solid var(--border)",
                 background: "var(--bg-surface)",
               }}

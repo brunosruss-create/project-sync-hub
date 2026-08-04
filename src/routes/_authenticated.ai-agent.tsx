@@ -13,7 +13,9 @@ import {
 } from "lucide-react";
 
 import { ManagerOnly } from "@/components/manager-only";
+import { SettingsLayout } from "@/features/settings/settings-layout";
 import { TimeSelect } from "@/components/time-select";
+import { Card } from "@/components/ui/card";
 import {
   getWorkspaceAiConfig,
   updateWorkspaceAiConfig,
@@ -268,25 +270,41 @@ function AIAgentPage() {
     );
 
   return (
-    <div className="flex flex-col" style={{ gap: 24, maxWidth: 960 }}>
-      <header>
-        <h1 style={{ fontSize: 22, fontWeight: 600, letterSpacing: "-0.015em" }}>
-          Agente IA
-        </h1>
-        <p style={{ marginTop: 4, fontSize: 13, color: "var(--text-muted)" }}>
-          Configure como o assistente atende seus clientes automaticamente.
-        </p>
-      </header>
-
+    <>
+    <SettingsLayout
+      title="Agente IA"
+      description="Configure como o assistente atende seus clientes automaticamente."
+      footer={
+        <>
+          <button
+            style={btnSecondary}
+            onClick={() => {
+              setHydrated(false);
+              qc.invalidateQueries({ queryKey: ["workspace-ai-config"] });
+            }}
+          >
+            Cancelar
+          </button>
+          <button
+            style={btnPrimary}
+            disabled={saveMutation.isPending}
+            onClick={() => saveMutation.mutate()}
+          >
+            {saveMutation.isPending ? "Salvando…" : "Salvar alterações"}
+          </button>
+        </>
+      }
+    >
+      <div className="flex flex-col" style={{ gap: 24, maxWidth: 960 }}>
       {/* STATUS */}
-      <Card>
+      <Card style={{ padding: 20 }}>
         <div className="flex items-center justify-between gap-4 flex-wrap">
           <div className="flex items-center gap-3">
             <div
               style={{
                 width: 44,
                 height: 44,
-                borderRadius: 12,
+                borderRadius: "var(--radius-modal)",
                 background: active
                   ? "color-mix(in oklab, #10B981 18%, transparent)"
                   : "var(--bg-overlay)",
@@ -308,7 +326,7 @@ function AIAgentPage() {
                   style={{
                     width: 8,
                     height: 8,
-                    borderRadius: 999,
+                    borderRadius: "var(--radius-pill)",
                     background: active ? "#10B981" : "var(--text-muted)",
                     display: "inline-block",
                   }}
@@ -326,7 +344,7 @@ function AIAgentPage() {
           style={{
             marginTop: 20,
             display: "grid",
-            gridTemplateColumns: "repeat(auto-fit, minmax(140px, 1fr))",
+            gridTemplateColumns: "repeat(auto-fit, minmax(min(140px, 100%), 1fr))",
             gap: 12,
           }}
         >
@@ -335,7 +353,7 @@ function AIAgentPage() {
               key={s.label}
               style={{
                 padding: 12,
-                borderRadius: 8,
+                borderRadius: "var(--radius-card)",
                 background: "var(--bg-overlay)",
               }}
             >
@@ -348,7 +366,7 @@ function AIAgentPage() {
 
       {/* PERSONALIDADE */}
       <Section title="Personalidade do agente">
-        <Card>
+        <Card style={{ padding: 20 }}>
           <div className="grid gap-3 md:grid-cols-2">
             <Field label="Nome do assistente">
               <input
@@ -428,7 +446,7 @@ function AIAgentPage() {
 
       {/* COMPORTAMENTO DO AGENTE */}
       <Section title="Comportamento do agente">
-        <Card>
+        <Card style={{ padding: 20 }}>
           <ToggleRow
             label="A IA se apresenta pelo nome ao cliente?"
             value={introduceByName}
@@ -487,7 +505,7 @@ function AIAgentPage() {
 
       {/* INFORMAÇÕES A COLETAR */}
       <Section title="Informações a coletar antes de agendar">
-        <Card>
+        <Card style={{ padding: 20 }}>
           <Field label="Informações que a IA deve coletar antes de orçar/agendar">
             {visibleFieldKeys.length > 0 ? (
               <div>
@@ -532,7 +550,7 @@ function AIAgentPage() {
                 style={{
                   padding: 6,
                   border: "1px solid var(--border)",
-                  borderRadius: 6,
+                  borderRadius: "var(--radius-control)",
                   background: "var(--bg-surface)",
                   minHeight: 36,
                 }}
@@ -543,7 +561,7 @@ function AIAgentPage() {
                     className="inline-flex items-center gap-1"
                     style={{
                       padding: "2px 8px",
-                      borderRadius: 999,
+                      borderRadius: "var(--radius-pill)",
                       background: "var(--bg-overlay)",
                       fontSize: 12,
                     }}
@@ -598,7 +616,7 @@ function AIAgentPage() {
 
       {/* FLUXO */}
       <Section title="Fluxo de atendimento">
-        <Card>
+        <Card style={{ padding: 20 }}>
           <FlowDiagram />
           <div className="grid gap-3 md:grid-cols-2" style={{ marginTop: 20 }}>
             <Field label="Transferir após N mensagens sem resolução">
@@ -617,7 +635,7 @@ function AIAgentPage() {
                 style={{
                   padding: 6,
                   border: "1px solid var(--border)",
-                  borderRadius: 6,
+                  borderRadius: "var(--radius-control)",
                   background: "var(--bg-surface)",
                   minHeight: 36,
                 }}
@@ -628,7 +646,7 @@ function AIAgentPage() {
                     className="inline-flex items-center gap-1"
                     style={{
                       padding: "2px 8px",
-                      borderRadius: 999,
+                      borderRadius: "var(--radius-pill)",
                       background: "var(--bg-overlay)",
                       fontSize: 12,
                     }}
@@ -676,7 +694,7 @@ function AIAgentPage() {
 
       {/* AGENDAMENTO */}
       <Section title="Agendamento automático">
-        <Card>
+        <Card style={{ padding: 20 }}>
           <div className="flex items-start justify-between gap-4">
             <div>
               <div style={{ fontSize: 14, fontWeight: 500 }}>
@@ -747,7 +765,7 @@ function AIAgentPage() {
                             style={{
                               padding: "8px 10px",
                               border: "1px solid var(--border)",
-                              borderRadius: 6,
+                              borderRadius: "var(--radius-control)",
                               fontSize: 13,
                               cursor: "pointer",
                               background: checked
@@ -775,7 +793,7 @@ function AIAgentPage() {
 
       {/* HORÁRIO IA */}
       <Section title="Horário de atendimento da IA">
-        <Card>
+        <Card style={{ padding: 20 }}>
           <label
             className="flex items-center gap-2"
             style={{ fontSize: 13, fontWeight: 500, marginBottom: 12 }}
@@ -869,40 +887,16 @@ function AIAgentPage() {
         </Card>
       </Section>
 
-      <div
-        className="sticky bottom-0 flex justify-end gap-2"
-        style={{
-          padding: "12px 0",
-          borderTop: "1px solid var(--border)",
-          background: "var(--bg-base)",
-        }}
-      >
-        <button
-          style={btnSecondary}
-          onClick={() => {
-            setHydrated(false);
-            qc.invalidateQueries({ queryKey: ["workspace-ai-config"] });
-          }}
-        >
-          Cancelar
-        </button>
-        <button
-          style={btnPrimary}
-          disabled={saveMutation.isPending}
-          onClick={() => saveMutation.mutate()}
-        >
-          {saveMutation.isPending ? "Salvando…" : "Salvar alterações"}
-        </button>
       </div>
-
-      {tester && (
-        <TesterModal
-          name={name}
-          aiRespondFn={aiRespondFn}
-          onClose={() => setTester(false)}
-        />
-      )}
-    </div>
+    </SettingsLayout>
+    {tester && (
+      <TesterModal
+        name={name}
+        aiRespondFn={aiRespondFn}
+        onClose={() => setTester(false)}
+      />
+    )}
+    </>
   );
 }
 
@@ -910,7 +904,7 @@ function FlowDiagram() {
   const node: React.CSSProperties = {
     padding: "10px 14px",
     border: "1px solid var(--border)",
-    borderRadius: 8,
+    borderRadius: "var(--radius-card)",
     background: "var(--bg-overlay)",
     fontSize: 12,
     fontWeight: 500,
@@ -1034,7 +1028,7 @@ function TesterModal({
         style={{
           background: "var(--bg-surface)",
           border: "1px solid var(--border)",
-          borderRadius: 12,
+          borderRadius: "var(--radius-modal)",
           width: "100%",
           maxWidth: 460,
           height: 560,
@@ -1112,7 +1106,7 @@ function TesterModal({
 const inputBase: React.CSSProperties = {
   height: 36,
   padding: "0 10px",
-  borderRadius: 6,
+  borderRadius: "var(--radius-control)",
   border: "1px solid var(--border)",
   background: "var(--bg-surface)",
   color: "var(--text-primary)",
@@ -1124,7 +1118,7 @@ const input = inputBase;
 const btnPrimary: React.CSSProperties = {
   height: 36,
   padding: "0 14px",
-  borderRadius: 6,
+  borderRadius: "var(--radius-control)",
   background: "var(--brand-400)",
   color: "#fff",
   fontSize: 13,
@@ -1139,20 +1133,6 @@ const btnSecondary: React.CSSProperties = {
   border: "1px solid var(--border)",
 };
 
-function Card({ children }: { children: React.ReactNode }) {
-  return (
-    <div
-      style={{
-        padding: 20,
-        borderRadius: 10,
-        background: "var(--bg-surface)",
-        border: "1px solid var(--border)",
-      }}
-    >
-      {children}
-    </div>
-  );
-}
 
 function Section({ title, children }: { title: string; children: React.ReactNode }) {
   return (
@@ -1189,7 +1169,7 @@ function BigToggle({ value, onChange }: { value: boolean; onChange: (v: boolean)
       style={{
         width: 64,
         height: 34,
-        borderRadius: 999,
+        borderRadius: "var(--radius-pill)",
         border: 0,
         background: value ? "#10B981" : "var(--border)",
         position: "relative",
@@ -1204,7 +1184,7 @@ function BigToggle({ value, onChange }: { value: boolean; onChange: (v: boolean)
           left: value ? 33 : 3,
           width: 28,
           height: 28,
-          borderRadius: 999,
+          borderRadius: "var(--radius-pill)",
           background: "#fff",
           transition: "left 0.2s",
           boxShadow: "0 1px 3px rgba(0,0,0,0.2)",

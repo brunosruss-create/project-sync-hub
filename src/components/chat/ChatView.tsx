@@ -1,49 +1,63 @@
 import * as React from "react";
 import { useNavigate } from "@tanstack/react-router";
+import { MessageSquare, Search, Moon, Sun, LogOut } from "lucide-react";
 import { supabase } from "@/integrations/supabase/client";
 import { useAuth } from "@/hooks/use-auth";
+import { useTheme } from "@/hooks/use-theme";
 import { useWorkspaceOwnerId } from "@/hooks/use-workspace-owner";
 import {
   DEFAULT_COLUMNS,
   type ContactCard as Contact,
   type KanbanColumnDef,
-  type KanbanColumnId,
 } from "@/features/inbox/data";
+import {
+  CONTACT_COLUMNS,
+  CONTACT_COLUMNS_LEGACY,
+  isMissingColumnError,
+  mapContactRow,
+} from "@/features/inbox/contact-row";
 import { NewContactModal } from "@/features/inbox/new-contact-modal";
 import { Route as ChatRoute } from "@/routes/_authenticated.conversations-chat";
+import { EmptyState as SharedEmptyState } from "@/components/empty-state";
 import { ConversationList } from "./ConversationList";
-import { MessageThread } from "./MessageThread";
-import { ChatEmptyState } from "./EmptyState";
+import { ConversationPanel } from "@/features/inbox/conversation-panel";
 
-const SELECT_FULL =
-  "id,name,phone,avatar_url,kanban_column,assigned_agent_id,tags,priority,is_unread,unread_count,last_direction,last_message,last_message_at,email,notes,is_blocked,is_archived";
-
-const mapRow = (r: any): Contact => ({
-  id: r.id,
-  name: r.name,
-  phone: r.phone,
-  avatar: r.avatar_url,
-  lastMessage: r.last_message ?? "",
-  lastMessageAt: r.last_message_at ? new Date(r.last_message_at) : new Date(),
-  assignedAgent: r.assigned_agent_id ?? null,
-  tags: Array.isArray(r.tags) ? r.tags : [],
-  isUnread: !!r.is_unread,
-  unreadCount: typeof r.unread_count === "number" ? r.unread_count : (r.is_unread ? 1 : 0),
-  lastDirection: r.last_direction ?? null,
-  priority: r.priority === "urgent" ? "urgent" : "normal",
-  kanban_column: (r.kanban_column ?? "waiting") as KanbanColumnId,
-  email: r.email ?? null,
-  notes: r.notes ?? null,
-  is_blocked: !!r.is_blocked,
-  is_archived: !!r.is_archived,
-});
+const mapRow = mapContactRow;
 
 export function ChatView() {
-  const { user } = useAuth();
+  const { user, signOut } = useAuth();
+  const { theme, toggle } = useTheme();
   const { workspaceOwnerId } = useWorkspaceOwnerId();
   const navigate = useNavigate({ from: "/conversations-chat" });
+  const rootNavigate = useNavigate();
   const search = ChatRoute.useSearch();
   const activeId = search.id || null;
+
+  // Ações que nas outras telas moram na topbar. Aqui a topbar é escondida
+  // (app-topbar.tsx), então elas viajam junto com o cabeçalho do contato.
+  const headerActions = (
+    <div className="flex items-center" style={{ gap: 2, flexShrink: 0 }}>
+      <IconAction
+        label="Buscar (Cmd+K)"
+        onClick={() =>
+          window.dispatchEvent(new KeyboardEvent("keydown", { key: "k", metaKey: true }))
+        }
+      >
+        <Search size={16} />
+      </IconAction>
+      <IconAction label="Alternar tema" onClick={toggle}>
+        {theme === "dark" ? <Sun size={16} /> : <Moon size={16} />}
+      </IconAction>
+      <IconAction
+        label="Sair"
+        onClick={() => {
+          void signOut().then(() => rootNavigate({ to: "/login" }));
+        }}
+      >
+        <LogOut size={16} />
+      </IconAction>
+    </div>
+  );
 
   const [contacts, setContacts] = React.useState<Contact[]>([]);
   const [columns, setColumns] = React.useState<KanbanColumnDef[]>(DEFAULT_COLUMNS);
@@ -64,11 +78,19 @@ export function ChatView() {
     let cancelled = false;
 
     const load = async () => {
-      const { data, error } = await supabase
+      let { data, error } = await supabase
         .from("contacts")
-        .select(SELECT_FULL)
+        .select(CONTACT_COLUMNS)
         .eq("is_archived", false)
         .order("last_message_at", { ascending: false, nullsFirst: false });
+      if (isMissingColumnError(error)) {
+        const r = await supabase
+          .from("contacts")
+          .select(CONTACT_COLUMNS_LEGACY)
+          .order("last_message_at", { ascending: false, nullsFirst: false });
+        data = r.data as any;
+        error = r.error;
+      }
       if (cancelled) return;
       if (error) {
         console.warn("[chat] erro ao carregar contatos:", error.message);
@@ -224,9 +246,38 @@ export function ChatView() {
           }}
         >
           {activeContact ? (
-            <MessageThread contact={activeContact} onBack={handleBack} />
+            /* Mesmo painel do Kanban, embutido em vez de gaveta. Um só chat
+               para as duas telas — antes eram dois, e respostas rápidas
+               existiram só de um lado por semanas sem ninguém notar. */
+            <ConversationPanel
+              variant="inline"
+              contact={activeContact}
+              onClose={handleBack}
+              headerExtra={headerActions}
+              onContactUpdate={(id, patch) =>
+                setContacts((prev) =>
+                  prev.map((c) => (c.id === id ? { ...c, ...patch } : c)),
+                )
+              }
+            />
           ) : (
-            <ChatEmptyState />
+            <div className="flex flex-1 flex-col" style={{ background: "var(--bg-base)" }}>
+              {/* Sem conversa aberta não há cabeçalho de contato — as ações
+                  precisam de uma linha própria, senão sumiriam da tela. */}
+              <div
+                className="flex items-center justify-end"
+                style={{ height: 44, padding: "0 10px", flexShrink: 0 }}
+              >
+                {headerActions}
+              </div>
+              <div className="flex flex-1 items-center justify-center">
+                <SharedEmptyState
+                  icon={<MessageSquare size={40} style={{ color: "var(--brand-400)" }} aria-hidden />}
+                  title="Selecione uma conversa"
+                  description="Escolha um contato à esquerda para começar a atender"
+                />
+              </div>
+            </div>
           )}
         </div>
       )}
@@ -240,5 +291,37 @@ export function ChatView() {
         }}
       />
     </div>
+  );
+}
+
+function IconAction({
+  children,
+  onClick,
+  label,
+}: {
+  children: React.ReactNode;
+  onClick: () => void;
+  label: string;
+}) {
+  return (
+    <button
+      type="button"
+      onClick={onClick}
+      aria-label={label}
+      title={label}
+      className="inline-flex items-center justify-center transition-colors"
+      style={{
+        width: 30,
+        height: 30,
+        borderRadius: "var(--radius-pill)",
+        color: "var(--text-muted)",
+        background: "transparent",
+        flexShrink: 0,
+      }}
+      onMouseEnter={(e) => (e.currentTarget.style.background = "var(--bg-overlay)")}
+      onMouseLeave={(e) => (e.currentTarget.style.background = "transparent")}
+    >
+      {children}
+    </button>
   );
 }

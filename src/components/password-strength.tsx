@@ -30,7 +30,7 @@ export function PasswordStrength({ value }: { value: string }) {
                 style={{
                   flex: 1,
                   height: 3,
-                  borderRadius: 999,
+                  borderRadius: "var(--radius-pill)",
                   background: i <= score ? colors[score] : "var(--bg-overlay)",
                   transition: "background 150ms var(--ease-default)",
                 }}

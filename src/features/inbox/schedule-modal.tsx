@@ -1,5 +1,5 @@
 import * as React from "react";
-import { X, Check, CalendarDays, Clock, User, MessageCircle, Trash2 } from "lucide-react";
+import { X, Check, CalendarDays, Clock, User, MessageCircle, Trash2, AlertTriangle } from "lucide-react";
 import { toast } from "sonner";
 import { supabase } from "@/integrations/supabase/client";
 import { useAuth } from "@/hooks/use-auth";
@@ -537,8 +537,8 @@ export function ScheduleModal({
 
     toast.success(
       initial?.id
-        ? `Agendamento atualizado! 📅 ${dateStr} às ${time}`
-        : `Agendamento criado! 📅 ${dateStr} às ${time}`,
+        ? `Agendamento atualizado — ${dateStr} às ${time}`
+        : `Agendamento criado — ${dateStr} às ${time}`,
     );
     if (typeof window !== "undefined") {
       window.dispatchEvent(
@@ -627,7 +627,7 @@ export function ScheduleModal({
           maxHeight: "90vh",
           background: "var(--bg-surface)",
           border: "1px solid var(--border)",
-          borderRadius: 12,
+          borderRadius: "var(--radius-modal)",
           boxShadow: "0 30px 80px rgba(0,0,0,0.5)",
           display: "flex",
           flexDirection: "column",
@@ -646,9 +646,13 @@ export function ScheduleModal({
                 color: "var(--text-muted)",
                 textTransform: "uppercase",
                 letterSpacing: "0.04em",
+                display: "flex",
+                alignItems: "center",
+                gap: 5,
               }}
             >
-              📅 {initial ? "Editar agendamento" : "Novo agendamento"}
+              <CalendarDays size={12} aria-hidden />
+              {initial ? "Editar agendamento" : "Novo agendamento"}
             </div>
             <div
               style={{ fontSize: 14, fontWeight: 600, color: "var(--text-primary)", marginTop: 2 }}
@@ -664,7 +668,7 @@ export function ScheduleModal({
             style={{
               width: 30,
               height: 30,
-              borderRadius: 6,
+              borderRadius: "var(--radius-pill)",
               color: "var(--text-muted)",
               background: "transparent",
             }}
@@ -702,7 +706,7 @@ export function ScheduleModal({
                         zIndex: 5,
                         background: "var(--bg-surface)",
                         border: "1px solid var(--border-strong)",
-                        borderRadius: 6,
+                        borderRadius: "var(--radius-control)",
                         maxHeight: 200,
                         overflow: "auto",
                         boxShadow: "0 10px 30px rgba(0,0,0,0.18)",
@@ -801,7 +805,7 @@ export function ScheduleModal({
               <div
                 style={{
                   padding: "12px 10px",
-                  borderRadius: 6,
+                  borderRadius: "var(--radius-control)",
                   border: "1px dashed var(--border-strong)",
                   background: "var(--bg-base)",
                   fontSize: 12,
@@ -834,7 +838,7 @@ export function ScheduleModal({
                       style={{
                         gap: 10,
                         padding: "8px 10px",
-                        borderRadius: 6,
+                        borderRadius: "var(--radius-control)",
                         border: on
                           ? "1px solid color-mix(in oklab, var(--brand-400) 60%, transparent)"
                           : "1px solid var(--border)",
@@ -849,7 +853,7 @@ export function ScheduleModal({
                         style={{
                           width: 16,
                           height: 16,
-                          borderRadius: 4,
+                          borderRadius: "var(--radius-sm)",
                           border: "1.5px solid",
                           borderColor: on ? "var(--brand-400)" : "var(--border-strong)",
                           background: on ? "var(--brand-400)" : "transparent",
@@ -926,7 +930,7 @@ export function ScheduleModal({
                   display: "inline-flex",
                   alignItems: "center",
                   justifyContent: "center",
-                  borderRadius: 4,
+                  borderRadius: "var(--radius-sm)",
                   border: "none",
                   background: "transparent",
                   color: "var(--text-muted)",
@@ -985,7 +989,7 @@ export function ScheduleModal({
                     title={st?.busy ? "Ocupado" : st?.past ? "Horário passado" : undefined}
                     style={{
                       height: 28,
-                      borderRadius: 4,
+                      borderRadius: "var(--radius-sm)",
                       border: "1px solid",
                       borderColor: on ? "var(--brand-400)" : "var(--border)",
                       background: on
@@ -1064,7 +1068,7 @@ export function ScheduleModal({
                   color: "var(--text-muted)",
                   background: "var(--bg-overlay)",
                   border: "1px solid var(--border)",
-                  borderRadius: 6,
+                  borderRadius: "var(--radius-control)",
                   padding: 10,
                   lineHeight: 1.5,
                   whiteSpace: "pre-wrap",
@@ -1082,14 +1086,19 @@ export function ScheduleModal({
             style={{
               margin: "0 12px",
               padding: "8px 10px",
-              borderRadius: 8,
+              borderRadius: "var(--radius-card)",
               fontSize: 12,
               border: "1px solid color-mix(in oklab, #F59E0B 40%, transparent)",
               background: "color-mix(in oklab, #F59E0B 12%, transparent)",
               color: "var(--text-primary)",
             }}
           >
-            ⚠️ Fora do horário de{" "}
+            <AlertTriangle
+              size={12}
+              aria-hidden
+              style={{ display: "inline", verticalAlign: "-1px", marginRight: 5, color: "#F59E0B" }}
+            />
+            Fora do horário de{" "}
             <strong>
               {professionals.find((p) => p.id === professionalId)?.name ?? "profissional"}
             </strong>
@@ -1113,7 +1122,7 @@ export function ScheduleModal({
                   style={{
                     height: 34,
                     padding: "0 10px",
-                    borderRadius: 6,
+                    borderRadius: "var(--radius-control)",
                     border: "1px solid var(--border-strong)",
                     background: "transparent",
                     color: "var(--text-muted)",
@@ -1132,7 +1141,7 @@ export function ScheduleModal({
                   style={{
                     width: 34,
                     height: 34,
-                    borderRadius: 6,
+                    borderRadius: "var(--radius-pill)",
                     border: "1px solid var(--border-strong)",
                     background: "transparent",
                     color: "var(--danger, #EF4444)",
@@ -1150,7 +1159,7 @@ export function ScheduleModal({
               style={{
                 height: 34,
                 padding: "0 14px",
-                borderRadius: 6,
+                borderRadius: "var(--radius-control)",
                 border: "1px solid var(--border-strong)",
                 background: "transparent",
                 color: "var(--text-primary)",
@@ -1169,7 +1178,7 @@ export function ScheduleModal({
                 gap: 6,
                 height: 34,
                 padding: "0 14px",
-                borderRadius: 6,
+                borderRadius: "var(--radius-control)",
                 border: "none",
                 background: "var(--brand-400)",
                 color: "#fff",
@@ -1177,9 +1186,11 @@ export function ScheduleModal({
                 fontWeight: 600,
                 opacity: canSubmit ? 1 : 0.5,
                 cursor: canSubmit ? "pointer" : "not-allowed",
+                justifyContent: "center",
               }}
             >
-              📅 {initial ? "Salvar alterações" : "Confirmar Agendamento"}
+              <CalendarDays size={14} aria-hidden />
+              {initial ? "Salvar alterações" : "Confirmar Agendamento"}
             </button>
           </div>
         </div>
@@ -1194,7 +1205,7 @@ const inputStyle: React.CSSProperties = {
   padding: "0 10px",
   background: "var(--bg-base)",
   border: "1px solid var(--border-strong)",
-  borderRadius: 6,
+  borderRadius: "var(--radius-control)",
   color: "var(--text-primary)",
   fontSize: 13,
   outline: "none",
@@ -1304,7 +1315,7 @@ function MiniCalendar({
         zIndex: 80,
         background: "var(--bg-surface)",
         border: "1px solid var(--border)",
-        borderRadius: 8,
+        borderRadius: "var(--radius-card)",
         boxShadow: "0 12px 30px rgba(0,0,0,0.4)",
         padding: 10,
         width: 240,
@@ -1317,7 +1328,7 @@ function MiniCalendar({
           style={{
             width: 24,
             height: 24,
-            borderRadius: 4,
+            borderRadius: "var(--radius-sm)",
             border: "none",
             background: "transparent",
             color: "var(--text-primary)",
@@ -1342,7 +1353,7 @@ function MiniCalendar({
           style={{
             width: 24,
             height: 24,
-            borderRadius: 4,
+            borderRadius: "var(--radius-sm)",
             border: "none",
             background: "transparent",
             color: "var(--text-primary)",
@@ -1378,7 +1389,7 @@ function MiniCalendar({
               onClick={() => onSelect(iso)}
               style={{
                 height: 26,
-                borderRadius: 4,
+                borderRadius: "var(--radius-sm)",
                 border: isToday ? "1px solid var(--brand-400)" : "1px solid transparent",
                 background: isSelected ? "var(--brand-400)" : "transparent",
                 color: isSelected ? "#fff" : "var(--text-primary)",

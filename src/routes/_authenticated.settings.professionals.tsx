@@ -3,7 +3,13 @@ import { createFileRoute } from "@tanstack/react-router";
 import { useServerFn } from "@tanstack/react-start";
 import { useQuery, useMutation, useQueryClient } from "@tanstack/react-query";
 import { toast } from "sonner";
-import { Plus, MoreVertical, X, Loader2, Briefcase } from "lucide-react";
+import { Plus, MoreVertical, X, Loader2, Briefcase, Check, Clock } from "lucide-react";
+import { Modal } from "@/components/ui/modal";
+import { Button } from "@/components/ui/button";
+import { Badge } from "@/components/ui/badge";
+import { Card } from "@/components/ui/card";
+import { EmptyState as SharedEmptyState } from "@/components/empty-state";
+import { ConfirmDialog } from "@/components/confirm-dialog";
 import {
   SettingsLayout,
   Field,
@@ -28,6 +34,11 @@ import {
   emptyWeek,
 } from "@/features/settings/working-hours-editor";
 import { normalizeHours, describeHours, type NormalizedHours } from "@/lib/working-hours";
+
+const PROFESSIONAL_STATUS_VARIANT: Record<"active" | "inactive", "success" | "neutral"> = {
+  active: "success",
+  inactive: "neutral",
+};
 
 export const Route = createFileRoute("/_authenticated/settings/professionals")({
   component: () => (
@@ -124,47 +135,12 @@ function ProfessionalsPage() {
       )}
 
       {!listQ.isLoading && items.length === 0 && (
-        <div
-          style={{
-            ...card,
-            padding: 48,
-            display: "flex",
-            flexDirection: "column",
-            alignItems: "center",
-            textAlign: "center",
-            gap: 12,
-          }}
-        >
-          <div
-            style={{
-              width: 64,
-              height: 64,
-              borderRadius: 999,
-              background: "var(--bg-overlay)",
-              display: "flex",
-              alignItems: "center",
-              justifyContent: "center",
-              color: "var(--text-muted)",
-            }}
-          >
-            <Briefcase size={28} />
-          </div>
-          <div>
-            <div style={{ fontSize: 15, fontWeight: 600 }}>
-              Nenhum profissional cadastrado ainda.
-            </div>
-            <div style={{ fontSize: 13, color: "var(--text-muted)", marginTop: 4 }}>
-              Adicione as pessoas que realizam os atendimentos presenciais.
-            </div>
-          </div>
-          <button
-            style={buttonPrimary}
-            className="flex items-center gap-2"
-            onClick={() => setOpenCreate(true)}
-          >
-            <Plus size={14} /> Adicionar primeiro profissional
-          </button>
-        </div>
+        <SharedEmptyState
+          icon={<Briefcase size={40} style={{ color: "var(--brand-400)" }} aria-hidden />}
+          title="Nenhum profissional cadastrado ainda"
+          description="Adicione as pessoas que realizam os atendimentos presenciais."
+          action={{ label: "Adicionar primeiro profissional", onClick: () => setOpenCreate(true) }}
+        />
       )}
 
       {items.length > 0 && (
@@ -191,27 +167,18 @@ function ProfessionalsPage() {
                       horário do negócio não precisa de ruído extra na lista. */}
                   {describeHours(normalizeHours(p.working_hours)) && (
                     <div
-                      className="truncate"
-                      style={{ fontSize: 11, color: "var(--text-muted)", marginTop: 2 }}
+                      className="truncate flex items-center"
+                      style={{ fontSize: 11, color: "var(--text-muted)", marginTop: 2, gap: 4 }}
                       title={describeHours(normalizeHours(p.working_hours))}
                     >
-                      🕘 {describeHours(normalizeHours(p.working_hours))}
+                      <Clock size={11} aria-hidden style={{ flexShrink: 0 }} />
+                      {describeHours(normalizeHours(p.working_hours))}
                     </div>
                   )}
                 </div>
-                <span
-                  style={{
-                    fontSize: 11,
-                    padding: "3px 8px",
-                    borderRadius: 999,
-                    background: p.is_active
-                      ? "color-mix(in oklab, #10B981 18%, transparent)"
-                      : "var(--bg-overlay)",
-                    color: p.is_active ? "#10B981" : "var(--text-muted)",
-                  }}
-                >
+                <Badge variant={PROFESSIONAL_STATUS_VARIANT[p.is_active ? "active" : "inactive"]}>
                   {p.is_active ? "Ativo" : "Inativo"}
-                </span>
+                </Badge>
                 <RowMenu
                   onEdit={() => setEditing(p)}
                   onToggle={() =>
@@ -243,16 +210,17 @@ function ProfessionalsPage() {
         />
       )}
 
-      {confirmDelete && (
-        <ConfirmModal
-          title={`Excluir ${confirmDelete.name}?`}
-          description="Esta ação não pode ser desfeita. Agendamentos existentes ficarão sem profissional vinculado."
-          danger
-          loading={removeM.isPending}
-          onCancel={() => setConfirmDelete(null)}
-          onConfirm={() => removeM.mutate(confirmDelete.id)}
-        />
-      )}
+      <ConfirmDialog
+        open={!!confirmDelete}
+        onClose={() => setConfirmDelete(null)}
+        onConfirm={() => {
+          if (confirmDelete) void removeM.mutate(confirmDelete.id);
+        }}
+        title={`Excluir ${confirmDelete?.name ?? ""}?`}
+        description="Esta ação não pode ser desfeita. Agendamentos existentes ficarão sem profissional vinculado."
+        confirmLabel="Excluir"
+        destructive
+      />
     </SettingsLayout>
   );
 }
@@ -284,7 +252,7 @@ function RowMenu({
         style={{
           width: 28,
           height: 28,
-          borderRadius: 6,
+          borderRadius: "var(--radius-pill)",
           border: 0,
           background: "transparent",
           color: "var(--text-muted)",
@@ -302,7 +270,7 @@ function RowMenu({
             minWidth: 160,
             background: "var(--bg-surface)",
             border: "1px solid var(--border)",
-            borderRadius: 8,
+            borderRadius: "var(--radius-card)",
             padding: 4,
             zIndex: 10,
             boxShadow: "0 8px 24px rgba(0,0,0,0.25)",
@@ -341,7 +309,7 @@ function MenuItem({
         fontSize: 13,
         background: "transparent",
         border: 0,
-        borderRadius: 4,
+        borderRadius: "var(--radius-sm)",
         color: danger ? "#EF4444" : "var(--text-primary)",
         cursor: "pointer",
       }}
@@ -404,241 +372,147 @@ function ProfessionalModal({
   };
 
   return (
-    <Modal title={initial ? "Editar Profissional" : "Novo Profissional"} onClose={onClose}>
-      <div className="flex flex-col" style={{ gap: 12 }}>
-        <Field label="Nome *">
-          <input
-            style={inputStyle}
-            value={name}
-            onChange={(e) => setName(e.target.value)}
-            placeholder="Nome completo"
-            autoFocus
-          />
-        </Field>
-        <Field
-          label="Cargo"
-          hint="Defina como preferir — sem restrição de área."
-        >
-          <input
-            style={inputStyle}
-            value={role}
-            onChange={(e) => setRole(e.target.value)}
-            placeholder="Ex: Médico, Mecânico, Especialista..."
-          />
-        </Field>
-        <Field label="Telefone">
-          <input
-            style={inputStyle}
-            value={phone}
-            onChange={(e) => setPhone(maskPhoneBR(e.target.value))}
-            placeholder="(11) 99999-9999"
-            inputMode="numeric"
-          />
-        </Field>
-        <Field label="Email">
-          <input
-            style={inputStyle}
-            type="email"
-            value={email}
-            onChange={(e) => setEmail(e.target.value)}
-            placeholder="email@exemplo.com"
-          />
-        </Field>
-
-        <label
-          className="flex items-center justify-between"
-          style={{
-            padding: "10px 12px",
-            borderRadius: 8,
-            border: "1px solid var(--border)",
-            background: "var(--bg-base)",
-            cursor: "pointer",
-          }}
-        >
-          <div>
-            <div style={{ fontSize: 13, fontWeight: 500 }}>
-              Esta pessoa também tem acesso ao sistema?
-            </div>
-            <div style={{ fontSize: 11, color: "var(--text-muted)", marginTop: 2 }}>
-              Útil quando o profissional também atende pelo WhatsApp.
-            </div>
-          </div>
-          <Toggle on={linkEnabled} onChange={setLinkEnabled} />
-        </label>
-
-        {linkEnabled && (
-          <Field label="Membro da equipe">
-            <select
-              style={inputStyle}
-              value={linkedUserId}
-              onChange={(e) => setLinkedUserId(e.target.value)}
-            >
-              <option value="">Selecione um membro…</option>
-              {team.map((t) => (
-                <option key={t.member_user_id} value={t.member_user_id}>
-                  {t.full_name || t.email}
-                </option>
-              ))}
-            </select>
-          </Field>
-        )}
-
-        <label
-          className="flex items-center justify-between"
-          style={{
-            padding: "10px 12px",
-            borderRadius: 8,
-            border: "1px solid var(--border)",
-            background: "var(--bg-base)",
-            cursor: "pointer",
-          }}
-        >
-          <div>
-            <div style={{ fontSize: 13, fontWeight: 500 }}>
-              {ownHours ? "Horário próprio" : "Segue o horário do negócio"}
-            </div>
-            <div style={{ fontSize: 11, color: "var(--text-muted)", marginTop: 2 }}>
-              {ownHours
-                ? "A IA e a agenda só marcam dentro destes horários."
-                : "Ative se esta pessoa trabalha em dias ou horários diferentes."}
-            </div>
-          </div>
-          <Toggle on={ownHours} onChange={setOwnHours} />
-        </label>
-
-        {ownHours && <WorkingHoursEditor value={hours} onChange={setHours} />}
-
-        <label
-          className="flex items-center justify-between"
-          style={{
-            padding: "10px 12px",
-            borderRadius: 8,
-            border: "1px solid var(--border)",
-            background: "var(--bg-base)",
-            cursor: "pointer",
-          }}
-        >
-          <div style={{ fontSize: 13, fontWeight: 500 }}>
-            {isActive ? "Ativo" : "Inativo"}
-          </div>
-          <Toggle on={isActive} onChange={setIsActive} />
-        </label>
-
-        <div className="flex justify-end gap-2" style={{ marginTop: 8 }}>
-          <button style={buttonSecondary} onClick={onClose} disabled={loading}>
-            Cancelar
-          </button>
-          <button style={buttonPrimary} disabled={!canSubmit} onClick={submit}>
-            {loading ? (
-              <span className="flex items-center gap-2">
-                <Loader2 size={14} className="animate-spin" /> Salvando…
-              </span>
-            ) : (
-              "Salvar"
-            )}
-          </button>
-        </div>
-      </div>
-    </Modal>
-  );
-}
-
-function ConfirmModal({
-  title,
-  description,
-  onCancel,
-  onConfirm,
-  danger,
-  loading,
-}: {
-  title: string;
-  description: string;
-  onCancel: () => void;
-  onConfirm: () => void;
-  danger?: boolean;
-  loading?: boolean;
-}) {
-  return (
-    <Modal title={title} onClose={onCancel}>
-      <p style={{ fontSize: 13, color: "var(--text-muted)" }}>{description}</p>
-      <div className="flex justify-end gap-2" style={{ marginTop: 16 }}>
-        <button style={buttonSecondary} onClick={onCancel} disabled={loading}>
-          Cancelar
-        </button>
-        <button
-          style={danger ? buttonDanger : buttonPrimary}
-          onClick={onConfirm}
-          disabled={loading}
-        >
-          {loading ? "Removendo…" : "Confirmar"}
-        </button>
-      </div>
-    </Modal>
-  );
-}
-
-function Modal({
-  title,
-  children,
-  onClose,
-}: {
-  title: string;
-  children: React.ReactNode;
-  onClose: () => void;
-}) {
-  React.useEffect(() => {
-    const prev = document.body.style.overflow;
-    document.body.style.overflow = "hidden";
-    return () => {
-      document.body.style.overflow = prev;
-    };
-  }, []);
-  return (
-    <div
-      onClick={onClose}
-      style={{
-        position: "fixed",
-        inset: 0,
-        background: "rgba(0,0,0,0.5)",
-        zIndex: 70,
-        display: "flex",
-        alignItems: "center",
-        justifyContent: "center",
-        padding: 16,
+    <Modal
+      open
+      onOpenChange={(o) => {
+        if (!o) onClose();
       }}
+      title={initial ? "Editar Profissional" : "Novo Profissional"}
+      size="md"
+      footer={
+        <>
+          <Button type="button" variant="outline" onClick={onClose} disabled={loading}>
+            Cancelar
+          </Button>
+          <Button type="submit" form="professional-form" disabled={!canSubmit}>
+            <Check size={14} />
+            Salvar
+          </Button>
+        </>
+      }
     >
-      <div
-        onClick={(e) => e.stopPropagation()}
-        style={{
-          width: "100%",
-          maxWidth: 440,
-          background: "var(--bg-surface)",
-          border: "1px solid var(--border)",
-          borderRadius: 12,
-          boxShadow: "0 20px 50px rgba(0,0,0,0.35)",
-          display: "flex",
-          flexDirection: "column",
-          maxHeight: "calc(100vh - 32px)",
-        }}
-      >
-        <div
-          className="flex items-center justify-between"
-          style={{ padding: "14px 16px", borderBottom: "1px solid var(--border)" }}
-        >
-          <div style={{ fontSize: 14, fontWeight: 600 }}>{title}</div>
-          <button
-            type="button"
-            onClick={onClose}
-            aria-label="Fechar"
-            className="inline-flex items-center justify-center"
-            style={{ width: 30, height: 30, borderRadius: 6, color: "var(--text-muted)" }}
+      <form id="professional-form" onSubmit={(e) => { e.preventDefault(); submit(); }}>
+        <div className="flex flex-col" style={{ gap: 12 }}>
+          <Field label="Nome *">
+            <input
+              style={inputStyle}
+              value={name}
+              onChange={(e) => setName(e.target.value)}
+              placeholder="Nome completo"
+              autoFocus
+            />
+          </Field>
+          <Field
+            label="Cargo"
+            hint="Defina como preferir — sem restrição de área."
           >
-            <X size={16} />
-          </button>
+            <input
+              style={inputStyle}
+              value={role}
+              onChange={(e) => setRole(e.target.value)}
+              placeholder="Ex: Médico, Mecânico, Especialista..."
+            />
+          </Field>
+          <Field label="Telefone">
+            <input
+              style={inputStyle}
+              value={phone}
+              onChange={(e) => setPhone(maskPhoneBR(e.target.value))}
+              placeholder="(11) 99999-9999"
+              inputMode="numeric"
+            />
+          </Field>
+          <Field label="Email">
+            <input
+              style={inputStyle}
+              type="email"
+              value={email}
+              onChange={(e) => setEmail(e.target.value)}
+              placeholder="email@exemplo.com"
+            />
+          </Field>
+
+          <label
+            className="flex items-center justify-between"
+            style={{
+              padding: "10px 12px",
+              borderRadius: "var(--radius-card)",
+              border: "1px solid var(--border)",
+              background: "var(--bg-base)",
+              cursor: "pointer",
+            }}
+          >
+            <div>
+              <div style={{ fontSize: 13, fontWeight: 500 }}>
+                Esta pessoa também tem acesso ao sistema?
+              </div>
+              <div style={{ fontSize: 11, color: "var(--text-muted)", marginTop: 2 }}>
+                Útil quando o profissional também atende pelo WhatsApp.
+              </div>
+            </div>
+            <Toggle on={linkEnabled} onChange={setLinkEnabled} />
+          </label>
+
+          {linkEnabled && (
+            <Field label="Membro da equipe">
+              <select
+                style={inputStyle}
+                value={linkedUserId}
+                onChange={(e) => setLinkedUserId(e.target.value)}
+              >
+                <option value="">Selecione um membro…</option>
+                {team.map((t) => (
+                  <option key={t.member_user_id} value={t.member_user_id}>
+                    {t.full_name || t.email}
+                  </option>
+                ))}
+              </select>
+            </Field>
+          )}
+
+          <label
+            className="flex items-center justify-between"
+            style={{
+              padding: "10px 12px",
+              borderRadius: "var(--radius-card)",
+              border: "1px solid var(--border)",
+              background: "var(--bg-base)",
+              cursor: "pointer",
+            }}
+          >
+            <div>
+              <div style={{ fontSize: 13, fontWeight: 500 }}>
+                {ownHours ? "Horário próprio" : "Segue o horário do negócio"}
+              </div>
+              <div style={{ fontSize: 11, color: "var(--text-muted)", marginTop: 2 }}>
+                {ownHours
+                  ? "A IA e a agenda só marcam dentro destes horários."
+                  : "Ative se esta pessoa trabalha em dias ou horários diferentes."}
+              </div>
+            </div>
+            <Toggle on={ownHours} onChange={setOwnHours} />
+          </label>
+
+          {ownHours && <WorkingHoursEditor value={hours} onChange={setHours} />}
+
+          <label
+            className="flex items-center justify-between"
+            style={{
+              padding: "10px 12px",
+              borderRadius: "var(--radius-card)",
+              border: "1px solid var(--border)",
+              background: "var(--bg-base)",
+              cursor: "pointer",
+            }}
+          >
+            <div style={{ fontSize: 13, fontWeight: 500 }}>
+              {isActive ? "Ativo" : "Inativo"}
+            </div>
+            <Toggle on={isActive} onChange={setIsActive} />
+          </label>
         </div>
-        <div style={{ padding: 16, overflow: "auto" }}>{children}</div>
-      </div>
-    </div>
+      </form>
+    </Modal>
   );
 }
 
@@ -655,7 +529,7 @@ function Toggle({ on, onChange }: { on: boolean; onChange: (v: boolean) => void 
       style={{
         width: 36,
         height: 20,
-        borderRadius: 999,
+        borderRadius: "var(--radius-pill)",
         background: on ? "var(--brand-400)" : "var(--bg-overlay)",
         border: "1px solid var(--border-strong)",
         position: "relative",
@@ -669,7 +543,7 @@ function Toggle({ on, onChange }: { on: boolean; onChange: (v: boolean) => void 
           left: on ? 17 : 1,
           width: 16,
           height: 16,
-          borderRadius: 999,
+          borderRadius: "var(--radius-pill)",
           background: "#fff",
           transition: "left 150ms ease",
         }}

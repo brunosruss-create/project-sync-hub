@@ -3,6 +3,7 @@ import { createFileRoute } from "@tanstack/react-router";
 import { useQuery } from "@tanstack/react-query";
 import { Search, Eye, PauseCircle, Trash2 } from "lucide-react";
 import { toast } from "sonner";
+import { Badge } from "@/components/ui/badge";
 import { supabase } from "@/integrations/supabase/client";
 import { InspectWorkspaceDrawer } from "@/features/super-admin/inspect-workspace-drawer";
 import {
@@ -15,6 +16,11 @@ import {
 export const Route = createFileRoute("/_authenticated/super-admin/workspaces")({
   component: WorkspacesAdmin,
 });
+
+const WHATSAPP_STATUS_VARIANT: Record<"connected" | "disconnected", "success" | "neutral"> = {
+  connected: "success",
+  disconnected: "neutral",
+};
 
 type Workspace = {
   workspace_owner_id: string;
@@ -55,14 +61,14 @@ function WorkspacesAdmin() {
     <div className="flex flex-col" style={{ gap: 16 }}>
       <div>
         <h2 style={{ fontSize: 20, fontWeight: 600 }}>Workspaces</h2>
-        <p style={{ fontSize: 13, color: "rgba(255,255,255,0.5)", marginTop: 4 }}>
+        <p style={{ fontSize: 13, color: "var(--text-muted)", marginTop: 4 }}>
           {isLoading ? "Carregando…" : `${filtered.length} de ${items.length} workspaces`}
         </p>
       </div>
 
       <div className="flex gap-2 flex-wrap">
         <div className="flex items-center gap-2 flex-1" style={{ minWidth: 240, ...adminInput, padding: "0 10px" }}>
-          <Search size={14} style={{ color: "rgba(255,255,255,0.4)" }} />
+          <Search size={14} style={{ color: "var(--text-muted)" }} />
           <input
             value={search}
             onChange={(e) => setSearch(e.target.value)}
@@ -71,7 +77,7 @@ function WorkspacesAdmin() {
               flex: 1,
               border: 0,
               background: "transparent",
-              color: "#fff",
+              color: "var(--text-primary)",
               fontSize: 13,
               outline: 0,
             }}
@@ -92,7 +98,7 @@ function WorkspacesAdmin() {
         <div style={{ ...adminCard, padding: 0, overflow: "hidden" }}>
           <table style={{ width: "100%", borderCollapse: "collapse", fontSize: 13 }}>
             <thead>
-              <tr style={{ background: "#0F0F13", color: "rgba(255,255,255,0.55)", fontSize: 11, textTransform: "uppercase", letterSpacing: "0.05em" }}>
+              <tr style={{ background: "var(--bg-overlay)", color: "var(--text-muted)", fontSize: 11, textTransform: "uppercase", letterSpacing: "0.05em" }}>
                 <Th>Dono</Th>
                 <Th>Email</Th>
                 <Th>Usuários</Th>
@@ -105,34 +111,27 @@ function WorkspacesAdmin() {
             <tbody>
               {filtered.length === 0 && !isLoading ? (
                 <tr>
-                  <td colSpan={7} style={{ padding: 24, textAlign: "center", color: "rgba(255,255,255,0.5)" }}>
+                  <td colSpan={7} style={{ padding: 24, textAlign: "center", color: "var(--text-muted)" }}>
                     Nenhum workspace encontrado.
                   </td>
                 </tr>
               ) : (
                 filtered.map((w) => (
-                  <tr key={w.workspace_owner_id} style={{ borderTop: "1px solid #1F1F23" }}>
+                  <tr key={w.workspace_owner_id} style={{ borderTop: "1px solid var(--border)" }}>
                     <Td style={{ fontWeight: 500 }}>{w.owner_name ?? "—"}</Td>
-                    <Td style={{ color: "rgba(255,255,255,0.7)" }}>{w.owner_email ?? "—"}</Td>
+                    <Td style={{ color: "var(--text-muted)" }}>{w.owner_email ?? "—"}</Td>
                     <Td>{w.user_count}</Td>
                     <Td>{Number(w.contact_count).toLocaleString("pt-BR")}</Td>
                     <Td>
-                      <span
-                        style={{
-                          fontSize: 11,
-                          fontWeight: 600,
-                          padding: "3px 8px",
-                          borderRadius: 999,
-                          background: w.has_whatsapp
-                            ? "color-mix(in oklab, #10B981 18%, transparent)"
-                            : "color-mix(in oklab, #6B7280 18%, transparent)",
-                          color: w.has_whatsapp ? "#10B981" : "#9CA3AF",
-                        }}
-                      >
-                        {w.has_whatsapp ? "Conectado" : "—"}
-                      </span>
+                      {w.has_whatsapp ? (
+                        <Badge variant={WHATSAPP_STATUS_VARIANT.connected}>
+                          Conectado
+                        </Badge>
+                      ) : (
+                        "—"
+                      )}
                     </Td>
-                    <Td style={{ color: "rgba(255,255,255,0.6)" }}>
+                    <Td style={{ color: "var(--text-muted)" }}>
                       {new Date(w.created_at).toLocaleDateString("pt-BR")}
                     </Td>
                     <Td>

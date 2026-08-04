@@ -63,7 +63,7 @@ function ResetPasswordPage() {
         style={{
           maxWidth: 400,
           padding: 28,
-          borderRadius: 12,
+          borderRadius: "var(--radius-modal)",
           background: "var(--bg-surface)",
           border: "1px solid var(--border)",
         }}
@@ -74,7 +74,7 @@ function ResetPasswordPage() {
             style={{
               width: 22,
               height: 22,
-              borderRadius: 6,
+              borderRadius: "var(--radius-pill)",
               background: "var(--brand-400)",
               color: "#fff",
               fontSize: 12,
@@ -98,7 +98,7 @@ function ResetPasswordPage() {
             style={{
               marginTop: 16,
               padding: 12,
-              borderRadius: 8,
+              borderRadius: "var(--radius-card)",
               border: "1px solid var(--border)",
               background: "var(--bg-overlay)",
               fontSize: 12,

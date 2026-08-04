@@ -17,6 +17,8 @@ const TEMPLATE_COLUMNS = [
   "msg_booking_rescheduled_enabled",
   "msg_booking_cancelled_text",
   "msg_booking_cancelled_enabled",
+  "msg_csat_text",
+  "msg_csat_enabled",
 ].join(",");
 
 type Row = Record<string, unknown>;
@@ -63,6 +65,11 @@ function rowToTemplates(row: Row | null): Record<MessageKey, MessageTemplate> {
       enabled: getBool("msg_booking_cancelled_enabled", true),
       text: get("msg_booking_cancelled_text"),
     },
+    csat_survey: {
+      key: "csat_survey",
+      enabled: getBool("msg_csat_enabled", false),
+      text: get("msg_csat_text"),
+    },
   };
 }
 
@@ -99,6 +106,9 @@ const UpdateSchema = z.object({
   booking_cancelled: z
     .object({ enabled: z.boolean(), text: z.string().max(2000) })
     .optional(),
+  csat_survey: z
+    .object({ enabled: z.boolean(), text: z.string().max(2000) })
+    .optional(),
 });
 
 const COLUMN_MAP: Record<MessageKey, { text: string; enabled: string }> = {
@@ -120,6 +130,7 @@ const COLUMN_MAP: Record<MessageKey, { text: string; enabled: string }> = {
     text: "msg_booking_cancelled_text",
     enabled: "msg_booking_cancelled_enabled",
   },
+  csat_survey: { text: "msg_csat_text", enabled: "msg_csat_enabled" },
 };
 
 export const updateMessageTemplates = createServerFn({ method: "POST" })
@@ -139,6 +150,27 @@ export const updateMessageTemplates = createServerFn({ method: "POST" })
       .from("profiles")
       .update(update)
       .eq("id", context.userId);
+
+    // Degradação aberta: a tela envia o rascunho INTEIRO a cada save, então uma
+    // coluna nova ainda não aplicada no banco derrubaria o salvamento de TODAS
+    // as mensagens, não só da nova. Repete sem as colunas desconhecidas.
+    if (error && /Could not find the '(\w+)' column|column .* does not exist/i.test(error.message)) {
+      const faltando = error.message.match(/'(\w+)'/)?.[1];
+      console.warn(
+        `[messages] coluna ${faltando ?? "?"} não existe neste banco (migration pendente); salvando o resto.`,
+      );
+      const semNovas = Object.fromEntries(
+        Object.entries(update).filter(([col]) => !col.startsWith("msg_csat_")),
+      );
+      if (Object.keys(semNovas).length === 0) return { ok: true };
+      const retry = await supabaseAdmin
+        .from("profiles")
+        .update(semNovas)
+        .eq("id", context.userId);
+      if (retry.error) throw new Error(retry.error.message);
+      return { ok: true };
+    }
+
     if (error) throw new Error(error.message);
     return { ok: true };
   });

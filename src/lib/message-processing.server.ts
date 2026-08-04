@@ -3,6 +3,9 @@ import { evo } from "@/lib/evolution.server";
 import { runAiResponse, type AiRunResult } from "@/lib/ai-respond.server";
 import { getContactAiSummary, maybeUpdateAiSummary } from "@/lib/ai-summary";
 import { renderTemplate } from "@/lib/message-templates";
+// Import estático (e não dinâmico dentro do if) porque o `vi.mock` dos testes é
+// içado e só intercepta a resolução do módulo no topo.
+import { pickNextAgent } from "@/lib/rotation.server";
 
 export type MessageJobPayload = {
   phone: string;
@@ -107,13 +110,29 @@ async function maybeSendWelcomeMessage(
 }
 
 async function buildConversationContext(ownerUserId: string, contactId: string) {
-  const { data: history } = await supabaseAdmin
+  // `is_internal` NÃO pode faltar aqui: nota interna é anotação privada da
+  // equipe e a linha 120 abaixo mapeia tudo que não é inbound para "assistant"
+  // — ou seja, sem este filtro a IA leria a nota como fala própria e poderia
+  // repeti-la ao cliente no WhatsApp.
+  //
+  // Falha FECHADA de propósito: se a coluna ainda não existe no banco
+  // (migration não aplicada), devolvemos histórico vazio em vez de refazer a
+  // query sem o filtro. Perder contexto degrada a resposta; vazar nota privada
+  // para o cliente é irreversível.
+  const { data: history, error: historyError } = await supabaseAdmin
     .from("messages")
     .select("direction,content,message_type,created_at")
     .eq("owner_user_id", ownerUserId)
     .eq("contact_id", contactId)
+    .eq("is_internal", false)
     .order("created_at", { ascending: false })
     .limit(100);
+  if (historyError) {
+    console.error(
+      "[ai-context] histórico não carregado, seguindo SEM contexto (nunca sem o filtro de nota):",
+      historyError.message,
+    );
+  }
   const conversation_history = (history ?? [])
     .reverse()
     .map((h) => {
@@ -138,11 +157,16 @@ async function buildConversationContext(ownerUserId: string, contactId: string) 
   if (conversation_history.length > 0) conversation_history.pop();
 
   // ── Memória de longo prazo: resumo + sumarização em background ──
+  // Mesmo filtro do histórico acima, e não por higiene: este count é o gatilho
+  // do resumo (aos 80) e é comparado em ai-summary.ts com o total já resumido.
+  // Se as duas contas usarem definições diferentes de "mensagem", o refresh do
+  // resumo desanda.
   const { count: totalCount } = await supabaseAdmin
     .from("messages")
     .select("id", { count: "exact", head: true })
     .eq("owner_user_id", ownerUserId)
-    .eq("contact_id", contactId);
+    .eq("contact_id", contactId)
+    .eq("is_internal", false);
   const aiSummary = await getContactAiSummary(contactId, ownerUserId);
   if (totalCount && totalCount > 80) {
     maybeUpdateAiSummary(contactId, ownerUserId, totalCount).catch((err) =>
@@ -195,10 +219,29 @@ export async function sendAiReplyAndPersist(
       })
       .eq("id", contactId);
     if (ai.action === "transfer_to_human") {
-      // Além de enviar o aviso, deixa em waiting/unread para um humano assumir.
+      // Rodízio ponderado: escolhe o próximo atendente da fila do workspace.
+      // Try/catch obrigatório — se isto propagasse, o worker marcaria o job
+      // como erro e reprocessaria a IA INTEIRA até 5 vezes (job-worker.ts),
+      // e o cliente receberia a mensagem de transferência repetida. Falha aqui
+      // degrada para o comportamento anterior: sem responsável.
+      let assigned: string | null = null;
+      try {
+        assigned = await pickNextAgent(ownerUserId);
+      } catch (e: any) {
+        console.warn(`[${logPrefix}] rodízio falhou, seguindo sem atribuir:`, e?.message ?? e);
+      }
+      // Um update só, não dois: além de poupar round-trip, é o que mantém o
+      // contrato coberto por transfer-message.test.ts.
+      // `assigned_agent_id` só entra se houver alguém — nunca sobrescrever com
+      // null. (Aqui o contato não tem responsável: se tivesse, `humanInControl`
+      // no webhook teria impedido a IA de rodar.)
       await supabaseAdmin
         .from("contacts")
-        .update({ kanban_column: "waiting", is_unread: true })
+        .update({
+          kanban_column: "waiting",
+          is_unread: true,
+          ...(assigned ? { assigned_agent_id: assigned } : {}),
+        })
         .eq("id", contactId);
     }
   } else {

@@ -12,6 +12,7 @@
     "build:dev": "vite build --mode development",
     "preview": "vite preview",
     "worker": "tsx src/lib/job-worker.ts",
+    "migrations:check": "tsx scripts/check-migrations.ts",
     "lint": "eslint .",
     "format": "prettier --write ."
   },

@@ -14,6 +14,12 @@ export type TeamMember = {
   active: boolean;
   is_owner: boolean;           // true if member_user_id === workspace_owner_id
   created_at: string;
+  /** Recebe conversas do rodízio automático. Dono nasce fora. */
+  rotation_enabled: boolean;
+  /** Peso no rodízio: 2 = o dobro de conversas de quem tem 1. */
+  rotation_weight: number;
+  /** Departamento do membro. `null` = sem departamento. */
+  department_id: string | null;
 };
 
 async function assertManager(userId: string) {
@@ -42,11 +48,39 @@ export const listTeamMembers = createServerFn({ method: "POST" })
     await assertManager(userId);
     const ownerId = await getOwnerId(userId);
 
-    const { data: members, error } = await supabaseAdmin
+    // Degradação aberta: sem as colunas de rodízio no banco (migration ainda
+    // não aplicada), a query inteira falharia e a tela de Equipe ficaria
+    // inacessível. Melhor listar os membros sem a configuração de rodízio do
+    // que não listar nada — a UI esconde os controles quando os campos vêm
+    // com o default.
+    const COLS_BASE = "id, member_user_id, active, created_at, workspace_owner_id";
+    // Dois degraus de degradação: primeiro tenta tudo, depois sem
+    // `department_id` (migration de departamentos pendente), por último sem as
+    // colunas de rodízio. Um degrau só faria a tela sumir quando falta apenas
+    // a coluna mais nova.
+    let { data: members, error } = await supabaseAdmin
       .from("workspace_members")
-      .select("id, member_user_id, active, created_at, workspace_owner_id")
+      .select(`${COLS_BASE}, rotation_enabled, rotation_weight, department_id`)
       .eq("workspace_owner_id", ownerId)
       .order("created_at", { ascending: true });
+    if (error && /department_id/i.test(error.message ?? "")) {
+      const retry = await supabaseAdmin
+        .from("workspace_members")
+        .select(`${COLS_BASE}, rotation_enabled, rotation_weight`)
+        .eq("workspace_owner_id", ownerId)
+        .order("created_at", { ascending: true });
+      members = retry.data as any;
+      error = retry.error;
+    }
+    if (error && /rotation_/i.test(error.message ?? "")) {
+      const retry = await supabaseAdmin
+        .from("workspace_members")
+        .select(COLS_BASE)
+        .eq("workspace_owner_id", ownerId)
+        .order("created_at", { ascending: true });
+      members = retry.data as any;
+      error = retry.error;
+    }
     if (error) throw new Error(error.message);
 
     if (!members || members.length === 0) return [];
@@ -86,6 +120,9 @@ export const listTeamMembers = createServerFn({ method: "POST" })
         active: m.active,
         is_owner: m.member_user_id === m.workspace_owner_id,
         created_at: m.created_at,
+        rotation_enabled: !!(m as any).rotation_enabled,
+        rotation_weight: Number((m as any).rotation_weight ?? 1),
+        department_id: ((m as any).department_id as string | null) ?? null,
       };
     });
   });
@@ -156,6 +193,10 @@ const updateSchema = z.object({
   member_user_id: z.string().uuid(),
   active: z.boolean().optional(),
   role: z.enum(["manager", "agent"]).optional(),
+  rotation_enabled: z.boolean().optional(),
+  rotation_weight: z.number().int().min(1).max(100).optional(),
+  /** `null` tira o membro do departamento; ausente não mexe. */
+  department_id: z.string().uuid().nullable().optional(),
 });
 
 export const updateTeamMember = createServerFn({ method: "POST" })
@@ -166,7 +207,11 @@ export const updateTeamMember = createServerFn({ method: "POST" })
     await assertManager(userId);
     const ownerId = await getOwnerId(userId);
 
-    if (data.member_user_id === ownerId) {
+    // O dono não pode se desativar nem mudar o próprio papel — isso o trancaria
+    // fora do workspace. Mas PODE ajustar a própria participação no rodízio,
+    // senão seria impossível se incluir na distribuição pela tela de Equipe.
+    const touchesPrivileged = typeof data.active === "boolean" || !!data.role;
+    if (data.member_user_id === ownerId && touchesPrivileged) {
       throw new Error("Você não pode alterar o próprio dono do workspace.");
     }
 
@@ -179,12 +224,57 @@ export const updateTeamMember = createServerFn({ method: "POST" })
       .maybeSingle();
     if (!row) throw new Error("Membro não pertence a este workspace.");
 
-    if (typeof data.active === "boolean") {
-      const { error } = await supabaseAdmin
+    // Um update só com o que veio — antes o `active` ia sozinho e cada campo
+    // novo custaria mais um round-trip.
+    const patch: Record<string, unknown> = {};
+    if (typeof data.active === "boolean") patch.active = data.active;
+    if (typeof data.rotation_enabled === "boolean") patch.rotation_enabled = data.rotation_enabled;
+    if (typeof data.rotation_weight === "number") patch.rotation_weight = data.rotation_weight;
+    if (data.department_id !== undefined) patch.department_id = data.department_id;
+    if (Object.keys(patch).length > 0) {
+      let { error } = await supabaseAdmin
         .from("workspace_members")
-        .update({ active: data.active })
+        .update(patch)
         .eq("id", row.id);
+      // Degradação aberta: sem a coluna, mexer em rodízio/ativo continua
+      // funcionando — só o departamento é ignorado.
+      if (error && /department_id/i.test(error.message ?? "")) {
+        const { department_id: _ignorado, ...semDepartamento } = patch;
+        if (Object.keys(semDepartamento).length > 0) {
+          const retry = await supabaseAdmin
+            .from("workspace_members")
+            .update(semDepartamento)
+            .eq("id", row.id);
+          error = retry.error;
+        } else {
+          error = null;
+        }
+      }
       if (error) throw new Error(error.message);
+    }
+
+    // Desativar um atendente precisa soltar as conversas dele.
+    //
+    // Sem isto elas ficam órfãs de um jeito difícil de perceber: com
+    // `active = false`, `get_my_workspace_owner()` cai no fallback e devolve o
+    // próprio uid do agente, então `contacts.owner_user_id` deixa de bater e
+    // ELE não vê mais nada; os outros agentes também não, porque a conversa
+    // segue atribuída a ele; e a IA fica desligada, porque `humanInControl`
+    // olha justamente `assigned_agent_id`. Resultado: cliente sem resposta de
+    // ninguém. Já era bug antes do rodízio — agora seria a porta de entrada
+    // principal para ele.
+    //
+    // (`removeTeamMember` não precisa disto: apaga o auth user e o
+    // `on delete set null` da FK limpa sozinho.)
+    if (data.active === false) {
+      const { error: releaseError } = await supabaseAdmin
+        .from("contacts")
+        .update({ assigned_agent_id: null })
+        .eq("owner_user_id", ownerId)
+        .eq("assigned_agent_id", data.member_user_id);
+      if (releaseError) {
+        console.warn("[team] conversas não liberadas ao desativar:", releaseError.message);
+      }
     }
 
     if (data.role) {

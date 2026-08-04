@@ -41,7 +41,7 @@ export function SkeletonCard() {
     <div
       style={{
         padding: 16,
-        borderRadius: 8,
+        borderRadius: "var(--radius-card)",
         border: "1px solid var(--border)",
         background: "var(--bg-surface)",
         display: "flex",

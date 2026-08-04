@@ -11,15 +11,20 @@ import {
   Camera,
   Play,
   Pause,
+  StickyNote,
+  Zap,
 } from "lucide-react";
 import Picker from "@emoji-mart/react";
 import emojiData from "@emoji-mart/data";
 import { toast } from "sonner";
+import { renderTemplate } from "@/lib/message-templates";
 
 const MAX_CHARS = 4096;
 const MAX_RECORD_MS = 5 * 60 * 1000;
 
 type AttachmentItem = { file: File; previewUrl?: string };
+
+export type ComposerMode = "reply" | "note";
 
 type Props = {
   draft: string;
@@ -31,14 +36,46 @@ type Props = {
   onSendAudio?: (blob: Blob) => Promise<void>;
   replyingTo?: { author: string; content: string; isMe: boolean } | null;
   onCancelReply?: () => void;
+  /**
+   * Responder ao cliente ou anotar internamente. O estado mora no PAI de
+   * propósito: `onSend` é a função do pai, e se o modo vivesse aqui dentro o
+   * pai não saberia em qual está — esse split-brain ("o composer acha que é
+   * nota, o pai acha que é resposta") é exatamente o bug de mandar anotação
+   * privada para o WhatsApp do cliente.
+   */
+  mode?: ComposerMode;
+  onModeChange?: (m: ComposerMode) => void;
+  /** Respostas rápidas ativas do workspace. Vazio/ausente esconde o botão. */
+  quickReplies?: QuickReplyOption[];
+  /**
+   * Valores para {{cliente}} / {{negocio}} etc. O Composer não conhece o
+   * contato — quem sabe é o pai, então as variáveis vêm de lá já resolvidas.
+   */
+  templateVars?: Record<string, string>;
 };
 
-export function Composer({ draft, setDraft, taRef, onSend, onClosePanel, onSendAttachments, onSendAudio, replyingTo, onCancelReply }: Props) {
+export type QuickReplyOption = {
+  id: string;
+  title: string;
+  shortcut: string;
+  body: string;
+};
+
+export function Composer({ draft, setDraft, taRef, onSend, onClosePanel, onSendAttachments, onSendAudio, replyingTo, onCancelReply, mode = "reply", onModeChange, quickReplies = [], templateVars }: Props) {
+  const isNote = mode === "note";
+  const hasQuickReplies = quickReplies.length > 0;
   const hasText = draft.trim().length > 0;
   const nearLimit = draft.length > MAX_CHARS - 200;
 
   const [showEmoji, setShowEmoji] = React.useState(false);
   const [showAttachMenu, setShowAttachMenu] = React.useState(false);
+  const [showQuick, setShowQuick] = React.useState(false);
+  /**
+   * Quando o picker foi aberto digitando "/algo", guarda onde o token começa e
+   * o que já foi digitado. Serve para filtrar a lista e para apagar o token na
+   * hora de inserir. `null` = picker aberto pelo botão.
+   */
+  const [slashToken, setSlashToken] = React.useState<{ start: number; term: string } | null>(null);
   const [attachments, setAttachments] = React.useState<AttachmentItem[]>([]);
   const [caption, setCaption] = React.useState("");
 
@@ -50,6 +87,7 @@ export function Composer({ draft, setDraft, taRef, onSend, onClosePanel, onSendA
   const composerWrapRef = React.useRef<HTMLDivElement | null>(null);
   const emojiWrapRef = React.useRef<HTMLDivElement | null>(null);
   const attachWrapRef = React.useRef<HTMLDivElement | null>(null);
+  const quickWrapRef = React.useRef<HTMLDivElement | null>(null);
   const fileInputRef = React.useRef<HTMLInputElement | null>(null);
   const fileInputCfgRef = React.useRef<{ accept: string; multiple: boolean; capture?: string }>({
     accept: "*",
@@ -74,9 +112,14 @@ export function Composer({ draft, setDraft, taRef, onSend, onClosePanel, onSendA
       if (showAttachMenu && attachWrapRef.current && !attachWrapRef.current.contains(e.target as Node)) {
         setShowAttachMenu(false);
       }
+      if (showQuick && quickWrapRef.current && !quickWrapRef.current.contains(e.target as Node)) {
+        setShowQuick(false);
+        setSlashToken(null);
+      }
     }
     function onKey(e: KeyboardEvent) {
       if (e.key !== "Escape") return;
+      if (showQuick) { setShowQuick(false); setSlashToken(null); return; }
       if (showEmoji) { setShowEmoji(false); return; }
       if (showAttachMenu) { setShowAttachMenu(false); return; }
       if (attachments.length > 0) { clearAttachments(); return; }
@@ -90,7 +133,7 @@ export function Composer({ draft, setDraft, taRef, onSend, onClosePanel, onSendA
       document.removeEventListener("mousedown", onDoc);
       document.removeEventListener("keydown", onKey);
     };
-  }, [showEmoji, showAttachMenu, attachments.length, audioPreview, isRecording, onClosePanel]);
+  }, [showEmoji, showAttachMenu, showQuick, attachments.length, audioPreview, isRecording, onClosePanel]);
 
   // --- auto-resize textarea
   const autoResize = React.useCallback(() => {
@@ -102,23 +145,81 @@ export function Composer({ draft, setDraft, taRef, onSend, onClosePanel, onSendA
 
   React.useEffect(() => { autoResize(); }, [draft, autoResize]);
 
-  // --- emoji insert at cursor
-  const insertEmoji = (emoji: { native: string }) => {
+  /**
+   * Insere texto na posição do cursor e reposiciona o caret depois dele.
+   * Generalizado do antigo `insertEmoji` — emoji e resposta rápida fazem
+   * exatamente a mesma coisa, mudando só o que é inserido.
+   *
+   * `replaceFrom` existe para o atalho `/`: ao escolher a resposta, o token
+   * digitado ("/bomdia") precisa sumir junto, senão sobra no texto enviado.
+   */
+  const insertText = (text: string, replaceFrom?: number) => {
     const el = taRef.current;
     if (!el) {
-      setDraft(draft + emoji.native);
+      setDraft((draft + text).slice(0, MAX_CHARS));
       return;
     }
-    const start = el.selectionStart ?? draft.length;
-    const end = el.selectionEnd ?? draft.length;
-    const next = (draft.slice(0, start) + emoji.native + draft.slice(end)).slice(0, MAX_CHARS);
+    const caret = el.selectionStart ?? draft.length;
+    const start = replaceFrom ?? caret;
+    const end = el.selectionEnd ?? caret;
+    const next = (draft.slice(0, start) + text + draft.slice(end)).slice(0, MAX_CHARS);
     setDraft(next);
     requestAnimationFrame(() => {
       el.focus();
-      const pos = start + emoji.native.length;
+      const pos = Math.min(start + text.length, MAX_CHARS);
       el.selectionStart = el.selectionEnd = pos;
     });
   };
+
+  const insertEmoji = (emoji: { native: string }) => insertText(emoji.native);
+
+  // --- respostas rápidas
+  const pickQuickReply = (qr: QuickReplyOption) => {
+    // Variáveis resolvidas aqui, não salvas resolvidas: o texto no banco segue
+    // com {{cliente}} e vale para qualquer contato.
+    const body = renderTemplate(qr.body, templateVars ?? {});
+    insertText(body, slashToken?.start);
+    setShowQuick(false);
+    setSlashToken(null);
+  };
+
+  /**
+   * O picker some no modo nota, mas `showQuick` sobreviveria à troca: abrir a
+   * lista, ir para nota e voltar a reabriria sozinha, sem ninguém pedir.
+   */
+  React.useEffect(() => {
+    if (isNote) {
+      setShowQuick(false);
+      setSlashToken(null);
+    }
+  }, [isNote]);
+
+  /**
+   * Detecta "/termo" sendo digitado para abrir o picker filtrado. Só dispara
+   * quando a barra abre uma palavra (início do texto ou depois de espaço/quebra),
+   * para não capturar barra dentro de URL ou de data.
+   */
+  const detectSlash = (value: string, caret: number) => {
+    if (!hasQuickReplies || isNote) return;
+    const upToCaret = value.slice(0, caret);
+    const match = /(?:^|[\s\n])\/([a-z0-9_-]*)$/i.exec(upToCaret);
+    if (!match) {
+      if (slashToken) { setSlashToken(null); setShowQuick(false); }
+      return;
+    }
+    setSlashToken({ start: caret - match[1].length - 1, term: match[1].toLowerCase() });
+    setShowQuick(true);
+  };
+
+  const visibleQuickReplies = React.useMemo(() => {
+    const term = slashToken?.term ?? "";
+    if (!term) return quickReplies;
+    return quickReplies.filter(
+      (q) =>
+        q.shortcut.toLowerCase().includes(term) ||
+        q.title.toLowerCase().includes(term),
+    );
+  }, [quickReplies, slashToken?.term]);
 
   // --- attachments
   const openFilePicker = (cfg: { accept: string; multiple: boolean; capture?: string }) => {
@@ -345,7 +446,7 @@ export function Composer({ draft, setDraft, taRef, onSend, onClosePanel, onSendA
           onClick={cancelRecording}
           aria-label="Cancelar gravação"
           style={{
-            width: 36, height: 36, borderRadius: 999,
+            width: 36, height: 36, borderRadius: "var(--radius-pill)",
             background: "transparent", color: "#EF4444",
             display: "inline-flex", alignItems: "center", justifyContent: "center",
             border: "1px solid var(--border)",
@@ -356,7 +457,7 @@ export function Composer({ draft, setDraft, taRef, onSend, onClosePanel, onSendA
         <div className="flex-1" style={{ display: "flex", alignItems: "center", gap: 10, color: "var(--text-primary)" }}>
           <span
             style={{
-              width: 10, height: 10, borderRadius: 999,
+              width: 10, height: 10, borderRadius: "var(--radius-pill)",
               background: "#EF4444",
               animation: "recPulse 1s ease-in-out infinite",
               flexShrink: 0,
@@ -375,7 +476,7 @@ export function Composer({ draft, setDraft, taRef, onSend, onClosePanel, onSendA
           onPointerUp={onMicPointerUp}
           aria-label="Soltar para enviar"
           style={{
-            width: 40, height: 40, borderRadius: 999,
+            width: 40, height: 40, borderRadius: "var(--radius-pill)",
             background: isCancelingRec ? "#EF4444" : "var(--brand-400)",
             color: "#fff",
             display: "inline-flex", alignItems: "center", justifyContent: "center",
@@ -410,8 +511,116 @@ export function Composer({ draft, setDraft, taRef, onSend, onClosePanel, onSendA
 
   return (
     <div ref={composerWrapRef} style={{ position: "relative" }}>
+      {/* Alternador responder / nota interna. Botões explícitos, não um ícone
+          discreto: o custo de errar aqui é mandar anotação privada ao cliente. */}
+      {onModeChange && (
+        <div style={{ margin: "0 12px 6px" }}>
+          {/* Modos e ação na mesma linha, mas agrupados diferente de propósito:
+              Responder/Nota são excludentes e dividem uma moldura ("escolha
+              um"); Respostas é ação e fica solta ao lado. Iguais demais e
+              clicar em Respostas pareceria trocar o modo. */}
+          <div style={{ display: "flex", alignItems: "center", gap: 8, flexWrap: "wrap" }}>
+            <div
+              role="tablist"
+              aria-label="Modo de escrita"
+              style={{
+                display: "inline-flex",
+                gap: 2,
+                padding: 2,
+                borderRadius: "var(--radius-pill)",
+                background: "var(--bg-overlay)",
+                border: "1px solid var(--border)",
+              }}
+            >
+              {([
+                { id: "reply" as const, label: "Responder" },
+                { id: "note" as const, label: "Nota interna" },
+              ]).map((t) => {
+                const active = mode === t.id;
+                const amber = t.id === "note";
+                return (
+                  <button
+                    key={t.id}
+                    type="button"
+                    role="tab"
+                    aria-selected={active}
+                    onClick={() => onModeChange(t.id)}
+                    style={{
+                      height: 26,
+                      padding: "0 12px",
+                      borderRadius: "var(--radius-pill)",
+                      fontSize: 12,
+                      fontWeight: 600,
+                      cursor: "pointer",
+                      border: active
+                        ? `1px solid ${amber ? "#F59E0B" : "var(--border)"}`
+                        : "1px solid transparent",
+                      background: active
+                        ? amber
+                          ? "color-mix(in oklab, #F59E0B 18%, var(--bg-surface))"
+                          : "var(--bg-surface)"
+                        : "transparent",
+                      color: active
+                        ? amber
+                          ? "#B45309"
+                          : "var(--text-primary)"
+                        : "var(--text-muted)",
+                    }}
+                  >
+                    {t.label}
+                  </button>
+                );
+              })}
+            </div>
+
+            {/* Some no modo nota para acompanhar o atalho `/`, que já se recusa
+                a abrir ali — botão vivo com atalho morto confunde mais. */}
+            {hasQuickReplies && !isNote && (
+              <button
+                type="button"
+                aria-label="Respostas rápidas"
+                title="Respostas rápidas (ou digite / no campo)"
+                onClick={() => {
+                  setShowEmoji(false);
+                  setShowAttachMenu(false);
+                  setSlashToken(null);
+                  setShowQuick((v) => !v);
+                }}
+                style={quickBtn}
+                onMouseEnter={(e) => {
+                  e.currentTarget.style.background =
+                    "color-mix(in oklab, var(--brand-400) 16%, transparent)";
+                }}
+                onMouseLeave={(e) => {
+                  e.currentTarget.style.background =
+                    "color-mix(in oklab, var(--brand-400) 9%, transparent)";
+                }}
+              >
+                <Zap size={14} />
+                Respostas
+              </button>
+            )}
+          </div>
+          {isNote && (
+            <div
+              style={{
+                marginTop: 4,
+                fontSize: 11,
+                color: "var(--text-muted)",
+                display: "flex",
+                alignItems: "center",
+                gap: 4,
+              }}
+            >
+              <StickyNote size={11} aria-hidden />
+              Só quem tem acesso a esta conversa vê. Não vai para o WhatsApp.
+            </div>
+          )}
+        </div>
+      )}
+
       {/* Reply quote bar */}
-      {replyingTo && (
+      {replyingTo && !isNote && (
         <div
           style={{
             display: "flex",
@@ -421,7 +630,7 @@ export function Composer({ draft, setDraft, taRef, onSend, onClosePanel, onSendA
             margin: "0 12px 6px",
             background: "var(--bg-overlay)",
             border: "1px solid var(--border)",
-            borderRadius: 8,
+            borderRadius: "var(--radius-card)",
             borderLeft: `3px solid ${replyingTo.isMe ? "var(--brand-400)" : "#9aa3af"}`,
           }}
         >
@@ -507,6 +716,84 @@ export function Composer({ draft, setDraft, taRef, onSend, onClosePanel, onSendA
         </div>
       )}
 
+      {/* Respostas rápidas. `!isNote` acompanha o botão: sem isto a lista
+          continuaria aberta ao trocar para nota, com o botão já sumido. */}
+      {showQuick && hasQuickReplies && !isNote && (
+        <div
+          ref={quickWrapRef}
+          style={{
+            position: "absolute",
+            bottom: "calc(100% + 8px)",
+            left: 8,
+            right: 8,
+            maxWidth: 420,
+            maxHeight: 280,
+            overflowY: "auto",
+            background: "var(--bg-surface)",
+            border: "1px solid var(--border-strong)",
+            borderRadius: "var(--radius-modal)",
+            boxShadow: "0 12px 28px rgba(0,0,0,0.32)",
+            zIndex: 50,
+            padding: 6,
+          }}
+        >
+          {visibleQuickReplies.length === 0 ? (
+            <div style={{ padding: "10px 8px", fontSize: 12, color: "var(--text-muted)" }}>
+              Nenhuma resposta com “{slashToken?.term}”.
+            </div>
+          ) : (
+            visibleQuickReplies.map((qr, i) => (
+              <button
+                key={qr.id}
+                type="button"
+                onClick={() => pickQuickReply(qr)}
+                style={{
+                  display: "block",
+                  width: "100%",
+                  textAlign: "left",
+                  padding: "7px 9px",
+                  borderRadius: "var(--radius-card)",
+                  border: "none",
+                  background: i === 0 && slashToken ? "var(--bg-overlay)" : "transparent",
+                  cursor: "pointer",
+                }}
+                onMouseEnter={(e) => (e.currentTarget.style.background = "var(--bg-overlay)")}
+                onMouseLeave={(e) =>
+                  (e.currentTarget.style.background =
+                    i === 0 && slashToken ? "var(--bg-overlay)" : "transparent")
+                }
+              >
+                <div style={{ display: "flex", alignItems: "center", gap: 6 }}>
+                  <span style={{ fontSize: 13, fontWeight: 600, color: "var(--text-primary)" }}>
+                    {qr.title}
+                  </span>
+                  {qr.shortcut && (
+                    <span
+                      style={{
+                        fontSize: 10,
+                        fontFamily: "ui-monospace, monospace",
+                        padding: "1px 5px",
+                        borderRadius: "var(--radius-sm)",
+                        background: "var(--bg-overlay)",
+                        color: "var(--text-muted)",
+                      }}
+                    >
+                      /{qr.shortcut}
+                    </span>
+                  )}
+                </div>
+                <div
+                  className="truncate"
+                  style={{ fontSize: 12, color: "var(--text-muted)", marginTop: 1 }}
+                >
+                  {qr.body}
+                </div>
+              </button>
+            ))
+          )}
+        </div>
+      )}
+
       {/* Attachment popover */}
       {showAttachMenu && (
         <div
@@ -518,7 +805,7 @@ export function Composer({ draft, setDraft, taRef, onSend, onClosePanel, onSendA
             zIndex: 50,
             background: "var(--bg-surface)",
             border: "1px solid var(--border-strong)",
-            borderRadius: 12,
+            borderRadius: "var(--radius-modal)",
             padding: 12,
             display: "flex",
             gap: 14,
@@ -558,12 +845,15 @@ export function Composer({ draft, setDraft, taRef, onSend, onClosePanel, onSendA
           gap: 8,
         }}
       >
-        {/* Bubble */}
+        {/* Bubble — âmbar no modo nota. A cor da caixa inteira é o sinal que o
+            olho pega sem ler; o toggle sozinho não basta. */}
         <div
           style={{
             flex: 1,
-            background: "var(--bg-overlay)",
-            border: "1px solid var(--border-strong)",
+            background: isNote
+              ? "color-mix(in oklab, #F59E0B 12%, var(--bg-surface))"
+              : "var(--bg-surface)",
+            border: `1px solid ${isNote ? "#F59E0B" : "var(--border-strong)"}`,
             borderRadius: 24,
             padding: "8px 14px",
             display: "flex",
@@ -582,40 +872,53 @@ export function Composer({ draft, setDraft, taRef, onSend, onClosePanel, onSendA
           >
             <Smile size={20} />
           </button>
-          <button
-            type="button"
-            aria-label="Anexar"
-            onClick={() => { setShowEmoji(false); setShowAttachMenu(false); openFilePicker({ accept: "image/*,video/*,.pdf,.doc,.docx,.xls,.xlsx,.ppt,.pptx,.txt,.zip,.rar,.csv", multiple: true }); }}
-            style={iconBtn}
-            onMouseEnter={(e) => (e.currentTarget.style.color = "var(--text-primary)")}
-            onMouseLeave={(e) => (e.currentTarget.style.color = "var(--text-muted)")}
-          >
-            <Paperclip size={20} />
-          </button>
-          <button
-            type="button"
-            aria-label={isRecording ? "Parar gravação" : "Gravar áudio"}
-            onPointerDown={onMicPointerDown}
-            onPointerMove={onMicPointerMove}
-            onPointerUp={onMicPointerUp}
-            style={iconBtn}
-            onMouseEnter={(e) => (e.currentTarget.style.color = "var(--text-primary)")}
-            onMouseLeave={(e) => (e.currentTarget.style.color = "var(--text-muted)")}
-          >
-            <Mic size={20} />
-          </button>
+          {/* Anexo e microfone somem no modo nota — não ficam desabilitados.
+              Eles chamam onSendAttachments/onSendAudio, que vão DIRETO para a
+              Evolution sem passar pelo onSend do pai; desabilitado vaza no
+              primeiro refactor que remover o `disabled`. Nota v1 é texto. */}
+          {!isNote && (
+            <>
+              <button
+                type="button"
+                aria-label="Anexar"
+                onClick={() => { setShowEmoji(false); setShowAttachMenu(false); openFilePicker({ accept: "image/*,video/*,.pdf,.doc,.docx,.xls,.xlsx,.ppt,.pptx,.txt,.zip,.rar,.csv", multiple: true }); }}
+                style={iconBtn}
+                onMouseEnter={(e) => (e.currentTarget.style.color = "var(--text-primary)")}
+                onMouseLeave={(e) => (e.currentTarget.style.color = "var(--text-muted)")}
+              >
+                <Paperclip size={20} />
+              </button>
+            </>
+          )}
           <textarea
             ref={taRef}
             value={draft}
-            onChange={(e) => setDraft(e.target.value.slice(0, MAX_CHARS))}
+            onChange={(e) => {
+              const v = e.target.value.slice(0, MAX_CHARS);
+              setDraft(v);
+              detectSlash(v, e.target.selectionStart ?? v.length);
+            }}
             onKeyDown={(e) => {
+              // Com o picker aberto pelo "/", Enter escolhe a primeira opção em
+              // vez de enviar — senão o agente manda "/bomdia" para o cliente.
+              if (showQuick && slashToken && visibleQuickReplies.length > 0 && e.key === "Enter" && !e.shiftKey) {
+                e.preventDefault();
+                pickQuickReply(visibleQuickReplies[0]);
+                return;
+              }
               if (e.key === "Enter" && !e.shiftKey) {
                 e.preventDefault();
                 onSend();
               }
             }}
             onPaste={handlePaste}
-            placeholder="Mensagem"
+            placeholder={
+              isNote
+                ? "Nota interna — o cliente não vê isto"
+                : hasQuickReplies
+                  ? "Mensagem — digite / para respostas rápidas"
+                  : "Mensagem"
+            }
             rows={1}
             className="chat-input-textarea"
             style={{
@@ -635,17 +938,34 @@ export function Composer({ draft, setDraft, taRef, onSend, onClosePanel, onSendA
               overflow: "hidden",
             }}
           />
+          {/* Microfone à direita do campo, como no WhatsApp — fica ao lado do
+              botão de enviar, que é a ação irmã dele. */}
+          {!isNote && (
+            <button
+              type="button"
+              aria-label={isRecording ? "Parar gravação" : "Gravar áudio"}
+              onPointerDown={onMicPointerDown}
+              onPointerMove={onMicPointerMove}
+              onPointerUp={onMicPointerUp}
+              style={iconBtn}
+              onMouseEnter={(e) => (e.currentTarget.style.color = "var(--text-primary)")}
+              onMouseLeave={(e) => (e.currentTarget.style.color = "var(--text-muted)")}
+            >
+              <Mic size={20} />
+            </button>
+          )}
         </div>
 
-        {/* Send button (always round, always Send) */}
+        {/* Botão de ação. No modo nota muda cor E ícone: a memória muscular
+            mira a forma, então trocar só a cor não protege. */}
         <button
           type="button"
-          aria-label="Enviar"
+          aria-label={isNote ? "Salvar nota interna" : "Enviar"}
           onClick={onSend}
           disabled={!hasText}
           style={{
-            width: 40, height: 40, borderRadius: 999,
-            background: "var(--brand-400)",
+            width: 40, height: 40, borderRadius: "var(--radius-pill)",
+            background: isNote ? "#F59E0B" : "var(--brand-400)",
             color: "#fff",
             display: "inline-flex",
             alignItems: "center",
@@ -659,17 +979,17 @@ export function Composer({ draft, setDraft, taRef, onSend, onClosePanel, onSendA
           }}
           onMouseEnter={(e) => {
             if (!hasText) return;
-            e.currentTarget.style.background = "var(--brand-600)";
+            e.currentTarget.style.background = isNote ? "#D97706" : "var(--brand-600)";
             e.currentTarget.style.transform = "scale(1.05)";
           }}
           onMouseLeave={(e) => {
-            e.currentTarget.style.background = "var(--brand-400)";
+            e.currentTarget.style.background = isNote ? "#F59E0B" : "var(--brand-400)";
             e.currentTarget.style.transform = "scale(1)";
           }}
           onMouseDown={(e) => { if (hasText) e.currentTarget.style.transform = "scale(0.95)"; }}
           onMouseUp={(e) => { if (hasText) e.currentTarget.style.transform = "scale(1.05)"; }}
         >
-          <Send size={18} />
+          {isNote ? <StickyNote size={18} /> : <Send size={18} />}
         </button>
       </div>
 
@@ -705,6 +1025,30 @@ const iconBtn: React.CSSProperties = {
   flexShrink: 0,
 };
 
+/**
+ * Respostas rápidas destoa dos demais de propósito: cor da marca, fundo e
+ * rótulo. É a única ação que o atendente não descobre sozinho — emoji, anexo
+ * e áudio são ícones universais, "raio" não significa nada. Vive na linha dos
+ * modos, não na barra de ícones do composer.
+ */
+const quickBtn: React.CSSProperties = {
+  background: "color-mix(in oklab, var(--brand-400) 9%, transparent)",
+  border: "1px solid color-mix(in oklab, var(--brand-400) 28%, transparent)",
+  color: "var(--brand-400)",
+  cursor: "pointer",
+  padding: "0 8px",
+  height: 26,
+  borderRadius: "var(--radius-pill)",
+  display: "inline-flex",
+  alignItems: "center",
+  gap: 4,
+  fontSize: 12,
+  fontWeight: 600,
+  whiteSpace: "nowrap",
+  transition: "background 120ms ease",
+  flexShrink: 0,
+};
+
 function AttachOption({
   color, icon, label, onClick,
 }: { color: string; icon: React.ReactNode; label: string; onClick: () => void }) {
@@ -719,7 +1063,7 @@ function AttachOption({
     >
       <span
         style={{
-          width: 48, height: 48, borderRadius: 999,
+          width: 48, height: 48, borderRadius: "var(--radius-pill)",
           background: color, color: "#fff",
           display: "inline-flex", alignItems: "center", justifyContent: "center",
           transition: "transform 120ms ease",
@@ -784,7 +1128,7 @@ function AttachmentPreviewBar({
           onClick={onCancel}
           aria-label="Cancelar anexo"
           style={{
-            width: 24, height: 24, borderRadius: 999,
+            width: 24, height: 24, borderRadius: "var(--radius-pill)",
             background: "var(--bg-overlay)", color: "var(--text-muted)",
             display: "inline-flex", alignItems: "center", justifyContent: "center",
             border: "1px solid var(--border)",
@@ -803,7 +1147,7 @@ function AttachmentPreviewBar({
             <div
               key={i}
               style={{
-                width: 60, height: 60, borderRadius: 8, overflow: "hidden",
+                width: 60, height: 60, borderRadius: "var(--radius-card)", overflow: "hidden",
                 background: "var(--bg-overlay)",
                 border: "1px solid var(--border)",
                 display: "flex", alignItems: "center", justifyContent: "center",
@@ -861,7 +1205,7 @@ function AttachmentPreviewBar({
           onClick={onSend}
           aria-label="Enviar anexo"
           style={{
-            width: 40, height: 40, borderRadius: 999,
+            width: 40, height: 40, borderRadius: "var(--radius-pill)",
             background: "var(--brand-400)", color: "#fff",
             display: "inline-flex", alignItems: "center", justifyContent: "center",
             border: "none", cursor: "pointer",
@@ -896,7 +1240,7 @@ function AudioPreviewPlayer({
         onClick={toggle}
         aria-label={playing ? "Pausar" : "Reproduzir"}
         style={{
-          width: 40, height: 40, borderRadius: 999,
+          width: 40, height: 40, borderRadius: "var(--radius-pill)",
           background: "var(--bg-overlay)", color: "var(--text-primary)",
           border: "1px solid var(--border)",
           display: "inline-flex", alignItems: "center", justifyContent: "center",
@@ -918,7 +1262,7 @@ function AudioPreviewPlayer({
         onClick={onDiscard}
         aria-label="Descartar áudio"
         style={{
-          width: 36, height: 36, borderRadius: 999,
+          width: 36, height: 36, borderRadius: "var(--radius-pill)",
           background: "transparent", color: "#EF4444",
           border: "1px solid var(--border)",
           display: "inline-flex", alignItems: "center", justifyContent: "center",
@@ -931,7 +1275,7 @@ function AudioPreviewPlayer({
         onClick={onSend}
         aria-label="Enviar áudio"
         style={{
-          width: 40, height: 40, borderRadius: 999,
+          width: 40, height: 40, borderRadius: "var(--radius-pill)",
           background: "var(--brand-400)", color: "#fff",
           display: "inline-flex", alignItems: "center", justifyContent: "center",
           border: "none",

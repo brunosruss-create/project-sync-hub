@@ -4,6 +4,7 @@ import { z } from "zod";
 import { requireSupabaseAuth } from "@/integrations/supabase/auth-middleware";
 import { supabaseAdmin } from "@/integrations/supabase/client.server";
 import { evo, extractQRCode, instanceNameForOwner, normalizeQRCodeImage, tryFetchProfilePicture, sendMediaToContact } from "@/lib/evolution.server";
+import { resolveWorkspaceOwnerId } from "@/lib/workspace.server";
 
 const WEBHOOK_EVENTS = ["MESSAGES_UPSERT", "MESSAGES_UPDATE", "SEND_MESSAGE_UPDATE", "CONNECTION_UPDATE", "QRCODE_UPDATED"];
 
@@ -433,12 +434,16 @@ export const sendWhatsAppMessage = createServerFn({ method: "POST" })
   .middleware([requireSupabaseAuth])
   .inputValidator((d) => sendInput.parse(d))
   .handler(async ({ data, context }) => {
-    const name = instanceNameForOwner(context.userId);
+    // A instância e os dados são do DONO do workspace, não de quem está logado:
+    // um atendente convidado tem userId próprio, mas o contato pertence ao dono.
+    // `sent_by` abaixo segue sendo o usuário real, para autoria no relatório.
+    const ownerId = await resolveWorkspaceOwnerId(context.userId);
+    const name = instanceNameForOwner(ownerId);
     const { data: contact, error: ce } = await supabaseAdmin
       .from("contacts")
       .select("id,phone")
       .eq("id", data.contactId)
-      .eq("owner_user_id", context.userId)
+      .eq("owner_user_id", ownerId)
       .maybeSingle();
     if (ce || !contact?.phone) throw new Error("Contato sem telefone.");
 
@@ -456,7 +461,7 @@ export const sendWhatsAppMessage = createServerFn({ method: "POST" })
     }
 
     await supabaseAdmin.from("messages").insert({
-      owner_user_id: context.userId,
+      owner_user_id: ownerId,
       contact_id: contact.id,
       direction: "outbound",
       content: data.text,
@@ -477,12 +482,13 @@ export const refreshContactAvatar = createServerFn({ method: "POST" })
   .middleware([requireSupabaseAuth])
   .inputValidator((d) => refreshAvatarInput.parse(d))
   .handler(async ({ data, context }) => {
-    const name = instanceNameForOwner(context.userId);
+    const ownerId = await resolveWorkspaceOwnerId(context.userId);
+    const name = instanceNameForOwner(ownerId);
     const { data: contact } = await supabaseAdmin
       .from("contacts")
       .select("id,phone,avatar_url")
       .eq("id", data.contactId)
-      .eq("owner_user_id", context.userId)
+      .eq("owner_user_id", ownerId)
       .maybeSingle();
     if (!contact?.phone) return { url: null as string | null, changed: false };
     const number = String(contact.phone).replace(/\D/g, "");
@@ -577,7 +583,7 @@ export const sendWhatsAppMedia = createServerFn({ method: "POST" })
   .inputValidator((d) => sendMediaInput.parse(d))
   .handler(async ({ data, context }) =>
     sendMediaToContact({
-      ownerUserId: context.userId,
+      ownerUserId: await resolveWorkspaceOwnerId(context.userId),
       contactId: data.contactId,
       url: data.url,
       mime: data.mime,
@@ -598,12 +604,13 @@ export const sendWhatsAppAudio = createServerFn({ method: "POST" })
   .middleware([requireSupabaseAuth])
   .inputValidator((d) => sendAudioInput.parse(d))
   .handler(async ({ data, context }) => {
-    const instance = instanceNameForOwner(context.userId);
+    const ownerId = await resolveWorkspaceOwnerId(context.userId);
+    const instance = instanceNameForOwner(ownerId);
     const { data: contact, error: ce } = await supabaseAdmin
       .from("contacts")
       .select("id,phone")
       .eq("id", data.contactId)
-      .eq("owner_user_id", context.userId)
+      .eq("owner_user_id", ownerId)
       .maybeSingle();
     if (ce || !contact?.phone) throw new Error("Contato sem telefone.");
 
@@ -621,7 +628,7 @@ export const sendWhatsAppAudio = createServerFn({ method: "POST" })
     }
 
     await supabaseAdmin.from("messages").insert({
-      owner_user_id: context.userId,
+      owner_user_id: ownerId,
       contact_id: contact.id,
       direction: "outbound",
       content: "",
@@ -645,12 +652,13 @@ function jidFromPhone(phone: string): string {
   return `${digits}@s.whatsapp.net`;
 }
 
-async function loadOwnedMessage(userId: string, messageId: string) {
+/** `ownerId` é o dono do workspace, não quem está logado — ver resolveWorkspaceOwnerId. */
+async function loadOwnedMessage(ownerId: string, messageId: string) {
   const { data: msg, error } = await supabaseAdmin
     .from("messages")
     .select("id, contact_id, whatsapp_message_id, direction, message_type, content, reactions")
     .eq("id", messageId)
-    .eq("owner_user_id", userId)
+    .eq("owner_user_id", ownerId)
     .maybeSingle();
   if (error || !msg) throw new Error("Mensagem não encontrada.");
   if (!msg.whatsapp_message_id) throw new Error("Mensagem sem ID externo.");
@@ -658,7 +666,7 @@ async function loadOwnedMessage(userId: string, messageId: string) {
     .from("contacts")
     .select("id, phone")
     .eq("id", msg.contact_id)
-    .eq("owner_user_id", userId)
+    .eq("owner_user_id", ownerId)
     .maybeSingle();
   if (!contact?.phone) throw new Error("Contato sem telefone.");
   return { msg, contact };
@@ -673,8 +681,9 @@ export const reactToMessage = createServerFn({ method: "POST" })
   .middleware([requireSupabaseAuth])
   .inputValidator((d) => reactionInput.parse(d))
   .handler(async ({ data, context }) => {
-    const name = instanceNameForOwner(context.userId);
-    const { msg, contact } = await loadOwnedMessage(context.userId, data.messageId);
+    const ownerId = await resolveWorkspaceOwnerId(context.userId);
+    const name = instanceNameForOwner(ownerId);
+    const { msg, contact } = await loadOwnedMessage(ownerId, data.messageId);
     const remoteJid = jidFromPhone(contact.phone);
 
     try {
@@ -710,8 +719,9 @@ export const deleteMessageForEveryone = createServerFn({ method: "POST" })
   .middleware([requireSupabaseAuth])
   .inputValidator((d) => deleteInput.parse(d))
   .handler(async ({ data, context }) => {
-    const name = instanceNameForOwner(context.userId);
-    const { msg, contact } = await loadOwnedMessage(context.userId, data.messageId);
+    const ownerId = await resolveWorkspaceOwnerId(context.userId);
+    const name = instanceNameForOwner(ownerId);
+    const { msg, contact } = await loadOwnedMessage(ownerId, data.messageId);
     if (msg.direction !== "outbound") {
       throw new Error("Só é possível apagar para todos mensagens enviadas por você.");
     }
@@ -744,8 +754,9 @@ export const editMessage = createServerFn({ method: "POST" })
   .middleware([requireSupabaseAuth])
   .inputValidator((d) => editInput.parse(d))
   .handler(async ({ data, context }) => {
-    const name = instanceNameForOwner(context.userId);
-    const { msg, contact } = await loadOwnedMessage(context.userId, data.messageId);
+    const ownerId = await resolveWorkspaceOwnerId(context.userId);
+    const name = instanceNameForOwner(ownerId);
+    const { msg, contact } = await loadOwnedMessage(ownerId, data.messageId);
     if (msg.direction !== "outbound") {
       throw new Error("Só é possível editar mensagens enviadas por você.");
     }

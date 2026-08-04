@@ -2,7 +2,11 @@ import * as React from "react";
 import { useQuery, useMutation, useQueryClient } from "@tanstack/react-query";
 import { useServerFn } from "@tanstack/react-start";
 import { toast } from "sonner";
-import { X, Wifi, WifiOff, Loader2, MoreVertical } from "lucide-react";
+import {
+  X, Wifi, WifiOff, Loader2, MoreVertical,
+  BarChart3, Users, MessageSquare, Settings, PauseCircle, Trash2,
+  type LucideIcon,
+} from "lucide-react";
 import {
   getWorkspaceDetail,
   setUserRole,
@@ -21,16 +25,18 @@ type Props = {
 const card: React.CSSProperties = {
   background: "#0F0F13",
   border: "1px solid #1F1F23",
-  borderRadius: 8,
+  borderRadius: "var(--radius-card)",
   padding: 14,
 };
 
+// `as const` sem anotação de propósito: TabId abaixo deriva daqui como union
+// de literais ("summary" | "members" | ...), não como string.
 const tabs = [
-  { id: "summary", label: "📊 Resumo" },
-  { id: "members", label: "👥 Usuários" },
-  { id: "contacts", label: "💬 Contatos" },
-  { id: "settings", label: "⚙️ Configurações" },
-] as const;
+  { id: "summary", label: "Resumo", Icon: BarChart3 },
+  { id: "members", label: "Usuários", Icon: Users },
+  { id: "contacts", label: "Contatos", Icon: MessageSquare },
+  { id: "settings", label: "Configurações", Icon: Settings },
+] as const satisfies ReadonlyArray<{ id: string; label: string; Icon: LucideIcon }>;
 type TabId = (typeof tabs)[number]["id"];
 
 const PLANS = ["trial", "starter", "pro", "enterprise"] as const;
@@ -153,8 +159,12 @@ export function InspectWorkspaceDrawer({ ownerId, onClose }: Props) {
                     borderBottom:
                       tab === t.id ? "2px solid #7C3AED" : "2px solid transparent",
                     cursor: "pointer",
+                    display: "inline-flex",
+                    alignItems: "center",
+                    gap: 6,
                   }}
                 >
+                  <t.Icon size={13} aria-hidden />
                   {t.label}
                 </button>
               ))}
@@ -190,7 +200,7 @@ function Header({ data, onClose }: { data: Detail; onClose: () => void }) {
         style={{
           width: 36,
           height: 36,
-          borderRadius: 8,
+          borderRadius: "var(--radius-card)",
           background: avatarColor(name),
           display: "flex",
           alignItems: "center",
@@ -212,7 +222,7 @@ function Header({ data, onClose }: { data: Detail; onClose: () => void }) {
           fontSize: 11,
           fontWeight: 600,
           padding: "4px 8px",
-          borderRadius: 999,
+          borderRadius: "var(--radius-pill)",
           background: connected
             ? "color-mix(in oklab, #10B981 18%, transparent)"
             : "color-mix(in oklab, #EF4444 18%, transparent)",
@@ -270,7 +280,7 @@ function SummaryTab({ data }: { data: Detail }) {
                 fontSize: 11,
                 fontWeight: 600,
                 padding: "3px 8px",
-                borderRadius: 999,
+                borderRadius: "var(--radius-pill)",
                 background: "color-mix(in oklab, #7C3AED 18%, transparent)",
                 color: "#A78BFA",
                 textTransform: "capitalize",
@@ -420,7 +430,7 @@ function MemberRow({
                 fontSize: 10,
                 fontWeight: 600,
                 padding: "2px 6px",
-                borderRadius: 999,
+                borderRadius: "var(--radius-pill)",
                 background: "color-mix(in oklab, #EF4444 22%, transparent)",
                 color: "#F87171",
               }}
@@ -436,7 +446,7 @@ function MemberRow({
           fontSize: 11,
           fontWeight: 600,
           padding: "3px 8px",
-          borderRadius: 999,
+          borderRadius: "var(--radius-pill)",
           background: `color-mix(in oklab, ${meta.color} 18%, transparent)`,
           color: meta.color,
         }}
@@ -458,7 +468,7 @@ function MemberRow({
                 marginTop: 4,
                 background: "#15151A",
                 border: "1px solid #1F1F23",
-                borderRadius: 8,
+                borderRadius: "var(--radius-card)",
                 minWidth: 180,
                 padding: 4,
                 zIndex: 61,
@@ -612,7 +622,7 @@ function SettingsTab({
               flex: 1,
               height: 34,
               padding: "0 10px",
-              borderRadius: 6,
+              borderRadius: "var(--radius-control)",
               border: "1px solid #1F1F23",
               background: "#0A0A0A",
               color: "#fff",
@@ -641,10 +651,12 @@ function SettingsTab({
         </div>
         <div className="flex flex-col" style={{ gap: 8 }}>
           <button onClick={handleSuspend} style={btnDanger}>
-            🔴 Suspender workspace
+            <PauseCircle size={13} aria-hidden />
+            Suspender workspace
           </button>
           <button onClick={handleDelete} style={btnDanger}>
-            🗑️ Deletar workspace
+            <Trash2 size={13} aria-hidden />
+            Deletar workspace
           </button>
         </div>
       </div>
@@ -666,7 +678,7 @@ const iconBtn: React.CSSProperties = {
   display: "inline-flex",
   alignItems: "center",
   justifyContent: "center",
-  borderRadius: 6,
+  borderRadius: "var(--radius-control)",
   background: "transparent",
   border: "1px solid #1F1F23",
   color: "#fff",
@@ -675,7 +687,7 @@ const iconBtn: React.CSSProperties = {
 const btnGhost: React.CSSProperties = {
   height: 32,
   padding: "0 12px",
-  borderRadius: 6,
+  borderRadius: "var(--radius-control)",
   background: "transparent",
   border: "1px solid #1F1F23",
   color: "#fff",
@@ -685,7 +697,7 @@ const btnGhost: React.CSSProperties = {
 const btnPrimary: React.CSSProperties = {
   height: 34,
   padding: "0 14px",
-  borderRadius: 6,
+  borderRadius: "var(--radius-control)",
   background: "#7C3AED",
   border: 0,
   color: "#fff",
@@ -696,7 +708,7 @@ const btnPrimary: React.CSSProperties = {
 const btnDanger: React.CSSProperties = {
   height: 34,
   padding: "0 14px",
-  borderRadius: 6,
+  borderRadius: "var(--radius-control)",
   background: "color-mix(in oklab, #EF4444 18%, transparent)",
   border: "1px solid color-mix(in oklab, #EF4444 40%, #1F1F23)",
   color: "#F87171",
@@ -704,6 +716,9 @@ const btnDanger: React.CSSProperties = {
   fontWeight: 500,
   cursor: "pointer",
   textAlign: "left",
+  display: "inline-flex",
+  alignItems: "center",
+  gap: 6,
 };
 const menuItem: React.CSSProperties = {
   display: "block",
@@ -715,5 +730,5 @@ const menuItem: React.CSSProperties = {
   border: 0,
   color: "#fff",
   cursor: "pointer",
-  borderRadius: 4,
+  borderRadius: "var(--radius-sm)",
 };

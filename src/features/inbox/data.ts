@@ -32,15 +32,33 @@ export interface ContactCard {
   notes?: string | null;
   is_blocked?: boolean;
   is_archived?: boolean;
+  document_type?: "pessoa_fisica" | "pessoa_juridica" | null;
+  document_number?: string | null;
+  birth_date?: string | null;
+  gender?: "masculino" | "feminino" | "outro" | null;
+  profession?: string | null;
+  cep?: string | null;
+  street?: string | null;
+  address_number?: string | null;
+  address_complement?: string | null;
+  neighborhood?: string | null;
+  city?: string | null;
+  state_uf?: string | null;
 }
 
 // Defaults aplicados quando o usuário ainda não tem colunas no banco.
 // is_system = true → não podem ser deletadas pelo UI.
+//
+// O `emoji` daqui é vestigial para estas 5: a UI renderiza SYSTEM_COLUMN_ICON
+// (kanban-column.tsx) por slug, não o emoji. Fica só porque `emoji` é NOT NULL
+// no shape e é o valor semeado no banco. Emoji livre vale só pras colunas que o
+// usuário cria (is_system = false), onde é personalização dele.
 export const DEFAULT_COLUMNS: KanbanColumnDef[] = [
   { id: "waiting",     slug: "waiting",     label: "Aguardando",    emoji: "🟡", color: "#F59E0B", position: 0, is_system: true },
   { id: "in_progress", slug: "in_progress", label: "Em Atendimento", emoji: "🔵", color: "#3B82F6", position: 1, is_system: true },
   { id: "scheduled",   slug: "scheduled",   label: "Agendado",      emoji: "📅", color: "#25C880", position: 2, is_system: true },
   { id: "urgent",      slug: "urgent",      label: "Urgente",       emoji: "🔴", color: "#EF4444", position: 3, is_system: true },
+  { id: "resolved",    slug: "resolved",    label: "Resolvido",     emoji: "✅", color: "#64748B", position: 4, is_system: true },
 ];
 
 // Compat: alguns lugares ainda importavam COLUMNS / COLUMN_COLOR.
@@ -64,9 +82,12 @@ const min = (n: number) => new Date(now - n * 60_000);
 const hr = (n: number) => new Date(now - n * 3_600_000);
 const day = (n: number) => new Date(now - n * 86_400_000);
 
+// c1 e c2 têm campos de CRM de propósito e c10 não: é o que torna o filtro de
+// `hasRegistration` visível em DEV (a tela de Clientes mostra 2 dos 3).
+// Não remover nem reordenar entradas — features/schedule/data.ts indexa por posição.
 export const MOCK_CONTACTS: ContactCard[] = [
-  { id: "c1", name: "Marina Costa", phone: "+55 11 99876-1122", lastMessage: "Boa tarde! Tudo bem? Vi o anúncio e queria saber mais.", lastMessageAt: min(3), assignedAgent: null, tags: ["Site", "Estética"], isUnread: true, priority: "normal", kanban_column: "waiting" },
-  { id: "c2", name: "Roberto Lima", phone: "+55 21 98432-7710", lastMessage: "Ainda dá pra agendar pra amanhã de manhã?", lastMessageAt: min(12), tags: ["Recorrente"], isUnread: true, priority: "normal", kanban_column: "waiting" },
+  { id: "c1", name: "Marina Costa", phone: "+55 11 99876-1122", lastMessage: "Boa tarde! Tudo bem? Vi o anúncio e queria saber mais.", lastMessageAt: min(3), assignedAgent: null, tags: ["Site", "Estética"], isUnread: true, priority: "normal", kanban_column: "waiting", email: "marina.costa@exemplo.com", city: "São Paulo", state_uf: "SP" },
+  { id: "c2", name: "Roberto Lima", phone: "+55 21 98432-7710", lastMessage: "Ainda dá pra agendar pra amanhã de manhã?", lastMessageAt: min(12), tags: ["Recorrente"], isUnread: true, priority: "normal", kanban_column: "waiting", document_type: "pessoa_fisica", document_number: "123.456.789-00", birth_date: "1988-04-17" },
   { id: "c10", name: "Thiago Nogueira", phone: "+55 11 98765-9988", lastMessage: "GENTE PRECISO MUITO DE AJUDA AGORA, sistema parou!!!", lastMessageAt: min(1), tags: ["VIP", "Suporte"], isUnread: true, priority: "urgent", kanban_column: "urgent" },
 ];
 

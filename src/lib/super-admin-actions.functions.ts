@@ -86,10 +86,14 @@ export const getWorkspaceDetail = createServerFn({ method: "POST" })
         .from("appointments")
         .select("id", { count: "exact", head: true })
         .eq("owner_user_id", ownerId),
+      // Contagem de uso do workspace (exibida como "Mensagens (mês)"). Nota
+      // interna é anotação da equipe, não mensagem trocada com o cliente —
+      // contá-la aqui seria cobrar o tenant por escrever um lembrete.
       supabaseAdmin
         .from("messages")
         .select("id", { count: "exact", head: true })
         .eq("owner_user_id", ownerId)
+        .eq("is_internal", false)
         .gte(
           "created_at",
           new Date(new Date().getFullYear(), new Date().getMonth(), 1).toISOString(),

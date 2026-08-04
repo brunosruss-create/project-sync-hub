@@ -69,6 +69,34 @@ async function fetchMessages(start: Date, end: Date): Promise<MessageRow[]> {
   return (data ?? []) as MessageRow[];
 }
 
+interface CsatRow {
+  status: string;
+  rating: number | null;
+}
+
+/**
+ * Pesquisas ENVIADAS na janela. Filtrar por `sent_at` (e não por
+ * `answered_at`) mantém numerador e denominador no mesmo conjunto — do
+ * contrário a taxa de resposta quebra nas bordas do período.
+ *
+ * `cancelled` fica de fora: são pesquisas que não chegamos a fazer (conversa
+ * reabriu, WhatsApp caiu). Contá-las afundaria a taxa por motivo que não é
+ * do cliente.
+ */
+async function fetchCsat(start: Date, end: Date): Promise<CsatRow[]> {
+  const { data, error } = await supabase
+    .from("csat_surveys")
+    .select("status, rating")
+    .in("status", ["sent", "answered", "expired"])
+    .gte("sent_at", start.toISOString())
+    .lt("sent_at", end.toISOString())
+    .limit(10000);
+  // Sem a migration aplicada, a tabela não existe — o relatório não deve cair
+  // por causa de uma métrica opcional.
+  if (error) return [];
+  return (data ?? []) as CsatRow[];
+}
+
 async function fetchAppointments(start: Date, end: Date): Promise<ApptRow[]> {
   const { data, error } = await supabase
     .from("appointments")
@@ -179,16 +207,28 @@ export interface ServiceReport {
   resolvedDelta: ReturnType<typeof deltaPct>;
   ranking: { name: string; total: number; tmr: string; resolved: number }[];
   totalInbound: number;
+  /** null quando há poucas respostas para a média significar algo. */
+  csatAvg: number | null;
+  csatAnswered: number;
+  csatSent: number;
+  csatDistribution: { rating: number; count: number }[];
   exportRows: Array<Record<string, string | number>>;
 }
 
+/**
+ * Abaixo disso a média é ruído — e um KPI ruidoso ensina o usuário a ignorar
+ * o painel inteiro. Melhor mostrar "—" e a contagem de respostas.
+ */
+const CSAT_MIN_SAMPLE = 5;
+
 export async function getServiceReport(period: Period): Promise<ServiceReport> {
   const { start, end, prevStart, prevEnd } = periodRange(period);
-  const [msgs, prevMsgs, appts, prevAppts] = await Promise.all([
+  const [msgs, prevMsgs, appts, prevAppts, csat] = await Promise.all([
     fetchMessages(start, end),
     fetchMessages(prevStart, prevEnd),
     fetchAppointments(start, end),
     fetchAppointments(prevStart, prevEnd),
+    fetchCsat(start, end),
   ]);
 
   const inbound = msgs.filter((m) => m.direction === "inbound");
@@ -230,6 +270,17 @@ export async function getServiceReport(period: Period): Promise<ServiceReport> {
     }))
     .sort((a, b) => b.total - a.total);
 
+  // ── CSAT ──
+  const answered = csat.filter((c) => c.status === "answered" && typeof c.rating === "number");
+  const csatAvg =
+    answered.length >= CSAT_MIN_SAMPLE
+      ? answered.reduce((s, c) => s + (c.rating ?? 0), 0) / answered.length
+      : null;
+  const csatDistribution = [1, 2, 3, 4, 5].map((rating) => ({
+    rating,
+    count: answered.filter((c) => c.rating === rating).length,
+  }));
+
   return {
     series,
     tmrSeconds: tmr,
@@ -238,6 +289,13 @@ export async function getServiceReport(period: Period): Promise<ServiceReport> {
     resolvedDelta,
     ranking,
     totalInbound: inbound.length,
+    csatAvg,
+    csatAnswered: answered.length,
+    // Denominador da taxa de resposta: enviadas que já tiveram desfecho do
+    // cliente (respondeu ou não respondeu a tempo). As `sent` ainda em aberto
+    // entram porque a janela já passou.
+    csatSent: csat.length,
+    csatDistribution,
     exportRows: ranking.map((r) => ({ Agente: r.name, Atendimentos: r.total, TMR: r.tmr, Resolvidos: r.resolved })),
   };
 }

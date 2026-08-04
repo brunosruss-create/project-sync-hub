@@ -26,9 +26,11 @@ import { Route as AuthenticatedServicesRouteImport } from './routes/_authenticat
 import { Route as AuthenticatedSuperAdminRouteImport } from './routes/_authenticated.super-admin'
 import { Route as AuthCallbackRouteImport } from './routes/auth.callback'
 import { Route as AuthenticatedSettingsBillingRouteImport } from './routes/_authenticated.settings.billing'
+import { Route as AuthenticatedSettingsDepartmentsRouteImport } from './routes/_authenticated.settings.departments'
 import { Route as AuthenticatedSettingsMessagesRouteImport } from './routes/_authenticated.settings.messages'
 import { Route as AuthenticatedSettingsProfessionalsRouteImport } from './routes/_authenticated.settings.professionals'
 import { Route as AuthenticatedSettingsProfileRouteImport } from './routes/_authenticated.settings.profile'
+import { Route as AuthenticatedSettingsQuickRepliesRouteImport } from './routes/_authenticated.settings.quick-replies'
 import { Route as AuthenticatedSettingsTeamRouteImport } from './routes/_authenticated.settings.team'
 import { Route as AuthenticatedSettingsWhatsappRouteImport } from './routes/_authenticated.settings.whatsapp'
 import { Route as AuthenticatedSettingsWorkspaceRouteImport } from './routes/_authenticated.settings.workspace'
@@ -126,6 +128,12 @@ const AuthenticatedSettingsBillingRoute =
     path: '/settings/billing',
     getParentRoute: () => AuthenticatedRoute,
   } as any)
+const AuthenticatedSettingsDepartmentsRoute =
+  AuthenticatedSettingsDepartmentsRouteImport.update({
+    id: '/settings/departments',
+    path: '/settings/departments',
+    getParentRoute: () => AuthenticatedRoute,
+  } as any)
 const AuthenticatedSettingsMessagesRoute =
   AuthenticatedSettingsMessagesRouteImport.update({
     id: '/settings/messages',
@@ -142,6 +150,12 @@ const AuthenticatedSettingsProfileRoute =
   AuthenticatedSettingsProfileRouteImport.update({
     id: '/settings/profile',
     path: '/settings/profile',
+    getParentRoute: () => AuthenticatedRoute,
+  } as any)
+const AuthenticatedSettingsQuickRepliesRoute =
+  AuthenticatedSettingsQuickRepliesRouteImport.update({
+    id: '/settings/quick-replies',
+    path: '/settings/quick-replies',
     getParentRoute: () => AuthenticatedRoute,
   } as any)
 const AuthenticatedSettingsTeamRoute =
@@ -221,9 +235,11 @@ export interface FileRoutesByFullPath {
   '/super-admin': typeof AuthenticatedSuperAdminRouteWithChildren
   '/auth/callback': typeof AuthCallbackRoute
   '/settings/billing': typeof AuthenticatedSettingsBillingRoute
+  '/settings/departments': typeof AuthenticatedSettingsDepartmentsRoute
   '/settings/messages': typeof AuthenticatedSettingsMessagesRoute
   '/settings/professionals': typeof AuthenticatedSettingsProfessionalsRoute
   '/settings/profile': typeof AuthenticatedSettingsProfileRoute
+  '/settings/quick-replies': typeof AuthenticatedSettingsQuickRepliesRoute
   '/settings/team': typeof AuthenticatedSettingsTeamRoute
   '/settings/whatsapp': typeof AuthenticatedSettingsWhatsappRoute
   '/settings/workspace': typeof AuthenticatedSettingsWorkspaceRoute
@@ -252,9 +268,11 @@ export interface FileRoutesByTo {
   '/super-admin': typeof AuthenticatedSuperAdminRouteWithChildren
   '/auth/callback': typeof AuthCallbackRoute
   '/settings/billing': typeof AuthenticatedSettingsBillingRoute
+  '/settings/departments': typeof AuthenticatedSettingsDepartmentsRoute
   '/settings/messages': typeof AuthenticatedSettingsMessagesRoute
   '/settings/professionals': typeof AuthenticatedSettingsProfessionalsRoute
   '/settings/profile': typeof AuthenticatedSettingsProfileRoute
+  '/settings/quick-replies': typeof AuthenticatedSettingsQuickRepliesRoute
   '/settings/team': typeof AuthenticatedSettingsTeamRoute
   '/settings/whatsapp': typeof AuthenticatedSettingsWhatsappRoute
   '/settings/workspace': typeof AuthenticatedSettingsWorkspaceRoute
@@ -285,9 +303,11 @@ export interface FileRoutesById {
   '/_authenticated/super-admin': typeof AuthenticatedSuperAdminRouteWithChildren
   '/auth/callback': typeof AuthCallbackRoute
   '/_authenticated/settings/billing': typeof AuthenticatedSettingsBillingRoute
+  '/_authenticated/settings/departments': typeof AuthenticatedSettingsDepartmentsRoute
   '/_authenticated/settings/messages': typeof AuthenticatedSettingsMessagesRoute
   '/_authenticated/settings/professionals': typeof AuthenticatedSettingsProfessionalsRoute
   '/_authenticated/settings/profile': typeof AuthenticatedSettingsProfileRoute
+  '/_authenticated/settings/quick-replies': typeof AuthenticatedSettingsQuickRepliesRoute
   '/_authenticated/settings/team': typeof AuthenticatedSettingsTeamRoute
   '/_authenticated/settings/whatsapp': typeof AuthenticatedSettingsWhatsappRoute
   '/_authenticated/settings/workspace': typeof AuthenticatedSettingsWorkspaceRoute
@@ -318,9 +338,11 @@ export interface FileRouteTypes {
     | '/super-admin'
     | '/auth/callback'
     | '/settings/billing'
+    | '/settings/departments'
     | '/settings/messages'
     | '/settings/professionals'
     | '/settings/profile'
+    | '/settings/quick-replies'
     | '/settings/team'
     | '/settings/whatsapp'
     | '/settings/workspace'
@@ -349,9 +371,11 @@ export interface FileRouteTypes {
     | '/super-admin'
     | '/auth/callback'
     | '/settings/billing'
+    | '/settings/departments'
     | '/settings/messages'
     | '/settings/professionals'
     | '/settings/profile'
+    | '/settings/quick-replies'
     | '/settings/team'
     | '/settings/whatsapp'
     | '/settings/workspace'
@@ -381,9 +405,11 @@ export interface FileRouteTypes {
     | '/_authenticated/super-admin'
     | '/auth/callback'
     | '/_authenticated/settings/billing'
+    | '/_authenticated/settings/departments'
     | '/_authenticated/settings/messages'
     | '/_authenticated/settings/professionals'
     | '/_authenticated/settings/profile'
+    | '/_authenticated/settings/quick-replies'
     | '/_authenticated/settings/team'
     | '/_authenticated/settings/whatsapp'
     | '/_authenticated/settings/workspace'
@@ -529,6 +555,13 @@ declare module '@tanstack/react-router' {
       preLoaderRoute: typeof AuthenticatedSettingsBillingRouteImport
       parentRoute: typeof AuthenticatedRoute
     }
+    '/_authenticated/settings/departments': {
+      id: '/_authenticated/settings/departments'
+      path: '/settings/departments'
+      fullPath: '/settings/departments'
+      preLoaderRoute: typeof AuthenticatedSettingsDepartmentsRouteImport
+      parentRoute: typeof AuthenticatedRoute
+    }
     '/_authenticated/settings/messages': {
       id: '/_authenticated/settings/messages'
       path: '/settings/messages'
@@ -548,6 +581,13 @@ declare module '@tanstack/react-router' {
       path: '/settings/profile'
       fullPath: '/settings/profile'
       preLoaderRoute: typeof AuthenticatedSettingsProfileRouteImport
+      parentRoute: typeof AuthenticatedRoute
+    }
+    '/_authenticated/settings/quick-replies': {
+      id: '/_authenticated/settings/quick-replies'
+      path: '/settings/quick-replies'
+      fullPath: '/settings/quick-replies'
+      preLoaderRoute: typeof AuthenticatedSettingsQuickRepliesRouteImport
       parentRoute: typeof AuthenticatedRoute
     }
     '/_authenticated/settings/team': {
@@ -657,9 +697,11 @@ interface AuthenticatedRouteChildren {
   AuthenticatedServicesRoute: typeof AuthenticatedServicesRoute
   AuthenticatedSuperAdminRoute: typeof AuthenticatedSuperAdminRouteWithChildren
   AuthenticatedSettingsBillingRoute: typeof AuthenticatedSettingsBillingRoute
+  AuthenticatedSettingsDepartmentsRoute: typeof AuthenticatedSettingsDepartmentsRoute
   AuthenticatedSettingsMessagesRoute: typeof AuthenticatedSettingsMessagesRoute
   AuthenticatedSettingsProfessionalsRoute: typeof AuthenticatedSettingsProfessionalsRoute
   AuthenticatedSettingsProfileRoute: typeof AuthenticatedSettingsProfileRoute
+  AuthenticatedSettingsQuickRepliesRoute: typeof AuthenticatedSettingsQuickRepliesRoute
   AuthenticatedSettingsTeamRoute: typeof AuthenticatedSettingsTeamRoute
   AuthenticatedSettingsWhatsappRoute: typeof AuthenticatedSettingsWhatsappRoute
   AuthenticatedSettingsWorkspaceRoute: typeof AuthenticatedSettingsWorkspaceRoute
@@ -676,10 +718,13 @@ const AuthenticatedRouteChildren: AuthenticatedRouteChildren = {
   AuthenticatedServicesRoute: AuthenticatedServicesRoute,
   AuthenticatedSuperAdminRoute: AuthenticatedSuperAdminRouteWithChildren,
   AuthenticatedSettingsBillingRoute: AuthenticatedSettingsBillingRoute,
+  AuthenticatedSettingsDepartmentsRoute: AuthenticatedSettingsDepartmentsRoute,
   AuthenticatedSettingsMessagesRoute: AuthenticatedSettingsMessagesRoute,
   AuthenticatedSettingsProfessionalsRoute:
     AuthenticatedSettingsProfessionalsRoute,
   AuthenticatedSettingsProfileRoute: AuthenticatedSettingsProfileRoute,
+  AuthenticatedSettingsQuickRepliesRoute:
+    AuthenticatedSettingsQuickRepliesRoute,
   AuthenticatedSettingsTeamRoute: AuthenticatedSettingsTeamRoute,
   AuthenticatedSettingsWhatsappRoute: AuthenticatedSettingsWhatsappRoute,
   AuthenticatedSettingsWorkspaceRoute: AuthenticatedSettingsWorkspaceRoute,

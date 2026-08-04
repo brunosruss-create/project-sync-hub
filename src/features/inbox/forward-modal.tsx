@@ -15,6 +15,13 @@ export interface ForwardSource {
   media_url?: string | null;
   media_mime?: string | null;
   media_name?: string | null;
+  /**
+   * Nota interna nunca pode ser encaminhada: o conteúdo iria direto para o
+   * WhatsApp de OUTRO contato. Este é o caminho mais curto de anotação privada
+   * até o cliente, então a guarda fica aqui — no ponto de envio — e não só na
+   * ausência do botão no menu.
+   */
+  is_internal?: boolean;
 }
 
 interface ContactRow {
@@ -98,6 +105,13 @@ export function ForwardModal({ open, source, excludeContactId, onClose }: Props)
 
   const handleSend = () => {
     if (!source || selected.size === 0) return;
+    // Guarda no ponto de envio, não só na UI: encaminhar nota interna colocaria
+    // uma anotação privada no WhatsApp de outro cliente.
+    if (source.is_internal) {
+      toast.error("Nota interna não pode ser encaminhada.");
+      onClose();
+      return;
+    }
     const ids = Array.from(selected);
     const total = ids.length;
     // Fecha imediatamente — envio acontece em background (áudio/mídia podem demorar)
@@ -170,7 +184,7 @@ export function ForwardModal({ open, source, excludeContactId, onClose }: Props)
           maxWidth: 440,
           maxHeight: "85vh",
           background: "var(--bg-surface)",
-          borderRadius: 14,
+          borderRadius: "var(--radius-modal)",
           border: "1px solid var(--border-subtle)",
           display: "flex",
           flexDirection: "column",
@@ -251,7 +265,7 @@ export function ForwardModal({ open, source, excludeContactId, onClose }: Props)
               padding: "8px 10px",
               background: "var(--bg-base)",
               border: "1px solid var(--border-subtle)",
-              borderRadius: 8,
+              borderRadius: "var(--radius-card)",
             }}
           >
             <Search size={14} color="var(--text-secondary)" />
@@ -360,7 +374,7 @@ export function ForwardModal({ open, source, excludeContactId, onClose }: Props)
               disabled={sending}
               style={{
                 padding: "8px 14px",
-                borderRadius: 8,
+                borderRadius: "var(--radius-card)",
                 background: "transparent",
                 border: "1px solid var(--border-subtle)",
                 color: "var(--text-primary)",
@@ -375,7 +389,7 @@ export function ForwardModal({ open, source, excludeContactId, onClose }: Props)
               disabled={selected.size === 0 || sending}
               style={{
                 padding: "8px 14px",
-                borderRadius: 8,
+                borderRadius: "var(--radius-card)",
                 background: "var(--brand-400)",
                 border: "none",
                 color: "#fff",

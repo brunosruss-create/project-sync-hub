@@ -1,5 +1,5 @@
 -- ============================================================
--- 20260729000000_business_general_info_notes.sql
+-- 20260729000100_business_general_info_notes.sql
 -- 1) Observação opcional por fato (ex.: "oferece parcelamento? Sim" +
 --    observação "até 3x sem juros"). Só faz sentido pro fato que ela
 --    acompanha; chave ausente = sem observação.

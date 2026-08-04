@@ -146,7 +146,7 @@ function ProfilePage() {
               style={{
                 width: 80,
                 height: 80,
-                borderRadius: 999,
+                borderRadius: "var(--radius-pill)",
                 objectFit: "cover",
                 border: "1px solid var(--border)",
               }}
@@ -156,7 +156,7 @@ function ProfilePage() {
               style={{
                 width: 80,
                 height: 80,
-                borderRadius: 999,
+                borderRadius: "var(--radius-pill)",
                 background: "var(--bg-overlay)",
                 display: "flex",
                 alignItems: "center",

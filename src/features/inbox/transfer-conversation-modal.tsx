@@ -8,6 +8,7 @@ import {
   assignContact,
   type AssignableMember,
 } from "@/lib/assignment.functions";
+import { listDepartments } from "@/lib/departments.functions";
 
 interface Props {
   open: boolean;
@@ -27,9 +28,12 @@ export function TransferConversationModal({
   onAssigned,
 }: Props) {
   const fetchMembers = useServerFn(listAssignableMembers);
+  const fetchDepartments = useServerFn(listDepartments);
   const assignFn = useServerFn(assignContact);
   const [query, setQuery] = React.useState("");
   const [submitting, setSubmitting] = React.useState<string | "unassign" | null>(null);
+  /** `null` = todos (sem filtro de departamento). */
+  const [deptId, setDeptId] = React.useState<string | null>(null);
 
   const membersQ = useQuery({
     queryKey: ["assignable-members"],
@@ -38,9 +42,27 @@ export function TransferConversationModal({
     staleTime: 60_000,
   });
 
+  const deptQ = useQuery({
+    queryKey: ["departments"],
+    queryFn: () => fetchDepartments(),
+    enabled: open,
+    staleTime: 60_000,
+  });
+
+  // Só no dep array `[open]`, de propósito: `onClose` é uma função nova a
+  // cada render do pai (realtime de contatos/mensagens re-renderiza a tela
+  // inteira o tempo todo), e com ela na lista de dependências este efeito
+  // reexecutava a cada atualização em segundo plano — resetando o
+  // departamento escolhido bem no meio do clique do usuário.
   React.useEffect(() => {
     if (!open) return;
     setQuery("");
+    setDeptId(null);
+    // eslint-disable-next-line react-hooks/exhaustive-deps
+  }, [open]);
+
+  React.useEffect(() => {
+    if (!open) return;
     const onKey = (e: KeyboardEvent) => {
       if (e.key === "Escape" && !submitting) onClose();
     };
@@ -49,27 +71,41 @@ export function TransferConversationModal({
   }, [open, onClose, submitting]);
 
   const members = membersQ.data ?? [];
+  // Departamentos inativos não são destino de transferência, mas continuam
+  // existindo para quem já está neles.
+  const departments = (deptQ.data ?? []).filter((d) => d.is_active);
+
   const filtered = React.useMemo(() => {
     const q = query.trim().toLowerCase();
-    if (!q) return members;
     return members.filter((m) => {
+      if (deptId && m.department_id !== deptId) return false;
+      if (!q) return true;
       const name = (m.full_name ?? "").toLowerCase();
       const email = (m.email ?? "").toLowerCase();
       return name.includes(q) || email.includes(q);
     });
-  }, [members, query]);
+  }, [members, query, deptId]);
 
   const handleAssign = async (agentUserId: string | null) => {
     if (!contactId) return;
     setSubmitting(agentUserId ?? "unassign");
     try {
-      const res = await assignFn({ data: { contactId, agentUserId } });
-      const m = agentUserId ? members.find((x) => x.user_id === agentUserId) ?? null : null;
-      onAssigned(res.agentUserId, m);
+      // Departamento vai junto: transferir para "Vendas" sem escolher pessoa
+      // deixa o rodízio daquele departamento decidir no servidor.
+      const res = await assignFn({
+        data: { contactId, agentUserId, departmentId: deptId },
+      });
+      const escolhido = res.agentUserId
+        ? members.find((x) => x.user_id === res.agentUserId) ?? null
+        : null;
+      onAssigned(res.agentUserId, escolhido);
+      const nomeDept = departments.find((d) => d.id === deptId)?.name;
       toast.success(
-        agentUserId
-          ? `Atendimento transferido para ${m?.full_name || m?.email || "membro"}`
-          : "Atribuição removida",
+        res.agentUserId
+          ? `Atendimento transferido para ${escolhido?.full_name || escolhido?.email || "membro"}`
+          : nomeDept
+            ? `Conversa enviada para ${nomeDept} — ninguém no rodízio ainda`
+            : "Atribuição removida",
       );
       onClose();
     } catch (e: any) {
@@ -108,7 +144,7 @@ export function TransferConversationModal({
           maxWidth: 440,
           maxHeight: "85vh",
           background: "var(--bg-surface)",
-          borderRadius: 14,
+          borderRadius: "var(--radius-modal)",
           border: "1px solid var(--border-subtle)",
           display: "flex",
           flexDirection: "column",
@@ -163,6 +199,78 @@ export function TransferConversationModal({
           </div>
         )}
 
+        {/* Departamento — some inteiro se o workspace não tem nenhum, para a
+            transferência continuar sendo um passo só nesse caso. */}
+        {departments.length > 0 && (
+          <div style={{ padding: "10px 12px 0" }}>
+            <div
+              style={{
+                fontSize: 11,
+                fontWeight: 500,
+                color: "var(--text-muted)",
+                marginBottom: 6,
+              }}
+            >
+              Departamento
+            </div>
+            <div className="flex flex-wrap items-center" style={{ gap: 6 }}>
+              {[{ id: null as string | null, name: "Todos" }, ...departments].map((d) => {
+                const ativo = deptId === d.id;
+                return (
+                  <button
+                    key={d.id ?? "all"}
+                    type="button"
+                    onClick={() => setDeptId(d.id)}
+                    style={{
+                      height: 26,
+                      padding: "0 12px",
+                      borderRadius: "var(--radius-pill)",
+                      fontSize: 12,
+                      fontWeight: 500,
+                      cursor: "pointer",
+                      border: "1px solid",
+                      borderColor: ativo ? "var(--brand-400)" : "var(--border)",
+                      background: ativo
+                        ? "color-mix(in oklab, var(--brand-400) 14%, transparent)"
+                        : "transparent",
+                      color: ativo ? "var(--brand-400)" : "var(--text-muted)",
+                    }}
+                  >
+                    {d.name}
+                  </button>
+                );
+              })}
+            </div>
+            {deptId && (
+              <button
+                type="button"
+                disabled={!!submitting}
+                onClick={() => void handleAssign(null)}
+                className="flex items-center justify-center w-full"
+                style={{
+                  marginTop: 10,
+                  height: 34,
+                  borderRadius: "var(--radius-pill)",
+                  border: "1px solid var(--brand-400)",
+                  background: "color-mix(in oklab, var(--brand-400) 10%, transparent)",
+                  color: "var(--brand-400)",
+                  fontSize: 12.5,
+                  fontWeight: 500,
+                  cursor: submitting ? "not-allowed" : "pointer",
+                  gap: 6,
+                }}
+              >
+                {submitting === "unassign" ? (
+                  <Loader2 className="animate-spin" size={14} />
+                ) : (
+                  <UserPlus size={14} />
+                )}
+                Enviar ao departamento — o rodízio escolhe
+              </button>
+            )}
+          </div>
+        )}
+
         {/* Search */}
         <div style={{ padding: "10px 12px", borderBottom: "1px solid var(--border-subtle)" }}>
           <div
@@ -173,7 +281,7 @@ export function TransferConversationModal({
               padding: "8px 10px",
               background: "var(--bg-base)",
               border: "1px solid var(--border-subtle)",
-              borderRadius: 8,
+              borderRadius: "var(--radius-card)",
             }}
           >
             <Search size={14} color="var(--text-secondary)" />
@@ -274,7 +382,7 @@ export function TransferConversationModal({
                           style={{
                             fontSize: 10,
                             padding: "1px 6px",
-                            borderRadius: 999,
+                            borderRadius: "var(--radius-pill)",
                             background: "var(--bg-overlay)",
                             color: "var(--text-secondary)",
                           }}
@@ -326,7 +434,7 @@ export function TransferConversationModal({
               disabled={!!submitting}
               style={{
                 padding: "8px 12px",
-                borderRadius: 8,
+                borderRadius: "var(--radius-card)",
                 background: "transparent",
                 border: "1px solid var(--border-subtle)",
                 color: "var(--text-primary)",
@@ -352,7 +460,7 @@ export function TransferConversationModal({
             disabled={!!submitting}
             style={{
               padding: "8px 14px",
-              borderRadius: 8,
+              borderRadius: "var(--radius-card)",
               background: "transparent",
               border: "1px solid var(--border-subtle)",
               color: "var(--text-primary)",

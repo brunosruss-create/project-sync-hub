@@ -77,12 +77,20 @@
   --space-12: 48px;
   --space-16: 64px;
 
-  /* Radius */
-  --radius-sm: 4px;
-  --radius-md: 6px;
-  --radius-lg: 8px;
-  --radius-xl: 12px;
+  /* Radius — escala de tamanho. Mexer aqui reflete no app inteiro. */
+  --radius-sm: 6px;
+  --radius-md: 10px;
+  --radius-lg: 14px;
+  --radius-xl: 18px;
   --radius: var(--radius-md);
+
+  /* Radius semântico — dizem ONDE se usam, não o tamanho. Preferir estes nos
+     componentes: trocar a aparência de "todo card" vira uma linha, sem caçar
+     número mágico em 50 arquivos (que era o estado antes desta escala). */
+  --radius-pill: 999px; /* botões de ação, tags, segmentados */
+  --radius-control: var(--radius-md); /* inputs e campos de formulário */
+  --radius-card: var(--radius-lg); /* cards, painéis, popovers */
+  --radius-modal: var(--radius-xl); /* modais e drawers */
 
   /* Motion */
   --duration-fast: 100ms;
@@ -114,10 +122,12 @@
     border-color: var(--border);
   }
 
+  /* Sem `border-radius` aqui: definir um valor fixo ACHATA o elemento focado
+     (uma cápsula viraria quase retângulo ao receber foco). Navegador moderno
+     já desenha o outline acompanhando o raio próprio do elemento. */
   *:focus-visible {
     outline: 2px solid var(--brand-400);
     outline-offset: 2px;
-    border-radius: 4px;
   }
 
   html,
@@ -166,8 +176,8 @@
     justify-content: center;
     gap: 6px;
     height: 32px;
-    padding: 0 12px;
-    border-radius: var(--radius-md);
+    padding: 0 14px;
+    border-radius: var(--radius-pill);
     background: var(--brand-400);
     color: #ffffff;
     font-size: 13px;
@@ -196,6 +206,36 @@
 
 .page-enter {
   animation: fadeSlideIn 200ms ease-out;
+}
+
+/**
+ * Tela de Conversas ocupando a altura toda. O <main> tem padding 24 que o
+ * `margin: -24px` cancela, então sobra descontar só a topbar — que existe no
+ * mobile e some no desktop nesta rota (ver app-topbar.tsx: ownHeader).
+ * Altura fixa em px sobrava espaço no rodapé num dos dois casos.
+ */
+.chat-page-fill {
+  height: calc(100vh - 48px);
+  margin: -24px;
+}
+
+@media (min-width: 768px) {
+  .chat-page-fill {
+    height: 100vh;
+  }
+}
+
+/* Só desloca — não mexe em opacidade de propósito. Animação que controla
+   visibilidade deixa o elemento invisível se o relógio de animação travar
+   (aba em segundo plano, reduced-motion), e um menu invisível é pior que
+   um menu sem transição. */
+@keyframes slideInLeft {
+  from {
+    transform: translateX(-6px);
+  }
+  to {
+    transform: translateX(0);
+  }
 }
 
 @keyframes shimmer {

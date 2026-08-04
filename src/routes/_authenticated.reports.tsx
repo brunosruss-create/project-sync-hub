@@ -2,7 +2,7 @@ import * as React from "react";
 import { createFileRoute, Link, useNavigate } from "@tanstack/react-router";
 import { zodValidator, fallback } from "@tanstack/zod-adapter";
 import { z } from "zod";
-import { Download, BarChart3, Calendar, Wrench, Users } from "lucide-react";
+import { Download, BarChart3, Calendar, Tag, Users } from "lucide-react";
 import {
   BarChart,
   Bar,
@@ -14,6 +14,7 @@ import {
   LineChart,
   Line,
 } from "recharts";
+import { Card as UICard } from "@/components/ui/card";
 import { notify } from "@/lib/notify";
 import { SkeletonCard } from "@/components/skeleton";
 import { EmptyState } from "@/components/empty-state";
@@ -61,7 +62,7 @@ const PERIODS = [
 const TABS = [
   { id: "service", label: "Atendimento", icon: BarChart3 },
   { id: "appointments", label: "Agendamentos", icon: Calendar },
-  { id: "services", label: "Serviços", icon: Wrench },
+  { id: "services", label: "Serviços", icon: Tag },
   { id: "team", label: "Equipe", icon: Users },
 ] as const;
 
@@ -129,7 +130,7 @@ function ReportsPage() {
               gap: 2,
               padding: 2,
               background: "var(--bg-overlay)",
-              borderRadius: 6,
+              borderRadius: "var(--radius-pill)",
               border: "1px solid var(--border)",
             }}
           >
@@ -140,8 +141,8 @@ function ReportsPage() {
                 onClick={() => navigate({ search: (prev) => ({ ...prev, period: p.id }) })}
                 style={{
                   height: 26,
-                  padding: "0 10px",
-                  borderRadius: 4,
+                  padding: "0 12px",
+                  borderRadius: "var(--radius-pill)",
                   fontSize: 12,
                   fontWeight: 500,
                   background: period === p.id ? "var(--bg-surface)" : "transparent",
@@ -162,7 +163,7 @@ function ReportsPage() {
               gap: 6,
               height: 32,
               padding: "0 12px",
-              borderRadius: 6,
+              borderRadius: "var(--radius-control)",
               border: "1px solid var(--border-strong)",
               background: "transparent",
               color: "var(--text-primary)",
@@ -212,7 +213,7 @@ function ReportsPage() {
       </div>
 
       {loading || reportTab !== tab ? (
-        <div style={{ display: "grid", gridTemplateColumns: "repeat(auto-fill, minmax(320px, 1fr))", gap: 12 }}>
+        <div style={{ display: "grid", gridTemplateColumns: "repeat(auto-fill, minmax(min(320px, 100%), 1fr))", gap: 12 }}>
           {Array.from({ length: 4 }).map((_, i) => <SkeletonCard key={i} />)}
         </div>
       ) : error ? (
@@ -238,8 +239,8 @@ function ReportTab({ tab, report }: { tab: "service" | "appointments" | "service
       return <EmptyState title="Sem atendimentos no período" description="Nenhuma mensagem registrada nesse intervalo." />;
     }
     return (
-      <div style={{ display: "grid", gridTemplateColumns: "repeat(auto-fit, minmax(320px, 1fr))", gap: 12 }}>
-        <Card title="Volume de atendimentos por dia" span={2}>
+      <div style={{ display: "grid", gridTemplateColumns: "repeat(auto-fit, minmax(min(320px, 100%), 1fr))", gap: 12 }}>
+        <ReportCard title="Volume de atendimentos por dia" span={2}>
           <ResponsiveContainer width="100%" height={220}>
             <BarChart data={r.series}>
               <CartesianGrid strokeDasharray="3 3" stroke="var(--border)" />
@@ -249,12 +250,53 @@ function ReportTab({ tab, report }: { tab: "service" | "appointments" | "service
               <Bar dataKey="v" fill="var(--brand-400)" radius={[4, 4, 0, 0]} />
             </BarChart>
           </ResponsiveContainer>
-        </Card>
+        </ReportCard>
 
         <KpiCard label="Tempo médio de resposta" value={formatDuration(r.tmrSeconds)} delta={r.tmrDelta.label} good={r.tmrDelta.good} />
         <KpiCard label="Taxa de resolução" value={r.resolvedPct} delta={r.resolvedDelta.label} good={r.resolvedDelta.good} />
 
-        <Card title="Ranking por agente" span={2}>
+        {/* CSAT só aparece se houve pesquisa enviada no período — sem isso a
+            tela ficaria com dois cards vazios para quem não usa a pesquisa. */}
+        {r.csatSent > 0 && (
+          <>
+            <KpiCard
+              label="Satisfação (1 a 5)"
+              // "—" com amostra pequena é deliberado: média de 3 respostas é
+              // ruído, e KPI ruidoso ensina o usuário a ignorar o painel.
+              value={r.csatAvg === null ? "—" : r.csatAvg.toFixed(1)}
+              delta={
+                r.csatAvg === null
+                  ? `${r.csatAnswered} resposta${r.csatAnswered === 1 ? "" : "s"} — poucas para uma média`
+                  : `${r.csatAnswered} resposta${r.csatAnswered === 1 ? "" : "s"}`
+              }
+            />
+            <KpiCard
+              label="Taxa de resposta da pesquisa"
+              // É o teste de honestidade da média ao lado: 4,8 vindo de 3
+              // respostas em 90 pesquisas não significa nada.
+              value={`${Math.round((r.csatAnswered / r.csatSent) * 100)}%`}
+              delta={`${r.csatAnswered} de ${r.csatSent} enviadas`}
+            />
+
+            {r.csatAnswered > 0 && (
+              <ReportCard title="Distribuição das notas" span={2}>
+                {/* A distribuição é o que gera ação: média 4,0 de tudo-4 é um
+                    negócio; média 4,0 de metade-5 e metade-2 é outro. */}
+                <ResponsiveContainer width="100%" height={180}>
+                  <BarChart data={r.csatDistribution}>
+                    <CartesianGrid strokeDasharray="3 3" stroke="var(--border)" />
+                    <XAxis dataKey="rating" tick={{ fontSize: 11, fill: "var(--text-muted)" }} />
+                    <YAxis tick={{ fontSize: 11, fill: "var(--text-muted)" }} allowDecimals={false} />
+                    <Tooltip contentStyle={{ background: "var(--bg-surface)", border: "1px solid var(--border)", fontSize: 12 }} />
+                    <Bar dataKey="count" fill="var(--brand-400)" radius={[4, 4, 0, 0]} />
+                  </BarChart>
+                </ResponsiveContainer>
+              </ReportCard>
+            )}
+          </>
+        )}
+
+        <ReportCard title="Ranking por agente" span={2}>
           {r.ranking.length === 0 ? (
             <EmptyState title="Sem dados de agente" description="Ainda não houve mensagens enviadas no período." />
           ) : (
@@ -263,7 +305,7 @@ function ReportTab({ tab, report }: { tab: "service" | "appointments" | "service
               rows={r.ranking.map((x) => [x.name, x.total, x.tmr, x.resolved])}
             />
           )}
-        </Card>
+        </ReportCard>
       </div>
     );
   }
@@ -274,8 +316,8 @@ function ReportTab({ tab, report }: { tab: "service" | "appointments" | "service
       return <EmptyState title="Sem agendamentos no período" description="Crie agendamentos em /schedule." />;
     }
     return (
-      <div style={{ display: "grid", gridTemplateColumns: "repeat(auto-fit, minmax(320px, 1fr))", gap: 12 }}>
-        <Card title="Agendamentos por dia" span={2}>
+      <div style={{ display: "grid", gridTemplateColumns: "repeat(auto-fit, minmax(min(320px, 100%), 1fr))", gap: 12 }}>
+        <ReportCard title="Agendamentos por dia" span={2}>
           <ResponsiveContainer width="100%" height={220}>
             <LineChart data={r.series}>
               <CartesianGrid strokeDasharray="3 3" stroke="var(--border)" />
@@ -285,12 +327,12 @@ function ReportTab({ tab, report }: { tab: "service" | "appointments" | "service
               <Line type="monotone" dataKey="v" stroke="var(--brand-400)" strokeWidth={2} dot={false} />
             </LineChart>
           </ResponsiveContainer>
-        </Card>
+        </ReportCard>
 
         <KpiCard label="Taxa de cancelamento" value={r.cancelPct} delta={r.cancelDelta.label} good={!r.cancelDelta.good} />
         <KpiCard label="Receita estimada" value={formatBRL(r.revenueCents)} delta={r.revenueDelta.label} good={r.revenueDelta.good} />
 
-        <Card title="Top serviços agendados" span={2}>
+        <ReportCard title="Top serviços agendados" span={2}>
           {r.topServices.length === 0 ? (
             <EmptyState title="Sem serviços" description="Os agendamentos do período não têm serviço associado." />
           ) : (
@@ -299,7 +341,7 @@ function ReportTab({ tab, report }: { tab: "service" | "appointments" | "service
               rows={r.topServices.map((x) => [x.name, x.qty, x.revenue])}
             />
           )}
-        </Card>
+        </ReportCard>
       </div>
     );
   }
@@ -310,15 +352,15 @@ function ReportTab({ tab, report }: { tab: "service" | "appointments" | "service
       return <EmptyState title="Sem serviços concluídos" description="Marque agendamentos como concluídos para ver receita." />;
     }
     return (
-      <div style={{ display: "grid", gridTemplateColumns: "repeat(auto-fit, minmax(320px, 1fr))", gap: 12 }}>
+      <div style={{ display: "grid", gridTemplateColumns: "repeat(auto-fit, minmax(min(320px, 100%), 1fr))", gap: 12 }}>
         <KpiCard label="Receita total" value={formatBRL(r.totalRevenueCents)} delta={r.revenueDelta.label} good={r.revenueDelta.good} />
         <KpiCard label="Ticket médio" value={formatBRL(r.ticketCents)} delta={r.ticketDelta.label} good={r.ticketDelta.good} />
-        <Card title="Receita por serviço" span={2}>
+        <ReportCard title="Receita por serviço" span={2}>
           <SimpleTable
             cols={["Serviço", "Vendas", "Receita", "Ticket médio"]}
             rows={r.rows.map((x) => [x.name, x.qty, x.revenue, x.avg])}
           />
-        </Card>
+        </ReportCard>
       </div>
     );
   }
@@ -328,33 +370,33 @@ function ReportTab({ tab, report }: { tab: "service" | "appointments" | "service
     return <EmptyState title="Sem atividade da equipe" description="Nenhum agente enviou mensagens no período." />;
   }
   return (
-    <div style={{ display: "grid", gridTemplateColumns: "repeat(auto-fit, minmax(320px, 1fr))", gap: 12 }}>
-      <Card title="Produtividade por agente" span={2}>
+    <div style={{ display: "grid", gridTemplateColumns: "repeat(auto-fit, minmax(min(320px, 100%), 1fr))", gap: 12 }}>
+      <ReportCard title="Produtividade por agente" span={2}>
         <SimpleTable
           cols={["Agente", "Atendimentos", "Tempo médio", "Resolvidos"]}
           rows={r.rows.map((x) => [x.name, x.total, x.tmr, x.resolved])}
         />
-      </Card>
+      </ReportCard>
     </div>
   );
 }
 
 /* -------------- Components -------------- */
 
-function Card({ title, children, span = 1 }: { title: string; children: React.ReactNode; span?: number }) {
+function ReportCard({ title, children, span = 1 }: { title: string; children: React.ReactNode; span?: number }) {
   return (
-    <div
+    <UICard
+      // O span precisa ser 1 no mobile. Com `span 2` fixo o grid é obrigado a
+      // criar 2 trilhas de 320px mesmo num container de 327px — o card ocupava
+      // as duas (419px) e vazava. Só volta a 2 colunas a partir de 640px.
+      className={span > 1 ? "sm:col-span-2" : undefined}
       style={{
-        gridColumn: `span ${span}`,
-        background: "var(--bg-surface)",
-        border: "1px solid var(--border)",
-        borderRadius: 8,
         padding: 16,
       }}
     >
       <h3 style={{ fontSize: 13, fontWeight: 600, marginBottom: 12 }}>{title}</h3>
       {children}
-    </div>
+    </UICard>
   );
 }
 
@@ -364,7 +406,7 @@ function KpiCard({ label, value, delta, good }: { label: string; value: string; 
       style={{
         background: "var(--bg-surface)",
         border: "1px solid var(--border)",
-        borderRadius: 8,
+        borderRadius: "var(--radius-card)",
         padding: 16,
       }}
     >

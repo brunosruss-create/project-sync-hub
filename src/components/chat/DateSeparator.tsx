@@ -26,7 +26,7 @@ export function DateSeparator({ date }: { date: Date }) {
           textTransform: "lowercase",
           padding: "2px 10px",
           background: "var(--bg-overlay)",
-          borderRadius: 999,
+          borderRadius: "var(--radius-pill)",
         }}
       >
         {formatDateLabel(date)}

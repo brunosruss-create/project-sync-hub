@@ -39,7 +39,7 @@ const Badge = React.forwardRef<HTMLSpanElement, BadgeProps>(
         {withDot && (
           <span
             aria-hidden
-            style={{ width: 6, height: 6, borderRadius: 999, background: token, flexShrink: 0 }}
+            style={{ width: 6, height: 6, borderRadius: "var(--radius-pill)", background: token, flexShrink: 0 }}
           />
         )}
         {children}

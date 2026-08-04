@@ -3,6 +3,8 @@ import { createFileRoute } from "@tanstack/react-router";
 import { useQuery } from "@tanstack/react-query";
 import { Wifi, WifiOff } from "lucide-react";
 import { supabase } from "@/integrations/supabase/client";
+import { Badge, type BadgeVariant } from "@/components/ui/badge";
+import { EmptyState as SharedEmptyState } from "@/components/empty-state";
 import { adminCard } from "./_authenticated.super-admin";
 
 export const Route = createFileRoute("/_authenticated/super-admin/health")({
@@ -29,11 +31,22 @@ const STATUS_COLOR: Record<string, string> = {
   offline: "#EF4444",
 };
 
+const INSTANCE_STATUS_VARIANT: Record<string, BadgeVariant> = {
+  connected: "success",
+  online: "success",
+  open: "success",
+  connecting: "warning",
+  disconnected: "neutral",
+  closed: "danger",
+  offline: "danger",
+};
+
 function statusMeta(s: string) {
   const key = s?.toLowerCase() ?? "";
   return {
     label: s || "—",
     color: STATUS_COLOR[key] ?? "#6B7280",
+    variant: INSTANCE_STATUS_VARIANT[key] ?? "neutral",
     isOnline: ["connected", "online", "open"].includes(key),
   };
 }
@@ -59,7 +72,7 @@ function HealthAdmin() {
     <div className="flex flex-col" style={{ gap: 16 }}>
       <div>
         <h2 style={{ fontSize: 20, fontWeight: 600 }}>Saúde das instâncias</h2>
-        <p style={{ fontSize: 13, color: "rgba(255,255,255,0.5)", marginTop: 4 }}>
+        <p style={{ fontSize: 13, color: "var(--text-muted)", marginTop: 4 }}>
           Status real das conexões WhatsApp de todos os workspaces.
         </p>
       </div>
@@ -67,7 +80,7 @@ function HealthAdmin() {
       <div
         style={{
           display: "grid",
-          gridTemplateColumns: "repeat(auto-fit, minmax(180px, 1fr))",
+          gridTemplateColumns: "repeat(auto-fit, minmax(min(180px, 100%), 1fr))",
           gap: 12,
         }}
       >
@@ -84,7 +97,7 @@ function HealthAdmin() {
         <div style={{ ...adminCard, padding: 0, overflow: "hidden" }}>
           <table style={{ width: "100%", borderCollapse: "collapse", fontSize: 13 }}>
             <thead>
-              <tr style={{ background: "#0F0F13", color: "rgba(255,255,255,0.55)", fontSize: 11, textTransform: "uppercase", letterSpacing: "0.05em" }}>
+              <tr style={{ background: "var(--bg-overlay)", color: "var(--text-muted)", fontSize: 11, textTransform: "uppercase", letterSpacing: "0.05em" }}>
                 <th style={th}>Workspace</th>
                 <th style={th}>Instância</th>
                 <th style={th}>Status</th>
@@ -95,47 +108,28 @@ function HealthAdmin() {
             <tbody>
               {items.length === 0 && !isLoading ? (
                 <tr>
-                  <td colSpan={5} style={{ padding: 24, textAlign: "center", color: "rgba(255,255,255,0.5)" }}>
-                    Nenhuma instância WhatsApp registrada.
+                  <td colSpan={5} style={{ padding: 0 }}>
+                    <SharedEmptyState title="Nenhuma instância WhatsApp registrada." />
                   </td>
                 </tr>
               ) : (
                 items.map((i) => {
                   const meta = statusMeta(i.status);
                   return (
-                    <tr key={i.instance_id} style={{ borderTop: "1px solid #1F1F23" }}>
+                    <tr key={i.instance_id} style={{ borderTop: "1px solid var(--border)" }}>
                       <td style={td}>{i.owner_email ?? i.owner_user_id}</td>
                       <td style={{ ...td, fontFamily: "var(--font-mono, monospace)", fontSize: 12 }}>
                         {i.instance_name}
                       </td>
                       <td style={td}>
-                        <span
-                          className="inline-flex items-center gap-1"
-                          style={{
-                            fontSize: 11,
-                            fontWeight: 600,
-                            padding: "3px 8px",
-                            borderRadius: 999,
-                            background: `color-mix(in oklab, ${meta.color} 18%, transparent)`,
-                            color: meta.color,
-                          }}
-                        >
-                          <span
-                            className={meta.isOnline ? "pulse-dot" : ""}
-                            style={{
-                              width: 6,
-                              height: 6,
-                              borderRadius: 999,
-                              background: meta.color,
-                            }}
-                          />
+                        <Badge variant={meta.variant} withDot={meta.isOnline}>
                           {meta.label}
-                        </span>
+                        </Badge>
                       </td>
-                      <td style={{ ...td, color: "rgba(255,255,255,0.6)" }}>
+                      <td style={{ ...td, color: "var(--text-muted)" }}>
                         {i.updated_at ? new Date(i.updated_at).toLocaleString("pt-BR") : "—"}
                       </td>
-                      <td style={{ ...td, color: "rgba(255,255,255,0.6)" }}>
+                      <td style={{ ...td, color: "var(--text-muted)" }}>
                         {new Date(i.created_at).toLocaleDateString("pt-BR")}
                       </td>
                     </tr>
@@ -153,7 +147,7 @@ function HealthAdmin() {
 function Stat({ label, value, color, icon }: { label: string; value: number; color: string; icon: React.ReactNode }) {
   return (
     <div style={adminCard}>
-      <div className="flex items-center justify-between" style={{ color: "rgba(255,255,255,0.5)" }}>
+      <div className="flex items-center justify-between" style={{ color: "var(--text-muted)" }}>
         <span style={{ fontSize: 12 }}>{label}</span>
         <span style={{ color }}>{icon}</span>
       </div>

@@ -23,7 +23,7 @@ export function AuthLayout({ title, subtitle, children, footer }: Props) {
             style={{
               width: 24,
               height: 24,
-              borderRadius: 6,
+              borderRadius: "var(--radius-pill)",
               background: "var(--brand-400)",
               color: "#fff",
               fontSize: 13,
@@ -126,7 +126,7 @@ export function AuthLayout({ title, subtitle, children, footer }: Props) {
                 className="flex items-center gap-3"
                 style={{
                   padding: "10px 12px",
-                  borderRadius: 8,
+                  borderRadius: "var(--radius-card)",
                   border: "1px solid var(--border)",
                   background: "var(--bg-overlay)",
                   fontSize: 13,

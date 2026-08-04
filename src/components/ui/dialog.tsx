@@ -53,7 +53,7 @@ const DialogContent = React.forwardRef<
       {!hideClose && (
         <DialogPrimitive.Close
           aria-label="Fechar"
-          className="absolute right-3 top-3 inline-flex h-7 w-7 items-center justify-center rounded-md"
+          className="absolute right-3 top-3 inline-flex h-7 w-7 items-center justify-center rounded-full"
           style={{ color: "var(--text-muted)" }}
         >
           <X size={16} />

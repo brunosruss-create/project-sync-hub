@@ -9,9 +9,16 @@ import {
   type DragEndEvent,
   type DragStartEvent,
 } from "@dnd-kit/core";
-import { Search, Plus, Filter, MessageSquare, Columns3 } from "lucide-react";
+import { Search, Plus, MessageSquare, Columns3, Loader2, StickyNote } from "lucide-react";
 import { notify } from "@/lib/notify";
-import { EmptyState } from "@/components/empty-state";
+import {
+  MIN_SEARCH_LEN,
+  SEARCH_LIMIT,
+  escapeLike,
+  snippet,
+  type MessageHit,
+} from "@/lib/message-search";
+import { EmptyState as SharedEmptyState } from "@/components/empty-state";
 import { ConfirmDialog } from "@/components/confirm-dialog";
 import {
   DEFAULT_COLUMNS,
@@ -20,6 +27,12 @@ import {
   type KanbanColumnDef,
   type KanbanColumnId,
 } from "@/features/inbox/data";
+import {
+  CONTACT_COLUMNS,
+  CONTACT_COLUMNS_LEGACY,
+  isMissingColumnError,
+  mapContactRow,
+} from "@/features/inbox/contact-row";
 import { KanbanColumn, type ColumnMenuRequestDetail } from "@/features/inbox/kanban-column";
 import { ContactCard, type CardMenuRequestDetail } from "@/features/inbox/contact-card";
 import { CardMenu, type CardMenuAction } from "@/features/inbox/card-menu";
@@ -65,6 +78,71 @@ function InboxPage() {
     if (isAgent) setFilter("mine");
   }, [roleLoading, isAgent]);
   const [query, setQuery] = React.useState("");
+
+  // Busca dentro do conteúdo das mensagens, complementando o filtro acima (que
+  // só enxerga nome/telefone/última mensagem). Portado de ConversationList.tsx
+  // — mesma lógica, aqui como dropdown por não haver uma lista para anexar.
+  const [msgHits, setMsgHits] = React.useState<MessageHit[] | null>(null);
+  const [searchingMsgs, setSearchingMsgs] = React.useState(false);
+  // Separado de `query` de propósito: fechar o dropdown ao clicar fora não
+  // pode limpar o filtro por nome/telefone que o mesmo campo aplica ao board.
+  const [msgDropdownOpen, setMsgDropdownOpen] = React.useState(true);
+  const searchBoxRef = React.useRef<HTMLDivElement | null>(null);
+
+  React.useEffect(() => {
+    setMsgDropdownOpen(true);
+    const term = query.trim();
+    if (term.length < MIN_SEARCH_LEN) {
+      setMsgHits(null);
+      setSearchingMsgs(false);
+      return;
+    }
+    let cancelled = false;
+    setSearchingMsgs(true);
+    const t = setTimeout(async () => {
+      const { data, error } = await supabase
+        .from("messages")
+        .select("id,contact_id,content,created_at,is_internal")
+        .ilike("content", `%${escapeLike(term)}%`)
+        .order("created_at", { ascending: false })
+        .limit(SEARCH_LIMIT);
+      if (cancelled) return;
+      if (error) {
+        console.warn("[busca] falha ao buscar mensagens:", error.message);
+        setMsgHits([]);
+      } else {
+        setMsgHits((data ?? []) as MessageHit[]);
+      }
+      setSearchingMsgs(false);
+    }, 300);
+    return () => {
+      cancelled = true;
+      clearTimeout(t);
+    };
+  }, [query]);
+
+  React.useEffect(() => {
+    if (query.trim().length < MIN_SEARCH_LEN || !msgDropdownOpen) return;
+    const onDoc = (e: MouseEvent) => {
+      if (searchBoxRef.current && !searchBoxRef.current.contains(e.target as Node)) {
+        setMsgDropdownOpen(false);
+      }
+    };
+    document.addEventListener("mousedown", onDoc);
+    return () => document.removeEventListener("mousedown", onDoc);
+  }, [query, msgDropdownOpen]);
+
+  const contactsById = React.useMemo(() => {
+    const m = new Map<string, Contact>();
+    contacts.forEach((c) => m.set(c.id, c));
+    return m;
+  }, [contacts]);
+
+  // Mensagem de contato fora da lista carregada (RLS já filtrou) não vira resultado.
+  const visibleMsgHits = React.useMemo(() => {
+    if (!msgHits) return [];
+    return msgHits.filter((h) => contactsById.has(h.contact_id));
+  }, [msgHits, contactsById]);
 
   // Filtro de VISUALIZAÇÃO por profissional. O vínculo conversa↔profissional é
   // derivado dos agendamentos (quem atende o cliente), não de `assignedAgent` —
@@ -173,42 +251,19 @@ function InboxPage() {
     if (!workspaceOwnerId) return;
     let cancelled = false;
 
-    const mapRow = (r: any): Contact => ({
-      id: r.id,
-      name: r.name,
-      phone: r.phone,
-      avatar: r.avatar_url,
-      lastMessage: r.last_message ?? "",
-      lastMessageAt: r.last_message_at ? new Date(r.last_message_at) : new Date(),
-      assignedAgent: r.assigned_agent_id ?? null,
-      tags: Array.isArray(r.tags) ? r.tags : [],
-      isUnread: !!r.is_unread,
-      unreadCount: typeof r.unread_count === "number" ? r.unread_count : (r.is_unread ? 1 : 0),
-      lastDirection: r.last_direction ?? null,
-      priority: r.priority === "urgent" ? "urgent" : "normal",
-      kanban_column: (r.kanban_column ?? "waiting") as KanbanColumnId,
-      email: r.email ?? null,
-      notes: r.notes ?? null,
-      is_blocked: !!r.is_blocked,
-      is_archived: !!r.is_archived,
-    });
-
-    const SELECT_FULL =
-      "id,name,phone,avatar_url,kanban_column,assigned_agent_id,tags,priority,is_unread,unread_count,last_direction,last_message,last_message_at,email,notes,is_blocked,is_archived";
-    const SELECT_LEGACY =
-      "id,name,phone,avatar_url,kanban_column,assigned_agent_id,tags,priority,is_unread,last_message,last_message_at";
+    const mapRow = mapContactRow;
 
     const load = async () => {
       let { data, error } = await supabase
         .from("contacts")
-        .select(SELECT_FULL)
+        .select(CONTACT_COLUMNS)
         .eq("is_archived", false)
         .order("last_message_at", { ascending: false, nullsFirst: false });
       // Fallback se as colunas novas ainda não existirem no banco
-      if (error && /email|notes|is_blocked|is_archived|unread_count|last_direction/i.test(error.message)) {
+      if (isMissingColumnError(error)) {
         const r = await supabase
           .from("contacts")
-          .select(SELECT_LEGACY)
+          .select(CONTACT_COLUMNS_LEGACY)
           .order("last_message_at", { ascending: false, nullsFirst: false });
         data = r.data as any;
         error = r.error;
@@ -404,6 +459,31 @@ function InboxPage() {
         setColumns(seeded ?? DEFAULT_COLUMNS);
         return;
       }
+
+      // Sincroniza colunas padrão que faltam (e.g., "resolved" foi adicionada depois)
+      const existing = new Set(data.map((d) => d.slug));
+      const missing = DEFAULT_COLUMNS.filter((dc) => !existing.has(dc.slug));
+      if (missing.length > 0) {
+        const toInsert = missing.map((c) => ({
+          owner_user_id: workspaceOwnerId,
+          slug: c.slug,
+          label: c.label,
+          emoji: c.emoji,
+          color: c.color,
+          position: c.position,
+          is_system: true,
+        }));
+        const { data: inserted, error: insertError } = await supabase
+          .from("kanban_columns")
+          .insert(toInsert)
+          .select();
+        if (insertError) {
+          console.warn("[inbox] sync colunas faltantes falhou:", insertError.message);
+        } else if (inserted) {
+          data.push(...inserted);
+        }
+      }
+
       setColumns(data.map(mapCol));
     };
 
@@ -446,6 +526,10 @@ function InboxPage() {
     }
     if (a.type === "toggle-urgent") {
       await actions.toggleUrgent(c.id, c.priority);
+      return;
+    }
+    if (a.type === "resolve") {
+      await actions.moveToColumn(c.id, "resolved");
       return;
     }
     if (a.type === "move") {
@@ -609,7 +693,7 @@ function InboxPage() {
               gap: 2,
               padding: 2,
               background: "var(--bg-overlay)",
-              borderRadius: 6,
+              borderRadius: "var(--radius-pill)",
               border: "1px solid var(--border)",
             }}
           >
@@ -626,8 +710,8 @@ function InboxPage() {
                 onClick={() => setFilter(f.id)}
                 style={{
                   height: 26,
-                  padding: "0 10px",
-                  borderRadius: 4,
+                  padding: "0 12px",
+                  borderRadius: "var(--radius-pill)",
                   fontSize: 12,
                   fontWeight: 500,
                   background: filter === f.id ? "var(--bg-surface)" : "transparent",
@@ -642,7 +726,7 @@ function InboxPage() {
           </div>
 
           {/* Search */}
-          <div className="relative">
+          <div className="relative" ref={searchBoxRef}>
             <Search
               size={14}
               style={{
@@ -656,7 +740,7 @@ function InboxPage() {
             <input
               value={query}
               onChange={(e) => setQuery(e.target.value)}
-              placeholder="Buscar por nome, telefone…"
+              placeholder="Buscar por nome, telefone ou mensagem…"
               style={{
                 width: 240,
                 height: 32,
@@ -665,10 +749,128 @@ function InboxPage() {
                 color: "var(--text-primary)",
                 background: "var(--bg-base)",
                 border: "1px solid var(--border-strong)",
-                borderRadius: 6,
+                borderRadius: "var(--radius-control)",
                 outline: "none",
               }}
             />
+
+            {query.trim().length >= MIN_SEARCH_LEN && msgDropdownOpen && (
+              <div
+                style={{
+                  position: "absolute",
+                  top: "calc(100% + 4px)",
+                  left: 0,
+                  width: 340,
+                  maxHeight: 360,
+                  overflowY: "auto",
+                  background: "var(--bg-surface)",
+                  border: "1px solid var(--border)",
+                  borderRadius: "var(--radius-card)",
+                  boxShadow: "0 8px 24px rgba(0,0,0,0.14)",
+                  zIndex: 30,
+                }}
+              >
+                <div
+                  className="flex items-center"
+                  style={{
+                    gap: 6,
+                    padding: "8px 12px",
+                    fontSize: 11,
+                    fontWeight: 600,
+                    textTransform: "uppercase",
+                    letterSpacing: "0.05em",
+                    color: "var(--text-muted)",
+                    borderBottom: "1px solid var(--border)",
+                  }}
+                >
+                  Nas mensagens
+                  {searchingMsgs && <Loader2 size={11} className="animate-spin" />}
+                  {!searchingMsgs && visibleMsgHits.length > 0 && (
+                    <span style={{ fontWeight: 400 }}>
+                      ({visibleMsgHits.length}
+                      {visibleMsgHits.length === SEARCH_LIMIT ? "+" : ""})
+                    </span>
+                  )}
+                </div>
+
+                {!searchingMsgs && visibleMsgHits.length === 0 ? (
+                  <div style={{ padding: "10px 12px", fontSize: 12, color: "var(--text-muted)" }}>
+                    Nenhuma mensagem com "{query.trim()}".
+                  </div>
+                ) : (
+                  visibleMsgHits.map((h) => {
+                    const c = contactsById.get(h.contact_id)!;
+                    const s = snippet(h.content ?? "", query.trim());
+                    return (
+                      <button
+                        key={h.id}
+                        type="button"
+                        onClick={() => {
+                          setOpenContact(c);
+                          setQuery("");
+                        }}
+                        style={{
+                          display: "block",
+                          width: "100%",
+                          textAlign: "left",
+                          padding: "8px 12px",
+                          border: "none",
+                          borderBottom: "1px solid var(--border)",
+                          background: "transparent",
+                          cursor: "pointer",
+                        }}
+                        onMouseEnter={(e) => (e.currentTarget.style.background = "var(--bg-overlay)")}
+                        onMouseLeave={(e) => (e.currentTarget.style.background = "transparent")}
+                      >
+                        <div className="flex items-center" style={{ gap: 6 }}>
+                          <span
+                            className="truncate"
+                            style={{ fontSize: 12.5, fontWeight: 600, color: "var(--text-primary)" }}
+                          >
+                            {c.name}
+                          </span>
+                          {h.is_internal && (
+                            <span
+                              className="flex items-center"
+                              style={{
+                                gap: 3,
+                                fontSize: 9.5,
+                                fontWeight: 600,
+                                padding: "1px 5px",
+                                borderRadius: "var(--radius-pill)",
+                                background: "color-mix(in oklab, #F59E0B 18%, transparent)",
+                                color: "#B45309",
+                                flexShrink: 0,
+                              }}
+                            >
+                              <StickyNote size={9} aria-hidden />
+                              Nota
+                            </span>
+                          )}
+                        </div>
+                        <div
+                          className="truncate"
+                          style={{ fontSize: 12, color: "var(--text-muted)", marginTop: 1 }}
+                        >
+                          {s.before}
+                          <mark
+                            style={{
+                              background: "color-mix(in oklab, var(--brand-400) 28%, transparent)",
+                              color: "var(--text-primary)",
+                              borderRadius: 2,
+                              padding: "0 1px",
+                            }}
+                          >
+                            {s.hit}
+                          </mark>
+                          {s.after}
+                        </div>
+                      </button>
+                    );
+                  })
+                )}
+              </div>
+            )}
           </div>
 
           {/* Visualização por profissional — mesma lista e mesmos rótulos da Agenda. */}
@@ -679,7 +881,7 @@ function InboxPage() {
             style={{
               height: 32,
               padding: "0 28px 0 10px",
-              borderRadius: 6,
+              borderRadius: "var(--radius-control)",
               border: "1px solid var(--border-strong)",
               background: "var(--bg-surface)",
               color: "var(--text-primary)",
@@ -699,25 +901,6 @@ function InboxPage() {
 
           <button
             type="button"
-            className="inline-flex items-center"
-            style={{
-              gap: 4,
-              height: 32,
-              padding: "0 10px",
-              borderRadius: 6,
-              border: "1px solid var(--border-strong)",
-              background: "transparent",
-              color: "var(--text-primary)",
-              fontSize: 13,
-              fontWeight: 500,
-            }}
-          >
-            <Filter size={14} />
-            Filtros
-          </button>
-
-          <button
-            type="button"
             onClick={() => setNewContactOpen(true)}
             className="btn-primary"
           >
@@ -734,7 +917,7 @@ function InboxPage() {
         </div>
       ) : loadError ? (
         <div style={{ flex: 1, display: "flex", alignItems: "center", justifyContent: "center" }}>
-          <EmptyState
+          <SharedEmptyState
             icon={<MessageSquare size={48} style={{ color: "var(--brand-400)" }} aria-hidden="true" />}
             title="Não foi possível carregar o Inbox"
             description={`Supabase retornou: ${loadError}`}
@@ -742,7 +925,7 @@ function InboxPage() {
         </div>
       ) : whatsappStatus === "disconnected" ? (
         <div style={{ flex: 1, display: "flex", alignItems: "center", justifyContent: "center" }}>
-          <EmptyState
+          <SharedEmptyState
             icon={<MessageSquare size={48} style={{ color: "var(--brand-400)" }} aria-hidden="true" />}
             title="WhatsApp não conectado"
             description="Conecte seu WhatsApp para começar a receber conversas dos seus clientes."
@@ -759,7 +942,7 @@ function InboxPage() {
                 color: "var(--text-muted)",
                 background: "var(--bg-overlay)",
                 border: "1px solid var(--border)",
-                borderRadius: 6,
+                borderRadius: "var(--radius-control)",
               }}
             >
               Seu WhatsApp está conectado. Aguardando a primeira mensagem dos clientes…
@@ -783,7 +966,7 @@ function InboxPage() {
               className="shrink-0"
               style={{
                 width: 200, alignSelf: "flex-start",
-                padding: 12, borderRadius: 12,
+                padding: 12, borderRadius: "var(--radius-modal)",
                 border: "1px dashed var(--border-strong)",
                 background: "transparent", color: "var(--text-muted)",
                 cursor: "pointer", fontSize: 12, fontWeight: 600,

@@ -8,6 +8,8 @@ import {
 } from "@/lib/evolution.server";
 import type { MessageJobPayload } from "@/lib/message-processing.server";
 import { captureException } from "@/lib/sentry.server";
+import { pickAgentForWaiting } from "@/lib/rotation.server";
+import { parseCsatRating } from "@/lib/csat";
 
 type MediaKind = "image" | "audio" | "video" | "document";
 
@@ -367,8 +369,23 @@ export const Route = createFileRoute("/api/public/evolution/$instanceId")({
               }
 
               let contactId = existing?.id as string | undefined;
-              const assignedAgentId = existing?.assigned_agent_id as string | null | undefined;
+              let assignedAgentId = existing?.assigned_agent_id as string | null | undefined;
               const kanbanColumn = existing?.kanban_column as string | null | undefined;
+
+              // Rodízio para workspace SEM IA. Com IA ligada quem distribui é o
+              // handoff (`transfer_to_human`); aqui cobrimos justamente quem
+              // desligou o robô, para quem aquele caminho nunca acontece.
+              //
+              // Só nos dois momentos em que a conversa CAI EM AGUARDANDO —
+              // contato novo, ou resolvida/arquivada recebendo mensagem de
+              // novo — e nunca roubando de quem já tem responsável.
+              const entrandoEmAguardando =
+                !contactId || kanbanColumn === "resolved" || kanbanColumn === "archived";
+              const autoAssign =
+                entrandoEmAguardando && !assignedAgentId
+                  ? await pickAgentForWaiting(row.owner_user_id as string)
+                  : null;
+
               if (!contactId) {
                 const avatarUrl = await tryFetchProfilePicture(row.instance_name as string, phone);
                 const { data: created, error: insErr } = await supabaseAdmin
@@ -382,6 +399,7 @@ export const Route = createFileRoute("/api/public/evolution/$instanceId")({
                     is_unread: true,
                     last_message: previewText,
                     last_message_at: new Date().toISOString(),
+                    ...(autoAssign ? { assigned_agent_id: autoAssign } : {}),
                   })
                   .select("id")
                   .single();
@@ -396,21 +414,30 @@ export const Route = createFileRoute("/api/public/evolution/$instanceId")({
                   });
                 }
                 contactId = created?.id;
+                if (created?.id && autoAssign) assignedAgentId = autoAssign;
               } else {
+                // Se conversa está resolvida/arquivada e recebe mensagem nova, volta pra "waiting"
+                const updatePayload: Record<string, unknown> = {
+                  owner_user_id: row.owner_user_id,
+                  is_unread: true,
+                  last_message: previewText,
+                  last_message_at: new Date().toISOString(),
+                };
+                if (kanbanColumn === "resolved" || kanbanColumn === "archived") {
+                  updatePayload.kanban_column = "waiting";
+                  if (autoAssign) updatePayload.assigned_agent_id = autoAssign;
+                }
                 const { error: updErr } = await supabaseAdmin
                   .from("contacts")
-                  .update({
-                    owner_user_id: row.owner_user_id,
-                    is_unread: true,
-                    last_message: previewText,
-                    last_message_at: new Date().toISOString(),
-                  })
+                  .update(updatePayload)
                   .eq("id", contactId);
                 if (updErr) {
                   console.error("[evolution upsert] update contact", {
                     contactId,
                     error: updErr.message,
                   });
+                } else if (updatePayload.assigned_agent_id) {
+                  assignedAgentId = updatePayload.assigned_agent_id as string;
                 }
               }
 
@@ -442,6 +469,58 @@ export const Route = createFileRoute("/api/public/evolution/$instanceId")({
                   });
                 }
 
+                // ───── Resposta de pesquisa de satisfação (CSAT) ─────
+                // Vem DEPOIS de persistir a mensagem (o texto do cliente nunca
+                // se perde — "4 mas demorou" continua no inbox para o atendente
+                // ler) e ANTES do gate de IA, para que uma nota não vire
+                // conversa com o robô.
+                //
+                // `kanbanColumn` (capturado no select lá em cima) é o único
+                // vestígio de que a conversa estava resolvida: o update logo
+                // acima já devolveu o contato para "waiting". Serve como
+                // pré-filtro barato; o gate autoritativo é o status da pesquisa.
+                let csatConsumiu = false;
+                if (mediaType === "text" && kanbanColumn === "resolved" && caption.trim()) {
+                  try {
+                    const { data: survey } = await supabaseAdmin
+                      .from("csat_surveys")
+                      .select("id, sent_at")
+                      .eq("contact_id", contactId)
+                      .eq("status", "sent")
+                      .gt(
+                        "sent_at",
+                        new Date(Date.now() - 48 * 60 * 60 * 1000).toISOString(),
+                      )
+                      .maybeSingle();
+                    if (survey) {
+                      const parsed = parseCsatRating(caption);
+                      if (parsed.kind === "rating") {
+                        await supabaseAdmin
+                          .from("csat_surveys")
+                          .update({
+                            status: "answered",
+                            rating: parsed.rating,
+                            raw_answer: caption.slice(0, 500),
+                            answered_at: new Date().toISOString(),
+                          })
+                          .eq("id", survey.id);
+                        // Nota registrada: não manda para a IA responder.
+                        csatConsumiu = true;
+                      } else {
+                        // Respondeu outra coisa: descarta a pesquisa e deixa a
+                        // conversa seguir o fluxo normal (já voltou pra waiting).
+                        await supabaseAdmin
+                          .from("csat_surveys")
+                          .update({ status: "expired", raw_answer: caption.slice(0, 500) })
+                          .eq("id", survey.id);
+                      }
+                    }
+                  } catch (e: any) {
+                    // Nunca derruba a ingestão por causa da pesquisa.
+                    console.warn("[csat] falha ao processar resposta:", e?.message ?? e);
+                  }
+                }
+
                 // ───── Disparo da IA (texto, sem humano atribuído) ─────
                 // Humano "no controle" = atendente humano explicitamente atribuído.
                 // Não usamos kanban_column como gate (abrir um chat move pra in_progress
@@ -460,9 +539,10 @@ export const Route = createFileRoute("/api/public/evolution/$instanceId")({
                 // Evolution aqui, pra responder rápido e não travar sob carga
                 // (ver src/lib/job-worker.ts + src/lib/message-processing.server.ts).
                 const shouldEnqueue =
-                  (mediaType === "text" && caption.trim().length > 0 && !humanInControl) ||
-                  (mediaType === "audio" && !!mediaUrl && !humanInControl) ||
-                  (mediaType === "image" && !!mediaUrl && !humanInControl);
+                  !csatConsumiu &&
+                  ((mediaType === "text" && caption.trim().length > 0 && !humanInControl) ||
+                    (mediaType === "audio" && !!mediaUrl && !humanInControl) ||
+                    (mediaType === "image" && !!mediaUrl && !humanInControl));
                 if (shouldEnqueue) {
                   const jobPayload: MessageJobPayload = {
                     phone,

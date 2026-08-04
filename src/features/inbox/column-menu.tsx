@@ -57,7 +57,7 @@ export function ColumnMenu({
         width: 200,
         background: "var(--bg-surface)",
         border: "1px solid var(--border-strong)",
-        borderRadius: 8,
+        borderRadius: "var(--radius-card)",
         boxShadow: "0 12px 28px rgba(0,0,0,0.32)",
         padding: 4,
         zIndex: 70,
@@ -119,7 +119,7 @@ function Item({
       style={{
         display: "flex", alignItems: "center", gap: 8,
         width: "100%", padding: "7px 8px",
-        background: "transparent", border: 0, borderRadius: 6,
+        background: "transparent", border: 0, borderRadius: "var(--radius-control)",
         color: disabled ? "var(--text-muted)" : danger ? "#EF4444" : "var(--text-primary)",
         fontSize: 12, textAlign: "left",
         cursor: disabled ? "not-allowed" : "pointer",

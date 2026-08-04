@@ -1,6 +1,6 @@
 import * as React from "react";
 import { createFileRoute } from "@tanstack/react-router";
-import { Plus, Search, Pencil, Archive, X, Check, MoreVertical, Trash2, Wrench, AlertTriangle } from "lucide-react";
+import { Plus, Search, Pencil, Archive, X, Check, MoreVertical, Trash2, Tag, AlertTriangle, Lightbulb } from "lucide-react";
 import { ConfirmDialog } from "@/components/confirm-dialog";
 import { Modal } from "@/components/ui/modal";
 import { Button } from "@/components/ui/button";
@@ -281,7 +281,7 @@ function ServicesPage() {
                 color: "var(--text-primary)",
                 background: "var(--bg-base)",
                 border: "1px solid var(--border-strong)",
-                borderRadius: 6,
+                borderRadius: "var(--radius-control)",
                 outline: "none",
               }}
             />
@@ -308,7 +308,7 @@ function ServicesPage() {
           />
         ) : (
           <SharedEmptyState
-            icon={<Wrench size={40} style={{ color: "var(--brand-400)" }} aria-hidden />}
+            icon={<Tag size={40} style={{ color: "var(--brand-400)" }} aria-hidden />}
             title="Nenhum serviço cadastrado ainda"
             description="Comece criando seu primeiro serviço — a IA do WhatsApp usa o catálogo pra responder seus clientes. Sem nenhum serviço, ela redireciona pra atendimento humano."
             action={{ label: "Novo Serviço", onClick: () => setEditing({ mode: "create" }) }}
@@ -318,7 +318,7 @@ function ServicesPage() {
         <div
           style={{
             display: "grid",
-            gridTemplateColumns: "repeat(auto-fill, minmax(280px, 1fr))",
+            gridTemplateColumns: "repeat(auto-fill, minmax(min(280px, 100%), 1fr))",
             gap: 12,
           }}
         >
@@ -422,7 +422,7 @@ function ServiceCard({
             style={{
               width: 26,
               height: 26,
-              borderRadius: 6,
+              borderRadius: "var(--radius-pill)",
               border: "1px solid var(--border)",
               background: "transparent",
               color: "var(--text-muted)",
@@ -441,7 +441,7 @@ function ServiceCard({
                 minWidth: 160,
                 background: "var(--bg-surface)",
                 border: "1px solid var(--border)",
-                borderRadius: 8,
+                borderRadius: "var(--radius-card)",
                 boxShadow: "0 12px 32px rgba(0,0,0,0.25)",
                 padding: 4,
                 zIndex: 20,
@@ -530,7 +530,7 @@ function ServiceCard({
               gap: 6,
               alignSelf: "flex-start",
               padding: "4px 8px",
-              borderRadius: 6,
+              borderRadius: "var(--radius-control)",
               border: "1px solid color-mix(in oklab, var(--warning, #d97706) 35%, transparent)",
               background: "color-mix(in oklab, var(--warning, #d97706) 10%, transparent)",
               color: "var(--warning, #b45309)",
@@ -596,7 +596,7 @@ function MenuItem({
       style={{
         gap: 8,
         padding: "7px 10px",
-        borderRadius: 6,
+        borderRadius: "var(--radius-control)",
         background: "transparent",
         border: "none",
         cursor: "pointer",
@@ -797,9 +797,7 @@ function ServiceModal({
                   alignItems: "flex-start",
                 }}
               >
-                <span aria-hidden style={{ flexShrink: 0 }}>
-                  💡
-                </span>
+                <Lightbulb size={13} aria-hidden style={{ flexShrink: 0, marginTop: 1 }} />
                 <span>
                   Esta descrição é usada pela IA do WhatsApp para responder seus clientes sobre este
                   serviço. Quanto mais específica, melhor a IA atende — sem ela, a IA não terá
@@ -917,7 +915,7 @@ function ServiceModal({
                         style={{
                           width: 44,
                           height: 44,
-                          borderRadius: 6,
+                          borderRadius: "var(--radius-pill)",
                           objectFit: "cover",
                           border: "1px solid var(--border)",
                           flexShrink: 0,
@@ -937,7 +935,7 @@ function ServiceModal({
                         style={{
                           width: 28,
                           height: 28,
-                          borderRadius: 6,
+                          borderRadius: "var(--radius-pill)",
                           border: "1px solid var(--border)",
                           background: "transparent",
                           color: "var(--text-muted)",
@@ -962,7 +960,7 @@ function ServiceModal({
                     gap: 6,
                     height: 32,
                     padding: "0 12px",
-                    borderRadius: 6,
+                    borderRadius: "var(--radius-control)",
                     border: "1px solid var(--border)",
                     fontSize: 12,
                     color: "var(--text-primary)",
@@ -1015,7 +1013,7 @@ function ServiceModal({
                   padding: 2,
                   background: "var(--bg-overlay)",
                   border: "1px solid var(--border)",
-                  borderRadius: 6,
+                  borderRadius: "var(--radius-pill)",
                   width: "fit-content",
                 }}
               >
@@ -1027,7 +1025,7 @@ function ServiceModal({
                     style={{
                       height: 26,
                       padding: "0 12px",
-                      borderRadius: 4,
+                      borderRadius: "var(--radius-pill)",
                       fontSize: 12,
                       fontWeight: 500,
                       background: status === s ? "var(--bg-surface)" : "transparent",
@@ -1054,7 +1052,7 @@ const inputStyle: React.CSSProperties = {
   color: "var(--text-primary)",
   background: "var(--bg-base)",
   border: "1px solid var(--border-strong)",
-  borderRadius: 6,
+  borderRadius: "var(--radius-control)",
   outline: "none",
   fontFamily: "inherit",
 };

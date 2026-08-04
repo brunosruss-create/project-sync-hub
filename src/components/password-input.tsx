@@ -27,7 +27,7 @@ export const PasswordInput = React.forwardRef<HTMLInputElement, Props>(
           style={{
             width: 28,
             height: 28,
-            borderRadius: 4,
+            borderRadius: "var(--radius-sm)",
             color: "var(--text-muted)",
             background: "transparent",
           }}

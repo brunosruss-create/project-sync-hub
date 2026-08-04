@@ -9,7 +9,6 @@ import {
   buttonPrimary,
   buttonSecondary,
   buttonDanger,
-  card,
 } from "@/features/settings/settings-layout";
 import {
   getInstance,
@@ -23,6 +22,9 @@ import { supabase } from "@/integrations/supabase/client";
 import { useProfile } from "@/hooks/use-profile";
 
 import { ManagerOnly } from "@/components/manager-only";
+import { Card } from "@/components/ui/card";
+import { Badge, type BadgeVariant } from "@/components/ui/badge";
+import { ConfirmDialog } from "@/components/confirm-dialog";
 
 export const Route = createFileRoute("/_authenticated/settings/whatsapp")({
   component: () => (
@@ -33,6 +35,20 @@ export const Route = createFileRoute("/_authenticated/settings/whatsapp")({
 });
 
 type Status = "connected" | "disconnected" | "pending" | "error";
+
+const WHATSAPP_STATUS_VARIANT: Record<Status, BadgeVariant> = {
+  connected: "success",
+  disconnected: "danger",
+  pending: "warning",
+  error: "danger",
+};
+
+const WHATSAPP_STATUS_LABEL: Record<Status, string> = {
+  connected: "Conectado",
+  disconnected: "Desconectado",
+  pending: "Aguardando QR",
+  error: "Erro",
+};
 
 function WhatsAppPage() {
   const qc = useQueryClient();
@@ -173,33 +189,17 @@ function WhatsAppPage() {
   });
 
 
-  const meta: Record<Status, { label: string; bg: string; fg: string }> = {
-    connected: { label: "Conectado", bg: "color-mix(in oklab, #10B981 18%, transparent)", fg: "#10B981" },
-    disconnected: { label: "Desconectado", bg: "color-mix(in oklab, #EF4444 18%, transparent)", fg: "#EF4444" },
-    pending: { label: "Aguardando QR", bg: "color-mix(in oklab, #F59E0B 18%, transparent)", fg: "#F59E0B" },
-    error: { label: "Erro", bg: "color-mix(in oklab, #EF4444 18%, transparent)", fg: "#EF4444" },
-  };
-
   return (
     <SettingsLayout
       title="WhatsApp"
       description="Conexão da sua conta WhatsApp ao ZapFlow."
     >
-      <div style={card}>
+      <Card style={{ padding: 20 }}>
         <div className="flex items-center justify-between" style={{ marginBottom: 16 }}>
           <div className="flex items-center gap-3">
-            <span
-              style={{
-                fontSize: 12,
-                fontWeight: 600,
-                padding: "4px 10px",
-                borderRadius: 999,
-                background: meta[status].bg,
-                color: meta[status].fg,
-              }}
-            >
-              ● {meta[status].label}
-            </span>
+            <Badge variant={WHATSAPP_STATUS_VARIANT[status]} withDot>
+              {WHATSAPP_STATUS_LABEL[status]}
+            </Badge>
             {instance?.updated_at && (
               <span style={{ fontSize: 12, color: "var(--text-muted)" }}>
                 Atualizado {new Date(instance.updated_at).toLocaleTimeString("pt-BR")}
@@ -226,14 +226,14 @@ function WhatsAppPage() {
         ) : status === "pending" && instance?.qr_code ? (
           <div
             className="flex flex-col items-center justify-center"
-            style={{ padding: 32, border: "1px dashed var(--border)", borderRadius: 12, gap: 16 }}
+            style={{ padding: 32, border: "1px dashed var(--border)", borderRadius: "var(--radius-modal)", gap: 16 }}
           >
             <img
               src={instance.qr_code}
               alt="QR Code WhatsApp"
               width={240}
               height={240}
-              style={{ borderRadius: 12, background: "#fff", padding: 8, boxShadow: "0 0 0 1px var(--border)" }}
+              style={{ borderRadius: "var(--radius-modal)", background: "#fff", padding: 8, boxShadow: "0 0 0 1px var(--border)" }}
             />
             <div className="text-center">
               <p style={{ fontSize: 14, fontWeight: 500 }}>Abra o WhatsApp e escaneie o QR Code</p>
@@ -357,7 +357,7 @@ function WhatsAppPage() {
             <div
               style={{
                 display: "grid",
-                gridTemplateColumns: "repeat(auto-fit, minmax(180px, 1fr))",
+                gridTemplateColumns: "repeat(auto-fit, minmax(min(180px, 100%), 1fr))",
                 gap: 12,
               }}
             >
@@ -393,61 +393,24 @@ function WhatsAppPage() {
             </button>
           </div>
         )}
-      </div>
+      </Card>
 
-      {confirmDc && (
-        <div
-          onClick={() => setConfirmDc(false)}
-          style={{
-            position: "fixed",
-            inset: 0,
-            background: "rgba(0,0,0,0.5)",
-            zIndex: 50,
-            display: "flex",
-            alignItems: "center",
-            justifyContent: "center",
-            padding: 16,
-          }}
-        >
-          <div
-            onClick={(e) => e.stopPropagation()}
-            style={{
-              background: "var(--bg-surface)",
-              border: "1px solid var(--border)",
-              borderRadius: 12,
-              padding: 20,
-              maxWidth: 420,
-              width: "100%",
-            }}
-          >
-            <h3 style={{ fontSize: 15, fontWeight: 600, marginBottom: 8 }}>
-              Desconectar WhatsApp?
-            </h3>
-            <p style={{ fontSize: 13, color: "var(--text-muted)" }}>
-              As conversas em andamento serão pausadas até reconectar.
-            </p>
-            <div className="flex justify-end gap-2" style={{ marginTop: 16 }}>
-              <button style={buttonSecondary} onClick={() => setConfirmDc(false)}>
-                Cancelar
-              </button>
-              <button
-                style={buttonDanger}
-                disabled={disconnect.isPending}
-                onClick={() => disconnect.mutate()}
-              >
-                {disconnect.isPending ? "Desconectando…" : "Desconectar"}
-              </button>
-            </div>
-          </div>
-        </div>
-      )}
+      <ConfirmDialog
+        open={confirmDc}
+        onClose={() => setConfirmDc(false)}
+        onConfirm={() => disconnect.mutate()}
+        title="Desconectar WhatsApp?"
+        description="As conversas em andamento serão pausadas até reconectar."
+        confirmLabel="Desconectar"
+        destructive
+      />
     </SettingsLayout>
   );
 }
 
 function Info({ label, value }: { label: string; value: string }) {
   return (
-    <div style={{ padding: 12, borderRadius: 8, background: "var(--bg-overlay)" }}>
+    <div style={{ padding: 12, borderRadius: "var(--radius-card)", background: "var(--bg-overlay)" }}>
       <div style={{ fontSize: 11, color: "var(--text-muted)", marginBottom: 4 }}>{label}</div>
       <div style={{ fontSize: 13, fontWeight: 500 }}>{value}</div>
     </div>

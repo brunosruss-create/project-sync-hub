@@ -3,6 +3,7 @@ import { createFileRoute } from "@tanstack/react-router";
 import { useQuery, useQueryClient } from "@tanstack/react-query";
 import { useServerFn } from "@tanstack/react-start";
 import { toast } from "sonner";
+import { CheckCircle2, AlertTriangle } from "lucide-react";
 import {
   getAiGlobalSettings,
   updateAiGlobalSettings,
@@ -16,6 +17,10 @@ import { adminCard, adminInput, adminBtn, adminBtnGhost } from "./_authenticated
 import { FIELD_LABELS } from "@/lib/field-labels";
 import { GENERAL_INFO_LABELS } from "@/lib/general-info-labels";
 import { ToggleRow } from "@/components/toggle-row";
+import { Badge, type BadgeVariant } from "@/components/ui/badge";
+import { Modal } from "@/components/ui/modal";
+import { Button } from "@/components/ui/button";
+import { EmptyState as SharedEmptyState } from "@/components/empty-state";
 
 export const Route = createFileRoute("/_authenticated/super-admin/ia")({
   component: SuperAdminAIPage,
@@ -23,17 +28,28 @@ export const Route = createFileRoute("/_authenticated/super-admin/ia")({
 
 type Tab = "gemini" | "segments" | "usage";
 
+const CONNECTION_STATUS_VARIANT: Record<"ok" | "error" | "untested", BadgeVariant> = {
+  ok: "success",
+  error: "danger",
+  untested: "neutral",
+};
+
+const SEGMENT_STATUS_VARIANT: Record<"active" | "inactive", BadgeVariant> = {
+  active: "success",
+  inactive: "neutral",
+};
+
 function SuperAdminAIPage() {
   const [tab, setTab] = React.useState<Tab>("gemini");
   return (
     <div className="flex flex-col" style={{ gap: 16 }}>
       <div>
         <h2 style={{ fontSize: 20, fontWeight: 600 }}>Inteligência Artificial</h2>
-        <p style={{ fontSize: 13, color: "rgba(255,255,255,0.5)", marginTop: 4 }}>
+        <p style={{ fontSize: 13, color: "var(--text-muted)", marginTop: 4 }}>
           Configure o Gemini, segmentos e acompanhe o consumo.
         </p>
       </div>
-      <div className="flex gap-1" style={{ borderBottom: "1px solid #1F1F23" }}>
+      <div className="flex gap-1" style={{ borderBottom: "1px solid var(--border)" }}>
         {([
           ["gemini", "Configuração Gemini"],
           ["segments", "Segmentos"],
@@ -47,7 +63,7 @@ function SuperAdminAIPage() {
               border: 0,
               borderBottom: tab === k ? "2px solid #7C3AED" : "2px solid transparent",
               borderRadius: 0,
-              color: tab === k ? "#fff" : "rgba(255,255,255,0.6)",
+              color: tab === k ? "var(--text-primary)" : "var(--text-muted)",
             }}
           >
             {label}
@@ -67,11 +83,7 @@ function GeminiTab() {
   const testFn = useServerFn(testGeminiConnection);
   const qc = useQueryClient();
   const q = useQuery({ queryKey: ["ai-globals"], queryFn: () => fetchFn() });
-  const savedKeyValue = q.data?.settings.gemini_api_key?.value ?? "";
-  const savedKeyHint =
-    savedKeyValue.length > 0
-      ? `✓ Chave salva no banco (••••${savedKeyValue.slice(-4)}, ${savedKeyValue.length} caracteres)`
-      : "⚠ Nenhuma chave salva no banco ainda";
+  const savedKeyValue = q.data?.settings?.gemini_api_key?.value ?? "";
   const [form, setForm] = React.useState<Record<string, string>>({});
   React.useEffect(() => {
     if (q.data?.settings) {
@@ -125,14 +137,13 @@ function GeminiTab() {
         <div className="flex items-center justify-between gap-3">
           <div>
             <div style={{ fontSize: 13, fontWeight: 600 }}>Status da conexão</div>
-            <div
-              style={{
-                marginTop: 6,
-                fontSize: 12,
-                color: status?.ok ? "#10B981" : status ? "#F87171" : "rgba(255,255,255,0.5)",
-              }}
-            >
-              {status ? (status.ok ? `● ${status.msg}` : `✕ ${status.msg}`) : "Não testado"}
+            <div style={{ marginTop: 6 }}>
+              <Badge
+                variant={CONNECTION_STATUS_VARIANT[status ? (status.ok ? "ok" : "error") : "untested"]}
+                withDot={!!status}
+              >
+                {status ? status.msg : "Não testado"}
+              </Badge>
             </div>
           </div>
           <button style={adminBtn} onClick={test} disabled={testing}>
@@ -152,14 +163,18 @@ function GeminiTab() {
             placeholder={savedKeyValue ? "Deixe vazio para manter a chave atual" : "AIzaSy…"}
             autoComplete="off"
           />
-          <div
-            style={{
-              marginTop: 6,
-              fontSize: 11,
-              color: savedKeyValue ? "#10B981" : "#F59E0B",
-            }}
-          >
-            {savedKeyHint}
+          <div style={{ marginTop: 6 }}>
+            {savedKeyValue ? (
+              <Badge variant="success">
+                <CheckCircle2 size={11} aria-hidden />
+                Chave salva no banco (••••{savedKeyValue.slice(-4)}, {savedKeyValue.length} caracteres)
+              </Badge>
+            ) : (
+              <Badge variant="warning">
+                <AlertTriangle size={11} aria-hidden />
+                Nenhuma chave salva no banco ainda
+              </Badge>
+            )}
           </div>
         </Field>
         <Field label="Modelo">
@@ -207,7 +222,7 @@ function GeminiTab() {
 
       <div style={adminCard}>
         <div style={{ fontSize: 13, fontWeight: 600, marginBottom: 6 }}>Prompt base universal</div>
-        <p style={{ fontSize: 12, color: "rgba(255,255,255,0.5)", marginBottom: 8 }}>
+        <p style={{ fontSize: 12, color: "var(--text-muted)", marginBottom: 8 }}>
           Aplicado a TODOS os workspaces como camada 1.
         </p>
         <textarea
@@ -258,7 +273,7 @@ function SegmentsTab() {
     <div className="flex flex-col" style={{ gap: 12 }}>
       <div
         className="grid gap-3"
-        style={{ gridTemplateColumns: "repeat(auto-fill, minmax(280px, 1fr))" }}
+        style={{ gridTemplateColumns: "repeat(auto-fill, minmax(min(280px, 100%), 1fr))" }}
       >
         {(q.data?.segments ?? []).map((s: any) => (
           <div key={s.id} style={adminCard}>
@@ -267,21 +282,26 @@ function SegmentsTab() {
                 <span style={{ fontSize: 22 }}>{s.icon}</span>
                 <div>
                   <div style={{ fontSize: 13, fontWeight: 600 }}>{s.name}</div>
-                  <div style={{ fontSize: 11, color: "rgba(255,255,255,0.5)" }}>
+                  <div style={{ fontSize: 11, color: "var(--text-muted)" }}>
                     {s.description}
                   </div>
                 </div>
               </div>
-              <input
-                type="checkbox"
-                checked={s.is_active}
-                onChange={async (e) => {
-                  await toggleFn({ data: { id: s.id, active: e.target.checked } });
-                  q.refetch();
-                }}
-              />
+              <div className="flex flex-col items-end" style={{ gap: 6 }}>
+                <Badge variant={SEGMENT_STATUS_VARIANT[s.is_active ? "active" : "inactive"]}>
+                  {s.is_active ? "Ativo" : "Inativo"}
+                </Badge>
+                <input
+                  type="checkbox"
+                  checked={s.is_active}
+                  onChange={async (e) => {
+                    await toggleFn({ data: { id: s.id, active: e.target.checked } });
+                    q.refetch();
+                  }}
+                />
+              </div>
             </div>
-            <div style={{ marginTop: 10, fontSize: 11, color: "rgba(255,255,255,0.5)" }}>
+            <div style={{ marginTop: 10, fontSize: 11, color: "var(--text-muted)" }}>
               {s.workspace_count} workspace(s) usando
             </div>
             <div style={{ marginTop: 10 }}>
@@ -343,7 +363,7 @@ function FieldCatalogEditor({
           ))}
         </div>
       ) : (
-        <p style={{ fontSize: 12, color: "rgba(255,255,255,0.5)" }}>{emptyText}</p>
+        <p style={{ fontSize: 12, color: "var(--text-muted)" }}>{emptyText}</p>
       )}
       <button
         type="button"
@@ -370,7 +390,7 @@ function FieldCatalogEditor({
               />
             ))}
             {restKeys.length === 0 && (
-              <p style={{ fontSize: 12, color: "rgba(255,255,255,0.5)" }}>
+              <p style={{ fontSize: 12, color: "var(--text-muted)" }}>
                 Nenhum campo encontrado.
               </p>
             )}
@@ -419,33 +439,24 @@ function SegmentEditor({
         : prev.default_general_info_fields.filter((f: string) => f !== key),
     }));
   return (
-    <div
-      style={{
-        position: "fixed",
-        inset: 0,
-        background: "rgba(0,0,0,0.7)",
-        display: "flex",
-        alignItems: "center",
-        justifyContent: "center",
-        zIndex: 50,
+    <Modal
+      open
+      onOpenChange={(o) => {
+        if (!o) onClose();
       }}
-      onClick={onClose}
+      title={`Editar: ${segment.name}`}
+      size="lg"
+      footer={
+        <>
+          <Button type="button" variant="outline" onClick={onClose}>
+            Cancelar
+          </Button>
+          <Button type="button" onClick={() => onSave(s)}>
+            Salvar
+          </Button>
+        </>
+      }
     >
-      <div
-        onClick={(e) => e.stopPropagation()}
-        style={{
-          width: 640,
-          maxHeight: "85vh",
-          overflow: "auto",
-          background: "#0A0A0A",
-          border: "1px solid #1F1F23",
-          borderRadius: 10,
-          padding: 20,
-        }}
-      >
-        <div style={{ fontSize: 15, fontWeight: 600, marginBottom: 16 }}>
-          Editar: {segment.name}
-        </div>
         <div className="grid gap-3" style={{ gridTemplateColumns: "60px 1fr" }}>
           <Field label="Ícone">
             <input
@@ -515,12 +526,7 @@ function SegmentEditor({
             emptyText="Nenhuma informação sugerida neste segmento ainda."
           />
         </Field>
-        <div className="flex justify-end gap-2" style={{ marginTop: 16 }}>
-          <button style={adminBtnGhost} onClick={onClose}>Cancelar</button>
-          <button style={adminBtn} onClick={() => onSave(s)}>Salvar</button>
-        </div>
-      </div>
-    </div>
+    </Modal>
   );
 }
 
@@ -532,9 +538,9 @@ function UsageTab() {
   if (!m) return null;
   return (
     <div className="flex flex-col" style={{ gap: 16 }}>
-      <div className="grid gap-3" style={{ gridTemplateColumns: "repeat(auto-fit, minmax(180px, 1fr))" }}>
+      <div className="grid gap-3" style={{ gridTemplateColumns: "repeat(auto-fit, minmax(min(180px, 100%), 1fr))" }}>
         <Stat label="Mensagens IA hoje" value={m.messages_today} />
-        <Stat label="Tokens (mês)" value={m.tokens_month.toLocaleString()} />
+        <Stat label="Tokens (mês)" value={(m.tokens_month ?? 0).toLocaleString()} />
         <Stat label="Custo estimado (USD)" value={`$${m.cost_month_usd}`} />
         <Stat label="Workspaces com IA ativa" value={m.ai_active_workspaces} />
       </div>
@@ -542,20 +548,24 @@ function UsageTab() {
         <div style={{ fontSize: 13, fontWeight: 600, marginBottom: 8 }}>Top 10 workspaces (mês)</div>
         <table style={{ width: "100%", fontSize: 12 }}>
           <thead>
-            <tr style={{ color: "rgba(255,255,255,0.5)", textAlign: "left" }}>
+            <tr style={{ color: "var(--text-muted)", textAlign: "left" }}>
               <th style={{ padding: 6 }}>Email</th>
               <th style={{ padding: 6 }}>Tokens</th>
             </tr>
           </thead>
           <tbody>
-            {m.top_workspaces.map((w) => (
-              <tr key={w.workspace_owner_id} style={{ borderTop: "1px solid #1F1F23" }}>
+            {(m.top_workspaces ?? []).map((w) => (
+              <tr key={w.workspace_owner_id} style={{ borderTop: "1px solid var(--border)" }}>
                 <td style={{ padding: 6 }}>{w.email ?? w.workspace_owner_id.slice(0, 8)}</td>
-                <td style={{ padding: 6 }}>{w.tokens_total.toLocaleString()}</td>
+                <td style={{ padding: 6 }}>{(w.tokens_total ?? 0).toLocaleString()}</td>
               </tr>
             ))}
-            {m.top_workspaces.length === 0 && (
-              <tr><td colSpan={2} style={{ padding: 12, textAlign: "center", opacity: 0.5 }}>Sem dados ainda</td></tr>
+            {(m.top_workspaces ?? []).length === 0 && (
+              <tr>
+                <td colSpan={2} style={{ padding: 0 }}>
+                  <SharedEmptyState title="Sem dados ainda" />
+                </td>
+              </tr>
             )}
           </tbody>
         </table>
@@ -567,7 +577,7 @@ function UsageTab() {
 function Stat({ label, value }: { label: string; value: React.ReactNode }) {
   return (
     <div style={adminCard}>
-      <div style={{ fontSize: 11, color: "rgba(255,255,255,0.5)" }}>{label}</div>
+      <div style={{ fontSize: 11, color: "var(--text-muted)" }}>{label}</div>
       <div style={{ fontSize: 22, fontWeight: 600, marginTop: 6 }}>{value}</div>
     </div>
   );
@@ -576,7 +586,7 @@ function Stat({ label, value }: { label: string; value: React.ReactNode }) {
 function Field({ label, children }: { label: string; children: React.ReactNode }) {
   return (
     <label className="flex flex-col" style={{ gap: 4, marginBottom: 12 }}>
-      <span style={{ fontSize: 11, color: "rgba(255,255,255,0.6)" }}>{label}</span>
+      <span style={{ fontSize: 11, color: "var(--text-muted)" }}>{label}</span>
       {children}
     </label>
   );

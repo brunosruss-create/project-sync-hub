@@ -5,12 +5,13 @@ import {
   LayoutDashboard,
   MessageSquare,
   Calendar,
-  Wrench,
+  Tag,
   Bot,
   Settings,
   Plus,
   Users,
   BarChart3,
+  Columns3,
 } from "lucide-react";
 
 type Action = {
@@ -38,11 +39,12 @@ export function CommandPalette() {
   const actions = React.useMemo<Action[]>(
     () => [
       { id: "go-dashboard", group: "Navegar", label: "Ir para Dashboard", icon: LayoutDashboard, perform: () => navigate({ to: "/dashboard" }) },
-      { id: "go-inbox", group: "Navegar", label: "Ir para Conversas (Kanban)", icon: MessageSquare, perform: () => navigate({ to: "/inbox" }) },
+      { id: "go-inbox", group: "Navegar", label: "Ir para Conversas", icon: MessageSquare, perform: () => navigate({ to: "/conversations-chat" }) },
+      { id: "go-kanban", group: "Navegar", label: "Ir para Kanban", icon: Columns3, perform: () => navigate({ to: "/inbox" }) },
       { id: "go-schedule", group: "Navegar", label: "Ir para Agenda", icon: Calendar, perform: () => navigate({ to: "/schedule" }) },
-      { id: "go-services", group: "Navegar", label: "Ir para Serviços", icon: Wrench, perform: () => navigate({ to: "/services" }) },
+      { id: "go-services", group: "Navegar", label: "Ir para Serviços", icon: Tag, perform: () => navigate({ to: "/services" }) },
       { id: "go-ai", group: "Navegar", label: "Ir para Agente IA", icon: Bot, perform: () => navigate({ to: "/ai-agent" }) },
-      { id: "go-contacts", group: "Navegar", label: "Ir para Contatos", icon: Users, perform: () => navigate({ to: "/contacts" }) },
+      { id: "go-contacts", group: "Navegar", label: "Ir para Clientes", icon: Users, keywords: "contatos clientes crm cadastro", perform: () => navigate({ to: "/contacts" }) },
       { id: "go-reports", group: "Navegar", label: "Ir para Relatórios", icon: BarChart3, perform: () => navigate({ to: "/reports" }) },
       { id: "go-settings", group: "Ajustes", label: "Configurações do perfil", icon: Settings, perform: () => navigate({ to: "/settings/profile" }) },
       { id: "go-whatsapp", group: "Ajustes", label: "Conectar WhatsApp", icon: Settings, perform: () => navigate({ to: "/settings/whatsapp" }) },
@@ -126,7 +128,7 @@ export function CommandPalette() {
           maxWidth: 560,
           background: "var(--bg-surface)",
           border: "1px solid var(--border)",
-          borderRadius: 12,
+          borderRadius: "var(--radius-modal)",
           boxShadow: "0 30px 80px rgba(0,0,0,0.5)",
           overflow: "hidden",
         }}
@@ -161,7 +163,7 @@ export function CommandPalette() {
               fontSize: 11,
               color: "var(--text-muted)",
               border: "1px solid var(--border)",
-              borderRadius: 4,
+              borderRadius: "var(--radius-sm)",
               padding: "2px 6px",
             }}
           >
@@ -205,7 +207,7 @@ export function CommandPalette() {
                     className="w-full flex items-center gap-3"
                     style={{
                       padding: "8px 10px",
-                      borderRadius: 6,
+                      borderRadius: "var(--radius-control)",
                       background: active ? "var(--bg-overlay)" : "transparent",
                       color: "var(--text-primary)",
                       fontSize: 13,

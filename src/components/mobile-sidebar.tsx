@@ -6,24 +6,33 @@ import {
   Users,
   BarChart3,
   Settings,
-  Wrench,
+  Tag,
   Calendar,
   Shield,
+  Columns3,
   X,
   Menu,
 } from "lucide-react";
 import { useRole } from "@/hooks/use-role";
 
-const ALL_ITEMS = [
+type NavItem = {
+  label: string;
+  to: string;
+  icon: React.ComponentType<{ size?: number }>;
+  agentVisible: boolean;
+};
+
+const ALL_ITEMS: NavItem[] = [
   { label: "Dashboard", to: "/dashboard", icon: LayoutDashboard, agentVisible: false },
-  { label: "Conversas", to: "/inbox", icon: MessageSquare, agentVisible: true },
+  { label: "Conversas", to: "/conversations-chat", icon: MessageSquare, agentVisible: true },
+  { label: "Kanban", to: "/inbox", icon: Columns3, agentVisible: true },
   { label: "Agenda", to: "/schedule", icon: Calendar, agentVisible: true },
-  { label: "Serviços", to: "/services", icon: Wrench, agentVisible: false },
-  { label: "Contatos", to: "/contacts", icon: Users, agentVisible: true },
+  { label: "Serviços", to: "/services", icon: Tag, agentVisible: false },
+  { label: "Clientes", to: "/contacts", icon: Users, agentVisible: true },
   { label: "Relatórios", to: "/reports", icon: BarChart3, agentVisible: false },
   { label: "Configurações", to: "/settings/profile", icon: Settings, agentVisible: true },
   { label: "Super Admin", to: "/super-admin/workspaces", icon: Shield, agentVisible: false },
-] as const;
+];
 
 export function MobileSidebarTrigger() {
   const [open, setOpen] = React.useState(false);
@@ -52,7 +61,7 @@ export function MobileSidebarTrigger() {
         style={{
           width: 32,
           height: 32,
-          borderRadius: 6,
+          borderRadius: "var(--radius-pill)",
           color: "var(--text-primary)",
           background: "transparent",
         }}
@@ -91,7 +100,7 @@ export function MobileSidebarTrigger() {
                 style={{
                   width: 28,
                   height: 28,
-                  borderRadius: 6,
+                  borderRadius: "var(--radius-pill)",
                   background: "transparent",
                   color: "var(--text-muted)",
                   display: "inline-flex",
@@ -116,7 +125,7 @@ export function MobileSidebarTrigger() {
                         style={{
                           height: 36,
                           padding: "0 10px",
-                          borderRadius: 6,
+                          borderRadius: "var(--radius-control)",
                           fontSize: 14,
                           color: active ? "var(--brand-400)" : "var(--text-primary)",
                           background: active

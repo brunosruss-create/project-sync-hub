@@ -8,7 +8,8 @@ export type MessageKey =
   | "transfer"
   | "booking_confirmed"
   | "booking_rescheduled"
-  | "booking_cancelled";
+  | "booking_cancelled"
+  | "csat_survey";
 
 export type MessageMeta = {
   key: MessageKey;
@@ -132,6 +133,19 @@ export const MESSAGE_DEFAULTS: Record<MessageKey, MessageMeta> = {
       "{{servico}}\n\n" +
       "Caso queira remarcar, é só responder esta mensagem.",
   },
+  csat_survey: {
+    key: "csat_survey",
+    label: "Pesquisa de satisfação",
+    description:
+      "Enviada alguns minutos depois de a conversa ser marcada como resolvida. O cliente responde com um número de 1 a 5 e a nota entra no relatório de Atendimento. Se ele responder outra coisa, a pesquisa é descartada e a conversa reabre normalmente. Nasce desativada: é uma mensagem que parte de você, não uma resposta ao cliente.",
+    placeholders: ["{{cliente}}", "{{negocio}}"],
+    preview: { cliente: "João", negocio: "Salão Bela Vista" },
+    // A faixa precisa estar explícita no texto: sem isso o cliente responde
+    // "10" achando que é escala de 0 a 10, e a nota é descartada.
+    default:
+      "Oi {{cliente}}! Como você avalia o atendimento em *{{negocio}}*?\n\n" +
+      "Responda com um número de *1 a 5* — sendo 1 péssimo e 5 excelente. 🙂",
+  },
 };
 
 export const MESSAGE_ORDER: MessageKey[] = [
@@ -141,4 +155,5 @@ export const MESSAGE_ORDER: MessageKey[] = [
   "booking_confirmed",
   "booking_rescheduled",
   "booking_cancelled",
+  "csat_survey",
 ];

@@ -203,7 +203,8 @@ export function normalizePhone(raw: string): string {
   return `55${digits}`;
 }
 
-async function getConnectedInstance(ownerId: string): Promise<string | null> {
+/** Exportada para o sender do CSAT. Retorna null se o WhatsApp não está conectado. */
+export async function getConnectedInstance(ownerId: string): Promise<string | null> {
   const instanceName = instanceNameForOwner(ownerId);
   const { data: inst } = await supabaseAdmin
     .from("whatsapp_instances")
@@ -218,7 +219,7 @@ async function getConnectedInstance(ownerId: string): Promise<string | null> {
 // via evo.sendText — sem isso ela sai no WhatsApp real mas nunca aparece no
 // inbox do ZapFlow. Espelha o que sendAiReplyAndPersist já faz pras respostas
 // livres da IA (message-processing.server.ts).
-async function persistOutboundMessage(
+export async function persistOutboundMessage(
   ownerId: string,
   contactId: string | null | undefined,
   content: string,
@@ -284,9 +285,17 @@ const TEMPLATE_COLS: Record<MessageKey, TemplateColumns> = {
     enabled: "msg_booking_cancelled_enabled",
     defaultEnabled: true,
   },
+  csat_survey: {
+    text: "msg_csat_text",
+    enabled: "msg_csat_enabled",
+    // Diferente das demais: é mensagem proativa e não solicitada, então
+    // nasce desligada e o dono decide se quer perguntar.
+    defaultEnabled: false,
+  },
 };
 
-async function loadTemplate(
+/** Exportada para o sender do CSAT — evita duplicar a lógica de fallback. */
+export async function loadTemplate(
   ownerId: string,
   key: MessageKey,
 ): Promise<{ enabled: boolean; text: string }> {

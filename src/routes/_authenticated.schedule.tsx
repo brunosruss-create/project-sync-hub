@@ -6,6 +6,7 @@ import {
   ChevronRight,
   X,
   CheckCircle2,
+  CheckCheck,
   Clock,
   CalendarClock,
   MessageSquare,
@@ -20,7 +21,7 @@ import { useQuery } from "@tanstack/react-query";
 import { listProfessionals } from "@/lib/professionals.functions";
 import { notifyAppointmentChange } from "@/lib/appointments.functions";
 import { useWorkspaceOwnerId } from "@/hooks/use-workspace-owner";
-import { EmptyState } from "@/components/empty-state";
+import { EmptyState as SharedEmptyState } from "@/components/empty-state";
 import {
   HOUR_END,
   HOUR_START,
@@ -55,6 +56,7 @@ import { utcToZonedLocal, zonedLocalToUtc } from "@/features/schedule/tz";
 import { effectiveHours, parseHM, DAY_ORDER, type NormalizedHours } from "@/lib/working-hours";
 import { useProfile } from "@/hooks/use-profile";
 import { ScheduleModal } from "@/features/inbox/schedule-modal";
+import { CONTACT_COLUMNS, mapContactRow } from "@/features/inbox/contact-row";
 
 function nameToColor(name: string): string {
   let hash = 0;
@@ -147,11 +149,7 @@ function SchedulePage() {
         .select(
           "id,contact_id,service_id,professional_id,starts_at,ends_at,status,notes,notify_whatsapp,client_name",
         ),
-      supabase
-        .from("contacts")
-        .select(
-          "id,name,phone,tags,priority,kanban_column,last_message,last_message_at,is_unread,assigned_agent_id",
-        ),
+      supabase.from("contacts").select(CONTACT_COLUMNS),
       supabase
         .from("services")
         .select(
@@ -164,20 +162,7 @@ function SchedulePage() {
       appts && appts.length > 0 ? appts.map(mapAppt) : import.meta.env.DEV ? MOCK_APPOINTMENTS : [],
     );
     if (cts && cts.length > 0) {
-      setContacts(
-        cts.map((r: any) => ({
-          id: r.id,
-          name: r.name,
-          phone: r.phone,
-          tags: Array.isArray(r.tags) ? r.tags : [],
-          priority: r.priority === "urgent" ? "urgent" : "normal",
-          kanban_column: r.kanban_column ?? "waiting",
-          lastMessage: r.last_message ?? "",
-          lastMessageAt: r.last_message_at ? new Date(r.last_message_at) : new Date(),
-          assignedAgent: r.assigned_agent_id ?? null,
-          isUnread: !!r.is_unread,
-        })),
-      );
+      setContacts(cts.map(mapContactRow));
     }
     setServices(
       (svc ?? []).map((s: any) => ({
@@ -344,7 +329,7 @@ function SchedulePage() {
               style={{
                 height: 32,
                 padding: "0 28px 0 10px",
-                borderRadius: 6,
+                borderRadius: "var(--radius-control)",
                 border: "1px solid var(--border-strong)",
                 background: "var(--bg-surface)",
                 color: "var(--text-primary)",
@@ -378,7 +363,7 @@ function SchedulePage() {
         className="flex items-center justify-between"
         style={{
           padding: "8px 10px",
-          borderRadius: 8,
+          borderRadius: "var(--radius-card)",
           background: "var(--bg-surface)",
           border: "1px solid var(--border)",
         }}
@@ -393,7 +378,7 @@ function SchedulePage() {
             style={{
               height: 28,
               padding: "0 10px",
-              borderRadius: 6,
+              borderRadius: "var(--radius-control)",
               border: "1px solid var(--border-strong)",
               background: "transparent",
               fontSize: 12,
@@ -425,7 +410,7 @@ function SchedulePage() {
         className="flex-1 overflow-hidden"
         style={{
           border: "1px solid var(--border)",
-          borderRadius: 10,
+          borderRadius: "var(--radius-card)",
           background: "var(--bg-surface)",
         }}
       >
@@ -515,7 +500,7 @@ function ViewTabs({ view, onChange }: { view: ViewMode; onChange: (v: ViewMode) 
         gap: 2,
         padding: 2,
         background: "var(--bg-overlay)",
-        borderRadius: 6,
+        borderRadius: "var(--radius-pill)",
         border: "1px solid var(--border)",
       }}
     >
@@ -527,7 +512,7 @@ function ViewTabs({ view, onChange }: { view: ViewMode; onChange: (v: ViewMode) 
           style={{
             height: 26,
             padding: "0 12px",
-            borderRadius: 4,
+            borderRadius: "var(--radius-pill)",
             fontSize: 12,
             fontWeight: 500,
             background: view === t.id ? "var(--bg-surface)" : "transparent",
@@ -563,7 +548,7 @@ function IconBtn({
       style={{
         width: 28,
         height: 28,
-        borderRadius: 6,
+        borderRadius: "var(--radius-pill)",
         background: "transparent",
         border: "1px solid var(--border-strong)",
         color: "var(--text-primary)",
@@ -777,7 +762,7 @@ function WeekView({
                     background: isToday ? "var(--brand-400)" : "transparent",
                     width: 24,
                     height: 24,
-                    borderRadius: 999,
+                    borderRadius: "var(--radius-pill)",
                     display: "inline-flex",
                     alignItems: "center",
                     justifyContent: "center",
@@ -954,7 +939,7 @@ function NowLine({ date, tz }: { date: Date; tz: string }) {
           top: -3,
           width: 8,
           height: 8,
-          borderRadius: 999,
+          borderRadius: "var(--radius-pill)",
           background: "#EF4444",
         }}
       />
@@ -1000,7 +985,7 @@ function EventBlock({
         boxSizing: "border-box",
         textAlign: "left",
         padding: compact ? "3px 5px" : "5px 7px",
-        borderRadius: 6,
+        borderRadius: "var(--radius-control)",
         background: `color-mix(in oklab, ${color} 14%, var(--bg-surface))`,
         border: `1px solid color-mix(in oklab, ${color} 40%, transparent)`,
         borderLeft: `3px solid ${color}`,
@@ -1054,7 +1039,7 @@ function EventBlock({
               style={{
                 width: 16,
                 height: 16,
-                borderRadius: 999,
+                borderRadius: "var(--radius-pill)",
                 background: agent.color,
                 color: "#fff",
                 fontSize: 9,
@@ -1155,7 +1140,7 @@ function MonthView({
                     fontWeight: 600,
                     width: 22,
                     height: 22,
-                    borderRadius: 999,
+                    borderRadius: "var(--radius-pill)",
                     background: isToday ? "var(--brand-400)" : "transparent",
                     color: isToday ? "#fff" : "inherit",
                     display: "inline-flex",
@@ -1185,7 +1170,7 @@ function MonthView({
                       style={{
                         fontSize: 11,
                         padding: "1px 6px",
-                        borderRadius: 4,
+                        borderRadius: "var(--radius-sm)",
                         background: `color-mix(in oklab, ${color} 14%, transparent)`,
                         borderLeft: `2px solid ${color}`,
                         color: "var(--text-primary)",
@@ -1225,7 +1210,7 @@ function ListView({
 
   if (upcoming.length === 0) {
     return (
-      <EmptyState
+      <SharedEmptyState
         icon={<CalendarClock size={48} style={{ color: "var(--brand-400)" }} aria-hidden="true" />}
         title="Sem agendamentos hoje"
         description="Que tal agendar o próximo? Crie um agendamento para organizar sua agenda."
@@ -1282,7 +1267,7 @@ function ListView({
                       style={{
                         gap: 12,
                         padding: "10px 12px",
-                        borderRadius: 8,
+                        borderRadius: "var(--radius-card)",
                         border: "1px solid var(--border)",
                         borderLeft: `3px solid ${color}`,
                         background: "var(--bg-surface)",
@@ -1316,7 +1301,7 @@ function ListView({
                         style={{
                           fontSize: 10,
                           padding: "2px 7px",
-                          borderRadius: 999,
+                          borderRadius: "var(--radius-pill)",
                           color: STATUS_COLOR[a.status],
                           background: `color-mix(in oklab, ${STATUS_COLOR[a.status]} 12%, transparent)`,
                           border: `1px solid color-mix(in oklab, ${STATUS_COLOR[a.status]} 30%, transparent)`,
@@ -1400,7 +1385,7 @@ function DetailPanel({
             style={{
               width: 8,
               height: 28,
-              borderRadius: 4,
+              borderRadius: "var(--radius-sm)",
               background: color,
             }}
           />
@@ -1418,7 +1403,7 @@ function DetailPanel({
             style={{
               width: 30,
               height: 30,
-              borderRadius: 6,
+              borderRadius: "var(--radius-pill)",
               background: "transparent",
               color: "var(--text-muted)",
             }}
@@ -1433,7 +1418,7 @@ function DetailPanel({
               display: "inline-block",
               fontSize: 10,
               padding: "3px 8px",
-              borderRadius: 999,
+              borderRadius: "var(--radius-pill)",
               color: STATUS_COLOR[appt.status],
               background: `color-mix(in oklab, ${STATUS_COLOR[appt.status]} 12%, transparent)`,
               border: `1px solid color-mix(in oklab, ${STATUS_COLOR[appt.status]} 30%, transparent)`,
@@ -1489,7 +1474,7 @@ function DetailPanel({
                     style={{
                       width: 16,
                       height: 16,
-                      borderRadius: 999,
+                      borderRadius: "var(--radius-pill)",
                       background: agent.color,
                       color: "#fff",
                       fontSize: 9,
@@ -1536,6 +1521,14 @@ function DetailPanel({
           {!past && appt.status !== "in_progress" && appt.status !== "completed" && (
             <ActionBtn icon={<Clock size={13} />} onClick={() => onStatus(appt.id, "in_progress")}>
               Iniciar
+            </ActionBtn>
+          )}
+          {appt.status !== "completed" && appt.status !== "cancelled" && (
+            <ActionBtn
+              icon={<CheckCheck size={13} />}
+              onClick={() => onStatus(appt.id, "completed")}
+            >
+              Concluir
             </ActionBtn>
           )}
           {!past && (
@@ -1629,7 +1622,7 @@ function ActionBtn({
         gap: 5,
         height: 32,
         padding: "0 10px",
-        borderRadius: 6,
+        borderRadius: "var(--radius-control)",
         fontSize: 12,
         fontWeight: 500,
         border: "1px solid var(--border-strong)",
@@ -1660,7 +1653,7 @@ function ActionLink({
         gap: 5,
         height: 32,
         padding: "0 10px",
-        borderRadius: 6,
+        borderRadius: "var(--radius-control)",
         fontSize: 12,
         fontWeight: 500,
         border: "1px solid var(--border-strong)",

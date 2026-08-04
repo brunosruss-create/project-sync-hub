@@ -1,9 +1,10 @@
 import * as React from "react";
 import {
   Edit3, Tag, UserPlus, AlertOctagon, Move, CalendarPlus,
-  MessageSquare, Archive, ShieldOff, ChevronRight,
+  MessageSquare, Archive, ShieldOff, ChevronRight, CheckCheck,
 } from "lucide-react";
 import type { ContactCard as Contact, KanbanColumnDef, KanbanColumnId } from "./data";
+import { SYSTEM_COLUMN_ICON } from "./kanban-column";
 
 type ActionId =
   | "edit"
@@ -12,7 +13,8 @@ type ActionId =
   | "toggle-urgent"
   | "open-chat"
   | "schedule"
-  | "archive";
+  | "archive"
+  | "resolve";
 
 export type CardMenuAction =
   | { type: ActionId; contact: Contact }
@@ -62,7 +64,7 @@ export function CardMenu({ contact, columns, anchor, onClose, onAction }: Props)
         width: 200,
         background: "var(--bg-surface)",
         border: "1px solid var(--border-strong)",
-        borderRadius: 8,
+        borderRadius: "var(--radius-card)",
         boxShadow: "0 12px 28px rgba(0,0,0,0.32)",
         padding: 4,
         zIndex: 70,
@@ -94,6 +96,14 @@ export function CardMenu({ contact, columns, anchor, onClose, onAction }: Props)
         {isUrgent ? "Remover urgência" : "Marcar como urgente"}
       </Item>
 
+      <Item
+        icon={<CheckCheck size={14} style={{ color: "#64748B" }} />}
+        onClick={() => { onAction({ type: "resolve", contact }); onClose(); }}
+        disabled={contact.kanban_column === "resolved"}
+      >
+        Resolver conversa
+      </Item>
+
       {/* Move com submenu */}
       <div
         onMouseEnter={() => setShowMove(true)}
@@ -115,16 +125,18 @@ export function CardMenu({ contact, columns, anchor, onClose, onAction }: Props)
               width: 180,
               background: "var(--bg-surface)",
               border: "1px solid var(--border-strong)",
-              borderRadius: 8,
+              borderRadius: "var(--radius-card)",
               boxShadow: "0 12px 28px rgba(0,0,0,0.32)",
               padding: 4,
               zIndex: 71,
             }}
           >
-            {columns.map((c) => (
+            {columns.map((c) => {
+              const SystemIcon = c.is_system ? SYSTEM_COLUMN_ICON[c.slug] : undefined;
+              return (
               <Item
                 key={c.id}
-                icon={<span aria-hidden>{c.emoji}</span>}
+                icon={SystemIcon ? <SystemIcon size={13} aria-hidden /> : <span aria-hidden>{c.emoji}</span>}
                 disabled={c.slug === contact.kanban_column}
                 onClick={() => {
                   if (c.slug === contact.kanban_column) return;
@@ -134,7 +146,8 @@ export function CardMenu({ contact, columns, anchor, onClose, onAction }: Props)
               >
                 {c.label}
               </Item>
-            ))}
+              );
+            })}
           </div>
         )}
       </div>
@@ -199,7 +212,7 @@ function Item({
       style={{
         display: "flex", alignItems: "center", gap: 8,
         width: "100%", padding: "7px 8px",
-        background: "transparent", border: 0, borderRadius: 6,
+        background: "transparent", border: 0, borderRadius: "var(--radius-control)",
         color: disabled ? "var(--text-muted)" : danger ? "#EF4444" : "var(--text-primary)",
         fontSize: 12, textAlign: "left",
         cursor: disabled ? "not-allowed" : "pointer",
@@ -220,5 +233,3 @@ function Item({
   );
 }
 
-// Re-export para evitar import não-usado
-export const _unused = ShieldOff;

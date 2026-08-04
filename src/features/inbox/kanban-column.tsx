@@ -1,17 +1,20 @@
 import * as React from "react";
 import { useDroppable } from "@dnd-kit/core";
-import { MoreVertical, Clock, MessageCircle, CalendarCheck, AlertTriangle, Inbox, type LucideIcon } from "lucide-react";
+import { MoreVertical, Clock, MessageCircle, CalendarCheck, AlertTriangle, CheckCircle2, Inbox, type LucideIcon } from "lucide-react";
 import { ContactCard } from "./contact-card";
+import { EmptyState as SharedEmptyState } from "@/components/empty-state";
 import type { ContactCard as Contact, KanbanColumnDef } from "./data";
 
-// Ícone de linha só pras 4 colunas de sistema — colunas customizadas pelo
+// Ícone fixo só pras 5 colunas de sistema — colunas customizadas pelo
 // usuário continuam usando o emoji livre que ele escolheu (EMPTY_STATES não
-// cobre slug custom mesmo, cai no fallback Inbox abaixo).
+// cobre slug custom mesmo, cai no fallback Inbox abaixo). Reusado também no
+// modal de novo contato e no menu "mover para coluna" do card.
 export const SYSTEM_COLUMN_ICON: Record<string, LucideIcon> = {
   waiting: Clock,
   in_progress: MessageCircle,
   scheduled: CalendarCheck,
   urgent: AlertTriangle,
+  resolved: CheckCircle2,
 };
 
 const EMPTY_STATES: Record<string, { title: string; subtitle: string }> = {
@@ -40,25 +43,12 @@ function ColumnEmptyState({ slug }: { slug: string }) {
   };
   const Icon = SYSTEM_COLUMN_ICON[slug] ?? Inbox;
   return (
-    <div
-      style={{
-        display: "flex",
-        flexDirection: "column",
-        alignItems: "center",
-        justifyContent: "center",
-        padding: "40px 20px",
-        textAlign: "center",
-        gap: 4,
-        opacity: 0.5,
-      }}
-    >
-      <Icon size={26} style={{ color: "var(--text-muted)" }} />
-      <p style={{ fontSize: 13, fontWeight: 500, marginTop: 4, color: "var(--text-primary)" }}>
-        {state.title}
-      </p>
-      <p style={{ fontSize: 12, fontWeight: 400, color: "var(--text-muted)" }}>
-        {state.subtitle}
-      </p>
+    <div style={{ padding: "20px 16px" }}>
+      <SharedEmptyState
+        icon={<Icon size={32} style={{ color: "var(--text-muted)" }} />}
+        title={state.title}
+        description={state.subtitle}
+      />
     </div>
   );
 }
@@ -106,7 +96,7 @@ export function KanbanColumn({ column, contacts, onCardClick }: Props) {
       style={{
         width: 280,
         background: "var(--bg-overlay)",
-        borderRadius: 12,
+        borderRadius: "var(--radius-modal)",
         padding: 12,
         borderTop: `3px solid ${color}`,
         outline: isOver ? "2px dashed var(--brand-400)" : "none",
@@ -145,7 +135,7 @@ export function KanbanColumn({ column, contacts, onCardClick }: Props) {
               fontSize: 11,
               fontWeight: 600,
               padding: "2px 8px",
-              borderRadius: 999,
+              borderRadius: "var(--radius-pill)",
               background: "var(--bg-surface)",
               color: "var(--text-muted)",
               border: "1px solid var(--border)",
@@ -176,7 +166,7 @@ export function KanbanColumn({ column, contacts, onCardClick }: Props) {
               display: "inline-flex", alignItems: "center", justifyContent: "center",
               background: "transparent",
               border: "1px solid transparent",
-              borderRadius: 6,
+              borderRadius: "var(--radius-control)",
               color: "var(--text-muted)",
               opacity: 0,
               transition: "opacity 100ms, background 100ms",

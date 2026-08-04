@@ -29,7 +29,7 @@ export function SmallToggle({ value, onChange }: { value: boolean; onChange: (v:
       style={{
         width: 36,
         height: 20,
-        borderRadius: 999,
+        borderRadius: "var(--radius-pill)",
         border: 0,
         background: value ? "var(--brand-400)" : "var(--border)",
         position: "relative",
@@ -44,7 +44,7 @@ export function SmallToggle({ value, onChange }: { value: boolean; onChange: (v:
           left: value ? 18 : 2,
           width: 16,
           height: 16,
-          borderRadius: 999,
+          borderRadius: "var(--radius-pill)",
           background: "#fff",
           transition: "left 0.15s",
         }}
@@ -64,8 +64,8 @@ export function YesNoToggle({
 }) {
   const pill = (active: boolean, selected: boolean) => ({
     height: 28,
-    padding: "0 12px",
-    borderRadius: 6,
+    padding: "0 14px",
+    borderRadius: "var(--radius-pill)",
     fontSize: 12,
     fontWeight: 500,
     border: "1px solid",

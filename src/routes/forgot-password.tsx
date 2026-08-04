@@ -51,7 +51,7 @@ function ForgotPasswordPage() {
         style={{
           maxWidth: 400,
           padding: 28,
-          borderRadius: 12,
+          borderRadius: "var(--radius-modal)",
           background: "var(--bg-surface)",
           border: "1px solid var(--border)",
         }}
@@ -62,7 +62,7 @@ function ForgotPasswordPage() {
             style={{
               width: 22,
               height: 22,
-              borderRadius: 6,
+              borderRadius: "var(--radius-pill)",
               background: "var(--brand-400)",
               color: "#fff",
               fontSize: 12,
@@ -81,7 +81,7 @@ function ForgotPasswordPage() {
               style={{
                 width: 40,
                 height: 40,
-                borderRadius: 999,
+                borderRadius: "var(--radius-pill)",
                 background: "color-mix(in oklab, var(--brand-400) 15%, transparent)",
                 color: "var(--brand-400)",
                 marginBottom: 16,

@@ -10,6 +10,7 @@ import {
   EMOJI_SUGGESTIONS,
   slugify,
 } from "./data";
+import { SYSTEM_COLUMN_ICON } from "./kanban-column";
 
 interface Props {
   open: boolean;
@@ -91,7 +92,7 @@ export function ColumnEditModal({
         is_system: !!(data?.is_system ?? column.is_system),
       };
       onSaved(next);
-      notify.success("Coluna atualizada ✓");
+      notify.success("Coluna atualizada");
       setSaving(false);
       onClose();
       return;
@@ -144,6 +145,10 @@ export function ColumnEditModal({
 
   if (!open) return null;
   const isEdit = !!column;
+  // Coluna de sistema tem ícone fixo (SYSTEM_COLUMN_ICON) — o emoji salvo no
+  // banco é ignorado na renderização, então não faz sentido oferecer o seletor.
+  // Colunas criadas pelo usuário seguem com emoji livre: é personalização dele.
+  const SystemIcon = column?.is_system ? SYSTEM_COLUMN_ICON[column.slug] : undefined;
 
   return (
     <>
@@ -168,7 +173,7 @@ export function ColumnEditModal({
             width: 420, maxWidth: "100%",
             background: "var(--bg-surface)",
             border: "1px solid var(--border-strong)",
-            borderRadius: 12,
+            borderRadius: "var(--radius-modal)",
             boxShadow: "0 24px 48px rgba(0,0,0,.4)",
             display: "flex", flexDirection: "column",
             maxHeight: "calc(100vh - 32px)",
@@ -179,11 +184,11 @@ export function ColumnEditModal({
           <div style={{ display: "flex", alignItems: "center", justifyContent: "space-between", padding: "14px 16px 12px", borderBottom: "1px solid var(--border)" }}>
             <div style={{ display: "flex", gap: 10, alignItems: "center" }}>
               <div style={{
-                width: 28, height: 28, borderRadius: 6,
+                width: 28, height: 28, borderRadius: "var(--radius-pill)",
                 display: "inline-flex", alignItems: "center", justifyContent: "center",
                 background: `${color}22`, border: `1px solid ${color}`,
                 color, fontSize: 16,
-              }}>{emoji}</div>
+              }}>{SystemIcon ? <SystemIcon size={15} aria-hidden /> : emoji}</div>
               <div>
                 <div style={{ fontSize: 14, fontWeight: 600, color: "var(--text-primary)" }}>
                   {isEdit ? "Editar coluna" : "Nova coluna"}
@@ -195,7 +200,7 @@ export function ColumnEditModal({
                 </div>
               </div>
             </div>
-            <button onClick={onClose} aria-label="Fechar" style={{ background: "transparent", border: 0, color: "var(--text-muted)", cursor: "pointer", padding: 4, borderRadius: 6 }}>
+            <button onClick={onClose} aria-label="Fechar" style={{ background: "transparent", border: 0, color: "var(--text-muted)", cursor: "pointer", padding: 4, borderRadius: "var(--radius-control)" }}>
               <X size={16} />
             </button>
           </div>
@@ -214,6 +219,15 @@ export function ColumnEditModal({
               />
             </div>
 
+            {SystemIcon ? (
+              <div>
+                <label style={lbl}>Ícone</label>
+                <div style={{ display: "flex", alignItems: "center", gap: 8, fontSize: 12, color: "var(--text-muted)" }}>
+                  <SystemIcon size={16} style={{ color }} aria-hidden />
+                  <span>Ícone fixo das colunas padrão.</span>
+                </div>
+              </div>
+            ) : (
             <div>
               <label style={lbl}>Ícone</label>
               <div style={{ display: "flex", flexWrap: "wrap", gap: 6 }}>
@@ -223,7 +237,7 @@ export function ColumnEditModal({
                     type="button"
                     onClick={() => setEmoji(e)}
                     style={{
-                      width: 34, height: 34, borderRadius: 6,
+                      width: 34, height: 34, borderRadius: "var(--radius-pill)",
                       background: emoji === e ? "var(--bg-overlay)" : "var(--bg-base)",
                       border: emoji === e ? "1px solid var(--brand-400, #3654FF)" : "1px solid var(--border)",
                       cursor: "pointer", fontSize: 18,
@@ -237,12 +251,13 @@ export function ColumnEditModal({
                     width: 56, height: 34, padding: "0 8px",
                     fontSize: 16, textAlign: "center",
                     color: "var(--text-primary)", background: "var(--bg-base)",
-                    border: "1px solid var(--border-strong)", borderRadius: 6, outline: "none",
+                    border: "1px solid var(--border-strong)", borderRadius: "var(--radius-control)", outline: "none",
                   }}
                   aria-label="Outro emoji"
                 />
               </div>
             </div>
+            )}
 
             <div>
               <label style={lbl}>Cor</label>
@@ -269,7 +284,7 @@ export function ColumnEditModal({
                     width: 100, height: 30, padding: "0 8px",
                     fontSize: 12, fontFamily: "ui-monospace, monospace",
                     color: "var(--text-primary)", background: "var(--bg-base)",
-                    border: "1px solid var(--border-strong)", borderRadius: 6, outline: "none",
+                    border: "1px solid var(--border-strong)", borderRadius: "var(--radius-control)", outline: "none",
                   }}
                   aria-label="Cor (hex)"
                 />
@@ -280,11 +295,11 @@ export function ColumnEditModal({
             <div>
               <label style={lbl}>Pré-visualização</label>
               <div style={{
-                background: "var(--bg-overlay)", borderRadius: 12, padding: 12,
+                background: "var(--bg-overlay)", borderRadius: "var(--radius-modal)", padding: 12,
                 borderTop: `3px solid ${color}`,
               }}>
                 <div style={{ display: "flex", alignItems: "center", gap: 6, fontSize: 12, fontWeight: 600, textTransform: "uppercase", letterSpacing: ".06em", color: "var(--text-primary)" }}>
-                  <span>{emoji}</span>
+                  {SystemIcon ? <SystemIcon size={13} style={{ color }} aria-hidden /> : <span>{emoji}</span>}
                   {label || "Nova coluna"}
                 </div>
               </div>
@@ -297,7 +312,7 @@ export function ColumnEditModal({
               type="button"
               onClick={onClose}
               disabled={saving}
-              style={{ height: 34, padding: "0 14px", borderRadius: 8, fontSize: 13, fontWeight: 500, background: "transparent", color: "var(--text-primary)", border: "1px solid var(--border-strong)", cursor: "pointer" }}
+              style={{ height: 34, padding: "0 14px", borderRadius: "var(--radius-card)", fontSize: 13, fontWeight: 500, background: "transparent", color: "var(--text-primary)", border: "1px solid var(--border-strong)", cursor: "pointer" }}
             >
               Cancelar
             </button>
@@ -307,7 +322,7 @@ export function ColumnEditModal({
               disabled={saving || !label.trim()}
               style={{
                 display: "inline-flex", alignItems: "center", gap: 6,
-                height: 34, padding: "0 14px", borderRadius: 8, fontSize: 13, fontWeight: 600,
+                height: 34, padding: "0 14px", borderRadius: "var(--radius-card)", fontSize: 13, fontWeight: 600,
                 background: !saving && label.trim() ? "#3654FF" : "color-mix(in oklab, #3654FF 40%, var(--bg-overlay))",
                 color: "#0a1a10", border: 0,
                 cursor: !saving && label.trim() ? "pointer" : "not-allowed",
@@ -333,5 +348,5 @@ const lbl: React.CSSProperties = {
 const input: React.CSSProperties = {
   width: "100%", height: 38, padding: "0 12px", fontSize: 14,
   color: "var(--text-primary)", background: "var(--bg-base)",
-  border: "1px solid var(--border-strong)", borderRadius: 8, outline: "none",
+  border: "1px solid var(--border-strong)", borderRadius: "var(--radius-card)", outline: "none",
 };

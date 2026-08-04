@@ -7,7 +7,10 @@ import { MobileSidebarTrigger } from "@/components/mobile-sidebar";
 
 const TITLES: Record<string, string> = {
   dashboard: "Dashboard",
-  inbox: "Conversas",
+  inbox: "Kanban",
+  "conversations-chat": "Conversas",
+  contacts: "Clientes",
+  reports: "Relatórios",
   schedule: "Agenda",
   services: "Serviços",
   "ai-agent": "Agente IA",
@@ -16,11 +19,16 @@ const TITLES: Record<string, string> = {
   profile: "Perfil",
   workspace: "Workspace",
   team: "Equipe",
+  departments: "Departamentos",
   whatsapp: "WhatsApp",
   billing: "Cobrança",
   health: "Saúde",
   users: "Usuários",
   workspaces: "Workspaces",
+  messages: "Mensagens",
+  "quick-replies": "Respostas rápidas",
+  professionals: "Profissionais",
+  ia: "IA",
 };
 
 export function AppTopbar() {
@@ -30,6 +38,13 @@ export function AppTopbar() {
   const path = useRouterState({ select: (s) => s.location.pathname });
 
   const segments = path.split("/").filter(Boolean);
+  /**
+   * A tela de Conversas monta o próprio cabeçalho: o título fica sobre a lista
+   * e as ações (buscar/tema/sair) na linha do contato, como no WhatsApp Web.
+   * Manter esta barra ali criaria uma fileira quase vazia por cima de tudo.
+   * Só o desktop — no mobile ela ainda carrega o botão do menu.
+   */
+  const ownHeader = segments.length === 1 && segments[0] === "conversations-chat";
 
   // Per-page <title>
   React.useEffect(() => {
@@ -40,6 +55,24 @@ export function AppTopbar() {
 
   const openPalette = () =>
     window.dispatchEvent(new KeyboardEvent("keydown", { key: "k", metaKey: true }));
+
+  if (ownHeader) {
+    // No mobile o gatilho do menu ainda precisa de um lugar; no desktop a
+    // barra desaparece por completo.
+    return (
+      <header
+        className="md:hidden flex items-center"
+        style={{
+          height: 48,
+          padding: "0 12px",
+          background: "var(--bg-surface)",
+          borderBottom: "1px solid var(--border)",
+        }}
+      >
+        <MobileSidebarTrigger />
+      </header>
+    );
+  }
 
   return (
     <header
@@ -63,10 +96,9 @@ export function AppTopbar() {
             <span
               style={{
                 color: i === segments.length - 1 ? "var(--text-primary)" : "var(--text-muted)",
-                textTransform: "capitalize",
               }}
             >
-              {s}
+              {TITLES[s] ?? s.charAt(0).toUpperCase() + s.slice(1)}
             </span>
           </React.Fragment>
         ))}
@@ -83,7 +115,7 @@ export function AppTopbar() {
             height: 32,
             padding: "0 10px",
             gap: 8,
-            borderRadius: 6,
+            borderRadius: "var(--radius-control)",
             border: "1px solid var(--border)",
             color: "var(--text-muted)",
             background: "transparent",
@@ -101,7 +133,7 @@ export function AppTopbar() {
           onClick={openPalette}
           aria-label="Buscar"
           className="sm:hidden inline-flex items-center justify-center"
-          style={{ width: 32, height: 32, borderRadius: 6, color: "var(--text-muted)", background: "transparent" }}
+          style={{ width: 32, height: 32, borderRadius: "var(--radius-pill)", color: "var(--text-muted)", background: "transparent" }}
         >
           <Search size={16} />
         </button>
@@ -113,7 +145,7 @@ export function AppTopbar() {
           style={{
             width: 32,
             height: 32,
-            borderRadius: 6,
+            borderRadius: "var(--radius-pill)",
             color: "var(--text-muted)",
             background: "transparent",
           }}
@@ -133,7 +165,7 @@ export function AppTopbar() {
           style={{
             width: 32,
             height: 32,
-            borderRadius: 6,
+            borderRadius: "var(--radius-pill)",
             color: "var(--text-muted)",
             background: "transparent",
           }}

@@ -10,6 +10,8 @@ export type MessageActionContext = {
   mediaUrl?: string | null;
   mediaName?: string | null;
   messageType: string;
+  /** Nota interna: menu reduzido, sem nada que possa mandar o texto ao cliente. */
+  isInternal?: boolean;
 };
 
 type Props = {
@@ -101,7 +103,7 @@ export function MessageActions({
             minWidth: 200,
             background: "var(--bg-surface)",
             border: "1px solid var(--border)",
-            borderRadius: 8,
+            borderRadius: "var(--radius-card)",
             padding: 4,
             boxShadow: "0 8px 24px rgba(0,0,0,0.25)",
             zIndex: 50,
@@ -109,7 +111,8 @@ export function MessageActions({
             color: "var(--text-primary)",
           }}
         >
-          {/* Quick reactions row */}
+          {/* Reações são do WhatsApp — nota interna nunca esteve lá. */}
+          {!message.isInternal && (
           <div
             style={{
               display: "flex",
@@ -131,7 +134,7 @@ export function MessageActions({
                   justifyContent: "center",
                   width: 28,
                   height: 28,
-                  borderRadius: 999,
+                  borderRadius: "var(--radius-pill)",
                   cursor: "pointer",
                   outline: "none",
                   fontSize: 18,
@@ -150,19 +153,27 @@ export function MessageActions({
               </DropdownMenu.Item>
             ))}
           </div>
-          <Item icon={<Reply size={15} />} label="Responder" onSelect={() => onReply?.(message)} />
-          <Item icon={<Forward size={15} />} label="Encaminhar" onSelect={() => onForward?.(message)} />
+          )}
+          {/* Responder e Encaminhar mandam texto ao WhatsApp — fora para nota. */}
+          {!message.isInternal && (
+            <>
+              <Item icon={<Reply size={15} />} label="Responder" onSelect={() => onReply?.(message)} />
+              <Item icon={<Forward size={15} />} label="Encaminhar" onSelect={() => onForward?.(message)} />
+            </>
+          )}
           {hasText && <Item icon={<Copy size={15} />} label="Copiar" onSelect={handleCopy} />}
-          {hasMedia && <Item icon={<Download size={15} />} label="Baixar" onSelect={handleDownload} />}
-          {isMe && hasText && (
+          {hasMedia && !message.isInternal && (
+            <Item icon={<Download size={15} />} label="Baixar" onSelect={handleDownload} />
+          )}
+          {isMe && hasText && !message.isInternal && (
             <Item icon={<Pencil size={15} />} label="Editar" onSelect={() => onEdit?.(message)} />
           )}
-          {isMe && (
+          {(isMe || message.isInternal) && (
             <>
               <DropdownMenu.Separator style={{ height: 1, background: "var(--border)", margin: "4px 0" }} />
               <Item
                 icon={<Trash2 size={15} />}
-                label="Apagar para todos"
+                label={message.isInternal ? "Apagar nota" : "Apagar para todos"}
                 danger
                 onSelect={() => onDelete?.(message)}
               />
@@ -193,7 +204,7 @@ function Item({
         alignItems: "center",
         gap: 10,
         padding: "8px 10px",
-        borderRadius: 6,
+        borderRadius: "var(--radius-control)",
         cursor: "pointer",
         outline: "none",
         color: danger ? "var(--danger, #ef4444)" : "var(--text-primary)",

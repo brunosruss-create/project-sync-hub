@@ -1,9 +1,11 @@
-import { Check, CheckCheck, FileText, Bot } from "lucide-react";
+import { Check, CheckCheck, FileText, Bot, Ban, StickyNote } from "lucide-react";
 import { AudioPlayerWithMe } from "./AudioPlayer";
 
 export interface ChatMessage {
   id: string;
-  direction: "inbound" | "outbound";
+  // "system" já circulava (avisos de transferência/agendamento); o tipo é que
+  // não refletia isso.
+  direction: "inbound" | "outbound" | "system";
   content: string;
   message_type: "text" | "image" | "audio" | "video" | "document" | "system";
   status: "sent" | "delivered" | "read";
@@ -15,6 +17,8 @@ export interface ChatMessage {
   deleted_at?: string | null;
   contactName?: string;
   contactAvatar?: string | null;
+  /** Nota interna da equipe — nunca foi ao WhatsApp. */
+  is_internal?: boolean;
 }
 
 function formatTime(d: Date): string {
@@ -32,6 +36,54 @@ function StatusTicks({ status }: { status: ChatMessage["status"] }) {
 }
 
 export function MessageBubble({ m }: { m: ChatMessage }) {
+  // Nota interna ANTES de "system": a nota também grava message_type "system"
+  // (para falhar seguro), então invertendo a ordem ela viraria um chip de aviso
+  // genérico. Largura cheia, sem lado — não é fala de ninguém na conversa.
+  if (m.is_internal) {
+    return (
+      <div
+        style={{
+          alignSelf: "stretch",
+          width: "100%",
+          background: "color-mix(in oklab, #F59E0B 10%, var(--bg-surface))",
+          border: "1px solid color-mix(in oklab, #F59E0B 45%, transparent)",
+          borderLeft: "3px solid #F59E0B",
+          borderRadius: "var(--radius-card)",
+          padding: "8px 11px",
+          margin: "2px 0",
+        }}
+      >
+        <div
+          style={{
+            display: "flex",
+            alignItems: "center",
+            gap: 5,
+            fontSize: 11,
+            fontWeight: 600,
+            color: "#B45309",
+            marginBottom: 3,
+          }}
+        >
+          <StickyNote size={11} aria-hidden />
+          Nota interna
+          <span style={{ fontWeight: 400, color: "var(--text-muted)" }}>
+            · {formatTime(m.created_at)}
+          </span>
+        </div>
+        <div
+          style={{
+            fontSize: 13.5,
+            color: "var(--text-primary)",
+            whiteSpace: "pre-wrap",
+            wordBreak: "break-word",
+          }}
+        >
+          {m.content}
+        </div>
+      </div>
+    );
+  }
+
   // system
   if (m.message_type === "system") {
     return (
@@ -42,7 +94,7 @@ export function MessageBubble({ m }: { m: ChatMessage }) {
           color: "var(--text-muted)",
           padding: "4px 12px",
           background: "var(--bg-overlay)",
-          borderRadius: 999,
+          borderRadius: "var(--radius-pill)",
           margin: "4px 0",
         }}
       >
@@ -95,7 +147,7 @@ export function MessageBubble({ m }: { m: ChatMessage }) {
               background: "color-mix(in oklab, var(--brand-400) 20%, transparent)",
               color: "var(--brand-400)",
               padding: "1px 6px",
-              borderRadius: 999,
+              borderRadius: "var(--radius-pill)",
               marginBottom: 4,
               textTransform: "uppercase",
               letterSpacing: "0.04em",
@@ -106,7 +158,12 @@ export function MessageBubble({ m }: { m: ChatMessage }) {
         )}
 
         {deleted ? (
-          <em style={{ opacity: 0.7, fontSize: 12 }}>🚫 Mensagem apagada</em>
+          <em
+            style={{ opacity: 0.7, fontSize: 12, display: "inline-flex", alignItems: "center", gap: 4 }}
+          >
+            <Ban size={12} aria-hidden />
+            Mensagem apagada
+          </em>
         ) : m.message_type === "image" && m.media_url ? (
           <div>
             <img
@@ -115,7 +172,7 @@ export function MessageBubble({ m }: { m: ChatMessage }) {
               style={{
                 maxWidth: "100%",
                 maxHeight: 280,
-                borderRadius: 8,
+                borderRadius: "var(--radius-card)",
                 display: "block",
                 marginBottom: m.content ? 6 : 0,
               }}

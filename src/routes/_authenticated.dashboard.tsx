@@ -19,11 +19,13 @@ import {
   AlertCircle,
   ArrowUpRight,
   ArrowDownRight,
+  BarChart3,
 } from "lucide-react";
 import { useAuth } from "@/hooks/use-auth";
 import { useProfile } from "@/hooks/use-profile";
 import { getDashboardData, type DashboardData, type DashPeriod } from "@/features/dashboard/data";
 import { ManagerOnly } from "@/components/manager-only";
+import { Card } from "@/components/ui/card";
 
 export const Route = createFileRoute("/_authenticated/dashboard")({
   component: () => (
@@ -86,7 +88,7 @@ function Dashboard() {
       </div>
 
       {/* LINHA 1 — KPIs */}
-      <div className="grid gap-3" style={{ gridTemplateColumns: "repeat(auto-fit, minmax(200px, 1fr))" }}>
+      <div className="grid gap-3" style={{ gridTemplateColumns: "repeat(auto-fit, minmax(min(200px, 100%), 1fr))" }}>
         {kpis.map((k) =>
           loading ? (
             <Skeleton key={k.label} h={104} />
@@ -119,7 +121,7 @@ function Dashboard() {
                     contentStyle={{
                       background: "var(--bg-surface)",
                       border: "1px solid var(--border)",
-                      borderRadius: 8,
+                      borderRadius: "var(--radius-card)",
                       fontSize: 12,
                     }}
                   />
@@ -198,7 +200,7 @@ function Dashboard() {
                     <span
                       style={{
                         padding: "2px 8px",
-                        borderRadius: 999,
+                        borderRadius: "var(--radius-pill)",
                         background: "var(--bg-overlay)",
                         fontSize: 12,
                         fontWeight: 600,
@@ -225,7 +227,7 @@ function Dashboard() {
                         style={{
                           width: 32,
                           height: 32,
-                          borderRadius: 999,
+                          borderRadius: "var(--radius-pill)",
                           background: "var(--bg-overlay)",
                           display: "flex",
                           alignItems: "center",
@@ -243,7 +245,7 @@ function Dashboard() {
                           bottom: -1,
                           width: 10,
                           height: 10,
-                          borderRadius: 999,
+                          borderRadius: "var(--radius-pill)",
                           background: a.online ? "#10B981" : "#9CA3AF",
                           border: "2px solid var(--bg-surface)",
                         }}
@@ -282,7 +284,7 @@ function Dashboard() {
                   className="flex items-center gap-3"
                   style={{
                     padding: "10px 12px",
-                    borderRadius: 8,
+                    borderRadius: "var(--radius-card)",
                     border: "1px solid color-mix(in oklab, #EF4444 35%, var(--border))",
                     background: "color-mix(in oklab, #EF4444 6%, var(--bg-surface))",
                     textDecoration: "none",
@@ -328,7 +330,7 @@ function PeriodFilter({ value, onChange }: { value: Period; onChange: (v: Period
       className="flex"
       style={{
         padding: 3,
-        borderRadius: 8,
+        borderRadius: "var(--radius-pill)",
         border: "1px solid var(--border)",
         background: "var(--bg-surface)",
       }}
@@ -340,8 +342,8 @@ function PeriodFilter({ value, onChange }: { value: Period; onChange: (v: Period
             key={i.v}
             onClick={() => onChange(i.v)}
             style={{
-              padding: "5px 10px",
-              borderRadius: 6,
+              padding: "5px 12px",
+              borderRadius: "var(--radius-pill)",
               border: 0,
               fontSize: 12,
               fontWeight: 500,
@@ -374,7 +376,7 @@ function KPI({
     <div
       style={{
         padding: 16,
-        borderRadius: 10,
+        borderRadius: "var(--radius-card)",
         background: "var(--bg-surface)",
         border: "1px solid var(--border)",
       }}
@@ -393,7 +395,7 @@ function KPI({
           fontSize: 11,
           fontWeight: 600,
           padding: "2px 6px",
-          borderRadius: 999,
+          borderRadius: "var(--radius-pill)",
           color: positive ? "#10B981" : "#EF4444",
           background: positive
             ? "color-mix(in oklab, #10B981 15%, transparent)"
@@ -424,7 +426,7 @@ function KanbanDistribution({ data }: { data: { name: string; value: number; col
           color: "var(--text-muted)",
         }}
       >
-        <span style={{ fontSize: 28 }}>📊</span>
+        <BarChart3 size={28} />
         <span style={{ fontSize: 13 }}>Nenhum dado ainda</span>
       </div>
     );
@@ -488,7 +490,7 @@ function KanbanDistribution({ data }: { data: { name: string; value: number; col
                   style={{
                     background: "var(--bg-surface)",
                     border: "1px solid var(--border)",
-                    borderRadius: 8,
+                    borderRadius: "var(--radius-card)",
                     padding: "8px 12px",
                     fontSize: 12,
                     color: "var(--text-primary)",
@@ -563,20 +565,18 @@ function ChartCard({
   danger?: boolean;
 }) {
   return (
-    <div
+    <Card
       style={{
         padding: 16,
-        borderRadius: 10,
-        background: "var(--bg-surface)",
-        border: danger
-          ? "1px solid color-mix(in oklab, #EF4444 30%, var(--border))"
-          : "1px solid var(--border)",
         height: "100%",
+        borderColor: danger
+          ? "color-mix(in oklab, #EF4444 30%, var(--border))"
+          : undefined,
       }}
     >
       <h3 style={{ fontSize: 13, fontWeight: 600, marginBottom: 14 }}>{title}</h3>
       {children}
-    </div>
+    </Card>
   );
 }
 
@@ -585,7 +585,7 @@ function Skeleton({ h }: { h: number }) {
     <div
       style={{
         height: h,
-        borderRadius: 10,
+        borderRadius: "var(--radius-card)",
         background:
           "linear-gradient(90deg, var(--bg-surface) 0%, var(--bg-overlay) 50%, var(--bg-surface) 100%)",
         backgroundSize: "200% 100%",

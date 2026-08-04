@@ -137,7 +137,7 @@ export function AudioPlayer({
             bottom: -2,
             width: 18,
             height: 18,
-            borderRadius: 999,
+            borderRadius: "var(--radius-pill)",
             background: "var(--brand-400)",
             color: "#fff",
             display: "inline-flex",
@@ -155,7 +155,7 @@ export function AudioPlayer({
         onClick={toggle}
         aria-label={playing ? "Pausar" : "Reproduzir"}
         style={{
-          width: 32, height: 32, borderRadius: 999,
+          width: 32, height: 32, borderRadius: "var(--radius-pill)",
           background: "transparent",
           color: "var(--text-primary)",
           display: "inline-flex", alignItems: "center", justifyContent: "center",
@@ -212,7 +212,7 @@ export function AudioPlayer({
               transform: "translateY(-50%)",
               width: 12,
               height: 12,
-              borderRadius: 999,
+              borderRadius: "var(--radius-pill)",
               background: accent,
               boxShadow: "0 0 0 2px var(--bg-surface)",
             }}

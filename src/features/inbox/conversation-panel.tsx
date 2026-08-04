@@ -9,15 +9,20 @@ import {
   Ban,
   ExternalLink,
   Check,
-  Plus,
   CalendarPlus,
   FileText,
   Download,
   ChevronDown,
   Trash2,
   Bot,
+  MessageCircle,
+  User,
+  ClipboardList,
+  StickyNote,
+  type LucideIcon,
 } from "lucide-react";
-import { Composer } from "@/components/chat/Composer";
+import { Composer, type ComposerMode } from "@/components/chat/Composer";
+import { ContactForm } from "@/components/contact/ContactForm";
 import { type ContactCard as Contact, formatRelative, formatPhone, initials } from "./data";
 import { mediaTypeIcon, mediaKindLabel, type MediaKind } from "@/lib/media-type-icon";
 import { ContactAvatar } from "./contact-avatar";
@@ -42,21 +47,28 @@ import {
   type ServiceStatus,
 } from "@/features/services/data";
 import { useContactActions } from "@/hooks/use-contact-actions";
+import { useQuery } from "@tanstack/react-query";
+import { listQuickReplies } from "@/lib/quick-replies.functions";
+import { getWorkspaceProfile } from "@/lib/onboarding.functions";
 
 
 type Tab = "conversation" | "contact" | "services" | "history";
 
-const TABS: Array<{ id: Tab; label: string; icon: string }> = [
-  { id: "conversation", label: "Conversa", icon: "💬" },
-  { id: "contact", label: "Contato", icon: "👤" },
-  { id: "services", label: "Serviços", icon: "🛠️" },
-  { id: "history", label: "Histórico", icon: "📋" },
+const TABS: Array<{ id: Tab; label: string; Icon: LucideIcon }> = [
+  { id: "conversation", label: "Conversa", Icon: MessageCircle },
+  { id: "contact", label: "Contato", Icon: User },
+  { id: "services", label: "Serviços", Icon: Tag },
+  { id: "history", label: "Histórico", Icon: ClipboardList },
 ];
 
 interface Message {
   id: string;
-  direction: "inbound" | "outbound";
+  // "system" já circulava antes de nota interna (avisos de transferência e de
+  // agendamento) — o tipo é que estava mentindo.
+  direction: "inbound" | "outbound" | "system";
   content: string;
+  /** Nota interna da equipe: nunca foi ao WhatsApp e nunca entra no contexto da IA. */
+  is_internal?: boolean;
   message_type: "text" | "image" | "audio" | "video" | "document" | "system";
   status: "sent" | "delivered" | "read";
   created_at: Date;
@@ -77,6 +89,75 @@ function sameDay(a: Date, b: Date) {
     a.getMonth() === b.getMonth() &&
     a.getDate() === b.getDate()
   );
+}
+
+/** Quantas mensagens por página. O chat abre com uma; o resto vem ao rolar. */
+const MESSAGE_PAGE_SIZE = 40;
+
+const MESSAGE_COLS_BASE =
+  "id,direction,content,message_type,status,created_at,media_url,media_mime,media_name,whatsapp_message_id,quoted_preview,reactions,deleted_at,edited_at,is_ai";
+
+function mapMessageRow(r: any): Message {
+  return {
+    id: r.id,
+    direction: r.direction,
+    content: r.content,
+    message_type: r.message_type ?? "text",
+    status: r.status ?? "sent",
+    created_at: new Date(r.created_at),
+    media_url: r.media_url ?? null,
+    media_mime: r.media_mime ?? null,
+    media_name: r.media_name ?? null,
+    whatsapp_message_id: r.whatsapp_message_id ?? null,
+    quoted_preview: r.quoted_preview ?? null,
+    reactions: r.reactions ?? [],
+    deleted_at: r.deleted_at ?? null,
+    edited_at: r.edited_at ?? null,
+    is_ai: !!r.is_ai,
+    is_internal: !!r.is_internal,
+  };
+}
+
+/**
+ * Uma página de mensagens, da mais nova para a mais antiga. `before` busca o
+ * lote anterior (rolagem para cima); null busca as últimas.
+ *
+ * Degradação ABERTA: se `is_internal` ainda não existe no banco (migration não
+ * aplicada), a query falharia com 42703 e o chat abriria vazio — blackout de
+ * conversa para o workspace inteiro. Repetimos sem a coluna e tratamos tudo
+ * como não-nota. (Nas leituras da IA a escolha é a oposta: lá falha FECHADA.)
+ */
+async function fetchMessagePage(
+  contactId: string,
+  before: Date | null,
+  onNotesAvailable: (v: boolean) => void,
+): Promise<Message[] | null> {
+  const build = (cols: string) => {
+    let q = supabase
+      .from("messages")
+      .select(cols)
+      .eq("contact_id", contactId)
+      .order("created_at", { ascending: false })
+      .limit(MESSAGE_PAGE_SIZE);
+    if (before) q = q.lt("created_at", before.toISOString());
+    return q;
+  };
+
+  let { data, error } = await build(`${MESSAGE_COLS_BASE},is_internal`);
+  if (error && /is_internal/i.test(error.message ?? "")) {
+    const retry = await build(MESSAGE_COLS_BASE);
+    data = retry.data as any;
+    error = retry.error;
+    onNotesAvailable(false);
+  } else if (!error) {
+    onNotesAvailable(true);
+  }
+
+  if (error) {
+    console.warn("[chat] erro ao carregar mensagens:", error.message);
+    return null;
+  }
+  return (data ?? []).map(mapMessageRow);
 }
 
 const MAX_CHARS = 4096;
@@ -122,10 +203,35 @@ export function ConversationPanel({
   contact,
   onClose,
   onContactUpdate,
+  /**
+   * Aba que abre ativa. A ordem visual das abas não muda — só qual delas vem
+   * selecionada. A tela de Clientes passa "contact" (lá a ficha é o objetivo,
+   * não a conversa); o Kanban usa o default.
+   */
+  initialTab = "conversation",
+  /**
+   * Como o painel se apresenta. "drawer" (padrão) é a gaveta sobreposta que o
+   * Kanban e a tela de Clientes usam. "inline" preenche o container do pai,
+   * para a tela de Conversas, que é lista à esquerda e conversa à direita.
+   *
+   * A alternativa seria um segundo componente de chat — foi o que existia
+   * antes, e cada feature nova nascia só num dos lados.
+   */
+  variant = "drawer",
+  /**
+   * Conteúdo extra no canto direito da linha de identidade. A tela de
+   * Conversas usa isto para as ações globais (buscar/tema/sair), que lá não
+   * têm topbar própria — assim elas dividem a linha do nome do contato em vez
+   * de ocupar uma fileira só delas.
+   */
+  headerExtra,
 }: {
   contact: Contact | null;
   onClose: () => void;
   onContactUpdate?: (contactId: string, patch: Partial<Contact>) => void;
+  initialTab?: Tab;
+  variant?: "drawer" | "inline";
+  headerExtra?: React.ReactNode;
 }) {
   const { user } = useAuth();
   const { workspaceOwnerId } = useWorkspaceOwnerId();
@@ -136,8 +242,53 @@ export function ConversationPanel({
   const reactFn = useServerFn(reactToMessage);
   const deleteFn = useServerFn(deleteMessageForEveryone);
   const editFn = useServerFn(editMessage);
-  const [tab, setTab] = React.useState<Tab>("conversation");
+  const [tab, setTab] = React.useState<Tab>(initialTab);
   const [draft, setDraft] = React.useState("");
+  const [composerMode, setComposerMode] = React.useState<ComposerMode>("reply");
+  // Buffer separado de propósito: se resposta e nota dividissem o mesmo draft,
+  // trocar de modo com texto digitado deixaria a anotação na caixa de envio.
+  const [noteDraft, setNoteDraft] = React.useState("");
+  /**
+   * A coluna `is_internal` existe neste banco? Detectado no load das mensagens.
+   * Enquanto a migration não roda, o toggle de nota nem aparece — melhor não
+   * oferecer do que oferecer e falhar no clique. Volta sozinho quando a
+   * migration for aplicada, sem precisar de novo deploy.
+   */
+  const [notesAvailable, setNotesAvailable] = React.useState(false);
+
+  // Respostas rápidas do workspace. Falha silenciosa de propósito: sem elas o
+  // botão some e o chat segue normal — não é motivo para quebrar a conversa.
+  const listQuickRepliesFn = useServerFn(listQuickReplies);
+  const quickRepliesQuery = useQuery({
+    queryKey: ["quick-replies"],
+    queryFn: () => listQuickRepliesFn(),
+    staleTime: 5 * 60_000,
+    retry: false,
+  });
+  const quickReplyOptions = React.useMemo(
+    () =>
+      (quickRepliesQuery.data ?? [])
+        .filter((q) => q.is_active)
+        .map((q) => ({ id: q.id, title: q.title, shortcut: q.shortcut, body: q.body })),
+    [quickRepliesQuery.data],
+  );
+
+  // Mesma queryKey da sidebar — o React Query deduplica, sem chamada extra.
+  const getWorkspaceProfileFn = useServerFn(getWorkspaceProfile);
+  const { data: workspaceProfile } = useQuery({
+    queryKey: ["workspace-profile"],
+    queryFn: () => getWorkspaceProfileFn(),
+    staleTime: 5 * 60_000,
+  });
+
+  /** Variáveis do template. Nomes em ASCII: renderTemplate usa \w+. */
+  const templateVars = React.useMemo(
+    () => ({
+      cliente: contact?.name?.split(" ")[0] ?? "",
+      negocio: (workspaceProfile as any)?.business_name ?? "",
+    }),
+    [contact?.name, workspaceProfile],
+  );
   const [menuOpen, setMenuOpen] = React.useState(false);
   const [messages, setMessages] = React.useState<Message[]>([]);
   const [scheduleOpen, setScheduleOpen] = React.useState(false);
@@ -152,6 +303,22 @@ export function ConversationPanel({
   const scrollRef = React.useRef<HTMLDivElement | null>(null);
   const taRef = React.useRef<HTMLTextAreaElement | null>(null);
 
+  /** Há página anterior para buscar ao rolar para cima? */
+  const [hasMore, setHasMore] = React.useState(false);
+  const [loadingOlder, setLoadingOlder] = React.useState(false);
+  /**
+   * Trava de reentrância. Precisa ser ref, não o state acima: `setState` é
+   * assíncrono, então dois eventos de scroll no mesmo tick leem `false` os
+   * dois e disparam a MESMA página duas vezes (mensagens duplicadas).
+   */
+  const loadingOlderRef = React.useRef(false);
+  /**
+   * O primeiro posicionamento é um salto seco até o fim; os seguintes são
+   * suaves. Sem esta distinção, abrir a conversa anima o scroll do começo ao
+   * fim, que é exatamente o "carrega desde o início e depois rola".
+   */
+  const didInitialScroll = React.useRef(false);
+
   const openSchedule = (preselected?: string[]) => {
     setScheduleSeed(preselected);
     setScheduleOpen(true);
@@ -160,8 +327,12 @@ export function ConversationPanel({
   // reset on contact change
   React.useEffect(() => {
     if (!contact) return;
-    setTab("conversation");
+    // Precisa ser `initialTab`, não "conversation": este effect roda na montagem
+    // com contato e sobrescreveria o estado inicial do useState acima.
+    setTab(initialTab);
     setDraft("");
+    setNoteDraft("");
+    setComposerMode("reply");
     setMenuOpen(false);
     setReplyingTo(null);
     setMessages(import.meta.env.DEV && contact.id.startsWith("c") ? seedMessages(contact) : []);
@@ -190,37 +361,24 @@ export function ConversationPanel({
   React.useEffect(() => {
     if (!contact) return;
     let cancelled = false;
+    // Conversa nova: o primeiro posicionamento precisa ser instantâneo de novo.
+    didInitialScroll.current = false;
+    loadingOlderRef.current = false;
+    setLoadingOlder(false);
+    setHasMore(false);
 
     (async () => {
-      const { data, error } = await supabase
-        .from("messages")
-        .select("id,direction,content,message_type,status,created_at,media_url,media_mime,media_name,whatsapp_message_id,quoted_preview,reactions,deleted_at,edited_at,is_ai")
-        .eq("contact_id", contact.id)
-        .order("created_at", { ascending: true });
-      if (cancelled) return;
-      if (error) {
-        console.warn("[chat] erro ao carregar mensagens:", error.message);
-      } else if (data) {
-        setMessages(
-          data.map((r: any) => ({
-            id: r.id,
-            direction: r.direction,
-            content: r.content,
-            message_type: r.message_type ?? "text",
-            status: r.status ?? "sent",
-            created_at: new Date(r.created_at),
-            media_url: r.media_url ?? null,
-            media_mime: r.media_mime ?? null,
-            media_name: r.media_name ?? null,
-            whatsapp_message_id: r.whatsapp_message_id ?? null,
-            quoted_preview: r.quoted_preview ?? null,
-            reactions: r.reactions ?? [],
-            deleted_at: r.deleted_at ?? null,
-            edited_at: r.edited_at ?? null,
-            is_ai: !!r.is_ai,
-          })),
-        );
-      }
+      // Só a última página. Antes buscava o histórico INTEIRO: um contato com
+      // centenas de mensagens renderizava tudo de uma vez, e a conversa
+      // demorava a abrir enquanto o scroll desfilava do começo até o fim.
+      const rows = await fetchMessagePage(contact.id, null, (v) => {
+        if (!cancelled) setNotesAvailable(v);
+      });
+      if (cancelled || !rows) return;
+      setHasMore(rows.length === MESSAGE_PAGE_SIZE);
+      // Vem do mais novo para o mais antigo (é assim que se pega "as últimas");
+      // a lista renderiza em ordem cronológica.
+      setMessages(rows.slice().reverse());
     })();
 
     const channel = supabase
@@ -256,6 +414,7 @@ export function ConversationPanel({
                     deleted_at: r.deleted_at ?? null,
                     edited_at: r.edited_at ?? null,
                     is_ai: !!r.is_ai,
+                    is_internal: !!r.is_internal,
                   },
                 ],
           );
@@ -303,9 +462,60 @@ export function ConversationPanel({
   // auto scroll to bottom on new message
   React.useEffect(() => {
     const el = scrollRef.current;
-    if (!el) return;
+    if (!el || messages.length === 0) return;
+    // Abertura: salto seco. Animar aqui faria a conversa inteira desfilar.
+    if (!didInitialScroll.current) {
+      el.scrollTop = el.scrollHeight;
+      didInitialScroll.current = true;
+      return;
+    }
+    // Carregar mensagens antigas prepende no topo — rolar para baixo aqui
+    // jogaria o usuário de volta ao fim, desfazendo o que ele pediu.
+    if (loadingOlder) return;
     el.scrollTo({ top: el.scrollHeight, behavior: "smooth" });
-  }, [messages.length, tab]);
+  }, [messages.length, tab, loadingOlder]);
+
+  /**
+   * Página anterior ao chegar perto do topo. Preserva a posição de leitura:
+   * sem isso, prepender conteúdo empurra o que está na tela para baixo e o
+   * usuário perde o ponto onde estava.
+   */
+  const loadOlderMessages = React.useCallback(async () => {
+    const el = scrollRef.current;
+    if (!el || !contact || loadingOlderRef.current || !hasMore || messages.length === 0) return;
+    loadingOlderRef.current = true;
+    setLoadingOlder(true);
+    const heightBefore = el.scrollHeight;
+    const topBefore = el.scrollTop;
+
+    const finish = () => {
+      loadingOlderRef.current = false;
+      setLoadingOlder(false);
+    };
+
+    const rows = await fetchMessagePage(contact.id, messages[0].created_at, setNotesAvailable);
+    if (!rows) {
+      finish();
+      return;
+    }
+    setHasMore(rows.length === MESSAGE_PAGE_SIZE);
+    if (rows.length === 0) {
+      finish();
+      return;
+    }
+    // Dedupe por id: o realtime pode inserir a mesma mensagem em paralelo, e
+    // duas cópias do mesmo id quebram a reconciliação do React.
+    setMessages((prev) => {
+      const known = new Set(prev.map((m) => m.id));
+      const older = rows.slice().reverse().filter((m) => !known.has(m.id));
+      return older.length > 0 ? [...older, ...prev] : prev;
+    });
+    requestAnimationFrame(() => {
+      const node = scrollRef.current;
+      if (node) node.scrollTop = node.scrollHeight - heightBefore + topBefore;
+      finish();
+    });
+  }, [contact, hasMore, messages]);
 
   const buildQuoted = (m: Message | null) => {
     if (!m || !contact?.phone || !m.whatsapp_message_id) return undefined;
@@ -322,8 +532,25 @@ export function ConversationPanel({
   };
 
   const send = async () => {
+    if (!contact) return;
+
+    // Modo nota: grava e sai. Nunca toca na Evolution.
+    if (composerMode === "note") {
+      const note = noteDraft.trim();
+      if (!note) return;
+      const ok = await actions.addInternalNote(contact.id, note);
+      // Limpa SÓ no sucesso — em erro o texto continua na caixa. Ao contrário
+      // de uma mensagem, uma nota perdida não tem como ser recuperada.
+      if (ok) {
+        setNoteDraft("");
+        if (taRef.current) taRef.current.style.height = "auto";
+        toast.success("Nota salva — só a equipe vê");
+      }
+      return;
+    }
+
     const text = draft.trim();
-    if (!text || !contact) return;
+    if (!text) return;
     // Sem optimistic update: o canal realtime é a fonte da verdade.
     // Isso evita duplicação (mensagem aparecendo 2x para o agente).
     setDraft("");
@@ -389,9 +616,11 @@ export function ConversationPanel({
     await sendAudioFn({ data: { contactId: contact.id, url, quoted } });
   };
 
+  const isInline = variant === "inline";
+
   return (
     <>
-      {open && (
+      {open && !isInline && (
         <div
           onClick={onClose}
           style={{
@@ -406,32 +635,40 @@ export function ConversationPanel({
 
       <aside
         style={{
-          position: "fixed",
-          top: 0,
-          right: 0,
-          height: "100vh",
-          width: 460,
-          maxWidth: "100vw",
+          ...(isInline
+            ? {
+                position: "relative",
+                height: "100%",
+                width: "100%",
+                minWidth: 0,
+              }
+            : {
+                position: "fixed",
+                top: 0,
+                right: 0,
+                height: "100vh",
+                width: 460,
+                maxWidth: "100vw",
+                borderLeft: "1px solid var(--border)",
+                transform: open ? "translateX(0)" : "translateX(100%)",
+                transition: "transform 200ms ease-out",
+                zIndex: 50,
+              }),
           background: "var(--bg-surface)",
-          borderLeft: "1px solid var(--border)",
-          transform: open ? "translateX(0)" : "translateX(100%)",
-          transition: "transform 200ms ease-out",
-          zIndex: 50,
           display: "flex",
           flexDirection: "column",
         }}
       >
         {contact && (
           <>
-            {/* Header — 48px */}
+            {/* Header — identidade, sem ações. 44px cabe o avatar de 36px. */}
             <div
               className="flex items-center"
               style={{
                 gap: 10,
                 padding: "0 10px",
-                height: 48,
+                height: 44,
                 borderBottom: "1px solid var(--border)",
-                position: "relative",
               }}
             >
               <div style={{ position: "relative", width: 36, height: 36, flexShrink: 0 }}>
@@ -443,7 +680,7 @@ export function ConversationPanel({
                     right: 0,
                     width: 9,
                     height: 9,
-                    borderRadius: 999,
+                    borderRadius: "var(--radius-pill)",
                     background: "var(--brand-400)",
                     border: "2px solid var(--bg-surface)",
                   }}
@@ -465,32 +702,78 @@ export function ConversationPanel({
                   <span className="font-mono">{formatPhone(contact.phone)}</span>
                 </div>
               </div>
+              {headerExtra}
+            </div>
 
-              <HeaderButton onClick={() => setTransferOpen(true)}>
-                Transferir
-              </HeaderButton>
-              <HeaderButton primary onClick={() => openSchedule()}>
-                <span className="inline-flex items-center" style={{ gap: 4 }}>
-                  <CalendarPlus size={13} /> Agendar
-                </span>
-              </HeaderButton>
-              <IconBtn label="Mais ações" onClick={() => setMenuOpen((v) => !v)}>
-                <MoreVertical size={15} />
-              </IconBtn>
-              <IconBtn label="Fechar" onClick={onClose}>
-                <X size={15} />
-              </IconBtn>
+            {/* Abas + ações na mesma linha — antes eram duas fileiras (identidade
+                com os botões, e as abas embaixo); juntar libera uma fileira
+                inteira para o chat. */}
+            <div
+              className="flex items-center justify-between"
+              style={{
+                borderBottom: "1px solid var(--border)",
+                padding: "0 6px 0 8px",
+                background: "var(--bg-overlay)",
+                height: 40,
+                position: "relative",
+              }}
+            >
+              <div className="flex items-center" style={{ height: "100%" }}>
+                {TABS.map((t) => (
+                  <button
+                    key={t.id}
+                    onClick={() => setTab(t.id)}
+                    style={{
+                      padding: "0 12px",
+                      height: 40,
+                      fontSize: 12,
+                      fontWeight: 500,
+                      background: "transparent",
+                      color: tab === t.id ? "var(--brand-400)" : "var(--text-muted)",
+                      borderBottom:
+                        tab === t.id
+                          ? "2px solid var(--brand-400)"
+                          : "2px solid transparent",
+                      marginBottom: -1,
+                      display: "inline-flex",
+                      alignItems: "center",
+                      gap: 6,
+                      flexShrink: 0,
+                    }}
+                  >
+                    <t.Icon size={13} aria-hidden />
+                    {t.label}
+                  </button>
+                ))}
+              </div>
+
+              <div className="flex items-center" style={{ gap: 6, flexShrink: 0 }}>
+                <HeaderButton onClick={() => setTransferOpen(true)}>
+                  Transferir
+                </HeaderButton>
+                <HeaderButton primary onClick={() => openSchedule()}>
+                  <span className="inline-flex items-center" style={{ gap: 4 }}>
+                    <CalendarPlus size={13} /> Agendar
+                  </span>
+                </HeaderButton>
+                <IconBtn label="Mais ações" onClick={() => setMenuOpen((v) => !v)}>
+                  <MoreVertical size={15} />
+                </IconBtn>
+                <IconBtn label="Fechar" onClick={onClose}>
+                  <X size={15} />
+                </IconBtn>
+              </div>
 
               {menuOpen && (
                 <div
                   style={{
                     position: "absolute",
-                    top: 46,
-                    right: 8,
+                    top: 38,
+                    right: 6,
                     width: 220,
                     background: "var(--bg-surface)",
                     border: "1px solid var(--border-strong)",
-                    borderRadius: 8,
+                    borderRadius: "var(--radius-card)",
                     boxShadow: "0 10px 28px rgba(0,0,0,0.18)",
                     padding: 4,
                     zIndex: 60,
@@ -514,6 +797,13 @@ export function ConversationPanel({
                     Agendar atendimento
                   </MenuItem>
                   <MenuItem
+                    icon={<CheckCheck size={14} style={{ color: "#64748B" }} />}
+                    onClick={() => { setMenuOpen(false); void actions.moveToColumn(contact.id, "resolved"); }}
+                    disabled={contact.kanban_column === "resolved"}
+                  >
+                    Resolver conversa
+                  </MenuItem>
+                  <MenuItem
                     icon={<Ban size={14} style={{ color: "#EF4444" }} />}
                     onClick={() => {
                       setMenuOpen(false);
@@ -532,43 +822,6 @@ export function ConversationPanel({
               )}
             </div>
 
-            {/* Tabs */}
-            <div
-              className="flex"
-              style={{
-                borderBottom: "1px solid var(--border)",
-                padding: "0 8px",
-                background: "var(--bg-overlay)",
-                height: 36,
-              }}
-            >
-              {TABS.map((t) => (
-                <button
-                  key={t.id}
-                  onClick={() => setTab(t.id)}
-                  style={{
-                    padding: "0 12px",
-                    height: 36,
-                    fontSize: 12,
-                    fontWeight: 500,
-                    background: "transparent",
-                    color: tab === t.id ? "var(--brand-400)" : "var(--text-muted)",
-                    borderBottom:
-                      tab === t.id
-                        ? "2px solid var(--brand-400)"
-                        : "2px solid transparent",
-                    marginBottom: -1,
-                    display: "inline-flex",
-                    alignItems: "center",
-                    gap: 6,
-                  }}
-                >
-                  <span>{t.icon}</span>
-                  {t.label}
-                </button>
-              ))}
-            </div>
-
             {/* Body */}
             {tab === "conversation" ? (
               <>
@@ -576,7 +829,18 @@ export function ConversationPanel({
                   ref={scrollRef}
                   className="flex-1 overflow-y-auto"
                   style={{ padding: 16, background: "var(--bg-base)" }}
+                  onScroll={(e) => {
+                    if (e.currentTarget.scrollTop < 120) void loadOlderMessages();
+                  }}
                 >
+                  {hasMore && (
+                    <div
+                      className="flex items-center justify-center"
+                      style={{ padding: "4px 0 12px", fontSize: 12, color: "var(--text-muted)" }}
+                    >
+                      {loadingOlder ? "Carregando mensagens anteriores…" : "Role para ver mais"}
+                    </div>
+                  )}
                   <div className="flex flex-col" style={{ gap: 8 }}>
                     {messages.map((m, i) => {
                       const prev = i > 0 ? messages[i - 1] : null;
@@ -637,6 +901,23 @@ export function ConversationPanel({
                           }
                         }}
                         onDelete={async () => {
+                          // Nota interna nunca foi ao WhatsApp: apagar é DELETE
+                          // no banco (policy "messages internal note delete"),
+                          // não "apagar para todos" via Evolution — que nem
+                          // aceitaria, por não haver whatsapp_message_id.
+                          if (m.is_internal) {
+                            if (!confirm("Apagar esta nota interna?")) return;
+                            const { error } = await supabase
+                              .from("messages")
+                              .delete()
+                              .eq("id", m.id);
+                            if (error) {
+                              toast.error(error.message ?? "Falha ao apagar a nota");
+                              return;
+                            }
+                            setMessages((prev) => prev.filter((x) => x.id !== m.id));
+                            return;
+                          }
                           if (!confirm("Apagar esta mensagem para todos?")) return;
                           try {
                             await deleteFn({ data: { messageId: m.id } });
@@ -657,6 +938,7 @@ export function ConversationPanel({
                             media_url: msg.media_url ?? null,
                             media_mime: msg.media_mime ?? null,
                             media_name: msg.media_name ?? null,
+                            is_internal: !!msg.is_internal,
                           })
                         }
                           />
@@ -668,8 +950,13 @@ export function ConversationPanel({
 
                 {/* Composer */}
                 <Composer
-                  draft={draft}
-                  setDraft={setDraft}
+                  draft={composerMode === "note" ? noteDraft : draft}
+                  setDraft={composerMode === "note" ? setNoteDraft : setDraft}
+                  mode={composerMode}
+                  // Sem a coluna no banco, o Composer não renderiza o toggle.
+                  onModeChange={notesAvailable ? setComposerMode : undefined}
+                  quickReplies={quickReplyOptions}
+                  templateVars={templateVars}
                   taRef={taRef}
                   onSend={send}
                   onClosePanel={onClose}
@@ -689,7 +976,7 @@ export function ConversationPanel({
               </>
             ) : (
               <div className="flex-1 overflow-y-auto" style={{ padding: 16 }}>
-                {tab === "contact" && <ContactTab contact={contact} />}
+                {tab === "contact" && <ContactForm contact={contact} compact />}
                 {tab === "services" && (
                   <ServicesTab onSchedule={(ids) => openSchedule(ids)} />
                 )}
@@ -762,6 +1049,49 @@ function MessageBubble({
   onDelete?: () => void;
   onForward?: (m: Message) => void;
 }) {
+  // Nota interna ANTES do branch de "system": a nota também é message_type
+  // "system" (para falhar seguro em quem não conhece is_internal), então se a
+  // ordem invertesse ela renderizaria como aviso genérico do sistema.
+  // Não é alinhada à esquerda nem à direita de propósito — não é um lado da
+  // conversa, é anotação sobre ela.
+  if (m.is_internal) {
+    return (
+      <div
+        style={{
+          alignSelf: "stretch",
+          width: "100%",
+          background: "color-mix(in oklab, #F59E0B 10%, var(--bg-surface))",
+          border: "1px solid color-mix(in oklab, #F59E0B 45%, transparent)",
+          borderLeft: "3px solid #F59E0B",
+          borderRadius: "var(--radius-card)",
+          padding: "8px 11px",
+          margin: "2px 0",
+        }}
+      >
+        <div
+          style={{
+            display: "flex",
+            alignItems: "center",
+            gap: 5,
+            fontSize: 11,
+            fontWeight: 600,
+            color: "#B45309",
+            marginBottom: 3,
+          }}
+        >
+          <StickyNote size={11} aria-hidden />
+          Nota interna
+          <span style={{ fontWeight: 400, color: "var(--text-muted)" }}>
+            · {m.created_at.toLocaleTimeString("pt-BR", { hour: "2-digit", minute: "2-digit" })}
+          </span>
+        </div>
+        <div style={{ fontSize: 13.5, color: "var(--text-primary)", whiteSpace: "pre-wrap", wordBreak: "break-word" }}>
+          {m.content}
+        </div>
+      </div>
+    );
+  }
+
   if (m.message_type === "system") {
     return (
       <div
@@ -838,7 +1168,7 @@ function MessageBubble({
         <MessageChevron isMe={isMe} bubbleBg={audioBg} message={m} onReply={onReply} onReact={onReact} onDelete={onDelete} onForward={onForward} />
         {m.quoted_preview && <QuotedPreview preview={m.quoted_preview} isMe={isMe} />}
         {m.is_ai && isMe && (
-          <div className="inline-flex items-center" style={{ gap: 4, fontSize: 10, fontWeight: 600, background: "color-mix(in oklab, var(--brand-400) 20%, transparent)", color: "var(--brand-400)", padding: "1px 6px", borderRadius: 999, marginBottom: 4, textTransform: "uppercase", letterSpacing: "0.04em" }}>
+          <div className="inline-flex items-center" style={{ gap: 4, fontSize: 10, fontWeight: 600, background: "color-mix(in oklab, var(--brand-400) 20%, transparent)", color: "var(--brand-400)", padding: "1px 6px", borderRadius: "var(--radius-pill)", marginBottom: 4, textTransform: "uppercase", letterSpacing: "0.04em" }}>
             <Bot size={10} /> IA
           </div>
         )}
@@ -894,7 +1224,7 @@ function MessageBubble({
       <MessageChevron isMe={isMe} bubbleBg={bubbleBg} message={m} onReply={onReply} onReact={onReact} onEdit={onStartEdit} onDelete={onDelete} onForward={onForward} />
       {m.quoted_preview && <QuotedPreview preview={m.quoted_preview} isMe={isMe} />}
       {m.is_ai && isMe && (
-        <div className="inline-flex items-center" style={{ gap: 4, fontSize: 10, fontWeight: 600, background: "color-mix(in oklab, var(--brand-400) 20%, transparent)", color: "var(--brand-400)", padding: "1px 6px", borderRadius: 999, marginBottom: 4, textTransform: "uppercase", letterSpacing: "0.04em" }}>
+        <div className="inline-flex items-center" style={{ gap: 4, fontSize: 10, fontWeight: 600, background: "color-mix(in oklab, var(--brand-400) 20%, transparent)", color: "var(--brand-400)", padding: "1px 6px", borderRadius: "var(--radius-pill)", marginBottom: 4, textTransform: "uppercase", letterSpacing: "0.04em" }}>
           <Bot size={10} /> IA
         </div>
       )}
@@ -903,7 +1233,7 @@ function MessageBubble({
           <img
             src={m.media_url}
             alt={m.media_name ?? "imagem"}
-            style={{ display: "block", maxWidth: 260, maxHeight: 320, width: "100%", borderRadius: 8, objectFit: "cover" }}
+            style={{ display: "block", maxWidth: 260, maxHeight: 320, width: "100%", borderRadius: "var(--radius-card)", objectFit: "cover" }}
           />
         </a>
       )}
@@ -911,7 +1241,7 @@ function MessageBubble({
         <video
           controls
           src={m.media_url}
-          style={{ display: "block", maxWidth: 260, width: "100%", borderRadius: 8, marginBottom: m.content ? 6 : 0 }}
+          style={{ display: "block", maxWidth: 260, width: "100%", borderRadius: "var(--radius-card)", marginBottom: m.content ? 6 : 0 }}
         />
       )}
       {m.media_url && m.message_type === "document" && (
@@ -922,7 +1252,7 @@ function MessageBubble({
           download={m.media_name ?? undefined}
           style={{
             display: "inline-flex", alignItems: "center", gap: 8,
-            padding: "8px 10px", borderRadius: 8,
+            padding: "8px 10px", borderRadius: "var(--radius-card)",
             background: "var(--bg-surface)",
             border: "1px solid var(--border)",
             color: "var(--text-primary)", textDecoration: "none",
@@ -1013,7 +1343,7 @@ function ReactionsRow({
             padding: "1px 6px",
             background: "var(--bg-surface)",
             border: "1px solid var(--border)",
-            borderRadius: 999,
+            borderRadius: "var(--radius-pill)",
             fontSize: 12,
             lineHeight: 1.4,
             boxShadow: "0 1px 2px rgba(0,0,0,0.15)",
@@ -1051,7 +1381,7 @@ function QuotedPreview({
         padding: "6px 8px",
         marginBottom: 6,
         background: "color-mix(in oklab, var(--text-primary) 6%, transparent)",
-        borderRadius: 6,
+        borderRadius: "var(--radius-control)",
         borderLeft: `3px solid ${accent}`,
         fontSize: 12,
       }}
@@ -1105,6 +1435,7 @@ function MessageChevron({
         mediaUrl: message.media_url ?? null,
         mediaName: message.media_name ?? null,
         messageType: message.message_type,
+        isInternal: !!message.is_internal,
       }}
       onReply={() => onReply?.(message)}
       onReact={(_m, emoji) => onReact?.(message, emoji)}
@@ -1150,7 +1481,7 @@ function InlineEditor({
           width: "100%",
           background: "var(--bg-base)",
           border: "1px solid var(--border)",
-          borderRadius: 6,
+          borderRadius: "var(--radius-control)",
           color: "var(--text-primary)",
           padding: "6px 8px",
           fontSize: 14,
@@ -1164,10 +1495,10 @@ function InlineEditor({
           type="button"
           onClick={onCancel}
           style={{
-            padding: "4px 10px",
+            padding: "4px 12px",
             background: "transparent",
             border: "1px solid var(--border)",
-            borderRadius: 6,
+            borderRadius: "var(--radius-pill)",
             color: "var(--text-muted)",
             cursor: "pointer",
             fontSize: 12,
@@ -1180,10 +1511,10 @@ function InlineEditor({
           onClick={() => val.trim() && onSave(val)}
           disabled={!val.trim()}
           style={{
-            padding: "4px 10px",
+            padding: "4px 12px",
             background: "var(--brand-400)",
             border: "1px solid var(--brand-400)",
-            borderRadius: 6,
+            borderRadius: "var(--radius-pill)",
             color: "white",
             cursor: val.trim() ? "pointer" : "not-allowed",
             fontSize: 12,
@@ -1223,8 +1554,8 @@ function HeaderButton({
       onClick={onClick}
       style={{
         height: 28,
-        padding: "0 10px",
-        borderRadius: 6,
+        padding: "0 12px",
+        borderRadius: "var(--radius-pill)",
         fontSize: 12,
         fontWeight: 500,
         background: primary ? "var(--brand-400)" : "transparent",
@@ -1264,7 +1595,7 @@ function IconBtn({
       style={{
         width: 30,
         height: 30,
-        borderRadius: 6,
+        borderRadius: "var(--radius-pill)",
         background: "transparent",
         color: "var(--text-muted)",
       }}
@@ -1280,15 +1611,18 @@ function MenuItem({
   children,
   icon,
   onClick,
+  disabled,
 }: {
   children: React.ReactNode;
   icon: React.ReactNode;
   onClick?: () => void;
+  disabled?: boolean;
 }) {
   return (
     <button
       type="button"
       onClick={onClick}
+      disabled={disabled}
       className="flex items-center w-full"
       style={{
         gap: 8,
@@ -1296,7 +1630,7 @@ function MenuItem({
         fontSize: 13,
         color: "var(--text-primary)",
         background: "transparent",
-        borderRadius: 6,
+        borderRadius: "var(--radius-control)",
         textAlign: "left",
       }}
       onMouseEnter={(e) => (e.currentTarget.style.background = "var(--bg-overlay)")}
@@ -1305,206 +1639,6 @@ function MenuItem({
       <span style={{ color: "var(--text-muted)" }}>{icon}</span>
       {children}
     </button>
-  );
-}
-
-/* ---------------- tab panes ---------------- */
-
-function Field({
-  label,
-  value,
-  onChange,
-  multiline,
-}: {
-  label: string;
-  value: string;
-  onChange: (v: string) => void;
-  multiline?: boolean;
-}) {
-  const sharedStyle: React.CSSProperties = {
-    width: "100%",
-    background: "var(--bg-base)",
-    border: "1px solid var(--border-strong)",
-    borderRadius: 6,
-    color: "var(--text-primary)",
-    fontSize: 13,
-    padding: "8px 10px",
-    outline: "none",
-    fontFamily: "inherit",
-  };
-  return (
-    <label className="flex flex-col" style={{ gap: 4 }}>
-      <span
-        style={{
-          fontSize: 11,
-          color: "var(--text-muted)",
-          textTransform: "uppercase",
-          letterSpacing: "0.05em",
-        }}
-      >
-        {label}
-      </span>
-      {multiline ? (
-        <textarea
-          value={value}
-          onChange={(e) => onChange(e.target.value)}
-          rows={3}
-          style={{ ...sharedStyle, resize: "vertical", lineHeight: 1.4 }}
-        />
-      ) : (
-        <input
-          value={value}
-          onChange={(e) => onChange(e.target.value)}
-          style={{ ...sharedStyle, height: 34 }}
-        />
-      )}
-    </label>
-  );
-}
-
-function ContactTab({ contact }: { contact: Contact }) {
-  const actions = useContactActions();
-  const [name, setName] = React.useState(contact.name);
-  const [email, setEmail] = React.useState(contact.email ?? "");
-  const [notes, setNotes] = React.useState(contact.notes ?? "");
-  const [newTag, setNewTag] = React.useState("");
-  const [saving, setSaving] = React.useState(false);
-  const tags = contact.tags ?? [];
-
-  React.useEffect(() => {
-    setName(contact.name);
-    setEmail(contact.email ?? "");
-    setNotes(contact.notes ?? "");
-    setNewTag("");
-  }, [contact.id, contact.email, contact.notes, contact.name]);
-
-  const handleSave = async () => {
-    setSaving(true);
-    await actions.saveContact(contact.id, {
-      name,
-      email: email.trim() || null,
-      notes: notes.trim() || null,
-    });
-    setSaving(false);
-  };
-
-  const handleAddTag = async () => {
-    const t = newTag.trim();
-    if (!t) return;
-    const ok = await actions.addTag(contact.id, t, tags);
-    if (ok) setNewTag("");
-  };
-
-  return (
-    <div className="flex flex-col" style={{ gap: 12 }}>
-      <Field label="Nome" value={name} onChange={setName} />
-      <Field label="Telefone" value={contact.phone} onChange={() => {}} />
-      <Field label="Email" value={email} onChange={setEmail} />
-      <Field label="Observações" value={notes} onChange={setNotes} multiline />
-
-      <div className="flex flex-col" style={{ gap: 6 }}>
-        <span
-          style={{
-            fontSize: 11,
-            color: "var(--text-muted)",
-            textTransform: "uppercase",
-            letterSpacing: "0.05em",
-          }}
-        >
-          Tags
-        </span>
-        <div className="flex flex-wrap" style={{ gap: 4 }}>
-          {tags.map((t) => (
-            <span
-              key={t}
-              className="inline-flex items-center"
-              style={{
-                gap: 4,
-                padding: "3px 4px 3px 8px",
-                background: "var(--bg-overlay)",
-                border: "1px solid var(--border)",
-                borderRadius: 999,
-                fontSize: 11,
-                color: "var(--text-primary)",
-              }}
-            >
-              {t}
-              <button
-                type="button"
-                onClick={() => void actions.removeTag(contact.id, t, tags)}
-                aria-label={`Remover ${t}`}
-                style={{
-                  width: 16,
-                  height: 16,
-                  borderRadius: 999,
-                  background: "transparent",
-                  color: "var(--text-muted)",
-                  display: "inline-flex",
-                  alignItems: "center",
-                  justifyContent: "center",
-                }}
-              >
-                <X size={10} />
-              </button>
-            </span>
-          ))}
-          <div className="inline-flex items-center" style={{ gap: 4 }}>
-            <input
-              value={newTag}
-              onChange={(e) => setNewTag(e.target.value)}
-              onKeyDown={(e) => {
-                if (e.key === "Enter" || e.key === ",") {
-                  e.preventDefault();
-                  void handleAddTag();
-                }
-              }}
-              placeholder="Nova tag…"
-              style={{
-                height: 24,
-                width: 100,
-                fontSize: 11,
-                padding: "0 8px",
-                borderRadius: 999,
-                border: "1px dashed var(--border-strong)",
-                background: "transparent",
-                color: "var(--text-primary)",
-                outline: "none",
-              }}
-            />
-            <button
-              type="button"
-              onClick={() => void handleAddTag()}
-              aria-label="Adicionar tag"
-              style={{
-                width: 24,
-                height: 24,
-                borderRadius: 999,
-                background: "var(--bg-overlay)",
-                color: "var(--text-primary)",
-                display: "inline-flex",
-                alignItems: "center",
-                justifyContent: "center",
-              }}
-            >
-              <Plus size={12} />
-            </button>
-          </div>
-        </div>
-        <span style={{ fontSize: 10, color: "var(--text-muted)" }}>
-          Enter ou vírgula para adicionar
-        </span>
-      </div>
-
-      <button
-        type="button"
-        onClick={() => void handleSave()}
-        disabled={saving}
-        className="btn-primary"
-        style={{ alignSelf: "flex-start", marginTop: 4, opacity: saving ? 0.6 : 1 }}
-      >
-        {saving ? "Salvando…" : "Salvar alterações"}
-      </button>
-    </div>
   );
 }
 
@@ -1585,7 +1719,7 @@ function ServicesTab({ onSchedule }: { onSchedule: (serviceIds: string[]) => voi
             style={{
               gap: 10,
               padding: "10px 12px",
-              borderRadius: 8,
+              borderRadius: "var(--radius-card)",
               border: on
                 ? "1px solid color-mix(in oklab, var(--brand-400) 60%, transparent)"
                 : "1px solid var(--border)",
@@ -1601,7 +1735,7 @@ function ServicesTab({ onSchedule }: { onSchedule: (serviceIds: string[]) => voi
               style={{
                 width: 18,
                 height: 18,
-                borderRadius: 4,
+                borderRadius: "var(--radius-sm)",
                 border: "1.5px solid",
                 borderColor: on ? "var(--brand-400)" : "var(--border-strong)",
                 background: on ? "var(--brand-400)" : "transparent",
@@ -1657,8 +1791,8 @@ function ServicesTab({ onSchedule }: { onSchedule: (serviceIds: string[]) => voi
           style={{
             gap: 6,
             height: 34,
-            padding: "0 12px",
-            borderRadius: 6,
+            padding: "0 16px",
+            borderRadius: "var(--radius-pill)",
             background: "var(--brand-400)",
             color: "#fff",
             fontSize: 13,
@@ -1744,7 +1878,7 @@ function HistoryTab({ contactId }: { contactId: string }) {
           padding: 16,
           textAlign: "center",
           border: "1px dashed var(--border)",
-          borderRadius: 8,
+          borderRadius: "var(--radius-card)",
         }}
       >
         Nenhum histórico para este contato.
@@ -1761,7 +1895,7 @@ function HistoryTab({ contactId }: { contactId: string }) {
             key={it.id}
             style={{
               padding: 10,
-              borderRadius: 8,
+              borderRadius: "var(--radius-card)",
               border: "1px solid var(--border)",
               background: "var(--bg-surface)",
             }}
@@ -1774,7 +1908,7 @@ function HistoryTab({ contactId }: { contactId: string }) {
                 style={{
                   fontSize: 11,
                   padding: "2px 8px",
-                  borderRadius: 999,
+                  borderRadius: "var(--radius-pill)",
                   border: `1px solid ${meta.color}`,
                   color: meta.color,
                 }}

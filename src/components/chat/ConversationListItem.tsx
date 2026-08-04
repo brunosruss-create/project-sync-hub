@@ -25,19 +25,21 @@ export function ConversationListItem({
     <button
       type="button"
       onClick={onClick}
-      className="w-full text-left transition-colors"
+      className="text-left transition-colors"
       style={{
         display: "flex",
         alignItems: "center",
         gap: 10,
         padding: "10px 12px",
+        // Sem divisória entre linhas: o realce arredondado do hover/ativo já
+        // separa os itens, e as réguas deixavam a lista pesada (WhatsApp Web
+        // também não as usa).
+        width: "calc(100% - 12px)",
+        margin: "1px 6px",
+        borderRadius: "var(--radius-card)",
         background: active
           ? "color-mix(in oklab, var(--brand-400) 12%, transparent)"
           : "transparent",
-        borderLeft: active
-          ? "3px solid var(--brand-400)"
-          : "3px solid transparent",
-        borderBottom: "1px solid var(--border)",
         cursor: "pointer",
         opacity: contact.is_blocked ? 0.7 : 1,
       }}
@@ -58,7 +60,7 @@ export function ConversationListItem({
             right: -1,
             width: 12,
             height: 12,
-            borderRadius: 999,
+            borderRadius: "var(--radius-pill)",
             background: statusColor,
             border: "2px solid var(--bg-surface)",
           }}
@@ -115,7 +117,7 @@ export function ConversationListItem({
                 minWidth: 18,
                 height: 18,
                 padding: "0 6px",
-                borderRadius: 999,
+                borderRadius: "var(--radius-pill)",
                 display: "inline-flex",
                 alignItems: "center",
                 justifyContent: "center",
@@ -131,7 +133,7 @@ export function ConversationListItem({
               style={{
                 width: 6,
                 height: 6,
-                borderRadius: 999,
+                borderRadius: "var(--radius-pill)",
                 background: "#EF4444",
                 flexShrink: 0,
               }}

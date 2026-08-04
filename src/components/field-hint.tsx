@@ -39,7 +39,7 @@ export function HintCallout({
       style={{
         gap: 8,
         padding: "10px 12px",
-        borderRadius: 8,
+        borderRadius: "var(--radius-card)",
         background: `color-mix(in oklab, ${token} 10%, var(--bg-surface))`,
         border: `1px solid color-mix(in oklab, ${token} 25%, var(--border))`,
       }}

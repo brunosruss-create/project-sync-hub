@@ -47,7 +47,7 @@ export function WorkingHoursEditor({
             key={day}
             style={{
               padding: "8px 10px",
-              borderRadius: 8,
+              borderRadius: "var(--radius-card)",
               border: "1px solid var(--border)",
               background: "var(--bg-base)",
             }}
@@ -126,7 +126,7 @@ export function WorkingHoursEditor({
                       gap: 4,
                       fontSize: 11,
                       padding: "2px 6px",
-                      borderRadius: 6,
+                      borderRadius: "var(--radius-control)",
                       border: "1px solid var(--border)",
                       background: "transparent",
                       color: "var(--text-muted)",
@@ -163,7 +163,7 @@ function TimeInput({
       style={{
         fontSize: 12,
         padding: "4px 6px",
-        borderRadius: 6,
+        borderRadius: "var(--radius-control)",
         border: "1px solid var(--border)",
         background: "var(--bg-surface)",
         color: "var(--text-primary)",
@@ -179,7 +179,7 @@ const iconBtn: React.CSSProperties = {
   justifyContent: "center",
   width: 22,
   height: 22,
-  borderRadius: 6,
+  borderRadius: "var(--radius-pill)",
   border: "1px solid var(--border)",
   background: "transparent",
   color: "var(--text-muted)",

@@ -11,6 +11,8 @@ import {
   resetUserPassword,
 } from "@/lib/super-admin-actions.functions";
 import { adminCard, adminInput } from "./_authenticated.super-admin";
+import { Badge, type BadgeVariant } from "@/components/ui/badge";
+import { EmptyState as SharedEmptyState } from "@/components/empty-state";
 
 export const Route = createFileRoute("/_authenticated/super-admin/users")({
   component: UsersAdmin,
@@ -28,10 +30,10 @@ type User = {
   is_blocked: boolean;
 };
 
-const ROLE_META: Record<NonNullable<Role>, { label: string; color: string }> = {
-  super_admin: { label: "Super Admin", color: "#7C3AED" },
-  manager: { label: "Manager", color: "#10B981" },
-  agent: { label: "Agente", color: "#F59E0B" },
+const ROLE_META: Record<NonNullable<Role>, { label: string; variant: BadgeVariant }> = {
+  super_admin: { label: "Super Admin", variant: "brand" },
+  manager: { label: "Manager", variant: "success" },
+  agent: { label: "Agente", variant: "warning" },
 };
 
 function UsersAdmin() {
@@ -64,7 +66,7 @@ function UsersAdmin() {
     <div className="flex flex-col" style={{ gap: 16 }}>
       <div>
         <h2 style={{ fontSize: 20, fontWeight: 600 }}>Usuários</h2>
-        <p style={{ fontSize: 13, color: "rgba(255,255,255,0.5)", marginTop: 4 }}>
+        <p style={{ fontSize: 13, color: "var(--text-muted)", marginTop: 4 }}>
           {isLoading
             ? "Carregando…"
             : `${filtered.length} de ${items.length} usuários da plataforma.`}
@@ -73,12 +75,12 @@ function UsersAdmin() {
 
       <div className="flex gap-2 flex-wrap">
         <div className="flex items-center gap-2 flex-1" style={{ minWidth: 240, ...adminInput, padding: "0 10px" }}>
-          <Search size={14} style={{ color: "rgba(255,255,255,0.4)" }} />
+          <Search size={14} style={{ color: "var(--text-muted)" }} />
           <input
             value={search}
             onChange={(e) => setSearch(e.target.value)}
             placeholder="Buscar por nome ou email…"
-            style={{ flex: 1, border: 0, background: "transparent", color: "#fff", fontSize: 13, outline: 0 }}
+            style={{ flex: 1, border: 0, background: "transparent", color: "var(--text-primary)", fontSize: 13, outline: 0 }}
           />
         </div>
         <select style={adminInput} value={workspace} onChange={(e) => setWorkspace(e.target.value)}>
@@ -101,7 +103,7 @@ function UsersAdmin() {
         <div style={{ ...adminCard, padding: 0, overflow: "hidden" }}>
           <table style={{ width: "100%", borderCollapse: "collapse", fontSize: 13 }}>
             <thead>
-              <tr style={{ background: "#0F0F13", color: "rgba(255,255,255,0.55)", fontSize: 11, textTransform: "uppercase", letterSpacing: "0.05em" }}>
+              <tr style={{ background: "var(--bg-overlay)", color: "var(--text-muted)", fontSize: 11, textTransform: "uppercase", letterSpacing: "0.05em" }}>
                 <th style={th}>Usuário</th>
                 <th style={th}>Workspace</th>
                 <th style={th}>Role</th>
@@ -112,8 +114,8 @@ function UsersAdmin() {
             <tbody>
               {filtered.length === 0 && !isLoading ? (
                 <tr>
-                  <td colSpan={5} style={{ padding: 24, textAlign: "center", color: "rgba(255,255,255,0.5)" }}>
-                    Nenhum usuário encontrado.
+                  <td colSpan={5} style={{ padding: 0 }}>
+                    <SharedEmptyState title="Nenhum usuário encontrado." />
                   </td>
                 </tr>
               ) : (
@@ -130,7 +132,7 @@ function UsersAdmin() {
 function UserRow({ u }: { u: User }) {
   const qc = useQueryClient();
   const [open, setOpen] = React.useState(false);
-  const meta = u.role ? ROLE_META[u.role] : { label: "—", color: "#6B7280" };
+  const meta = u.role ? ROLE_META[u.role] : { label: "—", variant: "neutral" as BadgeVariant };
   const roleFn = useServerFn(setUserRole);
   const blockFn = useServerFn(setUserBlocked);
   const resetFn = useServerFn(resetUserPassword);
@@ -173,43 +175,19 @@ function UserRow({ u }: { u: User }) {
   };
 
   return (
-    <tr style={{ borderTop: "1px solid #1F1F23", opacity: u.is_blocked ? 0.55 : 1 }}>
+    <tr style={{ borderTop: "1px solid var(--border)", opacity: u.is_blocked ? 0.55 : 1 }}>
       <td style={td}>
         <div style={{ fontWeight: 500, display: "flex", gap: 6, alignItems: "center" }}>
           {u.full_name ?? "—"}
-          {u.is_blocked && (
-            <span
-              style={{
-                fontSize: 10,
-                fontWeight: 600,
-                padding: "2px 6px",
-                borderRadius: 999,
-                background: "color-mix(in oklab, #EF4444 22%, transparent)",
-                color: "#F87171",
-              }}
-            >
-              Bloqueado
-            </span>
-          )}
+          {u.is_blocked && <Badge variant="danger">Bloqueado</Badge>}
         </div>
-        <div style={{ fontSize: 12, color: "rgba(255,255,255,0.5)" }}>{u.email ?? "—"}</div>
+        <div style={{ fontSize: 12, color: "var(--text-muted)" }}>{u.email ?? "—"}</div>
       </td>
       <td style={td}>{u.workspace_owner_email ?? "—"}</td>
       <td style={td}>
-        <span
-          style={{
-            fontSize: 11,
-            fontWeight: 600,
-            padding: "3px 8px",
-            borderRadius: 999,
-            background: `color-mix(in oklab, ${meta.color} 18%, transparent)`,
-            color: meta.color,
-          }}
-        >
-          {meta.label}
-        </span>
+        <Badge variant={meta.variant}>{meta.label}</Badge>
       </td>
-      <td style={{ ...td, color: "rgba(255,255,255,0.6)" }}>
+      <td style={{ ...td, color: "var(--text-muted)" }}>
         {new Date(u.created_at).toLocaleDateString("pt-BR")}
       </td>
       <td style={td}>
@@ -220,10 +198,10 @@ function UserRow({ u }: { u: User }) {
             style={{
               width: 28,
               height: 28,
-              borderRadius: 6,
+              borderRadius: "var(--radius-pill)",
               background: "transparent",
-              border: "1px solid #1F1F23",
-              color: "#fff",
+              border: "1px solid var(--border)",
+              color: "var(--text-primary)",
               cursor: "pointer",
               display: "inline-flex",
               alignItems: "center",
@@ -244,16 +222,16 @@ function UserRow({ u }: { u: User }) {
                   right: 0,
                   top: "100%",
                   marginTop: 4,
-                  background: "#15151A",
-                  border: "1px solid #1F1F23",
-                  borderRadius: 8,
+                  background: "var(--bg-overlay)",
+                  border: "1px solid var(--border)",
+                  borderRadius: "var(--radius-card)",
                   minWidth: 180,
                   padding: 4,
                   zIndex: 61,
                   boxShadow: "0 8px 24px rgba(0,0,0,0.4)",
                 }}
               >
-                <div style={{ padding: "6px 10px", fontSize: 11, color: "rgba(255,255,255,0.5)" }}>
+                <div style={{ padding: "6px 10px", fontSize: 11, color: "var(--text-muted)" }}>
                   Trocar role
                 </div>
                 {(["manager", "agent", "super_admin"] as const).map((r) => (
@@ -261,7 +239,7 @@ function UserRow({ u }: { u: User }) {
                     {ROLE_META[r].label}
                   </button>
                 ))}
-                <div style={{ height: 1, background: "#1F1F23", margin: "4px 0" }} />
+                <div style={{ height: 1, background: "var(--border)", margin: "4px 0" }} />
                 <button style={menuItem} onClick={handleReset}>
                   Resetar senha
                 </button>
@@ -287,7 +265,7 @@ const menuItem: React.CSSProperties = {
   fontSize: 12,
   background: "transparent",
   border: 0,
-  color: "#fff",
+  color: "var(--text-primary)",
   cursor: "pointer",
-  borderRadius: 4,
+  borderRadius: "var(--radius-sm)",
 };

@@ -1,42 +1,60 @@
 import * as React from "react";
-import { createFileRoute } from "@tanstack/react-router";
-import { Search, Plus, Users, MessageSquare } from "lucide-react";
+import { createFileRoute, useNavigate } from "@tanstack/react-router";
+import { Search, Plus, Users, MessageSquare, AlertTriangle, Database } from "lucide-react";
 import { supabase } from "@/integrations/supabase/client";
 import {
-  COLUMNS,
-  COLUMN_COLOR,
   MOCK_CONTACTS,
   formatRelative,
-  initials,
+  formatPhone,
   type ContactCard,
-  type KanbanColumnId,
 } from "@/features/inbox/data";
+import {
+  CONTACT_COLUMNS,
+  CONTACT_COLUMNS_LEGACY,
+  hasRegistration,
+  isMissingColumnError,
+  mapContactRow,
+} from "@/features/inbox/contact-row";
 import { ConversationPanel } from "@/features/inbox/conversation-panel";
 import { ContactAvatar } from "@/features/inbox/contact-avatar";
-import { EmptyState } from "@/components/empty-state";
+import { EmptyState as SharedEmptyState } from "@/components/empty-state";
 import { SkeletonCard } from "@/components/skeleton";
-import { notify } from "@/lib/notify";
+import { Card } from "@/components/ui/card";
+import { NewContactModal } from "@/features/inbox/new-contact-modal";
 
+/**
+ * Tela de CLIENTES — o CRM, não uma terceira caixa de entrada.
+ *
+ * Mostra só contato com cadastro (`hasRegistration`): quem chegou pelo WhatsApp
+ * e ainda não tem ficha preenchida vive em Conversas e no Kanban, que é onde
+ * atendimento pertence. Por isso aqui não há coluna de kanban, última mensagem
+ * nem marcador de não-lido — os três faziam a tela virar cópia do atendimento.
+ *
+ * A rota segue `/contacts` de propósito: renomear quebraria links salvos.
+ */
 export const Route = createFileRoute("/_authenticated/contacts")({
   head: () => ({
     meta: [
-      { title: "Contatos | ZapFlow" },
-      { name: "description", content: "Lista completa de contatos do seu CRM." },
+      { title: "Clientes | ZapFlow" },
+      { name: "description", content: "Clientes cadastrados do seu CRM." },
     ],
   }),
   component: ContactsPage,
 });
 
-type ColumnFilter = "all" | KanbanColumnId;
-
 function ContactsPage() {
+  const navigate = useNavigate();
   const [contacts, setContacts] = React.useState<ContactCard[]>([]);
   const [loading, setLoading] = React.useState(true);
+  const [loadError, setLoadError] = React.useState<string | null>(null);
+  /** Banco sem as colunas de CRM — sem elas ninguém tem cadastro e a lista fica
+   *  permanentemente vazia. Precisa ser dito na tela, não virar mistério. */
+  const [legacySchema, setLegacySchema] = React.useState(false);
   const [query, setQuery] = React.useState("");
   const [debouncedQuery, setDebouncedQuery] = React.useState("");
-  const [colFilter, setColFilter] = React.useState<ColumnFilter>("all");
   const [tagFilter, setTagFilter] = React.useState<string | null>(null);
   const [openContact, setOpenContact] = React.useState<ContactCard | null>(null);
+  const [newContactOpen, setNewContactOpen] = React.useState(false);
 
   // Debounce 300ms
   React.useEffect(() => {
@@ -47,31 +65,32 @@ function ContactsPage() {
   // Hydrate from Supabase, fallback to mocks
   React.useEffect(() => {
     let cancelled = false;
-    const mapRow = (r: any): ContactCard => ({
-      id: r.id,
-      name: r.name,
-      phone: r.phone,
-      avatar: r.avatar_url,
-      lastMessage: r.last_message ?? "",
-      lastMessageAt: r.last_message_at ? new Date(r.last_message_at) : new Date(),
-      assignedAgent: r.assigned_agent_id ?? null,
-      tags: Array.isArray(r.tags) ? r.tags : [],
-      isUnread: !!r.is_unread,
-      priority: r.priority === "urgent" ? "urgent" : "normal",
-      kanban_column: (r.kanban_column ?? "waiting") as KanbanColumnId,
-    });
+    const mapRow = mapContactRow;
+
     (async () => {
-      const { data, error } = await supabase
+      let { data, error } = await supabase
         .from("contacts")
-        .select(
-          "id,name,phone,avatar_url,kanban_column,assigned_agent_id,tags,priority,is_unread,last_message,last_message_at",
-        )
+        .select(CONTACT_COLUMNS)
         .order("last_message_at", { ascending: false });
+      if (isMissingColumnError(error)) {
+        const r = await supabase
+          .from("contacts")
+          .select(CONTACT_COLUMNS_LEGACY)
+          .order("last_message_at", { ascending: false });
+        data = r.data as any;
+        error = r.error;
+        if (!cancelled) setLegacySchema(true);
+      }
       if (cancelled) return;
-      if (error || !data || data.length === 0) {
-        setContacts(MOCK_CONTACTS);
+      // Erro e lista vazia são coisas diferentes: workspace legitimamente sem
+      // cliente precisa ver o empty state, não dados de mock. E mock só em DEV.
+      if (error) {
+        console.warn("[clientes] erro ao carregar contatos:", error.message);
+        setLoadError(error.message);
+        if (import.meta.env.DEV) setContacts(MOCK_CONTACTS);
       } else {
-        setContacts(data.map(mapRow));
+        setLoadError(null);
+        setContacts((data ?? []).map(mapRow));
       }
       setLoading(false);
     })();
@@ -86,7 +105,10 @@ function ContactsPage() {
     };
     window.addEventListener("zf:contact-updated", onContactUpdated as EventListener);
 
-    // Realtime: mudanças vindas de outras abas/dispositivos
+    // Realtime: mudanças vindas de outras abas/dispositivos.
+    // Só UPDATE, e para esta tela isso basta por construção: contato recém
+    // inserido nunca tem campo de CRM (não entraria na lista de clientes), e
+    // UPDATE é justamente o evento que faz um contato entrar/sair dela.
     const channel = supabase
       .channel("contacts-page-realtime")
       .on(
@@ -111,7 +133,7 @@ function ContactsPage() {
 
   // Cmd+K → "Novo contato"
   React.useEffect(() => {
-    const onNew = () => notify.info("Em breve: criar contato manualmente.");
+    const onNew = () => setNewContactOpen(true);
     window.addEventListener("zf:new-contact", onNew);
     const onKey = (e: KeyboardEvent) => {
       if (e.key.toLowerCase() !== "n" || e.metaKey || e.ctrlKey || e.altKey) return;
@@ -127,28 +149,44 @@ function ContactsPage() {
     };
   }, []);
 
+  /**
+   * Clientes = contatos com cadastro. Derivado, nunca filtrado na origem:
+   * `contacts` tem que seguir cru e completo porque a branch de duplicata do
+   * NewContactModal procura nele um contato SEM cadastro. Filtrar antes faria o
+   * modal abrir o objeto parcial e o ContactForm salvar null por cima de dado
+   * real — o bug que o comentário do onCreated abaixo documenta.
+   */
+  const clients = React.useMemo(() => contacts.filter(hasRegistration), [contacts]);
+
   const allTags = React.useMemo(() => {
     const s = new Set<string>();
-    contacts.forEach((c) => c.tags.forEach((t) => s.add(t)));
+    clients.forEach((c) => c.tags.forEach((t) => s.add(t)));
     return Array.from(s).sort();
-  }, [contacts]);
+  }, [clients]);
 
   const filtered = React.useMemo(() => {
-    return contacts.filter((c) => {
-      if (colFilter !== "all" && c.kanban_column !== colFilter) return false;
+    return clients.filter((c) => {
       if (tagFilter && !c.tags.includes(tagFilter)) return false;
       if (debouncedQuery) {
         const q = debouncedQuery;
-        if (
-          !c.name.toLowerCase().includes(q) &&
-          !c.phone.toLowerCase().includes(q) &&
-          !c.lastMessage.toLowerCase().includes(q)
-        )
-          return false;
+        // Busca de CRM: identidade e localização, não conteúdo de conversa.
+        // Telefone também pelos dígitos, senão "11998761122" não acha
+        // "+55 11 99876-1122".
+        const haystack = [
+          c.name,
+          c.phone,
+          c.phone.replace(/\D/g, ""),
+          c.email ?? "",
+          c.city ?? "",
+          c.document_number ?? "",
+        ];
+        if (!haystack.some((h) => h.toLowerCase().includes(q))) return false;
       }
       return true;
     });
-  }, [contacts, colFilter, tagFilter, debouncedQuery]);
+  }, [clients, tagFilter, debouncedQuery]);
+
+  const isFiltering = !!tagFilter || !!debouncedQuery;
 
   return (
     <div className="flex flex-col" style={{ gap: 16 }}>
@@ -156,10 +194,14 @@ function ContactsPage() {
       <div className="flex flex-wrap items-center justify-between" style={{ gap: 12 }}>
         <div>
           <h1 style={{ fontSize: 22, fontWeight: 600, letterSpacing: "-0.015em" }}>
-            Contatos
+            Clientes
           </h1>
           <p style={{ marginTop: 2, fontSize: 12, color: "var(--text-muted)" }}>
-            {loading ? "Carregando…" : `${filtered.length} contato${filtered.length === 1 ? "" : "s"}`}
+            {loading
+              ? "Carregando…"
+              : isFiltering
+                ? `${filtered.length} de ${clients.length} cliente${clients.length === 1 ? "" : "s"}`
+                : `${clients.length} cliente${clients.length === 1 ? "" : "s"}`}
           </p>
         </div>
 
@@ -170,7 +212,7 @@ function ContactsPage() {
               gap: 6,
               height: 32,
               padding: "0 10px",
-              borderRadius: 6,
+              borderRadius: "var(--radius-control)",
               border: "1px solid var(--border-strong)",
               background: "var(--bg-surface)",
               minWidth: 240,
@@ -180,8 +222,8 @@ function ContactsPage() {
             <input
               value={query}
               onChange={(e) => setQuery(e.target.value)}
-              placeholder="Buscar por nome, telefone ou mensagem…"
-              aria-label="Buscar contatos"
+              placeholder="Buscar por nome, telefone, e-mail ou cidade…"
+              aria-label="Buscar clientes"
               style={{
                 flex: 1,
                 background: "transparent",
@@ -195,56 +237,37 @@ function ContactsPage() {
 
           <button
             type="button"
-            onClick={() => notify.info("Em breve: criar contato manualmente.")}
+            onClick={() => setNewContactOpen(true)}
             className="btn-primary"
           >
             <Plus size={14} />
-            Novo Contato
+            Novo Cliente
           </button>
         </div>
       </div>
 
-      {/* Filtros */}
-      <div className="flex flex-wrap items-center" style={{ gap: 8 }}>
-        <FilterPill active={colFilter === "all"} onClick={() => setColFilter("all")}>
-          Todos
-        </FilterPill>
-        {COLUMNS.map((c) => (
-          <FilterPill
-            key={c.id}
-            active={colFilter === c.id}
-            color={c.color}
-            onClick={() => setColFilter(c.id)}
-          >
-            {c.emoji} {c.label}
-          </FilterPill>
-        ))}
-        {allTags.length > 0 && (
-          <span
-            style={{
-              marginLeft: 8,
-              paddingLeft: 8,
-              borderLeft: "1px solid var(--border)",
-              display: "flex",
-              gap: 6,
-              flexWrap: "wrap",
-            }}
-          >
-            {allTags.slice(0, 8).map((t) => (
-              <FilterPill key={t} active={tagFilter === t} onClick={() => setTagFilter(tagFilter === t ? null : t)}>
-                #{t}
-              </FilterPill>
-            ))}
-          </span>
-        )}
-      </div>
+      {/* Filtros — só etiquetas. Chips de coluna do Kanban saíram: eram o que
+          mais fazia esta tela parecer uma terceira caixa de entrada. */}
+      {allTags.length > 0 && (
+        <div className="flex flex-wrap items-center" style={{ gap: 6 }}>
+          {allTags.slice(0, 8).map((t) => (
+            <FilterPill
+              key={t}
+              active={tagFilter === t}
+              onClick={() => setTagFilter(tagFilter === t ? null : t)}
+            >
+              #{t}
+            </FilterPill>
+          ))}
+        </div>
+      )}
 
       {/* Conteúdo */}
       {loading ? (
         <div
           style={{
             display: "grid",
-            gridTemplateColumns: "repeat(auto-fill, minmax(280px, 1fr))",
+            gridTemplateColumns: "repeat(auto-fill, minmax(min(280px, 100%), 1fr))",
             gap: 12,
           }}
         >
@@ -252,21 +275,43 @@ function ContactsPage() {
             <SkeletonCard key={i} />
           ))}
         </div>
+      ) : loadError ? (
+        <SharedEmptyState
+          icon={<AlertTriangle size={48} style={{ color: "#EF4444" }} aria-hidden="true" />}
+          title="Não foi possível carregar os clientes"
+          description={`Supabase retornou: ${loadError}`}
+        />
+      ) : legacySchema ? (
+        <SharedEmptyState
+          icon={<Database size={48} style={{ color: "#F59E0B" }} aria-hidden="true" />}
+          title="Cadastro de clientes indisponível neste banco"
+          description="As colunas de CRM ainda não foram aplicadas. Rode supabase/manual/20260802000000_contact_crm_fields.sql no SQL Editor do Supabase."
+        />
       ) : contacts.length === 0 ? (
-        <EmptyState
+        <SharedEmptyState
           icon={<Users size={48} style={{ color: "var(--brand-400)" }} aria-hidden="true" />}
-          title="Sua lista de contatos está vazia"
-          description="Conecte seu WhatsApp para começar a receber e organizar conversas com seus clientes."
+          title="Você ainda não tem contatos"
+          description="Conecte seu WhatsApp para começar a receber conversas — depois preencha a ficha de quem virar cliente."
           action={{
             label: "Conectar WhatsApp",
             onClick: () => (window.location.href = "/settings/whatsapp"),
           }}
         />
+      ) : clients.length === 0 ? (
+        <SharedEmptyState
+          icon={<MessageSquare size={48} style={{ color: "var(--brand-400)" }} aria-hidden="true" />}
+          title="Nenhum cliente cadastrado ainda"
+          description={`Você tem ${contacts.length} contato${contacts.length === 1 ? "" : "s"} no WhatsApp. Abra uma conversa e preencha a ficha na aba Contato — e-mail, documento ou endereço — para o contato aparecer aqui como cliente.`}
+          action={{
+            label: "Ir para Conversas",
+            onClick: () => navigate({ to: "/inbox" }),
+          }}
+        />
       ) : filtered.length === 0 ? (
-        <EmptyState
+        <SharedEmptyState
           icon={<Search size={48} style={{ color: "var(--text-muted)" }} aria-hidden="true" />}
-          title="Nenhum contato encontrado"
-          description="Tente ajustar os filtros ou a busca."
+          title="Nenhum cliente encontrado"
+          description="Tente ajustar a busca ou a etiqueta selecionada."
         />
       ) : (
         <ContactTable rows={filtered} onOpen={setOpenContact} />
@@ -274,10 +319,28 @@ function ContactsPage() {
 
       <ConversationPanel
         contact={openContact}
+        initialTab="contact"
         onClose={() => setOpenContact(null)}
         onContactUpdate={(id, patch) => {
           setContacts((prev) => prev.map((c) => (c.id === id ? { ...c, ...patch } : c)));
           setOpenContact((cur) => (cur && cur.id === id ? { ...cur, ...patch } : cur));
+        }}
+      />
+
+      <NewContactModal
+        open={newContactOpen}
+        onClose={() => setNewContactOpen(false)}
+        onCreated={(contact, { openExisting } = {}) => {
+          setNewContactOpen(false);
+          if (openExisting) {
+            // Duplicata: o contato já está na lista, e o objeto que o modal devolve
+            // vem de um SELECT reduzido (sem campos de CRM). Abrir o da lista, que
+            // está completo — abrir o parcial faria o form salvar nulls por cima.
+            setOpenContact(contacts.find((c) => c.id === contact.id) ?? contact);
+            return;
+          }
+          setContacts((prev) => [contact, ...prev]);
+          setOpenContact(contact);
         }}
       />
     </div>
@@ -288,12 +351,10 @@ function ContactsPage() {
 
 function FilterPill({
   active,
-  color,
   onClick,
   children,
 }: {
   active: boolean;
-  color?: string;
   onClick: () => void;
   children: React.ReactNode;
 }) {
@@ -304,20 +365,40 @@ function FilterPill({
       style={{
         height: 28,
         padding: "0 10px",
-        borderRadius: 999,
+        borderRadius: "var(--radius-pill)",
         fontSize: 12,
         fontWeight: 500,
-        border: `1px solid ${active ? color ?? "var(--brand-400)" : "var(--border)"}`,
+        border: `1px solid ${active ? "var(--brand-400)" : "var(--border)"}`,
         background: active
-          ? `color-mix(in oklab, ${color ?? "var(--brand-400)"} 14%, transparent)`
+          ? "color-mix(in oklab, var(--brand-400) 14%, transparent)"
           : "transparent",
-        color: active ? color ?? "var(--brand-400)" : "var(--text-primary)",
+        color: active ? "var(--brand-400)" : "var(--text-primary)",
         cursor: "pointer",
       }}
     >
       {children}
     </button>
   );
+}
+
+/* -------------- Células de CRM -------------- */
+
+/** "CPF 123.456.789-00" / "CNPJ …" — o tipo sozinho não diz nada útil na tabela. */
+function formatDocumentCell(c: ContactCard): string {
+  if (!c.document_number) return "—";
+  const label =
+    c.document_type === "pessoa_juridica"
+      ? "CNPJ"
+      : c.document_type === "pessoa_fisica"
+        ? "CPF"
+        : "";
+  return label ? `${label} ${c.document_number}` : c.document_number;
+}
+
+/** "São Paulo/SP", ou só um dos dois quando o outro não foi preenchido. */
+function formatCityCell(c: ContactCard): string {
+  if (c.city && c.state_uf) return `${c.city}/${c.state_uf}`;
+  return c.city || c.state_uf || "—";
 }
 
 /* -------------- Tabela / Lista -------------- */
@@ -330,24 +411,17 @@ function ContactTable({
   onOpen: (c: ContactCard) => void;
 }) {
   return (
-    <div
-      style={{
-        border: "1px solid var(--border)",
-        borderRadius: 8,
-        background: "var(--bg-surface)",
-        overflow: "hidden",
-      }}
-    >
+    <Card style={{ overflow: "hidden" }}>
       <div style={{ overflowX: "auto" }}>
         <table style={{ width: "100%", borderCollapse: "collapse", fontSize: 13, minWidth: 720 }}>
           <thead>
             <tr style={{ background: "var(--bg-overlay)" }}>
-              <Th sticky>Contato</Th>
+              <Th sticky>Cliente</Th>
               <Th>Telefone</Th>
-              <Th>Última mensagem</Th>
+              <Th>E-mail</Th>
+              <Th>Documento</Th>
+              <Th>Cidade</Th>
               <Th>Etiquetas</Th>
-              <Th>Atendente</Th>
-              <Th>Coluna</Th>
               <Th align="right">Última interação</Th>
             </tr>
           </thead>
@@ -359,44 +433,27 @@ function ContactTable({
                 style={{
                   borderTop: "1px solid var(--border)",
                   cursor: "pointer",
-                  background: c.isUnread ? "color-mix(in oklab, var(--brand-400) 4%, transparent)" : "transparent",
+                  background: "transparent",
                 }}
                 onMouseEnter={(e) => (e.currentTarget.style.background = "var(--bg-overlay)")}
-                onMouseLeave={(e) =>
-                  (e.currentTarget.style.background = c.isUnread
-                    ? "color-mix(in oklab, var(--brand-400) 4%, transparent)"
-                    : "transparent")
-                }
+                onMouseLeave={(e) => (e.currentTarget.style.background = "transparent")}
               >
                 <Td sticky>
                   <div className="flex items-center" style={{ gap: 10 }}>
                     <Avatar contact={c} />
-                    <div className="min-w-0">
-                      <div
-                        className="truncate"
-                        style={{ fontWeight: c.isUnread ? 600 : 500, color: "var(--text-primary)" }}
-                      >
-                        {c.name}
-                      </div>
-                      {c.priority === "urgent" && (
-                        <div style={{ fontSize: 10, color: "#EF4444", fontWeight: 600 }}>URGENTE</div>
-                      )}
+                    <div className="truncate" style={{ fontWeight: 500, color: "var(--text-primary)" }}>
+                      {c.name}
                     </div>
                   </div>
                 </Td>
-                <Td muted>{c.phone}</Td>
-                <Td>
-                  <span
-                    className="truncate inline-block"
-                    style={{
-                      maxWidth: 280,
-                      color: c.isUnread ? "var(--text-primary)" : "var(--text-muted)",
-                      verticalAlign: "middle",
-                    }}
-                  >
-                    {c.lastMessage || "—"}
+                <Td muted>{formatPhone(c.phone)}</Td>
+                <Td muted>
+                  <span className="truncate inline-block" style={{ maxWidth: 200, verticalAlign: "middle" }}>
+                    {c.email || "—"}
                   </span>
                 </Td>
+                <Td muted>{formatDocumentCell(c)}</Td>
+                <Td muted>{formatCityCell(c)}</Td>
                 <Td>
                   <div className="flex flex-wrap" style={{ gap: 4 }}>
                     {c.tags.slice(0, 2).map((t) => (
@@ -405,7 +462,7 @@ function ContactTable({
                         style={{
                           fontSize: 10,
                           padding: "2px 6px",
-                          borderRadius: 999,
+                          borderRadius: "var(--radius-pill)",
                           background: "var(--bg-overlay)",
                           color: "var(--text-muted)",
                         }}
@@ -420,20 +477,6 @@ function ContactTable({
                     )}
                   </div>
                 </Td>
-                <Td muted>{c.assignedAgent ?? "—"}</Td>
-                <Td>
-                  <span
-                    style={{
-                      fontSize: 11,
-                      padding: "2px 8px",
-                      borderRadius: 999,
-                      border: `1px solid ${COLUMN_COLOR[c.kanban_column]}`,
-                      color: COLUMN_COLOR[c.kanban_column],
-                    }}
-                  >
-                    {COLUMNS.find((x) => x.id === c.kanban_column)?.label}
-                  </span>
-                </Td>
                 <Td align="right" muted>
                   {formatRelative(c.lastMessageAt)}
                 </Td>
@@ -442,7 +485,7 @@ function ContactTable({
           </tbody>
         </table>
       </div>
-    </div>
+    </Card>
   );
 }
 

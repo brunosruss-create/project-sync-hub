@@ -1,5 +1,9 @@
 import * as React from "react";
-import { X, Check, Loader2, MessageCircle, ExternalLink, AlertTriangle, ChevronDown } from "lucide-react";
+import {
+  X, Check, Loader2, MessageCircle, ExternalLink, AlertTriangle, ChevronDown,
+  Hand, Calendar, Send, User, Phone,
+  type LucideIcon,
+} from "lucide-react";
 import { supabase } from "@/integrations/supabase/client";
 import { useAuth } from "@/hooks/use-auth";
 import { useWorkspaceOwnerId } from "@/hooks/use-workspace-owner";
@@ -13,6 +17,13 @@ import {
   type ContactCard as Contact,
   type KanbanColumnId,
 } from "./data";
+import {
+  CONTACT_COLUMNS,
+  CONTACT_COLUMNS_LEGACY,
+  isMissingColumnError,
+  mapContactRow,
+} from "./contact-row";
+import { SYSTEM_COLUMN_ICON } from "./kanban-column";
 
 interface Props {
   open: boolean;
@@ -20,24 +31,15 @@ interface Props {
   onCreated: (contact: Contact, opts: { openExisting?: boolean }) => void;
 }
 
-type DuplicateInfo = {
-  id: string;
-  name: string;
-  phone: string;
-  kanban_column: KanbanColumnId;
-  last_message_at: string | null;
-  avatar_url: string | null;
-  tags: string[];
-  is_unread: boolean;
-  priority: "normal" | "urgent";
-  assigned_agent_id: string | null;
-  last_message: string | null;
-};
+// A duplicata é carregada com CONTACT_COLUMNS e mapeada para ContactCard como
+// qualquer outra tela — antes usava um SELECT reduzido próprio, e o contato
+// parcial resultante fazia o formulário de CRM salvar nulls por cima dos dados
+// reais do cliente ao abrir a conversa existente.
 
-const QUICK_TEMPLATES: Array<{ label: string; emoji: string; text: (n: string) => string }> = [
-  { label: "Saudação", emoji: "👋", text: (n) => `Olá ${n}! Tudo bem? Estou entrando em contato pelo WhatsApp.` },
-  { label: "Oferecer horário", emoji: "📅", text: (n) => `Oi ${n}! Posso te oferecer um horário esta semana — qual o melhor dia para você?` },
-  { label: "Perguntar necessidade", emoji: "💬", text: (n) => `Olá ${n}! Como posso te ajudar hoje?` },
+const QUICK_TEMPLATES: Array<{ label: string; Icon: LucideIcon; text: (n: string) => string }> = [
+  { label: "Saudação", Icon: Hand, text: (n) => `Olá ${n}! Tudo bem? Estou entrando em contato pelo WhatsApp.` },
+  { label: "Oferecer horário", Icon: Calendar, text: (n) => `Oi ${n}! Posso te oferecer um horário esta semana — qual o melhor dia para você?` },
+  { label: "Perguntar necessidade", Icon: MessageCircle, text: (n) => `Olá ${n}! Como posso te ajudar hoje?` },
 ];
 
 function onlyDigits(v: string) {
@@ -109,7 +111,7 @@ export function NewContactModal({ open, onClose, onCreated }: Props) {
   const [phoneStatus, setPhoneStatus] = React.useState<
     "idle" | "checking" | "valid" | "invalid" | "duplicate"
   >("idle");
-  const [duplicate, setDuplicate] = React.useState<DuplicateInfo | null>(null);
+  const [duplicate, setDuplicate] = React.useState<Contact | null>(null);
   const [phoneError, setPhoneError] = React.useState<string | null>(null);
 
   const [submitting, setSubmitting] = React.useState(false);
@@ -172,18 +174,28 @@ export function NewContactModal({ open, onClose, onCreated }: Props) {
       if (!user?.id) return;
       const phoneDigits = normalized.replace("+", "");
       // procura por phone normalizado e variantes (sem +)
-      const { data, error } = await supabase
+      let { data, error } = await supabase
         .from("contacts")
-        .select("id,name,phone,kanban_column,last_message_at,avatar_url,tags,is_unread,priority,assigned_agent_id,last_message")
+        .select(CONTACT_COLUMNS)
         .eq("owner_user_id", workspaceOwnerId)
         .or(`phone.eq.${normalized},phone.eq.${phoneDigits}`)
         .maybeSingle();
+      if (isMissingColumnError(error)) {
+        const r = await supabase
+          .from("contacts")
+          .select(CONTACT_COLUMNS_LEGACY)
+          .eq("owner_user_id", workspaceOwnerId)
+          .or(`phone.eq.${normalized},phone.eq.${phoneDigits}`)
+          .maybeSingle();
+        data = r.data as any;
+        error = r.error;
+      }
       if (error && error.code !== "PGRST116") {
         setPhoneStatus("valid");
         return;
       }
       if (data) {
-        setDuplicate(data as DuplicateInfo);
+        setDuplicate(mapContactRow(data));
         setPhoneStatus("duplicate");
       } else {
         setPhoneStatus("valid");
@@ -230,25 +242,9 @@ export function NewContactModal({ open, onClose, onCreated }: Props) {
     setTagDraft("");
   }
 
-  function mapDuplicateToContact(d: DuplicateInfo): Contact {
-    return {
-      id: d.id,
-      name: d.name,
-      phone: d.phone,
-      avatar: d.avatar_url,
-      lastMessage: d.last_message ?? "",
-      lastMessageAt: d.last_message_at ? new Date(d.last_message_at) : new Date(),
-      assignedAgent: d.assigned_agent_id,
-      tags: d.tags ?? [],
-      isUnread: !!d.is_unread,
-      priority: d.priority === "urgent" ? "urgent" : "normal",
-      kanban_column: (d.kanban_column ?? "waiting") as KanbanColumnId,
-    };
-  }
-
   async function handleOpenDuplicate() {
     if (!duplicate) return;
-    onCreated(mapDuplicateToContact(duplicate), { openExisting: true });
+    onCreated(duplicate, { openExisting: true });
     onClose();
   }
 
@@ -290,24 +286,23 @@ export function NewContactModal({ open, onClose, onCreated }: Props) {
       };
       if (assignSelf) insertPayload.assigned_agent_id = user.id;
 
-      let { data: created, error } = await supabase
+      // O cast é necessário porque a lista completa de colunas passa do limite de
+      // inferência do PostgREST-js (sem tipos gerados do banco, ele cai em
+      // GenericStringError). mapContactRow é o que garante o shape daqui pra frente.
+      let { data: created, error } = (await supabase
         .from("contacts")
         .insert(insertPayload)
-        .select(
-          "id,name,phone,avatar_url,kanban_column,assigned_agent_id,tags,priority,is_unread,last_message,last_message_at",
-        )
-        .single();
+        .select(CONTACT_COLUMNS)
+        .single()) as { data: any; error: any };
 
       // Se a coluna user_id não existir mais, refaz sem ela.
       if (error && /user_id/i.test(error.message ?? "") && /column/i.test(error.message ?? "")) {
         delete insertPayload.user_id;
-        const retry = await supabase
+        const retry = (await supabase
           .from("contacts")
           .insert(insertPayload)
-          .select(
-            "id,name,phone,avatar_url,kanban_column,assigned_agent_id,tags,priority,is_unread,last_message,last_message_at",
-          )
-          .single();
+          .select(CONTACT_COLUMNS)
+          .single()) as { data: any; error: any };
         created = retry.data;
         error = retry.error;
       }
@@ -337,19 +332,7 @@ export function NewContactModal({ open, onClose, onCreated }: Props) {
         if (msgErr) console.warn("[new-contact] msg insert:", msgErr.message);
       }
 
-      const contact: Contact = {
-        id: created.id,
-        name: created.name,
-        phone: created.phone,
-        avatar: created.avatar_url,
-        lastMessage: created.last_message ?? "",
-        lastMessageAt: created.last_message_at ? new Date(created.last_message_at) : new Date(),
-        assignedAgent: created.assigned_agent_id ?? null,
-        tags: Array.isArray(created.tags) ? created.tags : [],
-        isUnread: !!created.is_unread,
-        priority: created.priority === "urgent" ? "urgent" : "normal",
-        kanban_column: (created.kanban_column ?? column) as KanbanColumnId,
-      };
+      const contact: Contact = mapContactRow(created);
 
       notify.success("Contato criado!", "Abrindo conversa...");
       onCreated(contact, { openExisting: false });
@@ -400,11 +383,24 @@ export function NewContactModal({ open, onClose, onCreated }: Props) {
         .zf-shake { animation: zfShake .35s ease-out; }
         .zf-ncm-chip { display:inline-flex; align-items:center; gap:4px; padding:2px 8px; border-radius:999px; background:var(--bg-overlay); border:1px solid var(--border); font-size:12px; color:var(--text-primary); }
         .zf-ncm-chip button { background:transparent; border:0; color:var(--text-muted); cursor:pointer; line-height:1; padding:0; }
-        .zf-ncm-segbtn { flex:1; display:flex; align-items:center; justify-content:center; gap:6px; height:34px; border-radius:8px; font-size:12px; font-weight:600; cursor:pointer; transition: all .15s; }
-        .zf-quick-tpl { display:inline-flex; align-items:center; gap:4px; padding:4px 10px; height:26px; border-radius:6px; font-size:11px; font-weight:500; background:var(--bg-overlay); border:1px solid var(--border); color:var(--text-primary); cursor:pointer; }
+        /* min-width:0 + overflow-wrap são o que impede o rótulo de estourar a
+           caixa: sem eles o span é flex item com min-width:auto, não encolhe
+           abaixo da maior palavra ("Atendimento") e transborda o botão. */
+        .zf-ncm-segbtn { display:flex; align-items:center; justify-content:center; gap:5px; min-height:34px; min-width:0; padding:6px 10px; border-radius:var(--radius-pill); font-size:11px; font-weight:600; line-height:1.15; text-align:center; white-space:normal; overflow-wrap:anywhere; cursor:pointer; transition: all .15s; }
+        .zf-ncm-segbtn > span { min-width:0; }
+        .zf-ncm-segbtn > svg { flex-shrink:0; }
+        .zf-quick-tpl { display:inline-flex; align-items:center; gap:4px; padding:4px 12px; height:26px; border-radius:var(--radius-pill); font-size:11px; font-weight:500; background:var(--bg-overlay); border:1px solid var(--border); color:var(--text-primary); cursor:pointer; }
         .zf-quick-tpl:hover { background:var(--bg-surface); }
+        .zf-ncm-footer { display:flex; align-items:center; justify-content:space-between; gap:12px; padding:12px 18px; border-top:1px solid var(--border); }
+        .zf-ncm-footer-actions { display:flex; gap:8px; flex-shrink:0; }
+        /* min-height (não height) + flex-shrink:0: com height fixo e shrink
+           livre o botão primário era esmagado no mobile e o rótulo vazava. */
+        .zf-ncm-btn { display:inline-flex; align-items:center; justify-content:center; gap:6px; min-height:34px; padding:0 16px; border-radius:var(--radius-pill); font-size:13px; white-space:nowrap; flex-shrink:0; cursor:pointer; }
         @media (max-width: 640px) {
           .zf-ncm-modal { width:100% !important; max-width:100% !important; height:100vh; max-height:100vh; border-radius:0 !important; }
+          /* Checkbox sai da linha dos botões — juntos não cabem em ~340px. */
+          .zf-ncm-footer { flex-direction:column; align-items:stretch; gap:10px; }
+          .zf-ncm-footer-actions .zf-ncm-btn { flex:1; }
         }
       `}</style>
 
@@ -438,7 +434,7 @@ export function NewContactModal({ open, onClose, onCreated }: Props) {
             maxWidth: "100%",
             background: "var(--bg-surface)",
             border: "1px solid var(--border-strong)",
-            borderRadius: 12,
+            borderRadius: "var(--radius-modal)",
             boxShadow: "var(--shadow-lg, 0 24px 48px rgba(0,0,0,.4))",
             display: "flex",
             flexDirection: "column",
@@ -476,7 +472,7 @@ export function NewContactModal({ open, onClose, onCreated }: Props) {
                 color: "var(--text-muted)",
                 cursor: "pointer",
                 padding: 4,
-                borderRadius: 6,
+                borderRadius: "var(--radius-control)",
               }}
             >
               <X size={16} />
@@ -505,7 +501,7 @@ export function NewContactModal({ open, onClose, onCreated }: Props) {
                   }}
                   aria-hidden
                 >
-                  <span style={{ fontSize: 16 }}>🇧🇷</span>
+                  <Phone size={13} aria-hidden />
                   <span>+55</span>
                 </span>
                 <input
@@ -529,7 +525,7 @@ export function NewContactModal({ open, onClose, onCreated }: Props) {
                     color: "var(--text-primary)",
                     background: "var(--bg-base)",
                     border: `1px solid ${phoneBorder}`,
-                    borderRadius: 8,
+                    borderRadius: "var(--radius-card)",
                     outline: "none",
                     transition: "border-color .15s",
                   }}
@@ -559,7 +555,7 @@ export function NewContactModal({ open, onClose, onCreated }: Props) {
                 style={{
                   border: "1px solid #F59E0B66",
                   background: "color-mix(in oklab, #F59E0B 10%, transparent)",
-                  borderRadius: 10,
+                  borderRadius: "var(--radius-card)",
                   padding: 12,
                   display: "flex",
                   flexDirection: "column",
@@ -594,7 +590,7 @@ export function NewContactModal({ open, onClose, onCreated }: Props) {
                     onClick={handleOpenDuplicate}
                     style={{
                       display: "inline-flex", alignItems: "center", gap: 4,
-                      height: 32, padding: "0 12px", borderRadius: 6,
+                      height: 32, padding: "0 12px", borderRadius: "var(--radius-control)",
                       background: "#F59E0B", color: "#1a1a1a",
                       border: 0, fontSize: 12, fontWeight: 600, cursor: "pointer",
                     }}
@@ -626,16 +622,23 @@ export function NewContactModal({ open, onClose, onCreated }: Props) {
               <label style={fieldLabel}>Iniciar em</label>
               <div
                 style={{
-                  display: "flex",
+                  // auto-fit com piso de 120px: os rótulos vêm do banco e são
+                  // editáveis (o usuário pode criar coluna e nomear como quiser),
+                  // então forçar tudo numa linha só quebra na primeira label
+                  // longa. Aqui a barra reflui pra 2 linhas quando precisa, e
+                  // cada botão mantém largura legível.
+                  display: "grid",
+                  gridTemplateColumns: "repeat(auto-fit, minmax(min(120px, 100%), 1fr))",
                   gap: 4,
                   padding: 3,
                   background: "var(--bg-overlay)",
-                  borderRadius: 10,
+                  borderRadius: "var(--radius-card)",
                   border: "1px solid var(--border)",
                 }}
               >
                 {COLUMNS.map((c) => {
                   const active = column === c.id;
+                  const SystemIcon = c.is_system ? SYSTEM_COLUMN_ICON[c.slug] : undefined;
                   return (
                     <button
                       key={c.id}
@@ -648,7 +651,11 @@ export function NewContactModal({ open, onClose, onCreated }: Props) {
                         border: active ? `1px solid ${c.color}` : "1px solid transparent",
                       }}
                     >
-                      <span aria-hidden>{c.emoji}</span>
+                      {SystemIcon ? (
+                        <SystemIcon size={13} aria-hidden style={{ flexShrink: 0 }} />
+                      ) : (
+                        <span aria-hidden style={{ flexShrink: 0 }}>{c.emoji}</span>
+                      )}
                       <span>{c.label}</span>
                     </button>
                   );
@@ -665,7 +672,7 @@ export function NewContactModal({ open, onClose, onCreated }: Props) {
                   padding: 6, minHeight: 38,
                   background: "var(--bg-base)",
                   border: "1px solid var(--border-strong)",
-                  borderRadius: 8,
+                  borderRadius: "var(--radius-card)",
                 }}
               >
                 {tags.map((t) => (
@@ -709,7 +716,7 @@ export function NewContactModal({ open, onClose, onCreated }: Props) {
                         type="button"
                         onClick={() => addTag(t)}
                         style={{
-                          fontSize: 10, padding: "2px 6px", borderRadius: 4,
+                          fontSize: 10, padding: "2px 6px", borderRadius: "var(--radius-sm)",
                           background: "transparent", border: "1px dashed var(--border-strong)",
                           color: "var(--text-muted)", cursor: "pointer",
                         }}
@@ -736,7 +743,8 @@ export function NewContactModal({ open, onClose, onCreated }: Props) {
                   size={14}
                   style={{ transform: showSendMessage ? "rotate(0deg)" : "rotate(-90deg)", transition: "transform .15s" }}
                 />
-                📨 Enviar mensagem de abertura?
+                <Send size={13} aria-hidden />
+                Enviar mensagem de abertura?
               </button>
               <div
                 style={{
@@ -754,7 +762,7 @@ export function NewContactModal({ open, onClose, onCreated }: Props) {
                     style={{
                       width: "100%", padding: 10, fontSize: 13,
                       color: "var(--text-primary)", background: "var(--bg-base)",
-                      border: "1px solid var(--border-strong)", borderRadius: 8, outline: "none",
+                      border: "1px solid var(--border-strong)", borderRadius: "var(--radius-card)", outline: "none",
                       resize: "vertical", minHeight: 70, fontFamily: "inherit",
                     }}
                   />
@@ -766,7 +774,7 @@ export function NewContactModal({ open, onClose, onCreated }: Props) {
                         className="zf-quick-tpl"
                         onClick={() => setOpeningMessage(q.text(name.split(" ")[0] || "tudo bem?"))}
                       >
-                        <span aria-hidden>{q.emoji}</span> {q.label}
+                        <q.Icon size={12} aria-hidden /> {q.label}
                       </button>
                     ))}
                   </div>
@@ -782,8 +790,8 @@ export function NewContactModal({ open, onClose, onCreated }: Props) {
               <label style={fieldLabel}>Responsável <span style={{ color: "var(--text-muted)", fontWeight: 400 }}>(opcional)</span></label>
               <div
                 style={{
-                  display: "flex", gap: 8, padding: 4,
-                  background: "var(--bg-overlay)", border: "1px solid var(--border)", borderRadius: 8,
+                  display: "grid", gridTemplateColumns: "repeat(2, minmax(0, 1fr))", gap: 8, padding: 4,
+                  background: "var(--bg-overlay)", border: "1px solid var(--border)", borderRadius: "var(--radius-card)",
                 }}
               >
                 <button
@@ -796,7 +804,8 @@ export function NewContactModal({ open, onClose, onCreated }: Props) {
                     border: assignSelf ? "1px solid var(--border)" : "1px solid transparent",
                   }}
                 >
-                  👤 Eu ({profile?.full_name?.split(" ")[0] ?? user?.email?.split("@")[0] ?? "agente"})
+                  <User size={13} aria-hidden style={{ flexShrink: 0 }} />
+                  Eu ({profile?.full_name?.split(" ")[0] ?? user?.email?.split("@")[0] ?? "agente"})
                 </button>
                 <button
                   type="button"
@@ -815,12 +824,7 @@ export function NewContactModal({ open, onClose, onCreated }: Props) {
           </div>
 
           {/* Footer */}
-          <div
-            style={{
-              display: "flex", alignItems: "center", justifyContent: "space-between",
-              padding: "12px 18px", borderTop: "1px solid var(--border)", gap: 12,
-            }}
-          >
+          <div className="zf-ncm-footer">
             <label style={{ display: "flex", alignItems: "center", gap: 6, fontSize: 12, color: "var(--text-muted)", cursor: "pointer" }}>
               <input
                 type="checkbox"
@@ -829,15 +833,16 @@ export function NewContactModal({ open, onClose, onCreated }: Props) {
               />
               Criar outro após salvar
             </label>
-            <div style={{ display: "flex", gap: 8 }}>
+            <div className="zf-ncm-footer-actions">
               <button
                 type="button"
                 onClick={attemptClose}
                 disabled={submitting}
+                className="zf-ncm-btn"
                 style={{
-                  height: 34, padding: "0 14px", borderRadius: 8, fontSize: 13, fontWeight: 500,
+                  fontWeight: 500,
                   background: "transparent", color: "var(--text-primary)",
-                  border: "1px solid var(--border-strong)", cursor: "pointer",
+                  border: "1px solid var(--border-strong)",
                 }}
               >
                 Cancelar
@@ -846,9 +851,9 @@ export function NewContactModal({ open, onClose, onCreated }: Props) {
                 type="button"
                 onClick={() => void handleSubmit()}
                 disabled={!canSubmit}
+                className="zf-ncm-btn"
                 style={{
-                  display: "inline-flex", alignItems: "center", gap: 6,
-                  height: 34, padding: "0 14px", borderRadius: 8, fontSize: 13, fontWeight: 600,
+                  fontWeight: 600,
                   background: canSubmit ? "#3654FF" : "color-mix(in oklab, #3654FF 40%, var(--bg-overlay))",
                   color: "#0a1a10", border: 0, cursor: canSubmit ? "pointer" : "not-allowed",
                   opacity: canSubmit ? 1 : 0.7,
@@ -882,6 +887,6 @@ const textInput: React.CSSProperties = {
   color: "var(--text-primary)",
   background: "var(--bg-base)",
   border: "1px solid var(--border-strong)",
-  borderRadius: 8,
+  borderRadius: "var(--radius-card)",
   outline: "none",
 };

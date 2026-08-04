@@ -87,10 +87,15 @@ export async function getDashboardData(period: DashPeriod, currentUserId?: strin
   const since24hIso = new Date(Date.now() - 24 * 3600 * 1000).toISOString();
 
   const [msgsRes, prevMsgsRes, apptsRes, prevApptsRes, upcomingRes, contactsRes, columnsRes, recentMsgsRes] = await Promise.all([
+    // is_internal: nota interna não é volume de conversa. O gráfico "hourly"
+    // conta estas linhas sem olhar direction, então sem o filtro a anotação
+    // apareceria como movimento de atendimento.
     supabase.from("messages").select("id,contact_id,direction,sent_by,created_at")
+      .eq("is_internal", false)
       .gte("created_at", start.toISOString()).lt("created_at", end.toISOString())
       .order("created_at", { ascending: true }).limit(10000),
     supabase.from("messages").select("id,contact_id,direction,sent_by,created_at")
+      .eq("is_internal", false)
       .gte("created_at", prevStart.toISOString()).lt("created_at", prevEnd.toISOString()).limit(10000),
     supabase.from("appointments").select("id,contact_id,service_id,agent_id,status,starts_at,client_name")
       .gte("starts_at", start.toISOString()).lt("starts_at", end.toISOString()).limit(5000),
@@ -103,7 +108,14 @@ export async function getDashboardData(period: DashPeriod, currentUserId?: strin
     supabase.from("contacts").select("id,name,kanban_column"),
     supabase.from("kanban_columns").select("slug,label,color,position").order("position", { ascending: true }),
     // Mensagens das últimas 24h para detectar pendências por contato (independente de last_direction).
+    // is_internal é obrigatório aqui e é o filtro mais sutil da feature: mais
+    // abaixo a regra é `if (last.direction !== "inbound") continue`, ou seja
+    // "a última mensagem não é do cliente logo já foi respondido". Uma nota
+    // interna vira a última mensagem e a conversa DESAPARECE da lista de
+    // "sem resposta há mais de 5 min" — o atendente anota e o sistema passa a
+    // achar que atendeu.
     supabase.from("messages").select("contact_id,direction,created_at")
+      .eq("is_internal", false)
       .gte("created_at", since24hIso).order("created_at", { ascending: true }).limit(10000),
   ]);
 

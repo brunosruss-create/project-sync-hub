@@ -69,8 +69,18 @@ vi.mock("@/lib/evolution.server", () => ({
   instanceNameForOwner: (id: string) => `inst-${id}`,
 }));
 
+// Sem este mock o teste passaria mesmo assim — mas por acidente: o builder de
+// `supabaseAdmin` acima não tem `order` nem `rpc`, então `pickNextAgent`
+// lançaria, o try/catch do transfer engoliria e o resultado seria idêntico ao
+// de antes do rodízio. Ou seja, o caminho feliz nunca seria exercitado e uma
+// quebra em produção não acusaria aqui.
+vi.mock("@/lib/rotation.server", () => ({
+  pickNextAgent: vi.fn(async () => null),
+}));
+
 import { sendAiReplyAndPersist } from "@/lib/message-processing.server";
 import { evo } from "@/lib/evolution.server";
+import { pickNextAgent } from "@/lib/rotation.server";
 import type { AiRunResult } from "@/lib/ai-respond.server";
 
 const OWNER_ID = "owner-1";
@@ -83,6 +93,8 @@ beforeEach(() => {
   calls.length = 0;
   (evo.sendText as any).mockClear();
   (evo.sendPresence as any).mockClear();
+  (pickNextAgent as any).mockClear();
+  (pickNextAgent as any).mockResolvedValue(null);
 });
 
 describe("sendAiReplyAndPersist — transfer_to_human", () => {
@@ -120,6 +132,74 @@ describe("sendAiReplyAndPersist — transfer_to_human", () => {
     );
     expect(kanbanUpdate).toBeTruthy();
     expect((kanbanUpdate!.payload as any).is_unread).toBe(true);
+  });
+
+  it("grava o atendente sorteado no MESMO update de waiting/unread", async () => {
+    (pickNextAgent as any).mockResolvedValueOnce("agent-7");
+    enqueue("messages", "insert", { data: null, error: null });
+    enqueue("contacts", "update", { data: null, error: null });
+    enqueue("contacts", "update", { data: null, error: null });
+
+    const ai: AiRunResult = { action: "transfer_to_human", response: "Vou te transferir." };
+
+    vi.useFakeTimers();
+    const promise = sendAiReplyAndPersist(INSTANCE, OWNER_ID, CONTACT_ID, PHONE, ai, "test");
+    await vi.runAllTimersAsync();
+    await promise;
+    vi.useRealTimers();
+
+    // Um update só carregando as três coisas — dois updates quebrariam as
+    // fixtures e custariam um round-trip a mais no caminho da mensagem.
+    const kanbanUpdate = calls.find(
+      (c) => c.table === "contacts" && (c.payload as any).kanban_column === "waiting",
+    );
+    expect(kanbanUpdate).toBeTruthy();
+    expect((kanbanUpdate!.payload as any).assigned_agent_id).toBe("agent-7");
+    expect((kanbanUpdate!.payload as any).is_unread).toBe(true);
+  });
+
+  it("sem ninguém elegível, não atribui e mantém o comportamento anterior", async () => {
+    (pickNextAgent as any).mockResolvedValueOnce(null);
+    enqueue("messages", "insert", { data: null, error: null });
+    enqueue("contacts", "update", { data: null, error: null });
+    enqueue("contacts", "update", { data: null, error: null });
+
+    const ai: AiRunResult = { action: "transfer_to_human", response: "Vou te transferir." };
+
+    vi.useFakeTimers();
+    const promise = sendAiReplyAndPersist(INSTANCE, OWNER_ID, CONTACT_ID, PHONE, ai, "test");
+    await vi.runAllTimersAsync();
+    await promise;
+    vi.useRealTimers();
+
+    const kanbanUpdate = calls.find(
+      (c) => c.table === "contacts" && (c.payload as any).kanban_column === "waiting",
+    );
+    // A chave nem aparece — sobrescrever com null apagaria uma atribuição.
+    expect("assigned_agent_id" in (kanbanUpdate!.payload as any)).toBe(false);
+  });
+
+  it("falha no rodízio não propaga — senão o worker reprocessaria a IA 5x", async () => {
+    (pickNextAgent as any).mockRejectedValueOnce(new Error("banco fora"));
+    enqueue("messages", "insert", { data: null, error: null });
+    enqueue("contacts", "update", { data: null, error: null });
+    enqueue("contacts", "update", { data: null, error: null });
+
+    const ai: AiRunResult = { action: "transfer_to_human", response: "Vou te transferir." };
+
+    vi.useFakeTimers();
+    const promise = sendAiReplyAndPersist(INSTANCE, OWNER_ID, CONTACT_ID, PHONE, ai, "test");
+    await vi.runAllTimersAsync();
+    // Não deve rejeitar: o job seria remarcado como erro e a mensagem de
+    // transferência chegaria repetida ao cliente.
+    await expect(promise).resolves.toBeUndefined();
+    vi.useRealTimers();
+
+    const kanbanUpdate = calls.find(
+      (c) => c.table === "contacts" && (c.payload as any).kanban_column === "waiting",
+    );
+    expect(kanbanUpdate).toBeTruthy();
+    expect("assigned_agent_id" in (kanbanUpdate!.payload as any)).toBe(false);
   });
 
   it("send_message continua funcionando como antes (sem regressão)", async () => {
