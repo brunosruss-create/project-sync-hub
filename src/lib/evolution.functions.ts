@@ -5,6 +5,22 @@ import { requireSupabaseAuth } from "@/integrations/supabase/auth-middleware";
 import { supabaseAdmin } from "@/integrations/supabase/client.server";
 import { evo, extractQRCode, instanceNameForOwner, normalizeQRCodeImage, tryFetchProfilePicture, sendMediaToContact } from "@/lib/evolution.server";
 import { resolveWorkspaceOwnerId } from "@/lib/workspace.server";
+import { sendZernioToContact } from "@/lib/zernio.server";
+
+type ContactChannel = "whatsapp_evolution" | "whatsapp_cloud" | "instagram";
+
+// Descobre por qual canal o contato conversa. Contatos antigos (sem coluna
+// preenchida) caem em 'whatsapp_evolution' → fluxo Evolution intocado.
+async function contactChannel(ownerUserId: string, contactId: string): Promise<ContactChannel> {
+  const { data } = await supabaseAdmin
+    .from("contacts")
+    .select("channel")
+    .eq("id", contactId)
+    .eq("owner_user_id", ownerUserId)
+    .maybeSingle();
+  const c = (data?.channel as string | null) ?? "whatsapp_evolution";
+  return c === "whatsapp_cloud" || c === "instagram" ? c : "whatsapp_evolution";
+}
 
 const WEBHOOK_EVENTS = ["MESSAGES_UPSERT", "MESSAGES_UPDATE", "SEND_MESSAGE_UPDATE", "CONNECTION_UPDATE", "QRCODE_UPDATED"];
 
@@ -438,6 +454,21 @@ export const sendWhatsAppMessage = createServerFn({ method: "POST" })
     // um atendente convidado tem userId próprio, mas o contato pertence ao dono.
     // `sent_by` abaixo segue sendo o usuário real, para autoria no relatório.
     const ownerId = await resolveWorkspaceOwnerId(context.userId);
+    // Roteamento por canal: Zernio (WhatsApp oficial / Instagram) ou Evolution.
+    const channel = await contactChannel(ownerId, data.contactId);
+    if (channel !== "whatsapp_evolution") {
+      return sendZernioToContact({
+        ownerUserId: ownerId,
+        contactId: data.contactId,
+        channel,
+        text: data.text,
+        replyToExternalId: data.quoted?.messageId,
+        sentBy: context.userId,
+        quoted: data.quoted
+          ? { messageId: data.quoted.messageId, preview: data.quoted.preview }
+          : undefined,
+      });
+    }
     const name = instanceNameForOwner(ownerId);
     const { data: contact, error: ce } = await supabaseAdmin
       .from("contacts")
@@ -581,9 +612,25 @@ const sendMediaInput = z.object({
 export const sendWhatsAppMedia = createServerFn({ method: "POST" })
   .middleware([requireSupabaseAuth])
   .inputValidator((d) => sendMediaInput.parse(d))
-  .handler(async ({ data, context }) =>
-    sendMediaToContact({
-      ownerUserId: await resolveWorkspaceOwnerId(context.userId),
+  .handler(async ({ data, context }) => {
+    const ownerId = await resolveWorkspaceOwnerId(context.userId);
+    const channel = await contactChannel(ownerId, data.contactId);
+    if (channel !== "whatsapp_evolution") {
+      return sendZernioToContact({
+        ownerUserId: ownerId,
+        contactId: data.contactId,
+        channel,
+        text: data.caption,
+        attachment: { url: data.url, mime: data.mime, name: data.name },
+        replyToExternalId: data.quoted?.messageId,
+        sentBy: context.userId,
+        quoted: data.quoted
+          ? { messageId: data.quoted.messageId, preview: data.quoted.preview }
+          : undefined,
+      });
+    }
+    return sendMediaToContact({
+      ownerUserId: ownerId,
       contactId: data.contactId,
       url: data.url,
       mime: data.mime,
@@ -591,8 +638,8 @@ export const sendWhatsAppMedia = createServerFn({ method: "POST" })
       caption: data.caption,
       sentBy: context.userId,
       quoted: data.quoted,
-    }),
-  );
+    });
+  });
 
 const sendAudioInput = z.object({
   contactId: z.string().uuid(),
@@ -605,6 +652,20 @@ export const sendWhatsAppAudio = createServerFn({ method: "POST" })
   .inputValidator((d) => sendAudioInput.parse(d))
   .handler(async ({ data, context }) => {
     const ownerId = await resolveWorkspaceOwnerId(context.userId);
+    const channel = await contactChannel(ownerId, data.contactId);
+    if (channel !== "whatsapp_evolution") {
+      return sendZernioToContact({
+        ownerUserId: ownerId,
+        contactId: data.contactId,
+        channel,
+        attachment: { url: data.url, mime: "audio/ogg", voiceNote: true },
+        replyToExternalId: data.quoted?.messageId,
+        sentBy: context.userId,
+        quoted: data.quoted
+          ? { messageId: data.quoted.messageId, preview: data.quoted.preview }
+          : undefined,
+      });
+    }
     const instance = instanceNameForOwner(ownerId);
     const { data: contact, error: ce } = await supabaseAdmin
       .from("contacts")

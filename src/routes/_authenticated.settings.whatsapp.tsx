@@ -18,6 +18,11 @@ import {
   syncMyWhatsAppAvatar,
   updateMyWhatsAppAvatar,
 } from "@/lib/evolution.functions";
+import {
+  getZernioConnectUrl,
+  listZernioAccounts,
+  disconnectZernioAccount,
+} from "@/lib/zernio.functions";
 import { supabase } from "@/integrations/supabase/client";
 import { useProfile } from "@/hooks/use-profile";
 
@@ -395,6 +400,8 @@ function WhatsAppPage() {
         )}
       </Card>
 
+      <ZernioChannels />
+
       <ConfirmDialog
         open={confirmDc}
         onClose={() => setConfirmDc(false)}
@@ -414,5 +421,136 @@ function Info({ label, value }: { label: string; value: string }) {
       <div style={{ fontSize: 11, color: "var(--text-muted)", marginBottom: 4 }}>{label}</div>
       <div style={{ fontSize: 13, fontWeight: 500 }}>{value}</div>
     </div>
+  );
+}
+
+// ============================================================
+// Canais oficiais via Zernio (OAuth): WhatsApp Cloud API + Instagram DM.
+// Convivem com a conexão QR (Evolution) acima — canais independentes.
+// O usuário só faz OAuth; nenhuma chave/token fica no workspace.
+// ============================================================
+type ZernioPlatform = "whatsapp" | "instagram";
+type ZernioAccount = {
+  platform: string;
+  account_id: string | null;
+  username: string | null;
+  display_name: string | null;
+  status: string;
+  connected_at: string | null;
+};
+
+const ZERNIO_CHANNELS: { platform: ZernioPlatform; label: string; hint: string }[] = [
+  {
+    platform: "whatsapp",
+    label: "WhatsApp Oficial (API)",
+    hint: "Número oficial via Meta Cloud API, sem QR Code.",
+  },
+  {
+    platform: "instagram",
+    label: "Instagram Direct",
+    hint: "Responda DMs do Instagram pelo mesmo inbox.",
+  },
+];
+
+function ZernioChannels() {
+  const qc = useQueryClient();
+  const fetchAccounts = useServerFn(listZernioAccounts);
+  const doConnect = useServerFn(getZernioConnectUrl);
+  const doDisconnect = useServerFn(disconnectZernioAccount);
+
+  const { data } = useQuery({
+    queryKey: ["zernio-accounts"],
+    queryFn: () => fetchAccounts({ data: undefined as never }),
+    refetchOnWindowFocus: false,
+  });
+  const accounts: ZernioAccount[] = data?.accounts ?? [];
+
+  const connect = useMutation({
+    mutationFn: (platform: ZernioPlatform) => doConnect({ data: { platform } }),
+    onSuccess: (r: any) => {
+      if (r?.authUrl) window.location.href = r.authUrl as string;
+      else toast.error("Não foi possível iniciar a conexão.");
+    },
+    onError: (e: any) => toast.error(e?.message ?? "Falha ao conectar"),
+  });
+
+  const disconnect = useMutation({
+    mutationFn: (platform: ZernioPlatform) => doDisconnect({ data: { platform } }),
+    onSuccess: () => {
+      toast.success("Canal desconectado");
+      qc.invalidateQueries({ queryKey: ["zernio-accounts"] });
+    },
+    onError: (e: any) => toast.error(e?.message ?? "Falha"),
+  });
+
+  return (
+    <Card style={{ marginTop: 16, padding: 20 }}>
+      <div style={{ marginBottom: 4, fontSize: 15, fontWeight: 600 }}>Canais oficiais</div>
+      <p style={{ fontSize: 12, color: "var(--text-muted)", marginBottom: 16 }}>
+        Conecte via OAuth — as mensagens caem no mesmo inbox das conversas.
+      </p>
+
+      <div style={{ display: "flex", flexDirection: "column", gap: 10 }}>
+        {ZERNIO_CHANNELS.map(({ platform, label, hint }) => {
+          const acc = accounts.find((a) => a.platform === platform);
+          const connected = acc?.status === "connected";
+          const pending = connect.isPending || disconnect.isPending;
+          return (
+            <div
+              key={platform}
+              className="flex items-center justify-between"
+              style={{
+                padding: 14,
+                borderRadius: "var(--radius-card)",
+                border: "1px solid var(--border)",
+                background: "var(--bg-overlay)",
+              }}
+            >
+              <div style={{ minWidth: 0 }}>
+                <div className="flex items-center gap-2">
+                  <span style={{ fontSize: 14, fontWeight: 500 }}>{label}</span>
+                  <span
+                    style={{
+                      fontSize: 11,
+                      fontWeight: 600,
+                      padding: "2px 8px",
+                      borderRadius: 999,
+                      background: connected
+                        ? "color-mix(in oklab, #10B981 18%, transparent)"
+                        : "color-mix(in oklab, #6B7280 18%, transparent)",
+                      color: connected ? "#10B981" : "var(--text-muted)",
+                    }}
+                  >
+                    ● {connected ? "Conectado" : "Desconectado"}
+                  </span>
+                </div>
+                <div style={{ fontSize: 12, color: "var(--text-muted)", marginTop: 2 }}>
+                  {connected && acc?.username ? acc.username : hint}
+                </div>
+              </div>
+              <div className="flex items-center gap-2" style={{ flexShrink: 0 }}>
+                {connected ? (
+                  <button
+                    style={buttonSecondary}
+                    disabled={pending}
+                    onClick={() => disconnect.mutate(platform)}
+                  >
+                    Desconectar
+                  </button>
+                ) : (
+                  <button
+                    style={buttonPrimary}
+                    disabled={pending}
+                    onClick={() => connect.mutate(platform)}
+                  >
+                    {connect.isPending ? "Abrindo…" : "Conectar"}
+                  </button>
+                )}
+              </div>
+            </div>
+          );
+        })}
+      </div>
+    </Card>
   );
 }

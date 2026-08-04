@@ -15,6 +15,7 @@ import { Route as ForgotPasswordRouteImport } from './routes/forgot-password'
 import { Route as LoginRouteImport } from './routes/login'
 import { Route as ResetPasswordRouteImport } from './routes/reset-password'
 import { Route as SignupRouteImport } from './routes/signup'
+import { Route as ZernioCallbackRouteImport } from './routes/zernio-callback'
 import { Route as AuthenticatedAiAgentRouteImport } from './routes/_authenticated.ai-agent'
 import { Route as AuthenticatedContactsRouteImport } from './routes/_authenticated.contacts'
 import { Route as AuthenticatedConversationsChatRouteImport } from './routes/_authenticated.conversations-chat'
@@ -40,6 +41,7 @@ import { Route as AuthenticatedSuperAdminIaRouteImport } from './routes/_authent
 import { Route as AuthenticatedSuperAdminUsersRouteImport } from './routes/_authenticated.super-admin.users'
 import { Route as AuthenticatedSuperAdminWorkspacesRouteImport } from './routes/_authenticated.super-admin.workspaces'
 import { Route as ApiInternalQueueHealthRouteImport } from './routes/api/internal/queue-health'
+import { Route as ApiPublicZernioRouteImport } from './routes/api/public/zernio'
 import { Route as ApiPublicEvolutionInstanceIdRouteImport } from './routes/api/public/evolution.$instanceId'
 
 const IndexRoute = IndexRouteImport.update({
@@ -69,6 +71,11 @@ const ResetPasswordRoute = ResetPasswordRouteImport.update({
 const SignupRoute = SignupRouteImport.update({
   id: '/signup',
   path: '/signup',
+  getParentRoute: () => rootRouteImport,
+} as any)
+const ZernioCallbackRoute = ZernioCallbackRouteImport.update({
+  id: '/zernio-callback',
+  path: '/zernio-callback',
   getParentRoute: () => rootRouteImport,
 } as any)
 const AuthenticatedAiAgentRoute = AuthenticatedAiAgentRouteImport.update({
@@ -211,6 +218,11 @@ const ApiInternalQueueHealthRoute = ApiInternalQueueHealthRouteImport.update({
   path: '/api/internal/queue-health',
   getParentRoute: () => rootRouteImport,
 } as any)
+const ApiPublicZernioRoute = ApiPublicZernioRouteImport.update({
+  id: '/api/public/zernio',
+  path: '/api/public/zernio',
+  getParentRoute: () => rootRouteImport,
+} as any)
 const ApiPublicEvolutionInstanceIdRoute =
   ApiPublicEvolutionInstanceIdRouteImport.update({
     id: '/api/public/evolution/$instanceId',
@@ -224,6 +236,7 @@ export interface FileRoutesByFullPath {
   '/login': typeof LoginRoute
   '/reset-password': typeof ResetPasswordRoute
   '/signup': typeof SignupRoute
+  '/zernio-callback': typeof ZernioCallbackRoute
   '/ai-agent': typeof AuthenticatedAiAgentRoute
   '/contacts': typeof AuthenticatedContactsRoute
   '/conversations-chat': typeof AuthenticatedConversationsChatRoute
@@ -249,6 +262,7 @@ export interface FileRoutesByFullPath {
   '/super-admin/users': typeof AuthenticatedSuperAdminUsersRoute
   '/super-admin/workspaces': typeof AuthenticatedSuperAdminWorkspacesRoute
   '/api/internal/queue-health': typeof ApiInternalQueueHealthRoute
+  '/api/public/zernio': typeof ApiPublicZernioRoute
   '/api/public/evolution/$instanceId': typeof ApiPublicEvolutionInstanceIdRoute
 }
 export interface FileRoutesByTo {
@@ -257,6 +271,7 @@ export interface FileRoutesByTo {
   '/login': typeof LoginRoute
   '/reset-password': typeof ResetPasswordRoute
   '/signup': typeof SignupRoute
+  '/zernio-callback': typeof ZernioCallbackRoute
   '/ai-agent': typeof AuthenticatedAiAgentRoute
   '/contacts': typeof AuthenticatedContactsRoute
   '/conversations-chat': typeof AuthenticatedConversationsChatRoute
@@ -282,6 +297,7 @@ export interface FileRoutesByTo {
   '/super-admin/users': typeof AuthenticatedSuperAdminUsersRoute
   '/super-admin/workspaces': typeof AuthenticatedSuperAdminWorkspacesRoute
   '/api/internal/queue-health': typeof ApiInternalQueueHealthRoute
+  '/api/public/zernio': typeof ApiPublicZernioRoute
   '/api/public/evolution/$instanceId': typeof ApiPublicEvolutionInstanceIdRoute
 }
 export interface FileRoutesById {
@@ -292,6 +308,7 @@ export interface FileRoutesById {
   '/login': typeof LoginRoute
   '/reset-password': typeof ResetPasswordRoute
   '/signup': typeof SignupRoute
+  '/zernio-callback': typeof ZernioCallbackRoute
   '/_authenticated/ai-agent': typeof AuthenticatedAiAgentRoute
   '/_authenticated/contacts': typeof AuthenticatedContactsRoute
   '/_authenticated/conversations-chat': typeof AuthenticatedConversationsChatRoute
@@ -317,6 +334,7 @@ export interface FileRoutesById {
   '/_authenticated/super-admin/users': typeof AuthenticatedSuperAdminUsersRoute
   '/_authenticated/super-admin/workspaces': typeof AuthenticatedSuperAdminWorkspacesRoute
   '/api/internal/queue-health': typeof ApiInternalQueueHealthRoute
+  '/api/public/zernio': typeof ApiPublicZernioRoute
   '/api/public/evolution/$instanceId': typeof ApiPublicEvolutionInstanceIdRoute
 }
 export interface FileRouteTypes {
@@ -327,6 +345,7 @@ export interface FileRouteTypes {
     | '/login'
     | '/reset-password'
     | '/signup'
+    | '/zernio-callback'
     | '/ai-agent'
     | '/contacts'
     | '/conversations-chat'
@@ -352,6 +371,7 @@ export interface FileRouteTypes {
     | '/super-admin/users'
     | '/super-admin/workspaces'
     | '/api/internal/queue-health'
+    | '/api/public/zernio'
     | '/api/public/evolution/$instanceId'
   fileRoutesByTo: FileRoutesByTo
   to:
@@ -360,6 +380,7 @@ export interface FileRouteTypes {
     | '/login'
     | '/reset-password'
     | '/signup'
+    | '/zernio-callback'
     | '/ai-agent'
     | '/contacts'
     | '/conversations-chat'
@@ -385,6 +406,7 @@ export interface FileRouteTypes {
     | '/super-admin/users'
     | '/super-admin/workspaces'
     | '/api/internal/queue-health'
+    | '/api/public/zernio'
     | '/api/public/evolution/$instanceId'
   id:
     | '__root__'
@@ -394,6 +416,7 @@ export interface FileRouteTypes {
     | '/login'
     | '/reset-password'
     | '/signup'
+    | '/zernio-callback'
     | '/_authenticated/ai-agent'
     | '/_authenticated/contacts'
     | '/_authenticated/conversations-chat'
@@ -419,6 +442,7 @@ export interface FileRouteTypes {
     | '/_authenticated/super-admin/users'
     | '/_authenticated/super-admin/workspaces'
     | '/api/internal/queue-health'
+    | '/api/public/zernio'
     | '/api/public/evolution/$instanceId'
   fileRoutesById: FileRoutesById
 }
@@ -429,8 +453,10 @@ export interface RootRouteChildren {
   LoginRoute: typeof LoginRoute
   ResetPasswordRoute: typeof ResetPasswordRoute
   SignupRoute: typeof SignupRoute
+  ZernioCallbackRoute: typeof ZernioCallbackRoute
   AuthCallbackRoute: typeof AuthCallbackRoute
   ApiInternalQueueHealthRoute: typeof ApiInternalQueueHealthRoute
+  ApiPublicZernioRoute: typeof ApiPublicZernioRoute
   ApiPublicEvolutionInstanceIdRoute: typeof ApiPublicEvolutionInstanceIdRoute
 }
 
@@ -476,6 +502,13 @@ declare module '@tanstack/react-router' {
       path: '/signup'
       fullPath: '/signup'
       preLoaderRoute: typeof SignupRouteImport
+      parentRoute: typeof rootRouteImport
+    }
+    '/zernio-callback': {
+      id: '/zernio-callback'
+      path: '/zernio-callback'
+      fullPath: '/zernio-callback'
+      preLoaderRoute: typeof ZernioCallbackRouteImport
       parentRoute: typeof rootRouteImport
     }
     '/_authenticated/ai-agent': {
@@ -653,6 +686,13 @@ declare module '@tanstack/react-router' {
       preLoaderRoute: typeof ApiInternalQueueHealthRouteImport
       parentRoute: typeof rootRouteImport
     }
+    '/api/public/zernio': {
+      id: '/api/public/zernio'
+      path: '/api/public/zernio'
+      fullPath: '/api/public/zernio'
+      preLoaderRoute: typeof ApiPublicZernioRouteImport
+      parentRoute: typeof rootRouteImport
+    }
     '/api/public/evolution/$instanceId': {
       id: '/api/public/evolution/$instanceId'
       path: '/api/public/evolution/$instanceId'
@@ -741,8 +781,10 @@ const rootRouteChildren: RootRouteChildren = {
   LoginRoute: LoginRoute,
   ResetPasswordRoute: ResetPasswordRoute,
   SignupRoute: SignupRoute,
+  ZernioCallbackRoute: ZernioCallbackRoute,
   AuthCallbackRoute: AuthCallbackRoute,
   ApiInternalQueueHealthRoute: ApiInternalQueueHealthRoute,
+  ApiPublicZernioRoute: ApiPublicZernioRoute,
   ApiPublicEvolutionInstanceIdRoute: ApiPublicEvolutionInstanceIdRoute,
 }
 export const routeTree = rootRouteImport
