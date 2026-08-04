@@ -129,25 +129,49 @@ export function AudioPlayer({
   return (
     <div style={{ display: "flex", alignItems: "center", gap: 10, minWidth: 240 }}>
       <div style={{ position: "relative", flexShrink: 0 }}>
-        <ContactAvatar name={avatarName} avatarUrl={avatarUrl ?? undefined} size={42} />
-        <div
-          style={{
-            position: "absolute",
-            right: -2,
-            bottom: -2,
-            width: 18,
-            height: 18,
-            borderRadius: "var(--radius-pill)",
-            background: "var(--brand-400)",
-            color: "#fff",
-            display: "inline-flex",
-            alignItems: "center",
-            justifyContent: "center",
-            border: "2px solid var(--bg-surface)",
-          }}
-        >
-          <Mic size={10} />
-        </div>
+        {isMe ? (
+          // Áudio enviado: círculo neutro com microfone (não usa a foto do
+          // workspace — confundia com "de quem é essa foto"). O áudio já vem
+          // alinhado à direita, então não precisa de avatar pra saber que é seu.
+          <div
+            aria-hidden="true"
+            style={{
+              width: 42,
+              height: 42,
+              borderRadius: "50%",
+              background: "var(--brand-400)",
+              color: "#fff",
+              display: "inline-flex",
+              alignItems: "center",
+              justifyContent: "center",
+            }}
+          >
+            <Mic size={18} />
+          </div>
+        ) : (
+          <>
+            {/* Áudio recebido: foto do contato (cliente). */}
+            <ContactAvatar name={avatarName} avatarUrl={avatarUrl ?? undefined} size={42} />
+            <div
+              style={{
+                position: "absolute",
+                right: -2,
+                bottom: -2,
+                width: 18,
+                height: 18,
+                borderRadius: "var(--radius-pill)",
+                background: "var(--brand-400)",
+                color: "#fff",
+                display: "inline-flex",
+                alignItems: "center",
+                justifyContent: "center",
+                border: "2px solid var(--bg-surface)",
+              }}
+            >
+              <Mic size={10} />
+            </div>
+          </>
+        )}
       </div>
 
       <button
