@@ -12,8 +12,6 @@ import {
   Calendar,
   Shield,
   Columns3,
-  PanelLeftClose,
-  PanelLeftOpen,
 } from "lucide-react";
 import { useAuth } from "@/hooks/use-auth";
 import { useProfile } from "@/hooks/use-profile";
@@ -312,35 +310,61 @@ export function AppSidebar() {
           </ul>
         </nav>
 
-        {/* Alternador recolher/expandir */}
-        <div style={{ padding: "6px 8px" }}>
-          <Tooltip>
-            <TooltipTrigger asChild>
-              <button
-                type="button"
-                onClick={toggleExpanded}
-                aria-label={expanded ? "Recolher menu" : "Expandir menu"}
-                className="flex items-center transition-colors"
-                style={{
-                  height: 36,
-                  ...(expanded
-                    ? { width: "100%", padding: "0 12px", gap: 12, justifyContent: "flex-start" }
-                    : { width: 40, margin: "0 auto", justifyContent: "center" }),
-                  borderRadius: "var(--radius-pill)",
-                  border: "none",
-                  background: "transparent",
-                  color: "var(--text-muted)",
-                  cursor: "pointer",
-                }}
-                onMouseEnter={(e) => (e.currentTarget.style.background = "var(--bg-overlay)")}
-                onMouseLeave={(e) => (e.currentTarget.style.background = "transparent")}
-              >
-                {expanded ? <PanelLeftClose size={18} /> : <PanelLeftOpen size={18} />}
-                {expanded && <span style={{ fontSize: 13, fontWeight: 500 }}>Recolher</span>}
-              </button>
-            </TooltipTrigger>
-            {!expanded && <TooltipContent side="right">Expandir menu</TooltipContent>}
-          </Tooltip>
+        {/* Alternador recolher/expandir — discreto, na base antes do user */}
+        <div style={{ padding: "4px 8px" }}>
+          <button
+            type="button"
+            onClick={toggleExpanded}
+            aria-label={expanded ? "Recolher menu" : "Expandir menu"}
+            className="flex items-center transition-colors"
+            style={{
+              height: 32,
+              ...(expanded
+                ? { width: "100%", padding: "0 10px", gap: 10, justifyContent: "flex-start" }
+                : { width: 32, margin: "0 auto", justifyContent: "center" }),
+              borderRadius: "var(--radius-pill)",
+              border: "none",
+              background: "transparent",
+              color: "var(--text-muted)",
+              cursor: "pointer",
+              fontSize: 12,
+            }}
+            onMouseEnter={(e) => (e.currentTarget.style.background = "var(--bg-overlay)")}
+            onMouseLeave={(e) => (e.currentTarget.style.background = "transparent")}
+          >
+            {/* Chevron duplo sutil — combina com o design do site (mesma
+                linguagem visual dos botões pill com ícone outline). */}
+            <svg
+              width="16"
+              height="16"
+              viewBox="0 0 16 16"
+              fill="none"
+              style={{
+                transform: expanded ? "rotate(0deg)" : "rotate(180deg)",
+                transition: "transform 160ms ease",
+                flexShrink: 0,
+              }}
+            >
+              <path
+                d="M10 3.5L6 8l4 4.5"
+                stroke="currentColor"
+                strokeWidth="1.5"
+                strokeLinecap="round"
+                strokeLinejoin="round"
+              />
+              <path
+                d="M6 3.5L2 8l4 4.5"
+                stroke="currentColor"
+                strokeWidth="1.5"
+                strokeLinecap="round"
+                strokeLinejoin="round"
+                opacity="0.4"
+              />
+            </svg>
+            {expanded && (
+              <span style={{ fontWeight: 500, color: "var(--text-muted)" }}>Recolher</span>
+            )}
+          </button>
         </div>
 
         {/* User */}
