@@ -465,22 +465,31 @@ function ZernioChannels() {
   });
   const accounts: ZernioAccount[] = data?.accounts ?? [];
 
+  const [loadingPlatform, setLoadingPlatform] = React.useState<ZernioPlatform | null>(null);
+
   const connect = useMutation({
-    mutationFn: (platform: ZernioPlatform) => doConnect({ data: { platform } }),
+    mutationFn: (platform: ZernioPlatform) => {
+      setLoadingPlatform(platform);
+      return doConnect({ data: { platform } });
+    },
     onSuccess: (r: any) => {
       if (r?.authUrl) window.location.href = r.authUrl as string;
-      else toast.error("Não foi possível iniciar a conexão.");
+      else { toast.error("Não foi possível iniciar a conexão."); setLoadingPlatform(null); }
     },
-    onError: (e: any) => toast.error(e?.message ?? "Falha ao conectar"),
+    onError: (e: any) => { toast.error(e?.message ?? "Falha ao conectar"); setLoadingPlatform(null); },
   });
 
   const disconnect = useMutation({
-    mutationFn: (platform: ZernioPlatform) => doDisconnect({ data: { platform } }),
+    mutationFn: (platform: ZernioPlatform) => {
+      setLoadingPlatform(platform);
+      return doDisconnect({ data: { platform } });
+    },
     onSuccess: () => {
       toast.success("Canal desconectado");
+      setLoadingPlatform(null);
       qc.invalidateQueries({ queryKey: ["zernio-accounts"] });
     },
-    onError: (e: any) => toast.error(e?.message ?? "Falha"),
+    onError: (e: any) => { toast.error(e?.message ?? "Falha"); setLoadingPlatform(null); },
   });
 
   return (
@@ -494,7 +503,7 @@ function ZernioChannels() {
         {ZERNIO_CHANNELS.map(({ platform, label, hint }) => {
           const acc = accounts.find((a) => a.platform === platform);
           const connected = acc?.status === "connected";
-          const pending = connect.isPending || disconnect.isPending;
+          const isLoading = loadingPlatform === platform;
           return (
             <div
               key={platform}
@@ -532,18 +541,18 @@ function ZernioChannels() {
                 {connected ? (
                   <button
                     style={buttonSecondary}
-                    disabled={pending}
+                    disabled={isLoading}
                     onClick={() => disconnect.mutate(platform)}
                   >
-                    Desconectar
+                    {isLoading ? "Desconectando…" : "Desconectar"}
                   </button>
                 ) : (
                   <button
                     style={buttonPrimary}
-                    disabled={pending}
+                    disabled={isLoading}
                     onClick={() => connect.mutate(platform)}
                   >
-                    {connect.isPending ? "Abrindo…" : "Conectar"}
+                    {isLoading ? "Abrindo…" : "Conectar"}
                   </button>
                 )}
               </div>
