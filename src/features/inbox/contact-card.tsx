@@ -174,7 +174,7 @@ export function ContactCard({ contact, onClick, isOverlay, isSelected }: Props) 
 
       {/* Linha 1: avatar + nome */}
       <div className="flex items-center" style={{ gap: 8 }}>
-        <ContactAvatar name={contact.name} avatarUrl={contact.avatar} size={32} />
+        <ContactAvatar name={contact.name} avatarUrl={contact.avatar} size={32} channel={contact.channel} />
         <div
           className="flex-1 min-w-0 truncate"
           style={{

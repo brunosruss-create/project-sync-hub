@@ -51,7 +51,7 @@ export function ConversationListItem({
       }}
     >
       <div style={{ position: "relative", flexShrink: 0 }}>
-        <ContactAvatar name={contact.name} avatarUrl={contact.avatar} size={42} />
+        <ContactAvatar name={contact.name} avatarUrl={contact.avatar} size={42} channel={contact.channel} />
         <span
           title={col?.label ?? ""}
           style={{

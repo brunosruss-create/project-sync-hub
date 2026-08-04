@@ -674,7 +674,7 @@ export function ConversationPanel({
               }}
             >
               <div style={{ position: "relative", width: 36, height: 36, flexShrink: 0 }}>
-                <ContactAvatar name={contact.name} avatarUrl={contact.avatar} size={36} />
+                <ContactAvatar name={contact.name} avatarUrl={contact.avatar} size={36} channel={contact.channel} />
                 <span
                   style={{
                     position: "absolute",
