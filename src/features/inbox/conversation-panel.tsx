@@ -41,6 +41,7 @@ import { TemplatePickerModal } from "./template-picker-modal";
 import { AudioPlayerWithMe } from "@/components/chat/AudioPlayer";
 import { DateSeparator } from "@/components/chat/DateSeparator";
 import { uploadChatMedia } from "@/lib/chat-media";
+import { blobToWav } from "@/lib/audio-wav";
 import {
   formatCurrencyBRL,
   formatDuration,
@@ -617,7 +618,24 @@ export function ConversationPanel({
 
   const handleSendAudio = async (blob: Blob) => {
     if (!contact) return;
-    const file = new File([blob], `audio-${Date.now()}.webm`, { type: "audio/webm" });
+    // Instagram DM não aceita webm/opus (só aac/m4a/wav/mp4). Convertemos o
+    // áudio gravado para WAV no navegador antes de subir. WhatsApp (Cloud e
+    // Evolution) aceita opus, então mantém o webm original — mais leve.
+    let sendBlob = blob;
+    let ext = "webm";
+    let mimeType = "audio/webm";
+    if (contact.channel === "instagram") {
+      try {
+        sendBlob = await blobToWav(blob);
+        ext = "wav";
+        mimeType = "audio/wav";
+      } catch (e: any) {
+        toast.error("Não foi possível converter o áudio para envio no Instagram.");
+        console.error("[audio] conversão WAV falhou:", e?.message ?? e);
+        return;
+      }
+    }
+    const file = new File([sendBlob], `audio-${Date.now()}.${ext}`, { type: mimeType });
     const { url } = await uploadChatMedia(file, user!.id);
     const quoted = buildQuoted(replyingTo);
     setReplyingTo(null);

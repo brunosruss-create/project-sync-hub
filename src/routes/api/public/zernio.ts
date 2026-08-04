@@ -125,6 +125,27 @@ async function resolveAccount(accountId: string | null) {
 }
 
 /** Upsert de contato por (owner, external_conversation_id). Retorna { id, assignedAgentId }. */
+/** URL já re-hospedada no nosso Storage? (evita re-baixar a cada mensagem) */
+function isRehostedAvatar(url: string | null | undefined): boolean {
+  return !!url && /\/storage\/v1\/object\/public\/chat-media\//.test(url);
+}
+
+/**
+ * Re-hospeda a foto de perfil no Storage. As URLs de avatar da Meta (Instagram/
+ * WhatsApp) têm proteção anti-hotlink: carregar direto no <img> do browser dá
+ * 403 e cai na inicial. Baixando no servidor e servindo do nosso domínio, a
+ * foto aparece — mesmo motivo do re-host de mídia.
+ */
+async function persistZernioAvatar(
+  ownerUserId: string,
+  rawUrl: string,
+): Promise<string | null> {
+  const persisted = await persistZernioMedia(ownerUserId, rawUrl, null);
+  // persistZernioMedia devolve a URL crua como fallback se o download falhar;
+  // nesse caso não adianta (crua é hotlink-bloqueada), então descartamos.
+  return isRehostedAvatar(persisted.url) ? persisted.url : null;
+}
+
 async function upsertContact(params: {
   ownerUserId: string;
   channel: Channel;
@@ -137,23 +158,33 @@ async function upsertContact(params: {
 }) {
   const { data: existing } = await supabaseAdmin
     .from("contacts")
-    .select("id,assigned_agent_id")
+    .select("id,assigned_agent_id,avatar_url")
     .eq("owner_user_id", params.ownerUserId)
     .eq("external_conversation_id", params.conversationId)
     .maybeSingle();
 
   if (existing?.id) {
+    // Só re-hospeda se ainda não temos um avatar nosso (não a cada mensagem).
+    let avatarPatch: Record<string, unknown> = {};
+    if (params.picture && !isRehostedAvatar(existing.avatar_url as string | null)) {
+      const rehosted = await persistZernioAvatar(params.ownerUserId, params.picture);
+      if (rehosted) avatarPatch = { avatar_url: rehosted };
+    }
     await supabaseAdmin
       .from("contacts")
       .update({
         is_unread: true,
         last_message: params.preview,
         last_message_at: new Date().toISOString(),
-        ...(params.picture ? { avatar_url: params.picture } : {}),
+        ...avatarPatch,
       })
       .eq("id", existing.id);
     return { id: existing.id as string, assignedAgentId: existing.assigned_agent_id as string | null };
   }
+
+  const rehosted = params.picture
+    ? await persistZernioAvatar(params.ownerUserId, params.picture)
+    : null;
 
   const { data: created, error } = await supabaseAdmin
     .from("contacts")
@@ -164,7 +195,7 @@ async function upsertContact(params: {
       external_participant_id: params.participantId,
       phone: params.phone,
       name: params.name ?? params.participantId ?? "Contato",
-      avatar_url: params.picture,
+      avatar_url: rehosted,
       kanban_column: "waiting",
       is_unread: true,
       last_message: params.preview,
