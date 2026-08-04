@@ -8,7 +8,9 @@ function nameToColor(name: string): string {
     hash = name.charCodeAt(i) + ((hash << 5) - hash);
   }
   const hue = Math.abs(hash) % 360;
-  return `hsl(${hue}, 55%, 40%)`;
+  // Pastel suave: saturação baixa (35%) e luminosidade alta (75%) — como na
+  // referência (concorrente). Antes era 55%/40% → muito pesado e saturado.
+  return `hsl(${hue}, 35%, 75%)`;
 }
 
 type Channel = "whatsapp_evolution" | "whatsapp_cloud" | "instagram" | null | undefined;
@@ -99,7 +101,7 @@ export function ContactAvatar({
           height: size,
           borderRadius: "50%",
           background: nameToColor(name || "?"),
-          color: "#fff",
+          color: "hsl(0, 0%, 35%)",
           display: "inline-flex",
           alignItems: "center",
           justifyContent: "center",
