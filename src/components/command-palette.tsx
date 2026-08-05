@@ -13,22 +13,42 @@ import {
   BarChart3,
   Columns3,
 } from "lucide-react";
+import { supabase } from "@/integrations/supabase/client";
+import { useWorkspaceOwnerId } from "@/hooks/use-workspace-owner";
+import {
+  MIN_SEARCH_LEN,
+  SEARCH_LIMIT,
+  escapeLike,
+  snippet,
+} from "@/lib/message-search";
 
 type Action = {
   id: string;
   label: string;
-  group: "Navegar" | "Ações" | "Ajustes";
+  group: "Navegar" | "Ações" | "Ajustes" | "Mensagens";
   icon: React.ComponentType<{ size?: number }>;
   perform: () => void;
   keywords?: string;
+  /** Snippet secundário (só usado no grupo "Mensagens"). */
+  subLabel?: React.ReactNode;
+};
+
+type MessageSearchHit = {
+  id: string;
+  contact_id: string;
+  content: string;
+  contact_name: string | null;
 };
 
 export function CommandPalette() {
   const [open, setOpen] = React.useState(false);
   const [query, setQuery] = React.useState("");
   const [activeIdx, setActiveIdx] = React.useState(0);
+  const [messageHits, setMessageHits] = React.useState<MessageSearchHit[]>([]);
+  const [searchingMessages, setSearchingMessages] = React.useState(false);
   const inputRef = React.useRef<HTMLInputElement>(null);
   const navigate = useNavigate();
+  const { workspaceOwnerId } = useWorkspaceOwnerId();
 
   const close = React.useCallback(() => {
     setOpen(false);
@@ -55,13 +75,135 @@ export function CommandPalette() {
     [navigate],
   );
 
+  /**
+   * Busca de mensagens com debounce — só dispara depois de 220ms parado.
+   * Sem debounce a cada tecla dispararia uma query, mesmo entre "olá" e
+   * "olá tudo bem". RLS filtra pelo workspace; ainda filtro explícito por
+   * owner_user_id como defesa em profundidade.
+   *
+   * `is_internal=false` obrigatório: nota interna vazaria conteúdo privado
+   * da equipe pra qualquer atendente que a busca alcance.
+   */
+  React.useEffect(() => {
+    const term = query.trim();
+    if (!open || term.length < MIN_SEARCH_LEN) {
+      setMessageHits([]);
+      setSearchingMessages(false);
+      return;
+    }
+    if (!workspaceOwnerId) return;
+    setSearchingMessages(true);
+    let cancelled = false;
+    const t = window.setTimeout(async () => {
+      const { data, error } = await supabase
+        .from("messages")
+        .select("id,contact_id,content,contact:contacts(name)")
+        .eq("owner_user_id", workspaceOwnerId)
+        .eq("is_internal", false)
+        .ilike("content", `%${escapeLike(term)}%`)
+        .order("created_at", { ascending: false })
+        .limit(SEARCH_LIMIT);
+      if (cancelled) return;
+      if (error) {
+        // is_internal pode não existir em bancos antigos — tenta sem o filtro
+        // mas apenas se o erro for exatamente esse. Nunca vazar nota interna
+        // silenciosamente por outro tipo de erro.
+        if (/is_internal/i.test(error.message)) {
+          const retry = await supabase
+            .from("messages")
+            .select("id,contact_id,content,contact:contacts(name)")
+            .eq("owner_user_id", workspaceOwnerId)
+            .ilike("content", `%${escapeLike(term)}%`)
+            .order("created_at", { ascending: false })
+            .limit(SEARCH_LIMIT);
+          if (!cancelled && !retry.error) {
+            setMessageHits(
+              (retry.data ?? []).map((r: any) => ({
+                id: r.id,
+                contact_id: r.contact_id,
+                content: r.content ?? "",
+                contact_name: r.contact?.name ?? null,
+              })),
+            );
+          }
+        } else {
+          console.warn("[cmd-palette] busca falhou:", error.message);
+          setMessageHits([]);
+        }
+      } else {
+        setMessageHits(
+          (data ?? []).map((r: any) => ({
+            id: r.id,
+            contact_id: r.contact_id,
+            content: r.content ?? "",
+            contact_name: r.contact?.name ?? null,
+          })),
+        );
+      }
+      setSearchingMessages(false);
+    }, 220);
+    return () => {
+      cancelled = true;
+      window.clearTimeout(t);
+    };
+  }, [query, open, workspaceOwnerId]);
+
+  // Monta as actions dinâmicas de mensagem — mesmo shape das actions estáticas.
+  const messageActions = React.useMemo<Action[]>(() => {
+    const term = query.trim();
+    if (term.length < MIN_SEARCH_LEN) return [];
+    return messageHits.map((h) => {
+      const s = snippet(h.content, term);
+      return {
+        id: `msg:${h.id}`,
+        group: "Mensagens" as const,
+        label: h.contact_name ?? "Contato",
+        icon: MessageSquare,
+        subLabel: (
+          <span
+            style={{
+              fontSize: 12,
+              color: "var(--text-muted)",
+              display: "block",
+              marginTop: 2,
+              overflow: "hidden",
+              textOverflow: "ellipsis",
+              whiteSpace: "nowrap",
+            }}
+          >
+            {s.before}
+            <mark
+              style={{
+                background: "color-mix(in oklab, var(--brand-400) 25%, transparent)",
+                color: "inherit",
+                padding: "0 1px",
+                borderRadius: 2,
+              }}
+            >
+              {s.hit}
+            </mark>
+            {s.after}
+          </span>
+        ),
+        perform: () => navigate({ to: "/conversations-chat", search: { id: h.contact_id } }),
+      };
+    });
+  }, [messageHits, query, navigate]);
+
   const filtered = React.useMemo(() => {
     const q = query.trim().toLowerCase();
-    if (!q) return actions;
-    return actions.filter(
-      (a) => a.label.toLowerCase().includes(q) || a.keywords?.toLowerCase().includes(q) || a.group.toLowerCase().includes(q),
-    );
-  }, [query, actions]);
+    const actionMatches = q
+      ? actions.filter(
+          (a) =>
+            a.label.toLowerCase().includes(q) ||
+            a.keywords?.toLowerCase().includes(q) ||
+            a.group.toLowerCase().includes(q),
+        )
+      : actions;
+    // Mensagens aparecem depois das ações estáticas — priorizamos navegação
+    // por rota (mais previsível) e deixamos a busca em conteúdo como extra.
+    return [...actionMatches, ...messageActions];
+  }, [query, actions, messageActions]);
 
   React.useEffect(() => {
     const onKey = (e: KeyboardEvent) => {
@@ -173,7 +315,11 @@ export function CommandPalette() {
         <div style={{ maxHeight: 360, overflowY: "auto", padding: 6 }}>
           {filtered.length === 0 && (
             <p style={{ padding: 24, textAlign: "center", fontSize: 13, color: "var(--text-muted)" }}>
-              Nada encontrado.
+              {searchingMessages
+                ? "Buscando…"
+                : query.trim().length > 0 && query.trim().length < MIN_SEARCH_LEN
+                  ? `Digite pelo menos ${MIN_SEARCH_LEN} letras.`
+                  : "Nada encontrado."}
             </p>
           )}
           {Object.entries(groups).map(([group, items]) => (
@@ -204,7 +350,7 @@ export function CommandPalette() {
                       a.perform();
                       close();
                     }}
-                    className="w-full flex items-center gap-3"
+                    className="w-full flex items-start gap-3"
                     style={{
                       padding: "8px 10px",
                       borderRadius: "var(--radius-control)",
@@ -217,7 +363,10 @@ export function CommandPalette() {
                     }}
                   >
                     <Icon size={16} />
-                    <span>{a.label}</span>
+                    <span style={{ flex: 1, minWidth: 0 }}>
+                      <span style={{ display: "block" }}>{a.label}</span>
+                      {a.subLabel}
+                    </span>
                   </button>
                 );
               })}
