@@ -17,6 +17,7 @@ import { Route as ResetPasswordRouteImport } from './routes/reset-password'
 import { Route as SignupRouteImport } from './routes/signup'
 import { Route as ZernioCallbackRouteImport } from './routes/zernio-callback'
 import { Route as AuthenticatedAiAgentRouteImport } from './routes/_authenticated.ai-agent'
+import { Route as AuthenticatedConnectionsRouteImport } from './routes/_authenticated.connections'
 import { Route as AuthenticatedContactsRouteImport } from './routes/_authenticated.contacts'
 import { Route as AuthenticatedConversationsChatRouteImport } from './routes/_authenticated.conversations-chat'
 import { Route as AuthenticatedDashboardRouteImport } from './routes/_authenticated.dashboard'
@@ -89,6 +90,12 @@ const AuthenticatedAiAgentRoute = AuthenticatedAiAgentRouteImport.update({
   path: '/ai-agent',
   getParentRoute: () => AuthenticatedRoute,
 } as any)
+const AuthenticatedConnectionsRoute =
+  AuthenticatedConnectionsRouteImport.update({
+    id: '/connections',
+    path: '/connections',
+    getParentRoute: () => AuthenticatedRoute,
+  } as any)
 const AuthenticatedContactsRoute = AuthenticatedContactsRouteImport.update({
   id: '/contacts',
   path: '/contacts',
@@ -279,6 +286,7 @@ export interface FileRoutesByFullPath {
   '/signup': typeof SignupRoute
   '/zernio-callback': typeof ZernioCallbackRoute
   '/ai-agent': typeof AuthenticatedAiAgentRoute
+  '/connections': typeof AuthenticatedConnectionsRoute
   '/contacts': typeof AuthenticatedContactsRoute
   '/conversations-chat': typeof AuthenticatedConversationsChatRoute
   '/dashboard': typeof AuthenticatedDashboardRoute
@@ -320,6 +328,7 @@ export interface FileRoutesByTo {
   '/signup': typeof SignupRoute
   '/zernio-callback': typeof ZernioCallbackRoute
   '/ai-agent': typeof AuthenticatedAiAgentRoute
+  '/connections': typeof AuthenticatedConnectionsRoute
   '/contacts': typeof AuthenticatedContactsRoute
   '/conversations-chat': typeof AuthenticatedConversationsChatRoute
   '/dashboard': typeof AuthenticatedDashboardRoute
@@ -363,6 +372,7 @@ export interface FileRoutesById {
   '/signup': typeof SignupRoute
   '/zernio-callback': typeof ZernioCallbackRoute
   '/_authenticated/ai-agent': typeof AuthenticatedAiAgentRoute
+  '/_authenticated/connections': typeof AuthenticatedConnectionsRoute
   '/_authenticated/contacts': typeof AuthenticatedContactsRoute
   '/_authenticated/conversations-chat': typeof AuthenticatedConversationsChatRoute
   '/_authenticated/dashboard': typeof AuthenticatedDashboardRoute
@@ -406,6 +416,7 @@ export interface FileRouteTypes {
     | '/signup'
     | '/zernio-callback'
     | '/ai-agent'
+    | '/connections'
     | '/contacts'
     | '/conversations-chat'
     | '/dashboard'
@@ -447,6 +458,7 @@ export interface FileRouteTypes {
     | '/signup'
     | '/zernio-callback'
     | '/ai-agent'
+    | '/connections'
     | '/contacts'
     | '/conversations-chat'
     | '/dashboard'
@@ -489,6 +501,7 @@ export interface FileRouteTypes {
     | '/signup'
     | '/zernio-callback'
     | '/_authenticated/ai-agent'
+    | '/_authenticated/connections'
     | '/_authenticated/contacts'
     | '/_authenticated/conversations-chat'
     | '/_authenticated/dashboard'
@@ -595,6 +608,13 @@ declare module '@tanstack/react-router' {
       path: '/ai-agent'
       fullPath: '/ai-agent'
       preLoaderRoute: typeof AuthenticatedAiAgentRouteImport
+      parentRoute: typeof AuthenticatedRoute
+    }
+    '/_authenticated/connections': {
+      id: '/_authenticated/connections'
+      path: '/connections'
+      fullPath: '/connections'
+      preLoaderRoute: typeof AuthenticatedConnectionsRouteImport
       parentRoute: typeof AuthenticatedRoute
     }
     '/_authenticated/contacts': {
@@ -849,6 +869,7 @@ const AuthenticatedSuperAdminRouteWithChildren =
 
 interface AuthenticatedRouteChildren {
   AuthenticatedAiAgentRoute: typeof AuthenticatedAiAgentRoute
+  AuthenticatedConnectionsRoute: typeof AuthenticatedConnectionsRoute
   AuthenticatedContactsRoute: typeof AuthenticatedContactsRoute
   AuthenticatedConversationsChatRoute: typeof AuthenticatedConversationsChatRoute
   AuthenticatedDashboardRoute: typeof AuthenticatedDashboardRoute
@@ -874,6 +895,7 @@ interface AuthenticatedRouteChildren {
 
 const AuthenticatedRouteChildren: AuthenticatedRouteChildren = {
   AuthenticatedAiAgentRoute: AuthenticatedAiAgentRoute,
+  AuthenticatedConnectionsRoute: AuthenticatedConnectionsRoute,
   AuthenticatedContactsRoute: AuthenticatedContactsRoute,
   AuthenticatedConversationsChatRoute: AuthenticatedConversationsChatRoute,
   AuthenticatedDashboardRoute: AuthenticatedDashboardRoute,

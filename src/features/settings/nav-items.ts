@@ -29,7 +29,6 @@ export const SETTINGS_ITEMS: SettingsEntry[] = [
   { kind: "item", label: "Departamentos", to: "/settings/departments", icon: Building2 },
   { kind: "section", label: "Agenda" },
   { kind: "item", label: "Profissionais", to: "/settings/professionals", icon: Briefcase },
-  { kind: "item", label: "WhatsApp", to: "/settings/whatsapp", icon: MessageCircle },
   { kind: "item", label: "Mensagens", to: "/settings/messages", icon: MessageSquare },
   { kind: "item", label: "Respostas rápidas", to: "/settings/quick-replies", icon: Zap },
   { kind: "item", label: "Planos & Cobrança", to: "/settings/billing", icon: CreditCard },
