@@ -1,9 +1,9 @@
 import * as React from "react";
-import { createFileRoute } from "@tanstack/react-router";
+import { createFileRoute, Link } from "@tanstack/react-router";
 import { useQuery, useMutation, useQueryClient } from "@tanstack/react-query";
 import { useServerFn } from "@tanstack/react-start";
 import { toast } from "sonner";
-import { Plus, Loader2, Plug } from "lucide-react";
+import { Plus, Loader2, Share2, FileText, Settings2, Facebook, Instagram, Youtube, Music2 } from "lucide-react";
 import { Card } from "@/components/ui/card";
 import { Badge, type BadgeVariant } from "@/components/ui/badge";
 import { EmptyState } from "@/components/empty-state";
@@ -14,8 +14,9 @@ import {
 } from "@/lib/social-publishing.functions";
 import { PLATFORM_LABELS, type SocialPlatform } from "@/lib/social-post-validation";
 import { ConfirmDialog } from "@/components/confirm-dialog";
+import { ManagerOnly } from "@/components/manager-only";
 
-export const Route = createFileRoute("/_authenticated/social/accounts" )({
+export const Route = createFileRoute("/_authenticated/social/accounts")({
   component: SocialAccountsPage,
 });
 
@@ -31,6 +32,20 @@ const STATUS_LABEL: Record<string, string> = {
   expired: "Token expirado",
   disconnected: "Desconectado",
   connecting: "Conectando",
+};
+
+const PLATFORM_ICON: Record<SocialPlatform, React.ReactNode> = {
+  facebook: <Facebook size={20} />,
+  instagram: <Instagram size={20} />,
+  tiktok: <Music2 size={20} />,
+  youtube: <Youtube size={20} />,
+};
+
+const PLATFORM_COLOR: Record<SocialPlatform, string> = {
+  facebook: "#1877F2",
+  instagram: "#E1306C",
+  tiktok: "#000000",
+  youtube: "#FF0000",
 };
 
 const PLATFORMS: SocialPlatform[] = ["facebook", "instagram", "tiktok", "youtube"];
@@ -72,105 +87,111 @@ function SocialAccountsPage() {
   });
 
   const accounts = q.data?.accounts ?? [];
+  const hasConnected = accounts.some((a: any) => a.status === "connected");
 
   return (
     <div className="flex flex-col" style={{ gap: 16 }}>
-      <div>
-        <h1 style={{ fontSize: 22, fontWeight: 600, letterSpacing: "-0.015em" }}>
-          Contas Sociais
-        </h1>
-        <p style={{ marginTop: 2, fontSize: 12, color: "var(--text-muted)" }}>
-          Conecte suas contas pra publicar posts pelo ZapFlow.
-        </p>
-      </div>
-
-      {/* Botões de conexão por plataforma */}
-      <Card style={{ padding: 16 }}>
-        <div style={{ fontSize: 12, fontWeight: 600, color: "var(--text-muted)", marginBottom: 10, textTransform: "uppercase", letterSpacing: "0.04em" }}>
-          Conectar nova conta
+      {/* Header com navegação contextual */}
+      <div className="flex flex-wrap items-center justify-between" style={{ gap: 12 }}>
+        <div>
+          <h1 style={{ fontSize: 22, fontWeight: 600, letterSpacing: "-0.015em" }}>
+            Publicações
+          </h1>
+          <p style={{ marginTop: 2, fontSize: 12, color: "var(--text-muted)" }}>
+            Publique nas redes sociais direto do ZapFlow.
+          </p>
         </div>
-        <div className="flex flex-wrap" style={{ gap: 8 }}>
-          {PLATFORMS.map((p) => (
-            <button
-              key={p}
-              type="button"
-              onClick={() => connect.mutate(p)}
-              disabled={loadingPlatform === p}
+        {/* Sub-navegação: só mostra Posts/Compor se tem pelo menos 1 conta */}
+        {hasConnected && (
+          <div className="flex items-center" style={{ gap: 6 }}>
+            <Link
+              to="/social/posts"
               className="inline-flex items-center"
               style={{
                 gap: 6,
-                height: 34,
+                height: 32,
                 padding: "0 14px",
                 borderRadius: "var(--radius-pill)",
                 border: "1px solid var(--border-strong)",
-                background: "var(--bg-surface)",
+                background: "transparent",
                 color: "var(--text-primary)",
                 fontSize: 13,
                 fontWeight: 500,
-                cursor: "pointer",
+                textDecoration: "none",
               }}
             >
-              {loadingPlatform === p ? <Loader2 size={14} className="animate-spin" /> : <Plus size={14} />}
-              {PLATFORM_LABELS[p]}
-            </button>
-          ))}
-        </div>
-      </Card>
+              <FileText size={14} />
+              Meus Posts
+            </Link>
+            <Link
+              to="/social/compose"
+              className="btn-primary"
+              style={{ textDecoration: "none" }}
+            >
+              <Plus size={14} />
+              Novo Post
+            </Link>
+          </div>
+        )}
+      </div>
 
-      {/* Lista de contas conectadas */}
-      {q.isLoading ? (
-        <div style={{ padding: 24, textAlign: "center", color: "var(--text-muted)" }}>
-          Carregando...
-        </div>
-      ) : accounts.length === 0 ? (
-        <EmptyState
-          icon={<Plug size={40} style={{ color: "var(--brand-400)" }} aria-hidden />}
-          title="Nenhuma conta conectada"
-          description="Clique em um dos botões acima pra conectar via OAuth."
-        />
-      ) : (
-        <div className="flex flex-col" style={{ gap: 8 }}>
-          {accounts.map((a: any) => (
-            <Card key={a.id} style={{ padding: 14 }}>
-              <div className="flex items-center justify-between">
-                <div className="flex items-center" style={{ gap: 10 }}>
-                  <span style={{ fontSize: 14, fontWeight: 500 }}>
-                    {PLATFORM_LABELS[a.platform as SocialPlatform] ?? a.platform}
-                  </span>
-                  {a.account_name && (
-                    <span style={{ fontSize: 12, color: "var(--text-muted)" }}>
-                      {a.account_name}
-                    </span>
-                  )}
-                  <Badge variant={STATUS_VARIANT[a.status] ?? "neutral"} withDot>
-                    {STATUS_LABEL[a.status] ?? a.status}
-                  </Badge>
+      {/* Cards de integração — sempre visíveis, são a porta de entrada */}
+      <div style={{ fontSize: 13, fontWeight: 600, color: "var(--text-muted)", textTransform: "uppercase", letterSpacing: "0.04em" }}>
+        Integrações
+      </div>
+
+      <div
+        className="grid"
+        style={{
+          gridTemplateColumns: "repeat(auto-fill, minmax(min(260px, 100%), 1fr))",
+          gap: 12,
+        }}
+      >
+        {PLATFORMS.map((platform) => {
+          const connected = accounts.filter(
+            (a: any) => a.platform === platform && a.status === "connected",
+          );
+          const expired = accounts.filter(
+            (a: any) => a.platform === platform && a.status === "expired",
+          );
+          const isConnected = connected.length > 0;
+          const isExpired = expired.length > 0 && !isConnected;
+          const isLoading = loadingPlatform === platform;
+          const account = connected[0] ?? expired[0];
+
+          return (
+            <Card key={platform} style={{ padding: 20 }}>
+              <div className="flex items-center" style={{ gap: 12, marginBottom: 14 }}>
+                <div
+                  className="flex items-center justify-center"
+                  style={{
+                    width: 40,
+                    height: 40,
+                    borderRadius: "var(--radius-pill)",
+                    background: `color-mix(in oklab, ${PLATFORM_COLOR[platform]} 12%, transparent)`,
+                    color: PLATFORM_COLOR[platform],
+                  }}
+                >
+                  {PLATFORM_ICON[platform]}
                 </div>
-                <div className="flex items-center" style={{ gap: 6 }}>
-                  {a.status === "expired" && (
-                    <button
-                      type="button"
-                      onClick={() => connect.mutate(a.platform)}
-                      className="inline-flex items-center"
-                      style={{
-                        gap: 4,
-                        height: 28,
-                        padding: "0 10px",
-                        borderRadius: "var(--radius-pill)",
-                        background: "var(--brand-400)",
-                        color: "#fff",
-                        fontSize: 12,
-                        fontWeight: 500,
-                        border: "none",
-                        cursor: "pointer",
-                      }}
-                    >
-                      Reconectar
-                    </button>
+                <div>
+                  <div style={{ fontSize: 15, fontWeight: 600 }}>
+                    {PLATFORM_LABELS[platform]}
+                  </div>
+                  {account && (
+                    <div style={{ fontSize: 12, color: "var(--text-muted)" }}>
+                      {(account as any).account_name ?? "Conta conectada"}
+                    </div>
                   )}
+                </div>
+              </div>
+
+              {isConnected ? (
+                <div className="flex items-center justify-between">
+                  <Badge variant="success" withDot>Conectado</Badge>
                   <button
                     type="button"
-                    onClick={() => setConfirmDisconnect(a.id)}
+                    onClick={() => setConfirmDisconnect((account as any).id)}
                     style={{
                       height: 28,
                       padding: "0 10px",
@@ -185,9 +206,85 @@ function SocialAccountsPage() {
                     Desconectar
                   </button>
                 </div>
-              </div>
+              ) : isExpired ? (
+                <div className="flex items-center justify-between">
+                  <Badge variant="danger" withDot>Token expirado</Badge>
+                  <button
+                    type="button"
+                    onClick={() => connect.mutate(platform)}
+                    disabled={isLoading}
+                    className="btn-primary"
+                    style={{ height: 28, fontSize: 12 }}
+                  >
+                    {isLoading ? "Abrindo..." : "Reconectar"}
+                  </button>
+                </div>
+              ) : (
+                <button
+                  type="button"
+                  onClick={() => connect.mutate(platform)}
+                  disabled={isLoading}
+                  className="inline-flex items-center"
+                  style={{
+                    gap: 6,
+                    width: "100%",
+                    height: 36,
+                    justifyContent: "center",
+                    borderRadius: "var(--radius-pill)",
+                    border: "1px solid var(--border-strong)",
+                    background: "var(--bg-surface)",
+                    color: "var(--text-primary)",
+                    fontSize: 13,
+                    fontWeight: 500,
+                    cursor: "pointer",
+                  }}
+                >
+                  {isLoading ? <Loader2 size={14} className="animate-spin" /> : <Plus size={14} />}
+                  Conectar
+                </button>
+              )}
             </Card>
-          ))}
+          );
+        })}
+      </div>
+
+      {/* Orientação quando não tem conta */}
+      {!hasConnected && !q.isLoading && (
+        <Card
+          style={{
+            padding: 24,
+            textAlign: "center",
+            background: "color-mix(in oklab, var(--brand-400) 4%, var(--bg-surface))",
+            border: "1px dashed var(--border-strong)",
+          }}
+        >
+          <Share2 size={32} style={{ color: "var(--brand-400)", margin: "0 auto 12px" }} />
+          <div style={{ fontSize: 15, fontWeight: 600, marginBottom: 4 }}>
+            Conecte uma rede social pra começar
+          </div>
+          <div style={{ fontSize: 13, color: "var(--text-muted)", maxWidth: 400, margin: "0 auto" }}>
+            Após conectar pelo menos uma conta acima, você poderá criar, agendar e publicar
+            posts diretamente pelo ZapFlow.
+          </div>
+        </Card>
+      )}
+
+      {/* Link pra permissões (só Manager) */}
+      {hasConnected && (
+        <div style={{ marginTop: 8 }}>
+          <Link
+            to="/social/permissions"
+            className="inline-flex items-center"
+            style={{
+              gap: 6,
+              fontSize: 12,
+              color: "var(--text-muted)",
+              textDecoration: "none",
+            }}
+          >
+            <Settings2 size={14} />
+            Configurar permissões da equipe
+          </Link>
         </div>
       )}
 
@@ -203,5 +300,3 @@ function SocialAccountsPage() {
     </div>
   );
 }
-
-
