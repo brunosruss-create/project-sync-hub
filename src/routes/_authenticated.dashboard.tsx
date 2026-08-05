@@ -26,6 +26,7 @@ import { useProfile } from "@/hooks/use-profile";
 import { getDashboardData, type DashboardData, type DashPeriod } from "@/features/dashboard/data";
 import { ManagerOnly } from "@/components/manager-only";
 import { Card } from "@/components/ui/card";
+import { ChannelHealthCard } from "@/features/dashboard/channel-health-card";
 
 export const Route = createFileRoute("/_authenticated/dashboard")({
   component: () => (
@@ -97,6 +98,9 @@ function Dashboard() {
           ),
         )}
       </div>
+
+      {/* Saúde dos canais — no topo pra manager ver na hora se algo caiu. */}
+      <ChannelHealthCard />
 
       {/* LINHA 2 */}
       <div className="grid gap-3" style={{ gridTemplateColumns: "repeat(12, 1fr)" }}>
