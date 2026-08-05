@@ -6,6 +6,7 @@ import { supabase } from "@/integrations/supabase/client";
 import { AppSidebar } from "@/components/app-sidebar";
 import { AppTopbar } from "@/components/app-topbar";
 import { CommandPalette } from "@/components/command-palette";
+import { useInboundNotifier } from "@/hooks/use-inbound-notifier";
 
 export const Route = createFileRoute("/_authenticated")({
   component: AuthenticatedLayout,
@@ -14,6 +15,10 @@ export const Route = createFileRoute("/_authenticated")({
 function AuthenticatedLayout() {
   const { user, loading, signOut } = useAuth();
   const navigate = useNavigate();
+
+  // Notificações globais (title, som, web push) — hook único no layout raiz.
+  // Chama sempre; o hook decide internamente se dispara efeitos.
+  useInboundNotifier();
 
   React.useEffect(() => {
     if (!loading && !user) navigate({ to: "/login" });

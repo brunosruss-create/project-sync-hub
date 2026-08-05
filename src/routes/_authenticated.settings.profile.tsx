@@ -38,6 +38,7 @@ function ProfilePage() {
   const [tz, setTz] = React.useState("America/Sao_Paulo");
   const [notifyEmail, setNotifyEmail] = React.useState(true);
   const [notifyPush, setNotifyPush] = React.useState(true);
+  const [notifySound, setNotifySound] = React.useState(true);
   const [showPwd, setShowPwd] = React.useState(false);
   const [pwd1, setPwd1] = React.useState("");
   const [pwd2, setPwd2] = React.useState("");
@@ -52,6 +53,7 @@ function ProfilePage() {
           user_timezone?: string | null;
           notify_email?: boolean | null;
           notify_push?: boolean | null;
+          notify_sound_enabled?: boolean | null;
           avatar_url?: string | null;
         }
       | null
@@ -62,6 +64,7 @@ function ProfilePage() {
     setTz(p.user_timezone ?? "America/Sao_Paulo");
     setNotifyEmail(p.notify_email ?? true);
     setNotifyPush(p.notify_push ?? true);
+    setNotifySound(p.notify_sound_enabled ?? true);
   }, [profileQ.data]);
 
   const avatarUrl = profileQ.data?.profile?.avatar_url ?? null;
@@ -80,6 +83,7 @@ function ProfilePage() {
           user_timezone: tz,
           notify_email: notifyEmail,
           notify_push: notifyPush,
+          notify_sound_enabled: notifySound,
         },
       });
       await qc.invalidateQueries({ queryKey: ["my-profile"] });
@@ -269,6 +273,14 @@ function ProfilePage() {
                 onChange={(e) => setNotifyPush(e.target.checked)}
               />
               Push (navegador)
+            </label>
+            <label className="flex items-center gap-2" style={{ fontSize: 13 }}>
+              <input
+                type="checkbox"
+                checked={notifySound}
+                onChange={(e) => setNotifySound(e.target.checked)}
+              />
+              Som ao receber mensagem
             </label>
           </div>
         </Field>

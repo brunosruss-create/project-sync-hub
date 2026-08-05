@@ -10,7 +10,7 @@ export const getMyProfile = createServerFn({ method: "POST" })
     const { data } = await supabaseAdmin
       .from("profiles")
       .select(
-        "id,email,full_name,avatar_url,phone,user_timezone,notify_email,notify_push",
+        "id,email,full_name,avatar_url,phone,user_timezone,notify_email,notify_push,notify_sound_enabled",
       )
       .eq("id", context.userId)
       .maybeSingle();
@@ -30,6 +30,7 @@ export const updateMyProfile = createServerFn({ method: "POST" })
         user_timezone: z.string().min(1).max(64).optional(),
         notify_email: z.boolean().optional(),
         notify_push: z.boolean().optional(),
+        notify_sound_enabled: z.boolean().optional(),
       })
       .parse(input),
   )
