@@ -53,6 +53,7 @@ import { useQuery } from "@tanstack/react-query";
 import { listQuickReplies } from "@/lib/quick-replies.functions";
 import { getWorkspaceProfile } from "@/lib/onboarding.functions";
 import { listAssignableMembers } from "@/lib/assignment.functions";
+import { useConversationPresence } from "@/hooks/use-conversation-presence";
 
 
 type Tab = "conversation" | "contact" | "services" | "history";
@@ -308,6 +309,9 @@ export function ConversationPanel({
   // UserIds que o Composer acumulou no draft de nota atual. Zera junto com
   // o draft quando a nota é enviada.
   const [noteMentions, setNoteMentions] = React.useState<string[]>([]);
+
+  // Presence: quem mais tá vendo essa conversa, e quem tá digitando.
+  const presence = useConversationPresence(contact?.id ?? null);
 
   /** Variáveis do template. Nomes em ASCII: renderTemplate usa \w+. */
   const templateVars = React.useMemo(
@@ -590,6 +594,9 @@ export function ConversationPanel({
     // Isso evita duplicação (mensagem aparecendo 2x para o agente).
     setDraft("");
     if (taRef.current) taRef.current.style.height = "auto";
+    // Desliga "digitando" imediatamente após envio (auto-off do hook demoraria
+    // 3s e a UI dos outros mostraria "digitando…" mesmo com a msg já entregue).
+    presence.setTyping(false);
     const quoted = buildQuoted(replyingTo);
     setReplyingTo(null);
 
@@ -737,9 +744,66 @@ export function ConversationPanel({
                   className="truncate flex items-center"
                   style={{ fontSize: 12, color: "var(--text-muted)", gap: 6, marginTop: 2 }}
                 >
-                  <span className="font-mono">{formatPhone(contact.phone)}</span>
+                  {/* Se algum outro atendente está digitando, prioriza esse
+                      texto — mais informativo que o telefone estático. */}
+                  {presence.typingPeer ? (
+                    <span style={{ color: "var(--brand-400)" }}>
+                      {presence.typingPeer.name} está digitando…
+                    </span>
+                  ) : (
+                    <span className="font-mono">{formatPhone(contact.phone)}</span>
+                  )}
                 </div>
               </div>
+              {/* Avatares dos outros atendentes vendo essa conversa AGORA —
+                  sinal visual de que não estou sozinho aqui, evita resposta
+                  duplicada. Empilhados sobrepostos, estilo Slack/Notion. */}
+              {presence.others.length > 0 && (
+                <div style={{ display: "flex", alignItems: "center", marginRight: 4 }}>
+                  {presence.others.slice(0, 3).map((peer, i) => (
+                    <div
+                      key={peer.userId}
+                      title={peer.name}
+                      style={{
+                        width: 22,
+                        height: 22,
+                        marginLeft: i === 0 ? 0 : -6,
+                        borderRadius: "50%",
+                        border: "2px solid var(--bg-surface)",
+                        background: peer.avatar ? `url(${peer.avatar}) center/cover` : "var(--brand-400)",
+                        color: "#fff",
+                        fontSize: 10,
+                        fontWeight: 600,
+                        display: "flex",
+                        alignItems: "center",
+                        justifyContent: "center",
+                        zIndex: 3 - i,
+                      }}
+                    >
+                      {!peer.avatar && peer.name.charAt(0).toUpperCase()}
+                    </div>
+                  ))}
+                  {presence.others.length > 3 && (
+                    <div
+                      style={{
+                        marginLeft: -6,
+                        padding: "0 6px",
+                        height: 22,
+                        borderRadius: 11,
+                        border: "2px solid var(--bg-surface)",
+                        background: "var(--bg-overlay)",
+                        color: "var(--text-muted)",
+                        fontSize: 10,
+                        fontWeight: 600,
+                        display: "flex",
+                        alignItems: "center",
+                      }}
+                    >
+                      +{presence.others.length - 3}
+                    </div>
+                  )}
+                </div>
+              )}
               {headerExtra}
             </div>
 
@@ -1000,6 +1064,7 @@ export function ConversationPanel({
                   onOpenTemplates={() => setTemplatesOpen(true)}
                   mentionCandidates={mentionCandidates}
                   onMentionsChange={setNoteMentions}
+                  onTyping={presence.setTyping}
                   taRef={taRef}
                   onSend={send}
                   onClosePanel={onClose}

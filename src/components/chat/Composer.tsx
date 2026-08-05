@@ -68,6 +68,12 @@ type Props = {
    * passa para `addInternalNote`. Zerar quando o pai envia (setDraft = "").
    */
   onMentionsChange?: (userIds: string[]) => void;
+  /**
+   * Callback de presence: `true` no primeiro keystroke, `false` quando o
+   * usuário para de digitar (o pai gerencia o debounce). Só chamado no
+   * modo de resposta (nota interna não vaza pro outro lado).
+   */
+  onTyping?: (typing: boolean) => void;
 };
 
 export type MentionCandidate = {
@@ -83,7 +89,7 @@ export type QuickReplyOption = {
   body: string;
 };
 
-export function Composer({ draft, setDraft, taRef, onSend, onClosePanel, onSendAttachments, onSendAudio, replyingTo, onCancelReply, mode = "reply", onModeChange, quickReplies = [], templateVars, templatesEnabled = false, onOpenTemplates, mentionCandidates = [], onMentionsChange }: Props) {
+export function Composer({ draft, setDraft, taRef, onSend, onClosePanel, onSendAttachments, onSendAudio, replyingTo, onCancelReply, mode = "reply", onModeChange, quickReplies = [], templateVars, templatesEnabled = false, onOpenTemplates, mentionCandidates = [], onMentionsChange, onTyping }: Props) {
   const isNote = mode === "note";
   const hasQuickReplies = quickReplies.length > 0;
   const hasText = draft.trim().length > 0;
@@ -1127,6 +1133,11 @@ export function Composer({ draft, setDraft, taRef, onSend, onClosePanel, onSendA
               const caret = e.target.selectionStart ?? v.length;
               detectSlash(v, caret);
               detectMention(v, caret);
+              // Presence: só marca "digitando" no modo resposta — nota interna
+              // é privada da equipe, sem sentido mostrar pra outros que a IA
+              // ou o cliente pudessem inferir. Manda `false` no draft vazio
+              // pra desligar imediatamente (o auto-off do hook demoraria 3s).
+              if (mode === "reply") onTyping?.(v.trim().length > 0);
             }}
             onKeyDown={(e) => {
               // Com o picker aberto pelo "/", Enter escolhe a primeira opção em
