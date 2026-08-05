@@ -13,6 +13,7 @@
     "preview": "vite preview",
     "worker": "tsx src/lib/job-worker.ts",
     "migrations:check": "tsx scripts/check-migrations.ts",
+    "migrations:apply": "tsx scripts/apply-migrations.ts",
     "lint": "eslint .",
     "format": "prettier --write ."
   },
