@@ -176,12 +176,13 @@ function ConnectionsPage() {
         style={{
           gridTemplateColumns: "repeat(auto-fill, minmax(min(260px, 100%), 1fr))",
           gap: 12,
+          alignItems: "stretch",
         }}
       >
         {channels.map((ch) => {
           const isConnected = ch.status === "connected";
           return (
-            <Card key={ch.id} style={{ padding: 20 }}>
+            <Card key={ch.id} style={{ padding: 20, display: "flex", flexDirection: "column" }}>
               <div className="flex items-center" style={{ gap: 12, marginBottom: 14 }}>
                 <div
                   className="flex items-center justify-center"
@@ -228,7 +229,7 @@ function ConnectionsPage() {
 
               {/* Ação */}
               {isConnected ? (
-                <div className="flex items-center justify-between">
+                <div className="flex items-center justify-between" style={{ marginTop: "auto", paddingTop: 8 }}>
                   <Badge variant="success" withDot>Conectado</Badge>
                   <button
                     type="button"
@@ -266,6 +267,8 @@ function ConnectionsPage() {
                     fontSize: 13,
                     fontWeight: 500,
                     cursor: "pointer",
+                    marginTop: "auto",
+                    paddingTop: 0,
                   }}
                 >
                   {ch.loading ? <Loader2 size={14} className="animate-spin" /> : <Plus size={14} />}

@@ -166,7 +166,7 @@ export function AppSidebar() {
             Recolhido: empilhado e centrado. Expandido: logo+nome do sistema
             em cima, negócio do cliente embaixo. */}
         {expanded ? (
-          <div className="flex flex-col" style={{ padding: "14px 12px 10px", gap: 10 }}>
+          <div className="flex flex-col" style={{ padding: "14px 12px 10px", gap: 14 }}>
             <div className="flex items-center" style={{ gap: 8 }}>
               <div
                 className="flex items-center justify-center"
@@ -212,7 +212,7 @@ export function AppSidebar() {
             </div>
           </div>
         ) : (
-          <div className="flex flex-col items-center" style={{ padding: "14px 8px 10px", gap: 6 }}>
+          <div className="flex flex-col items-center" style={{ padding: "14px 8px 10px", gap: 10 }}>
             <div
               className="flex items-center justify-center"
               style={{
