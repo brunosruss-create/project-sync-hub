@@ -15,7 +15,7 @@ import {
 import { PLATFORM_LABELS, type SocialPlatform } from "@/lib/social-post-validation";
 import { ConfirmDialog } from "@/components/confirm-dialog";
 
-export const Route = createFileRoute("/_authenticated/social/accounts" as any)({
+export const Route = createFileRoute("/_authenticated/social/accounts" )({
   component: SocialAccountsPage,
 });
 
@@ -203,3 +203,5 @@ function SocialAccountsPage() {
     </div>
   );
 }
+
+

@@ -10,7 +10,7 @@ import {
   updatePublishingPermissions,
 } from "@/lib/social-permissions.server";
 
-export const Route = createFileRoute("/_authenticated/social/permissions" as any)({
+export const Route = createFileRoute("/_authenticated/social/permissions" )({
   component: () => (
     <ManagerOnly>
       <SocialPermissionsPage />
@@ -140,3 +140,5 @@ function SocialPermissionsPage() {
     </div>
   );
 }
+
+

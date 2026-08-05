@@ -35,13 +35,19 @@ import { Route as AuthenticatedSettingsQuickRepliesRouteImport } from './routes/
 import { Route as AuthenticatedSettingsTeamRouteImport } from './routes/_authenticated.settings.team'
 import { Route as AuthenticatedSettingsWhatsappRouteImport } from './routes/_authenticated.settings.whatsapp'
 import { Route as AuthenticatedSettingsWorkspaceRouteImport } from './routes/_authenticated.settings.workspace'
+import { Route as AuthenticatedSocialAccountsRouteImport } from './routes/_authenticated.social.accounts'
+import { Route as AuthenticatedSocialComposeRouteImport } from './routes/_authenticated.social.compose'
+import { Route as AuthenticatedSocialPermissionsRouteImport } from './routes/_authenticated.social.permissions'
+import { Route as AuthenticatedSocialPostsRouteImport } from './routes/_authenticated.social.posts'
 import { Route as AuthenticatedSuperAdminBillingRouteImport } from './routes/_authenticated.super-admin.billing'
 import { Route as AuthenticatedSuperAdminHealthRouteImport } from './routes/_authenticated.super-admin.health'
 import { Route as AuthenticatedSuperAdminIaRouteImport } from './routes/_authenticated.super-admin.ia'
 import { Route as AuthenticatedSuperAdminUsersRouteImport } from './routes/_authenticated.super-admin.users'
 import { Route as AuthenticatedSuperAdminWorkspacesRouteImport } from './routes/_authenticated.super-admin.workspaces'
 import { Route as ApiInternalQueueHealthRouteImport } from './routes/api/internal/queue-health'
+import { Route as ApiPublicSocialReconcileRouteImport } from './routes/api/public/social-reconcile'
 import { Route as ApiPublicZernioRouteImport } from './routes/api/public/zernio'
+import { Route as ApiPublicZernioSocialRouteImport } from './routes/api/public/zernio-social'
 import { Route as ApiPublicEvolutionInstanceIdRouteImport } from './routes/api/public/evolution.$instanceId'
 
 const IndexRoute = IndexRouteImport.update({
@@ -183,6 +189,30 @@ const AuthenticatedSettingsWorkspaceRoute =
     path: '/settings/workspace',
     getParentRoute: () => AuthenticatedRoute,
   } as any)
+const AuthenticatedSocialAccountsRoute =
+  AuthenticatedSocialAccountsRouteImport.update({
+    id: '/social/accounts',
+    path: '/social/accounts',
+    getParentRoute: () => AuthenticatedRoute,
+  } as any)
+const AuthenticatedSocialComposeRoute =
+  AuthenticatedSocialComposeRouteImport.update({
+    id: '/social/compose',
+    path: '/social/compose',
+    getParentRoute: () => AuthenticatedRoute,
+  } as any)
+const AuthenticatedSocialPermissionsRoute =
+  AuthenticatedSocialPermissionsRouteImport.update({
+    id: '/social/permissions',
+    path: '/social/permissions',
+    getParentRoute: () => AuthenticatedRoute,
+  } as any)
+const AuthenticatedSocialPostsRoute =
+  AuthenticatedSocialPostsRouteImport.update({
+    id: '/social/posts',
+    path: '/social/posts',
+    getParentRoute: () => AuthenticatedRoute,
+  } as any)
 const AuthenticatedSuperAdminBillingRoute =
   AuthenticatedSuperAdminBillingRouteImport.update({
     id: '/billing',
@@ -218,9 +248,20 @@ const ApiInternalQueueHealthRoute = ApiInternalQueueHealthRouteImport.update({
   path: '/api/internal/queue-health',
   getParentRoute: () => rootRouteImport,
 } as any)
+const ApiPublicSocialReconcileRoute =
+  ApiPublicSocialReconcileRouteImport.update({
+    id: '/api/public/social-reconcile',
+    path: '/api/public/social-reconcile',
+    getParentRoute: () => rootRouteImport,
+  } as any)
 const ApiPublicZernioRoute = ApiPublicZernioRouteImport.update({
   id: '/api/public/zernio',
   path: '/api/public/zernio',
+  getParentRoute: () => rootRouteImport,
+} as any)
+const ApiPublicZernioSocialRoute = ApiPublicZernioSocialRouteImport.update({
+  id: '/api/public/zernio-social',
+  path: '/api/public/zernio-social',
   getParentRoute: () => rootRouteImport,
 } as any)
 const ApiPublicEvolutionInstanceIdRoute =
@@ -256,13 +297,19 @@ export interface FileRoutesByFullPath {
   '/settings/team': typeof AuthenticatedSettingsTeamRoute
   '/settings/whatsapp': typeof AuthenticatedSettingsWhatsappRoute
   '/settings/workspace': typeof AuthenticatedSettingsWorkspaceRoute
+  '/social/accounts': typeof AuthenticatedSocialAccountsRoute
+  '/social/compose': typeof AuthenticatedSocialComposeRoute
+  '/social/permissions': typeof AuthenticatedSocialPermissionsRoute
+  '/social/posts': typeof AuthenticatedSocialPostsRoute
   '/super-admin/billing': typeof AuthenticatedSuperAdminBillingRoute
   '/super-admin/health': typeof AuthenticatedSuperAdminHealthRoute
   '/super-admin/ia': typeof AuthenticatedSuperAdminIaRoute
   '/super-admin/users': typeof AuthenticatedSuperAdminUsersRoute
   '/super-admin/workspaces': typeof AuthenticatedSuperAdminWorkspacesRoute
   '/api/internal/queue-health': typeof ApiInternalQueueHealthRoute
+  '/api/public/social-reconcile': typeof ApiPublicSocialReconcileRoute
   '/api/public/zernio': typeof ApiPublicZernioRoute
+  '/api/public/zernio-social': typeof ApiPublicZernioSocialRoute
   '/api/public/evolution/$instanceId': typeof ApiPublicEvolutionInstanceIdRoute
 }
 export interface FileRoutesByTo {
@@ -291,13 +338,19 @@ export interface FileRoutesByTo {
   '/settings/team': typeof AuthenticatedSettingsTeamRoute
   '/settings/whatsapp': typeof AuthenticatedSettingsWhatsappRoute
   '/settings/workspace': typeof AuthenticatedSettingsWorkspaceRoute
+  '/social/accounts': typeof AuthenticatedSocialAccountsRoute
+  '/social/compose': typeof AuthenticatedSocialComposeRoute
+  '/social/permissions': typeof AuthenticatedSocialPermissionsRoute
+  '/social/posts': typeof AuthenticatedSocialPostsRoute
   '/super-admin/billing': typeof AuthenticatedSuperAdminBillingRoute
   '/super-admin/health': typeof AuthenticatedSuperAdminHealthRoute
   '/super-admin/ia': typeof AuthenticatedSuperAdminIaRoute
   '/super-admin/users': typeof AuthenticatedSuperAdminUsersRoute
   '/super-admin/workspaces': typeof AuthenticatedSuperAdminWorkspacesRoute
   '/api/internal/queue-health': typeof ApiInternalQueueHealthRoute
+  '/api/public/social-reconcile': typeof ApiPublicSocialReconcileRoute
   '/api/public/zernio': typeof ApiPublicZernioRoute
+  '/api/public/zernio-social': typeof ApiPublicZernioSocialRoute
   '/api/public/evolution/$instanceId': typeof ApiPublicEvolutionInstanceIdRoute
 }
 export interface FileRoutesById {
@@ -328,13 +381,19 @@ export interface FileRoutesById {
   '/_authenticated/settings/team': typeof AuthenticatedSettingsTeamRoute
   '/_authenticated/settings/whatsapp': typeof AuthenticatedSettingsWhatsappRoute
   '/_authenticated/settings/workspace': typeof AuthenticatedSettingsWorkspaceRoute
+  '/_authenticated/social/accounts': typeof AuthenticatedSocialAccountsRoute
+  '/_authenticated/social/compose': typeof AuthenticatedSocialComposeRoute
+  '/_authenticated/social/permissions': typeof AuthenticatedSocialPermissionsRoute
+  '/_authenticated/social/posts': typeof AuthenticatedSocialPostsRoute
   '/_authenticated/super-admin/billing': typeof AuthenticatedSuperAdminBillingRoute
   '/_authenticated/super-admin/health': typeof AuthenticatedSuperAdminHealthRoute
   '/_authenticated/super-admin/ia': typeof AuthenticatedSuperAdminIaRoute
   '/_authenticated/super-admin/users': typeof AuthenticatedSuperAdminUsersRoute
   '/_authenticated/super-admin/workspaces': typeof AuthenticatedSuperAdminWorkspacesRoute
   '/api/internal/queue-health': typeof ApiInternalQueueHealthRoute
+  '/api/public/social-reconcile': typeof ApiPublicSocialReconcileRoute
   '/api/public/zernio': typeof ApiPublicZernioRoute
+  '/api/public/zernio-social': typeof ApiPublicZernioSocialRoute
   '/api/public/evolution/$instanceId': typeof ApiPublicEvolutionInstanceIdRoute
 }
 export interface FileRouteTypes {
@@ -365,13 +424,19 @@ export interface FileRouteTypes {
     | '/settings/team'
     | '/settings/whatsapp'
     | '/settings/workspace'
+    | '/social/accounts'
+    | '/social/compose'
+    | '/social/permissions'
+    | '/social/posts'
     | '/super-admin/billing'
     | '/super-admin/health'
     | '/super-admin/ia'
     | '/super-admin/users'
     | '/super-admin/workspaces'
     | '/api/internal/queue-health'
+    | '/api/public/social-reconcile'
     | '/api/public/zernio'
+    | '/api/public/zernio-social'
     | '/api/public/evolution/$instanceId'
   fileRoutesByTo: FileRoutesByTo
   to:
@@ -400,13 +465,19 @@ export interface FileRouteTypes {
     | '/settings/team'
     | '/settings/whatsapp'
     | '/settings/workspace'
+    | '/social/accounts'
+    | '/social/compose'
+    | '/social/permissions'
+    | '/social/posts'
     | '/super-admin/billing'
     | '/super-admin/health'
     | '/super-admin/ia'
     | '/super-admin/users'
     | '/super-admin/workspaces'
     | '/api/internal/queue-health'
+    | '/api/public/social-reconcile'
     | '/api/public/zernio'
+    | '/api/public/zernio-social'
     | '/api/public/evolution/$instanceId'
   id:
     | '__root__'
@@ -436,13 +507,19 @@ export interface FileRouteTypes {
     | '/_authenticated/settings/team'
     | '/_authenticated/settings/whatsapp'
     | '/_authenticated/settings/workspace'
+    | '/_authenticated/social/accounts'
+    | '/_authenticated/social/compose'
+    | '/_authenticated/social/permissions'
+    | '/_authenticated/social/posts'
     | '/_authenticated/super-admin/billing'
     | '/_authenticated/super-admin/health'
     | '/_authenticated/super-admin/ia'
     | '/_authenticated/super-admin/users'
     | '/_authenticated/super-admin/workspaces'
     | '/api/internal/queue-health'
+    | '/api/public/social-reconcile'
     | '/api/public/zernio'
+    | '/api/public/zernio-social'
     | '/api/public/evolution/$instanceId'
   fileRoutesById: FileRoutesById
 }
@@ -456,7 +533,9 @@ export interface RootRouteChildren {
   ZernioCallbackRoute: typeof ZernioCallbackRoute
   AuthCallbackRoute: typeof AuthCallbackRoute
   ApiInternalQueueHealthRoute: typeof ApiInternalQueueHealthRoute
+  ApiPublicSocialReconcileRoute: typeof ApiPublicSocialReconcileRoute
   ApiPublicZernioRoute: typeof ApiPublicZernioRoute
+  ApiPublicZernioSocialRoute: typeof ApiPublicZernioSocialRoute
   ApiPublicEvolutionInstanceIdRoute: typeof ApiPublicEvolutionInstanceIdRoute
 }
 
@@ -644,6 +723,34 @@ declare module '@tanstack/react-router' {
       preLoaderRoute: typeof AuthenticatedSettingsWorkspaceRouteImport
       parentRoute: typeof AuthenticatedRoute
     }
+    '/_authenticated/social/accounts': {
+      id: '/_authenticated/social/accounts'
+      path: '/social/accounts'
+      fullPath: '/social/accounts'
+      preLoaderRoute: typeof AuthenticatedSocialAccountsRouteImport
+      parentRoute: typeof AuthenticatedRoute
+    }
+    '/_authenticated/social/compose': {
+      id: '/_authenticated/social/compose'
+      path: '/social/compose'
+      fullPath: '/social/compose'
+      preLoaderRoute: typeof AuthenticatedSocialComposeRouteImport
+      parentRoute: typeof AuthenticatedRoute
+    }
+    '/_authenticated/social/permissions': {
+      id: '/_authenticated/social/permissions'
+      path: '/social/permissions'
+      fullPath: '/social/permissions'
+      preLoaderRoute: typeof AuthenticatedSocialPermissionsRouteImport
+      parentRoute: typeof AuthenticatedRoute
+    }
+    '/_authenticated/social/posts': {
+      id: '/_authenticated/social/posts'
+      path: '/social/posts'
+      fullPath: '/social/posts'
+      preLoaderRoute: typeof AuthenticatedSocialPostsRouteImport
+      parentRoute: typeof AuthenticatedRoute
+    }
     '/_authenticated/super-admin/billing': {
       id: '/_authenticated/super-admin/billing'
       path: '/billing'
@@ -686,11 +793,25 @@ declare module '@tanstack/react-router' {
       preLoaderRoute: typeof ApiInternalQueueHealthRouteImport
       parentRoute: typeof rootRouteImport
     }
+    '/api/public/social-reconcile': {
+      id: '/api/public/social-reconcile'
+      path: '/api/public/social-reconcile'
+      fullPath: '/api/public/social-reconcile'
+      preLoaderRoute: typeof ApiPublicSocialReconcileRouteImport
+      parentRoute: typeof rootRouteImport
+    }
     '/api/public/zernio': {
       id: '/api/public/zernio'
       path: '/api/public/zernio'
       fullPath: '/api/public/zernio'
       preLoaderRoute: typeof ApiPublicZernioRouteImport
+      parentRoute: typeof rootRouteImport
+    }
+    '/api/public/zernio-social': {
+      id: '/api/public/zernio-social'
+      path: '/api/public/zernio-social'
+      fullPath: '/api/public/zernio-social'
+      preLoaderRoute: typeof ApiPublicZernioSocialRouteImport
       parentRoute: typeof rootRouteImport
     }
     '/api/public/evolution/$instanceId': {
@@ -745,6 +866,10 @@ interface AuthenticatedRouteChildren {
   AuthenticatedSettingsTeamRoute: typeof AuthenticatedSettingsTeamRoute
   AuthenticatedSettingsWhatsappRoute: typeof AuthenticatedSettingsWhatsappRoute
   AuthenticatedSettingsWorkspaceRoute: typeof AuthenticatedSettingsWorkspaceRoute
+  AuthenticatedSocialAccountsRoute: typeof AuthenticatedSocialAccountsRoute
+  AuthenticatedSocialComposeRoute: typeof AuthenticatedSocialComposeRoute
+  AuthenticatedSocialPermissionsRoute: typeof AuthenticatedSocialPermissionsRoute
+  AuthenticatedSocialPostsRoute: typeof AuthenticatedSocialPostsRoute
 }
 
 const AuthenticatedRouteChildren: AuthenticatedRouteChildren = {
@@ -768,6 +893,10 @@ const AuthenticatedRouteChildren: AuthenticatedRouteChildren = {
   AuthenticatedSettingsTeamRoute: AuthenticatedSettingsTeamRoute,
   AuthenticatedSettingsWhatsappRoute: AuthenticatedSettingsWhatsappRoute,
   AuthenticatedSettingsWorkspaceRoute: AuthenticatedSettingsWorkspaceRoute,
+  AuthenticatedSocialAccountsRoute: AuthenticatedSocialAccountsRoute,
+  AuthenticatedSocialComposeRoute: AuthenticatedSocialComposeRoute,
+  AuthenticatedSocialPermissionsRoute: AuthenticatedSocialPermissionsRoute,
+  AuthenticatedSocialPostsRoute: AuthenticatedSocialPostsRoute,
 }
 
 const AuthenticatedRouteWithChildren = AuthenticatedRoute._addFileChildren(
@@ -784,19 +913,11 @@ const rootRouteChildren: RootRouteChildren = {
   ZernioCallbackRoute: ZernioCallbackRoute,
   AuthCallbackRoute: AuthCallbackRoute,
   ApiInternalQueueHealthRoute: ApiInternalQueueHealthRoute,
+  ApiPublicSocialReconcileRoute: ApiPublicSocialReconcileRoute,
   ApiPublicZernioRoute: ApiPublicZernioRoute,
+  ApiPublicZernioSocialRoute: ApiPublicZernioSocialRoute,
   ApiPublicEvolutionInstanceIdRoute: ApiPublicEvolutionInstanceIdRoute,
 }
 export const routeTree = rootRouteImport
   ._addFileChildren(rootRouteChildren)
   ._addFileTypes<FileRouteTypes>()
-
-import type { getRouter } from './router.tsx'
-import type { startInstance } from './start.ts'
-declare module '@tanstack/react-start' {
-  interface Register {
-    ssr: true
-    router: Awaited<ReturnType<typeof getRouter>>
-    config: Awaited<ReturnType<typeof startInstance.getOptions>>
-  }
-}

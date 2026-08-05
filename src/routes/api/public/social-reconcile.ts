@@ -5,7 +5,7 @@
 import { createFileRoute } from "@tanstack/react-router";
 import { reconcileStalePostTargets } from "@/lib/social-reconciliation.server";
 
-export const Route = createFileRoute("/api/public/social-reconcile" as any)({
+export const Route = createFileRoute("/api/public/social-reconcile")({
   server: {
     handlers: {
       POST: async ({ request }) => {
@@ -31,3 +31,4 @@ export const Route = createFileRoute("/api/public/social-reconcile" as any)({
     },
   },
 });
+

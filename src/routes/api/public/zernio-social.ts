@@ -109,7 +109,7 @@ export async function applyZernioPostResult(params: {
     .eq("id", postId);
 }
 
-export const Route = createFileRoute("/api/public/zernio-social" as any)({
+export const Route = createFileRoute("/api/public/zernio-social")({
   server: {
     handlers: {
       POST: async ({ request }) => {
@@ -191,3 +191,4 @@ export const Route = createFileRoute("/api/public/zernio-social" as any)({
     },
   },
 });
+

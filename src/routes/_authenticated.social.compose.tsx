@@ -22,7 +22,7 @@ import {
 } from "@/lib/social-post-validation";
 import { supabase } from "@/integrations/supabase/client";
 
-export const Route = createFileRoute("/_authenticated/social/compose" as any)({
+export const Route = createFileRoute("/_authenticated/social/compose" )({
   component: SocialComposePage,
 });
 
@@ -389,3 +389,5 @@ function SocialComposePage() {
     </div>
   );
 }
+
+

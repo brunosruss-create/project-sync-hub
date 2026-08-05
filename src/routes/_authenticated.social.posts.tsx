@@ -10,7 +10,7 @@ import { SkeletonCard } from "@/components/skeleton";
 import { listSocialPosts } from "@/lib/social-publishing.functions";
 import { PLATFORM_LABELS, POST_TYPE_LABELS } from "@/lib/social-post-validation";
 
-export const Route = createFileRoute("/_authenticated/social/posts" as any)({
+export const Route = createFileRoute("/_authenticated/social/posts" )({
   component: SocialPostsPage,
 });
 
@@ -144,3 +144,5 @@ function SocialPostsPage() {
     </div>
   );
 }
+
+
