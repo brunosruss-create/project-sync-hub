@@ -86,3 +86,9 @@ create index if not exists messages_external_conversation_idx
 --   'whatsapp_cloud'     → WhatsApp Cloud API via Zernio     [novo]
 --   'instagram'          → Instagram DM via Zernio           [novo]
 -- ============================================================
+
+notify pgrst, 'reload schema';
+
+insert into public.schema_manual_migrations (filename)
+values ('20260805000000_zernio_channels.sql')
+on conflict (filename) do nothing;
