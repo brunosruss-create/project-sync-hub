@@ -1,5 +1,5 @@
 import * as React from "react";
-import { Search, Plus, StickyNote, Loader2 } from "lucide-react";
+import { Search, Plus, StickyNote, Loader2, SlidersHorizontal, X } from "lucide-react";
 import {
   type ContactCard as Contact,
   type KanbanColumnDef,
@@ -16,6 +16,13 @@ import {
 import { ConversationListItem } from "./ConversationListItem";
 
 type Filter = "all" | "mine" | "unassigned";
+type ChannelFilter = "all" | "whatsapp_evolution" | "whatsapp_cloud" | "instagram";
+
+const CHANNEL_LABEL: Record<Exclude<ChannelFilter, "all">, string> = {
+  whatsapp_evolution: "WhatsApp (QR)",
+  whatsapp_cloud: "WhatsApp Cloud",
+  instagram: "Instagram",
+};
 
 export function ConversationList({
   contacts,
@@ -34,8 +41,46 @@ export function ConversationList({
 }) {
   const [query, setQuery] = React.useState("");
   const [filter, setFilter] = React.useState<Filter>("all");
+  const [onlyUnread, setOnlyUnread] = React.useState(false);
+  const [onlyUrgent, setOnlyUrgent] = React.useState(false);
+  const [channelFilter, setChannelFilter] = React.useState<ChannelFilter>("all");
+  const [tagFilter, setTagFilter] = React.useState<string | null>(null);
+  const [advancedOpen, setAdvancedOpen] = React.useState(false);
   const [hits, setHits] = React.useState<MessageHit[] | null>(null);
   const [searching, setSearching] = React.useState(false);
+
+  // Canais e tags disponíveis são derivados dos próprios contatos — evita
+  // mostrar filtro de "Instagram" pra quem só tem WhatsApp, ou lista de tags
+  // vazia que confunde. Sem canal detectável nos contatos, tratamos como
+  // whatsapp_evolution (compat com contatos antigos sem coluna channel).
+  const availableChannels = React.useMemo(() => {
+    const set = new Set<Exclude<ChannelFilter, "all">>();
+    for (const c of contacts) {
+      set.add((c.channel ?? "whatsapp_evolution") as Exclude<ChannelFilter, "all">);
+    }
+    return Array.from(set);
+  }, [contacts]);
+
+  const availableTags = React.useMemo(() => {
+    const set = new Set<string>();
+    for (const c of contacts) for (const t of c.tags ?? []) set.add(t);
+    return Array.from(set).sort((a, b) => a.localeCompare(b, "pt-BR"));
+  }, [contacts]);
+
+  const advancedActive = channelFilter !== "all" || !!tagFilter;
+
+  // Fecha popover ao clicar fora.
+  const advancedRef = React.useRef<HTMLDivElement | null>(null);
+  React.useEffect(() => {
+    if (!advancedOpen) return;
+    const onDoc = (e: MouseEvent) => {
+      if (advancedRef.current && !advancedRef.current.contains(e.target as Node)) {
+        setAdvancedOpen(false);
+      }
+    };
+    document.addEventListener("mousedown", onDoc);
+    return () => document.removeEventListener("mousedown", onDoc);
+  }, [advancedOpen]);
 
   /**
    * Busca no conteúdo das mensagens, complementando o filtro local acima —
@@ -95,6 +140,13 @@ export function ConversationList({
     return contacts.filter((c) => {
       if (filter === "mine" && c.assignedAgent !== (currentUserId ?? "")) return false;
       if (filter === "unassigned" && c.assignedAgent) return false;
+      if (onlyUnread && !c.isUnread) return false;
+      if (onlyUrgent && c.priority !== "urgent") return false;
+      if (channelFilter !== "all") {
+        const ch = c.channel ?? "whatsapp_evolution";
+        if (ch !== channelFilter) return false;
+      }
+      if (tagFilter && !(c.tags ?? []).includes(tagFilter)) return false;
       if (query) {
         const q = query.toLowerCase();
         if (
@@ -106,7 +158,7 @@ export function ConversationList({
       }
       return true;
     });
-  }, [contacts, filter, query, currentUserId]);
+  }, [contacts, filter, onlyUnread, onlyUrgent, channelFilter, tagFilter, query, currentUserId]);
 
   return (
     <div
@@ -189,13 +241,15 @@ export function ConversationList({
         </div>
       </div>
 
-      {/* Filtros — mesma lógica: sem borda embaixo, a lista já tem o próprio
-          espaçamento entre linhas pra separar visualmente. */}
+      {/* Filtros — escopo (single-select) na primeira linha, toggles e
+          avançado na segunda. Duas linhas de propósito: manter cada uma
+          curta o suficiente pra não fazer wrap em telas de 360px. */}
       <div
         className="flex items-center"
         style={{
           gap: 4,
-          padding: "0 10px 8px",
+          padding: "0 10px 6px",
+          flexWrap: "wrap",
         }}
       >
         {([
@@ -205,28 +259,182 @@ export function ConversationList({
         ] as const).map((f) => {
           const active = filter === f.id;
           return (
-            <button
+            <FilterPill
               key={f.id}
-              type="button"
+              label={f.label}
+              active={active}
               onClick={() => setFilter(f.id)}
+            />
+          );
+        })}
+      </div>
+
+      <div
+        className="flex items-center"
+        style={{
+          gap: 4,
+          padding: "0 10px 8px",
+          flexWrap: "wrap",
+          position: "relative",
+        }}
+      >
+        <FilterPill
+          label="Não lidas"
+          active={onlyUnread}
+          onClick={() => setOnlyUnread((v) => !v)}
+        />
+        <FilterPill
+          label="Urgentes"
+          active={onlyUrgent}
+          onClick={() => setOnlyUrgent((v) => !v)}
+        />
+
+        {(availableChannels.length > 1 || availableTags.length > 0) && (
+          <div ref={advancedRef} style={{ position: "relative" }}>
+            <button
+              type="button"
+              onClick={() => setAdvancedOpen((v) => !v)}
+              className="inline-flex items-center"
+              aria-haspopup="dialog"
+              aria-expanded={advancedOpen}
               style={{
+                gap: 4,
                 fontSize: 12,
                 fontWeight: 500,
-                padding: "4px 10px",
+                padding: "4px 8px 4px 10px",
                 borderRadius: "var(--radius-pill)",
                 border: "1px solid",
-                borderColor: active ? "var(--brand-400)" : "var(--border)",
-                background: active
+                borderColor: advancedActive || advancedOpen ? "var(--brand-400)" : "var(--border)",
+                background: advancedActive
                   ? "color-mix(in oklab, var(--brand-400) 14%, transparent)"
                   : "transparent",
-                color: active ? "var(--brand-400)" : "var(--text-muted)",
+                color: advancedActive ? "var(--brand-400)" : "var(--text-muted)",
                 cursor: "pointer",
               }}
             >
-              {f.label}
+              <SlidersHorizontal size={11} />
+              Filtros
+              {advancedActive && (
+                <span
+                  aria-hidden
+                  style={{
+                    width: 6,
+                    height: 6,
+                    borderRadius: "50%",
+                    background: "var(--brand-400)",
+                    marginLeft: 2,
+                  }}
+                />
+              )}
             </button>
-          );
-        })}
+            {advancedOpen && (
+              <div
+                role="dialog"
+                style={{
+                  position: "absolute",
+                  top: "calc(100% + 6px)",
+                  right: 0,
+                  minWidth: 220,
+                  maxWidth: 260,
+                  background: "var(--bg-surface)",
+                  border: "1px solid var(--border)",
+                  borderRadius: "var(--radius-lg, 10px)",
+                  boxShadow: "0 8px 20px rgba(0,0,0,0.12)",
+                  padding: 10,
+                  zIndex: 10,
+                  display: "flex",
+                  flexDirection: "column",
+                  gap: 10,
+                }}
+              >
+                {availableChannels.length > 1 && (
+                  <div>
+                    <div
+                      style={{
+                        fontSize: 10.5,
+                        fontWeight: 600,
+                        textTransform: "uppercase",
+                        letterSpacing: "0.05em",
+                        color: "var(--text-muted)",
+                        marginBottom: 4,
+                      }}
+                    >
+                      Canal
+                    </div>
+                    <div className="flex" style={{ gap: 4, flexWrap: "wrap" }}>
+                      <FilterPill
+                        label="Todos"
+                        active={channelFilter === "all"}
+                        onClick={() => setChannelFilter("all")}
+                      />
+                      {availableChannels.map((ch) => (
+                        <FilterPill
+                          key={ch}
+                          label={CHANNEL_LABEL[ch]}
+                          active={channelFilter === ch}
+                          onClick={() => setChannelFilter(ch)}
+                        />
+                      ))}
+                    </div>
+                  </div>
+                )}
+
+                {availableTags.length > 0 && (
+                  <div>
+                    <div
+                      className="flex items-center justify-between"
+                      style={{ marginBottom: 4 }}
+                    >
+                      <span
+                        style={{
+                          fontSize: 10.5,
+                          fontWeight: 600,
+                          textTransform: "uppercase",
+                          letterSpacing: "0.05em",
+                          color: "var(--text-muted)",
+                        }}
+                      >
+                        Tag
+                      </span>
+                      {tagFilter && (
+                        <button
+                          type="button"
+                          onClick={() => setTagFilter(null)}
+                          aria-label="Limpar tag"
+                          className="inline-flex items-center"
+                          style={{
+                            gap: 2,
+                            fontSize: 10.5,
+                            color: "var(--text-muted)",
+                            background: "transparent",
+                            border: "none",
+                            cursor: "pointer",
+                          }}
+                        >
+                          <X size={10} />
+                          Limpar
+                        </button>
+                      )}
+                    </div>
+                    <div
+                      className="flex"
+                      style={{ gap: 4, flexWrap: "wrap", maxHeight: 140, overflowY: "auto" }}
+                    >
+                      {availableTags.map((t) => (
+                        <FilterPill
+                          key={t}
+                          label={t}
+                          active={tagFilter === t}
+                          onClick={() => setTagFilter(tagFilter === t ? null : t)}
+                        />
+                      ))}
+                    </div>
+                  </div>
+                )}
+              </div>
+            )}
+          </div>
+        )}
       </div>
 
       {/* Lista */}
@@ -368,3 +576,34 @@ export function ConversationList({
   );
 }
 
+function FilterPill({
+  label,
+  active,
+  onClick,
+}: {
+  label: string;
+  active: boolean;
+  onClick: () => void;
+}) {
+  return (
+    <button
+      type="button"
+      onClick={onClick}
+      style={{
+        fontSize: 12,
+        fontWeight: 500,
+        padding: "4px 10px",
+        borderRadius: "var(--radius-pill)",
+        border: "1px solid",
+        borderColor: active ? "var(--brand-400)" : "var(--border)",
+        background: active
+          ? "color-mix(in oklab, var(--brand-400) 14%, transparent)"
+          : "transparent",
+        color: active ? "var(--brand-400)" : "var(--text-muted)",
+        cursor: "pointer",
+      }}
+    >
+      {label}
+    </button>
+  );
+}
