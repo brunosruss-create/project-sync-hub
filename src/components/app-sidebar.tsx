@@ -12,6 +12,7 @@ import {
   Calendar,
   Shield,
   Columns3,
+  Share2,
 } from "lucide-react";
 import { useAuth } from "@/hooks/use-auth";
 import { useProfile } from "@/hooks/use-profile";
@@ -52,6 +53,7 @@ const ALL_ITEMS: NavItem[] = [
   { label: "Agenda", to: "/schedule", icon: Calendar, agentVisible: true },
   { label: "Serviços", to: "/services", icon: Tag, agentVisible: false },
   { label: "Clientes", to: "/contacts", icon: Users, agentVisible: true },
+  { label: "Publicações", to: "/social/posts", icon: Share2, agentVisible: true },
   { label: "Relatórios", to: "/reports", icon: BarChart3, agentVisible: false },
   { label: "Configurações", to: "/settings/profile", icon: Settings, agentVisible: true },
   { label: "Super Admin", to: "/super-admin/workspaces", icon: Shield, agentVisible: false },
