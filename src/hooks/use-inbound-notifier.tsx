@@ -1,4 +1,6 @@
 import * as React from "react";
+import { toast } from "sonner";
+import { useNavigate } from "@tanstack/react-router";
 import { supabase } from "@/integrations/supabase/client";
 import { useAuth } from "@/hooks/use-auth";
 import { useProfile } from "@/hooks/use-profile";
@@ -38,6 +40,7 @@ export function useInboundNotifier() {
   const { data: profile } = useProfile();
   const { workspaceOwnerId } = useWorkspaceOwnerId();
   const { isAgent } = useRole();
+  const navigate = useNavigate();
 
   // Preferências vêm do profile — default true se coluna ainda não migrada.
   // notify_push já existia; notify_sound_enabled foi adicionado agora.
@@ -125,8 +128,36 @@ export function useInboundNotifier() {
         },
         async (payload: any) => {
           const m = payload.new;
-          if (!m || m.direction !== "inbound") return;
-          if (m.is_internal) return; // nota interna não é mensagem do cliente
+          if (!m) return;
+
+          // Menção em nota interna: ramo separado do fluxo de "mensagem
+          // inbound" porque nota é system/system, não inbound. Tratamento
+          // independente: notifica o mencionado com toast clicável e som.
+          if (m.is_internal && Array.isArray(m.mentioned_users) && m.mentioned_users.includes(user.id)) {
+            // Não conta como não-lida (o unreadTotal segue is_unread em
+            // contacts, que nota não altera). Efeito: só o toast + som.
+            const { data: contact } = await supabase
+              .from("contacts")
+              .select("name")
+              .eq("id", m.contact_id)
+              .maybeSingle();
+            const authorLabel = "Alguém"; // não pesquisamos autor pra manter simples
+            const contactName = contact?.name ?? "contato";
+            const preview = String(m.content ?? "").slice(0, 140);
+            toast(`${authorLabel} te mencionou em ${contactName}`, {
+              description: preview,
+              action: {
+                label: "Abrir",
+                onClick: () =>
+                  navigate({ to: "/conversations-chat", search: { id: m.contact_id } }),
+              },
+            });
+            if (prefs.soundEnabled) playNotifySound();
+            return; // menção não segue para o resto do fluxo (não é inbound)
+          }
+
+          if (m.direction !== "inbound") return;
+          if (m.is_internal) return; // nota interna sem menção → nada a fazer
 
           // Se atendente, só notifica mensagens de contatos atribuídos a ele.
           if (isAgent) {

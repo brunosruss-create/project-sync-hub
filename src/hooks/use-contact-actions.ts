@@ -199,28 +199,51 @@ export function useContactActions() {
    * do que qualquer duplicata.
    */
   const addInternalNote = React.useCallback(
-    async (contactId: string, content: string) => {
+    async (contactId: string, content: string, mentionedUsers?: string[]) => {
       const text = content.trim();
       if (!text) return false;
-      const { data, error } = await supabase
+      // Deduplica e remove o próprio autor: menção a si mesmo não gera
+      // notificação útil (o Postgres aceitaria, mas o UX vira barulho).
+      const mentions =
+        mentionedUsers && mentionedUsers.length > 0
+          ? Array.from(new Set(mentionedUsers)).filter((id) => id !== user?.id)
+          : [];
+      const insertPayload: Record<string, unknown> = {
+        owner_user_id: workspaceOwnerId,
+        contact_id: contactId,
+        content: text,
+        is_internal: true,
+        // Estes quatro são a forma canônica da nota — ver constraint.
+        // `direction: "system"` é o que faz a nota não casar com nenhum
+        // `.eq("direction", …)` do resto do código.
+        direction: "system",
+        message_type: "system",
+        status: "sent",
+        is_ai: false,
+        sent_by: user?.id ?? null,
+        whatsapp_message_id: null,
+      };
+      if (mentions.length > 0) insertPayload.mentioned_users = mentions;
+
+      let { data, error } = await supabase
         .from("messages")
-        .insert({
-          owner_user_id: workspaceOwnerId,
-          contact_id: contactId,
-          content: text,
-          is_internal: true,
-          // Estes quatro são a forma canônica da nota — ver constraint.
-          // `direction: "system"` é o que faz a nota não casar com nenhum
-          // `.eq("direction", …)` do resto do código.
-          direction: "system",
-          message_type: "system",
-          status: "sent",
-          is_ai: false,
-          sent_by: user?.id ?? null,
-          whatsapp_message_id: null,
-        })
+        .insert(insertPayload)
         .select("id")
         .single();
+      // Degradação: se mentioned_users ainda não existe no banco (migration
+      // pendente), salva a nota SEM as menções. Melhor que o atendente perder
+      // o texto — notificação de menção é agradável ter, nota registrada é
+      // requisito.
+      if (error && /mentioned_users/i.test(error.message) && mentions.length > 0) {
+        delete insertPayload.mentioned_users;
+        const retry = await supabase
+          .from("messages")
+          .insert(insertPayload)
+          .select("id")
+          .single();
+        data = retry.data;
+        error = retry.error;
+      }
       if (error) {
         toast.error(error.message ?? "Não foi possível salvar a nota");
         return false;

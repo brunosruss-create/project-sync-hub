@@ -57,6 +57,23 @@ type Props = {
   templatesEnabled?: boolean;
   /** Abre o modal de templates (o estado/modal vivem no pai). */
   onOpenTemplates?: () => void;
+  /**
+   * Membros do workspace para autocomplete de `@` em nota interna. Vazio
+   * esconde o autocomplete. O composer só chama `onMentionsChange` com o
+   * subconjunto que o usuário efetivamente selecionou.
+   */
+  mentionCandidates?: MentionCandidate[];
+  /**
+   * Chamado sempre que a lista de mencionados muda. O pai acumula os IDs e
+   * passa para `addInternalNote`. Zerar quando o pai envia (setDraft = "").
+   */
+  onMentionsChange?: (userIds: string[]) => void;
+};
+
+export type MentionCandidate = {
+  user_id: string;
+  full_name: string | null;
+  email: string;
 };
 
 export type QuickReplyOption = {
@@ -66,7 +83,7 @@ export type QuickReplyOption = {
   body: string;
 };
 
-export function Composer({ draft, setDraft, taRef, onSend, onClosePanel, onSendAttachments, onSendAudio, replyingTo, onCancelReply, mode = "reply", onModeChange, quickReplies = [], templateVars, templatesEnabled = false, onOpenTemplates }: Props) {
+export function Composer({ draft, setDraft, taRef, onSend, onClosePanel, onSendAttachments, onSendAudio, replyingTo, onCancelReply, mode = "reply", onModeChange, quickReplies = [], templateVars, templatesEnabled = false, onOpenTemplates, mentionCandidates = [], onMentionsChange }: Props) {
   const isNote = mode === "note";
   const hasQuickReplies = quickReplies.length > 0;
   const hasText = draft.trim().length > 0;
@@ -81,6 +98,34 @@ export function Composer({ draft, setDraft, taRef, onSend, onClosePanel, onSendA
    * hora de inserir. `null` = picker aberto pelo botão.
    */
   const [slashToken, setSlashToken] = React.useState<{ start: number; term: string } | null>(null);
+
+  /**
+   * Menções: análogo ao slashToken, mas para `@` em nota interna.
+   * `pickedUsers` é o conjunto de userIds que o usuário já confirmou.
+   * Não deduzimos por regex no envio porque nomes podem colidir ("João" x
+   * "João da Silva") — só marca quem foi explicitamente escolhido.
+   */
+  const [mentionToken, setMentionToken] = React.useState<
+    { start: number; term: string } | null
+  >(null);
+  const [showMentions, setShowMentions] = React.useState(false);
+  const [pickedUsers, setPickedUsers] = React.useState<string[]>([]);
+  const mentionWrapRef = React.useRef<HTMLDivElement | null>(null);
+
+  // Zera quando draft esvazia (envio concluído) ou quando sai do modo nota.
+  React.useEffect(() => {
+    if (!draft || mode !== "note") {
+      if (pickedUsers.length > 0) {
+        setPickedUsers([]);
+        onMentionsChange?.([]);
+      }
+      setShowMentions(false);
+      setMentionToken(null);
+    }
+    // Intencionalmente sem `pickedUsers` nas deps: zerar disparado por draft ""
+    // não deve reagir a mudanças do próprio picked (loop infinito).
+    // eslint-disable-next-line react-hooks/exhaustive-deps
+  }, [draft, mode]);
   const [attachments, setAttachments] = React.useState<AttachmentItem[]>([]);
   const [caption, setCaption] = React.useState("");
 
@@ -225,6 +270,93 @@ export function Composer({ draft, setDraft, taRef, onSend, onClosePanel, onSendA
         q.title.toLowerCase().includes(term),
     );
   }, [quickReplies, slashToken?.term]);
+
+  // --- menções (@) em nota interna
+  /**
+   * Detecta `@termo` sendo digitado no draft, só no modo nota. Regex simétrica
+   * à do slash: `@` só abre menção quando começa uma palavra (evita capturar
+   * `@` de email dentro do texto).
+   */
+  const detectMention = (value: string, caret: number) => {
+    if (mode !== "note" || mentionCandidates.length === 0) {
+      if (mentionToken) {
+        setMentionToken(null);
+        setShowMentions(false);
+      }
+      return;
+    }
+    const upToCaret = value.slice(0, caret);
+    const match = /(?:^|[\s\n])@([^\s@]{0,32})$/.exec(upToCaret);
+    if (!match) {
+      if (mentionToken) {
+        setMentionToken(null);
+        setShowMentions(false);
+      }
+      return;
+    }
+    setMentionToken({
+      start: caret - match[1].length - 1,
+      term: match[1].toLowerCase(),
+    });
+    setShowMentions(true);
+  };
+
+  const visibleMentionCandidates = React.useMemo(() => {
+    const term = mentionToken?.term ?? "";
+    // Já mencionados aparecem no fim (ou some — melhor esconder pra não
+    // clicar duas vezes por engano).
+    const available = mentionCandidates.filter((m) => !pickedUsers.includes(m.user_id));
+    if (!term) return available.slice(0, 8);
+    return available
+      .filter((m) => {
+        const name = (m.full_name ?? m.email ?? "").toLowerCase();
+        return name.includes(term);
+      })
+      .slice(0, 8);
+  }, [mentionCandidates, mentionToken?.term, pickedUsers]);
+
+  const pickMention = (candidate: MentionCandidate) => {
+    if (!mentionToken) return;
+    const el = taRef.current;
+    const displayName = candidate.full_name || candidate.email.split("@")[0];
+    // Insere "@Nome " (com espaço) no lugar do token. Espaço no fim evita que
+    // o próximo caractere digitado grude no nome mencionado.
+    const insertion = `@${displayName} `;
+    const before = draft.slice(0, mentionToken.start);
+    const afterCaret = el?.selectionEnd ?? mentionToken.start + mentionToken.term.length + 1;
+    const after = draft.slice(afterCaret);
+    const next = (before + insertion + after).slice(0, MAX_CHARS);
+    setDraft(next);
+    setMentionToken(null);
+    setShowMentions(false);
+    // Atualiza lista de userIds (deduplicado — pickedUsers já foi filtrado).
+    const nextPicked = [...pickedUsers, candidate.user_id];
+    setPickedUsers(nextPicked);
+    onMentionsChange?.(nextPicked);
+    // Reposiciona o caret logo após o espaço.
+    requestAnimationFrame(() => {
+      if (!el) return;
+      el.focus();
+      const pos = Math.min(before.length + insertion.length, MAX_CHARS);
+      el.selectionStart = el.selectionEnd = pos;
+    });
+  };
+
+  // Fecha popover ao sair para fora ou apertar ESC.
+  React.useEffect(() => {
+    if (!showMentions) return;
+    const onDoc = (e: MouseEvent) => {
+      if (
+        mentionWrapRef.current &&
+        !mentionWrapRef.current.contains(e.target as Node)
+      ) {
+        setShowMentions(false);
+        setMentionToken(null);
+      }
+    };
+    document.addEventListener("mousedown", onDoc);
+    return () => document.removeEventListener("mousedown", onDoc);
+  }, [showMentions]);
 
   // --- attachments
   const openFilePicker = (cfg: { accept: string; multiple: boolean; capture?: string }) => {
@@ -828,6 +960,68 @@ export function Composer({ draft, setDraft, taRef, onSend, onClosePanel, onSendA
         </div>
       )}
 
+      {/* Menções (@) — só no modo nota. Estilo espelha o popover de
+          respostas rápidas para consistência. */}
+      {showMentions && mode === "note" && mentionCandidates.length > 0 && (
+        <div
+          ref={mentionWrapRef}
+          style={{
+            position: "absolute",
+            bottom: "calc(100% + 8px)",
+            left: 8,
+            right: 8,
+            maxWidth: 320,
+            maxHeight: 260,
+            overflowY: "auto",
+            background: "var(--bg-surface)",
+            border: "1px solid var(--border-strong)",
+            borderRadius: "var(--radius-modal)",
+            boxShadow: "0 12px 28px rgba(0,0,0,0.32)",
+            zIndex: 50,
+            padding: 6,
+          }}
+        >
+          {visibleMentionCandidates.length === 0 ? (
+            <div style={{ padding: "10px 8px", fontSize: 12, color: "var(--text-muted)" }}>
+              Nenhum membro com “{mentionToken?.term}”.
+            </div>
+          ) : (
+            visibleMentionCandidates.map((m, i) => (
+              <button
+                key={m.user_id}
+                type="button"
+                onClick={() => pickMention(m)}
+                style={{
+                  display: "block",
+                  width: "100%",
+                  textAlign: "left",
+                  padding: "7px 9px",
+                  borderRadius: "var(--radius-card)",
+                  border: "none",
+                  background: i === 0 ? "var(--bg-overlay)" : "transparent",
+                  cursor: "pointer",
+                }}
+                onMouseEnter={(e) => (e.currentTarget.style.background = "var(--bg-overlay)")}
+                onMouseLeave={(e) =>
+                  (e.currentTarget.style.background = i === 0 ? "var(--bg-overlay)" : "transparent")
+                }
+              >
+                <div
+                  style={{ fontSize: 13, fontWeight: 600, color: "var(--text-primary)" }}
+                >
+                  {m.full_name || m.email.split("@")[0]}
+                </div>
+                {m.full_name && (
+                  <div className="truncate" style={{ fontSize: 11, color: "var(--text-muted)" }}>
+                    {m.email}
+                  </div>
+                )}
+              </button>
+            ))
+          )}
+        </div>
+      )}
+
       {/* Attachment popover */}
       {showAttachMenu && (
         <div
@@ -930,7 +1124,9 @@ export function Composer({ draft, setDraft, taRef, onSend, onClosePanel, onSendA
             onChange={(e) => {
               const v = e.target.value.slice(0, MAX_CHARS);
               setDraft(v);
-              detectSlash(v, e.target.selectionStart ?? v.length);
+              const caret = e.target.selectionStart ?? v.length;
+              detectSlash(v, caret);
+              detectMention(v, caret);
             }}
             onKeyDown={(e) => {
               // Com o picker aberto pelo "/", Enter escolhe a primeira opção em
@@ -938,6 +1134,19 @@ export function Composer({ draft, setDraft, taRef, onSend, onClosePanel, onSendA
               if (showQuick && slashToken && visibleQuickReplies.length > 0 && e.key === "Enter" && !e.shiftKey) {
                 e.preventDefault();
                 pickQuickReply(visibleQuickReplies[0]);
+                return;
+              }
+              // Análogo pra menção: Enter escolhe o primeiro candidato em vez
+              // de enviar uma nota com `@joao` cru (sem virar menção real).
+              if (showMentions && mentionToken && visibleMentionCandidates.length > 0 && e.key === "Enter" && !e.shiftKey) {
+                e.preventDefault();
+                pickMention(visibleMentionCandidates[0]);
+                return;
+              }
+              if (e.key === "Escape" && showMentions) {
+                e.preventDefault();
+                setShowMentions(false);
+                setMentionToken(null);
                 return;
               }
               if (e.key === "Enter" && !e.shiftKey) {

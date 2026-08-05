@@ -52,6 +52,7 @@ import { useContactActions } from "@/hooks/use-contact-actions";
 import { useQuery } from "@tanstack/react-query";
 import { listQuickReplies } from "@/lib/quick-replies.functions";
 import { getWorkspaceProfile } from "@/lib/onboarding.functions";
+import { listAssignableMembers } from "@/lib/assignment.functions";
 
 
 type Tab = "conversation" | "contact" | "services" | "history";
@@ -282,6 +283,31 @@ export function ConversationPanel({
     queryFn: () => getWorkspaceProfileFn(),
     staleTime: 5 * 60_000,
   });
+
+  // Membros do workspace para autocomplete de @ em nota. Falha silenciosa
+  // (retry:false): sem os membros o Composer só esconde o autocomplete, o
+  // resto continua funcionando.
+  const listAssignableMembersFn = useServerFn(listAssignableMembers);
+  const membersQuery = useQuery({
+    queryKey: ["assignable-members"],
+    queryFn: () => listAssignableMembersFn(),
+    staleTime: 60_000,
+    retry: false,
+  });
+  const mentionCandidates = React.useMemo(
+    () =>
+      // fetchAssignableMembers já retorna só ativos — sem filtro extra aqui.
+      (membersQuery.data ?? []).map((m) => ({
+        user_id: m.user_id,
+        full_name: m.full_name,
+        email: m.email,
+      })),
+    [membersQuery.data],
+  );
+
+  // UserIds que o Composer acumulou no draft de nota atual. Zera junto com
+  // o draft quando a nota é enviada.
+  const [noteMentions, setNoteMentions] = React.useState<string[]>([]);
 
   /** Variáveis do template. Nomes em ASCII: renderTemplate usa \w+. */
   const templateVars = React.useMemo(
@@ -547,7 +573,7 @@ export function ConversationPanel({
     if (composerMode === "note") {
       const note = noteDraft.trim();
       if (!note) return;
-      const ok = await actions.addInternalNote(contact.id, note);
+      const ok = await actions.addInternalNote(contact.id, note, noteMentions);
       // Limpa SÓ no sucesso — em erro o texto continua na caixa. Ao contrário
       // de uma mensagem, uma nota perdida não tem como ser recuperada.
       if (ok) {
@@ -972,6 +998,8 @@ export function ConversationPanel({
                   templateVars={templateVars}
                   templatesEnabled={contact.channel === "whatsapp_cloud"}
                   onOpenTemplates={() => setTemplatesOpen(true)}
+                  mentionCandidates={mentionCandidates}
+                  onMentionsChange={setNoteMentions}
                   taRef={taRef}
                   onSend={send}
                   onClosePanel={onClose}
