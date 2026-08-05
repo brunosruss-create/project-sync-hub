@@ -10,6 +10,7 @@ import { supabaseAdmin } from "@/integrations/supabase/client.server";
 import { processMessageJob, type MessageJobPayload } from "@/lib/message-processing.server";
 import { initSentry, captureException } from "@/lib/sentry.server";
 import { sendCsatSurvey } from "@/lib/csat.server";
+import { runScheduledSend, type ScheduledSendPayload } from "@/lib/scheduled-send.server";
 
 initSentry("worker");
 
@@ -20,7 +21,7 @@ const PER_WORKSPACE_LIMIT_PER_MINUTE = 25; // protege 1 cliente de estourar a co
 const MAX_ATTEMPTS = 5;
 const STALE_PROCESSING_MS = 5 * 60_000; // job travado em "processing" (worker caiu no meio) volta a pending
 
-type JobType = "ai_reply" | "csat_send";
+type JobType = "ai_reply" | "csat_send" | "scheduled_send";
 
 type JobRow = {
   id: string;
@@ -137,6 +138,15 @@ async function runJob(job: JobRow) {
         surveyId: String((job.payload as any)?.survey_id ?? ""),
         scheduledAt: job.scheduled_at,
         attempts: job.attempts,
+      });
+    } else if (job.job_type === "scheduled_send") {
+      // Mensagem agendada pelo atendente. Não passa pelo rate limit da IA:
+      // é ação humana explícita, pontual, e não bate no Gemini.
+      await runScheduledSend({
+        workspaceOwnerId: job.workspace_owner_id,
+        contactId: job.contact_id,
+        instanceName: job.instance_name,
+        payload: job.payload as ScheduledSendPayload,
       });
     } else {
       // Tipo desconhecido: marca done em vez de ficar reprocessando para sempre.

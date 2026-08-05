@@ -14,6 +14,7 @@ import {
   StickyNote,
   Zap,
   LayoutTemplate,
+  Clock,
 } from "lucide-react";
 import Picker from "@emoji-mart/react";
 import emojiData from "@emoji-mart/data";
@@ -74,6 +75,12 @@ type Props = {
    * modo de resposta (nota interna não vaza pro outro lado).
    */
   onTyping?: (typing: boolean) => void;
+  /**
+   * Chamado quando o usuário quer agendar o envio em vez de mandar agora.
+   * O pai abre o modal de data/hora — o Composer só sinaliza a intenção.
+   * Ausente esconde o botão.
+   */
+  onSchedule?: () => void;
 };
 
 export type MentionCandidate = {
@@ -89,7 +96,7 @@ export type QuickReplyOption = {
   body: string;
 };
 
-export function Composer({ draft, setDraft, taRef, onSend, onClosePanel, onSendAttachments, onSendAudio, replyingTo, onCancelReply, mode = "reply", onModeChange, quickReplies = [], templateVars, templatesEnabled = false, onOpenTemplates, mentionCandidates = [], onMentionsChange, onTyping }: Props) {
+export function Composer({ draft, setDraft, taRef, onSend, onClosePanel, onSendAttachments, onSendAudio, replyingTo, onCancelReply, mode = "reply", onModeChange, quickReplies = [], templateVars, templatesEnabled = false, onOpenTemplates, mentionCandidates = [], onMentionsChange, onTyping, onSchedule }: Props) {
   const isNote = mode === "note";
   const hasQuickReplies = quickReplies.length > 0;
   const hasText = draft.trim().length > 0;
@@ -1209,6 +1216,45 @@ export function Composer({ draft, setDraft, taRef, onSend, onClosePanel, onSendA
             </button>
           )}
         </div>
+
+        {/* Agendar: só faz sentido no modo resposta (nota interna nunca sai
+            do sistema — agendar uma nota é o mesmo que criar agora). Só
+            aparece quando há texto: agendar vazio confunde e o modal precisa
+            do texto pra mostrar preview. */}
+        {onSchedule && !isNote && hasText && (
+          <button
+            type="button"
+            onClick={onSchedule}
+            aria-label="Agendar envio"
+            title="Agendar envio"
+            style={{
+              width: 32,
+              height: 32,
+              borderRadius: "var(--radius-pill)",
+              background: "transparent",
+              color: "var(--text-muted)",
+              border: "1px solid var(--border)",
+              display: "inline-flex",
+              alignItems: "center",
+              justifyContent: "center",
+              flexShrink: 0,
+              alignSelf: "flex-end",
+              marginBottom: 4,
+              cursor: "pointer",
+              transition: "color 150ms ease, background 150ms ease",
+            }}
+            onMouseEnter={(e) => {
+              e.currentTarget.style.color = "var(--brand-400)";
+              e.currentTarget.style.background = "var(--bg-overlay)";
+            }}
+            onMouseLeave={(e) => {
+              e.currentTarget.style.color = "var(--text-muted)";
+              e.currentTarget.style.background = "transparent";
+            }}
+          >
+            <Clock size={16} />
+          </button>
+        )}
 
         {/* Botão de ação. No modo nota muda cor E ícone: a memória muscular
             mira a forma, então trocar só a cor não protege. */}

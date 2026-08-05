@@ -38,6 +38,8 @@ import { MessageActions } from "./message-actions";
 import { ForwardModal, type ForwardSource } from "./forward-modal";
 import { TransferConversationModal } from "./transfer-conversation-modal";
 import { TemplatePickerModal } from "./template-picker-modal";
+import { ScheduleSendModal } from "./schedule-send-modal";
+import { ScheduledList } from "./scheduled-list";
 import { AudioPlayerWithMe } from "@/components/chat/AudioPlayer";
 import { DateSeparator } from "@/components/chat/DateSeparator";
 import { uploadChatMedia } from "@/lib/chat-media";
@@ -406,6 +408,7 @@ export function ConversationPanel({
   const [forwardSource, setForwardSource] = React.useState<ForwardSource | null>(null);
   const [transferOpen, setTransferOpen] = React.useState(false);
   const [templatesOpen, setTemplatesOpen] = React.useState(false);
+  const [scheduleSendOpen, setScheduleSendOpen] = React.useState(false);
   const actions = useContactActions();
   
   const open = !!contact;
@@ -1136,6 +1139,9 @@ export function ConversationPanel({
                   </div>
                 </div>
 
+                {/* Painel de agendamentos pendentes. Some quando não há nada. */}
+                <ScheduledList contactId={contact.id} />
+
                 {/* Composer */}
                 <Composer
                   draft={composerMode === "note" ? noteDraft : draft}
@@ -1150,6 +1156,11 @@ export function ConversationPanel({
                   mentionCandidates={mentionCandidates}
                   onMentionsChange={setNoteMentions}
                   onTyping={presence.setTyping}
+                  // Botão de agendar aparece só no modo resposta com texto.
+                  // Passamos undefined em modo nota pra esconder de vez.
+                  onSchedule={
+                    composerMode === "reply" ? () => setScheduleSendOpen(true) : undefined
+                  }
                   taRef={taRef}
                   onSend={send}
                   onClosePanel={onClose}
@@ -1214,6 +1225,26 @@ export function ConversationPanel({
         contactId={contact?.id ?? null}
         onClose={() => setTemplatesOpen(false)}
       />
+      {contact && (
+        <ScheduleSendModal
+          open={scheduleSendOpen}
+          onClose={() => setScheduleSendOpen(false)}
+          contactId={contact.id}
+          contactName={contact.name}
+          text={draft}
+          onScheduled={() => {
+            // Limpa o rascunho: pra o atendente, agendar equivale a mandar
+            // depois — e mandar zera a caixa.
+            setDraft("");
+            if (taRef.current) taRef.current.style.height = "auto";
+            // Notifica o painel de agendamentos pra atualizar (invalidação
+            // via event: idêntico ao padrão zf:contact-updated).
+            window.dispatchEvent(
+              new CustomEvent("zf:scheduled-changed", { detail: { contactId: contact.id } }),
+            );
+          }}
+        />
+      )}
     </>
   );
 }
