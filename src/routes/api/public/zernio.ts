@@ -37,11 +37,40 @@ function extFromMime(mime: string, fallback: string): string {
  * pública estável. Best-effort: se falhar, devolve a URL crua como fallback
  * (melhor exibir algo que pode expirar do que perder a mídia por completo).
  */
+type SharedLinkPreview = { url: string; title: string | null; thumbnail: string | null };
+
+/** Extrai um atributo de uma meta tag OpenGraph do HTML (property og:xxx). */
+function ogTag(html: string, prop: string): string | null {
+  // Aceita as duas ordens de atributo (property antes ou depois de content).
+  const re1 = new RegExp(
+    `<meta[^>]+property=["']og:${prop}["'][^>]+content=["']([^"']+)["']`,
+    "i",
+  );
+  const re2 = new RegExp(
+    `<meta[^>]+content=["']([^"']+)["'][^>]+property=["']og:${prop}["']`,
+    "i",
+  );
+  const m = html.match(re1) ?? html.match(re2);
+  if (!m) return null;
+  // Decodifica entidades HTML básicas do content.
+  return m[1]
+    .replace(/&amp;/g, "&")
+    .replace(/&quot;/g, '"')
+    .replace(/&#039;/g, "'")
+    .replace(/&lt;/g, "<")
+    .replace(/&gt;/g, ">");
+}
+
 async function persistZernioMedia(
   ownerUserId: string,
   rawUrl: string,
   declaredMime: string | null,
-): Promise<{ url: string; mime: string | null; isSharedLink?: boolean }> {
+): Promise<{
+  url: string;
+  mime: string | null;
+  isSharedLink?: boolean;
+  sharedPreview?: SharedLinkPreview;
+}> {
   const dl = await downloadZernioMedia(rawUrl);
   if (!dl) return { url: rawUrl, mime: declaredMime };
 
@@ -57,7 +86,24 @@ async function persistZernioMedia(
       declaredMime.startsWith("video/"));
   const downloadedHtml = dl.mime.startsWith("text/html");
   if (downloadedHtml && !declaredIsMedia) {
-    return { url: rawUrl, mime: dl.mime, isSharedLink: true };
+    // Extrai capa (og:image) e título pra montar um card de preview. A og:image
+    // é CDN da Meta (hotlink-bloqueada), então re-hospedamos no nosso Storage.
+    const html = dl.buffer.toString("utf8");
+    const ogImage = ogTag(html, "image");
+    const title = ogTag(html, "title");
+    let thumbnail: string | null = null;
+    if (ogImage) {
+      const rehosted = await persistZernioMedia(ownerUserId, ogImage, "image/jpeg");
+      // rehosted.url é a URL do nosso Storage; se o download da capa falhar,
+      // persistZernioMedia devolve a URL crua (hotlink-bloqueada) — descartamos.
+      thumbnail = isRehostedAvatar(rehosted.url) ? rehosted.url : null;
+    }
+    return {
+      url: rawUrl,
+      mime: dl.mime,
+      isSharedLink: true,
+      sharedPreview: { url: rawUrl, title, thumbnail },
+    };
   }
 
   const mime = declaredMime || dl.mime;
@@ -345,16 +391,18 @@ export const Route = createFileRoute("/api/public/zernio")({
             // link compartilhado (reel/post do Instagram) — ver isSharedLink.
             let finalType: "text" | "image" | "audio" | "video" | "document" = messageType;
             let finalContent = text;
+            let linkPreview: SharedLinkPreview | null = null;
             if (rawMediaUrl) {
               const persisted = await persistZernioMedia(ownerUserId, rawMediaUrl, declaredMime);
               if (persisted.isSharedLink) {
                 // Compartilhamento (reel/post/story): não é mídia baixável.
-                // Guarda como texto com o link — a UI renderiza clicável e o
-                // atendente abre no Instagram. Nada de player preto.
+                // Guarda como texto com o link + preview (miniatura/título) pra
+                // UI montar um card. Nada de player preto.
                 finalType = "text";
                 finalContent = text ? `${text}\n${rawMediaUrl}` : rawMediaUrl;
                 mediaUrl = null;
                 mediaMime = null;
+                linkPreview = persisted.sharedPreview ?? { url: rawMediaUrl, title: null, thumbnail: null };
               } else {
                 mediaUrl = persisted.url;
                 mediaMime = persisted.mime;
@@ -376,8 +424,20 @@ export const Route = createFileRoute("/api/public/zernio")({
               insert.media_url = mediaUrl;
               insert.media_mime = mediaMime;
             }
-            const { error: mErr } = await supabaseAdmin.from("messages").insert(insert);
-            if (mErr) console.error("[zernio webhook] insert message", mErr.message);
+            if (linkPreview) insert.link_preview = linkPreview;
+            // Degradação aberta: se a coluna link_preview ainda não existe,
+            // remove e reinsere — a mensagem (com o link no content) é mais
+            // importante que o card.
+            {
+              const { error: mErr0 } = await supabaseAdmin.from("messages").insert(insert);
+              if (mErr0 && /link_preview/i.test(mErr0.message)) {
+                delete insert.link_preview;
+                const retry = await supabaseAdmin.from("messages").insert(insert);
+                if (retry.error) console.error("[zernio webhook] insert message", retry.error.message);
+              } else if (mErr0) {
+                console.error("[zernio webhook] insert message", mErr0.message);
+              }
+            }
 
             const humanInControl = !!contact.assignedAgentId;
 

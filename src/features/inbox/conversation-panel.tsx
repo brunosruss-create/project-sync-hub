@@ -19,6 +19,8 @@ import {
   User,
   ClipboardList,
   StickyNote,
+  Play,
+  Instagram,
   type LucideIcon,
 } from "lucide-react";
 import { Composer, type ComposerMode } from "@/components/chat/Composer";
@@ -89,6 +91,8 @@ interface Message {
   deleted_at?: string | null;
   edited_at?: string | null;
   is_ai?: boolean;
+  /** Preview de reel/post compartilhado (Instagram): { url, title, thumbnail }. */
+  link_preview?: { url: string; title?: string | null; thumbnail?: string | null } | null;
 }
 
 /**
@@ -132,7 +136,7 @@ function sameDay(a: Date, b: Date) {
 const MESSAGE_PAGE_SIZE = 40;
 
 const MESSAGE_COLS_BASE =
-  "id,direction,content,message_type,status,created_at,media_url,media_mime,media_name,whatsapp_message_id,quoted_preview,reactions,deleted_at,edited_at,is_ai";
+  "id,direction,content,message_type,status,created_at,media_url,media_mime,media_name,whatsapp_message_id,quoted_preview,reactions,deleted_at,edited_at,is_ai,link_preview";
 
 function mapMessageRow(r: any): Message {
   return {
@@ -152,6 +156,7 @@ function mapMessageRow(r: any): Message {
     edited_at: r.edited_at ?? null,
     is_ai: !!r.is_ai,
     is_internal: !!r.is_internal,
+    link_preview: r.link_preview ?? null,
   };
 }
 
@@ -188,6 +193,16 @@ async function fetchMessagePage(
     onNotesAvailable(false);
   } else if (!error) {
     onNotesAvailable(true);
+  }
+  // Degradação extra: se link_preview ainda não existe neste banco, refaz sem
+  // ela (e sem is_internal, que já teria falhado antes). Card de preview é
+  // opcional; a conversa não pode ficar em branco por causa dele.
+  if (error && /link_preview/i.test(error.message ?? "")) {
+    const cols = MESSAGE_COLS_BASE.replace(",link_preview", "");
+    const retry = await build(cols);
+    data = retry.data as any;
+    error = retry.error;
+    onNotesAvailable(false);
   }
 
   if (error) {
@@ -558,6 +573,7 @@ export function ConversationPanel({
                     edited_at: r.edited_at ?? null,
                     is_ai: !!r.is_ai,
                     is_internal: !!r.is_internal,
+                    link_preview: r.link_preview ?? null,
                   },
                 ],
           );
@@ -1578,6 +1594,66 @@ function MessageBubble({
           <Download size={14} style={{ flexShrink: 0, color: "var(--text-muted)" }} />
         </a>
       )}
+      {/* Card de preview de reel/post compartilhado do Instagram. A Meta não
+          entrega o arquivo — só o link —, então mostramos capa + título e um
+          botão pra abrir no Instagram. */}
+      {m.link_preview?.url && (
+        <a
+          href={m.link_preview.url}
+          target="_blank"
+          rel="noreferrer"
+          style={{
+            display: "block",
+            maxWidth: 260,
+            borderRadius: "var(--radius-card)",
+            overflow: "hidden",
+            border: "1px solid var(--border)",
+            background: "var(--bg-surface)",
+            textDecoration: "none",
+            marginBottom: 6,
+          }}
+        >
+          {m.link_preview.thumbnail ? (
+            <div style={{ position: "relative" }}>
+              <img
+                src={m.link_preview.thumbnail}
+                alt="Prévia do conteúdo compartilhado"
+                style={{ display: "block", width: "100%", maxHeight: 300, objectFit: "cover" }}
+              />
+              {/* Overlay de "play" — sinaliza que é reel/vídeo publicado. */}
+              <div
+                style={{
+                  position: "absolute", inset: 0, display: "flex",
+                  alignItems: "center", justifyContent: "center",
+                  background: "rgba(0,0,0,0.15)",
+                }}
+              >
+                <div
+                  style={{
+                    width: 44, height: 44, borderRadius: "50%",
+                    background: "rgba(0,0,0,0.55)", display: "flex",
+                    alignItems: "center", justifyContent: "center",
+                  }}
+                >
+                  <Play size={20} fill="#fff" stroke="#fff" style={{ marginLeft: 2 }} />
+                </div>
+              </div>
+            </div>
+          ) : null}
+          <div style={{ padding: "8px 10px", display: "flex", alignItems: "center", gap: 6 }}>
+            <Instagram size={14} style={{ color: "#E1306C", flexShrink: 0 }} />
+            <span
+              style={{
+                flex: 1, minWidth: 0, fontSize: 12.5, color: "var(--text-primary)",
+                overflow: "hidden", textOverflow: "ellipsis", whiteSpace: "nowrap",
+              }}
+            >
+              {m.link_preview.title?.trim() || "Ver no Instagram"}
+            </span>
+            <ExternalLink size={13} style={{ color: "var(--text-muted)", flexShrink: 0 }} />
+          </div>
+        </a>
+      )}
       {editing ? (
         <InlineEditor
           initial={m.content}
@@ -1585,7 +1661,16 @@ function MessageBubble({
           onSave={(t) => onSaveEdit?.(t)}
         />
       ) : (
-        m.content && <div style={{ whiteSpace: "pre-wrap", wordBreak: "break-word" }}>{linkify(m.content)}</div>
+        // Com card de preview, escondemos a URL crua do texto (o card já leva
+        // ao link). Se havia texto além do link, ele continua aparecendo.
+        (() => {
+          const shown = m.link_preview?.url
+            ? m.content.replace(m.link_preview.url, "").replace(/^Conteúdo compartilhado:\s*$/i, "").trim()
+            : m.content;
+          return shown ? (
+            <div style={{ whiteSpace: "pre-wrap", wordBreak: "break-word" }}>{linkify(shown)}</div>
+          ) : null;
+        })()
       )}
       <div
         style={{
