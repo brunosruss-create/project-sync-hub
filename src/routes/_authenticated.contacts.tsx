@@ -1,7 +1,9 @@
 import * as React from "react";
 import { createFileRoute, useNavigate } from "@tanstack/react-router";
-import { Search, Plus, Users, MessageSquare, AlertTriangle, Database } from "lucide-react";
+import { Search, Plus, Users, MessageSquare, AlertTriangle, Database, Download } from "lucide-react";
 import { supabase } from "@/integrations/supabase/client";
+import { toCsv, downloadCsv, csvTimestamp, type CsvColumn } from "@/lib/csv-export";
+import { notify } from "@/lib/notify";
 import {
   MOCK_CONTACTS,
   formatRelative,
@@ -234,6 +236,72 @@ function ContactsPage() {
               }}
             />
           </div>
+
+          <button
+            type="button"
+            onClick={() => {
+              // Exporta exatamente o que está na tela agora: se o usuário
+              // filtrou por tag ou busca, o CSV segue esse recorte. Menos
+              // "por que apareceu esse contato aqui?" depois.
+              if (filtered.length === 0) {
+                notify.info("Nada para exportar com este filtro.");
+                return;
+              }
+              const cols: CsvColumn<ContactCard>[] = [
+                { header: "Nome", value: (c) => c.name },
+                { header: "Telefone", value: (c) => formatPhone(c.phone) },
+                { header: "E-mail", value: (c) => c.email ?? "" },
+                {
+                  header: "Documento",
+                  value: (c) => c.document_number ?? "",
+                },
+                {
+                  header: "Nascimento",
+                  value: (c) => c.birth_date ?? "",
+                },
+                {
+                  header: "Endereço",
+                  value: (c) =>
+                    [
+                      c.street,
+                      c.address_number,
+                      c.address_complement,
+                      c.neighborhood,
+                      c.city,
+                      c.state_uf,
+                      c.cep,
+                    ]
+                      .filter(Boolean)
+                      .join(", "),
+                },
+                { header: "Tags", value: (c) => (c.tags ?? []).join("; ") },
+                { header: "Notas", value: (c) => c.notes ?? "" },
+              ];
+              const csv = toCsv(filtered, cols);
+              downloadCsv(`clientes-${csvTimestamp()}`, csv);
+              notify.success(
+                `Exportados ${filtered.length} cliente${filtered.length === 1 ? "" : "s"}.`,
+              );
+            }}
+            className="inline-flex items-center"
+            title="Exportar clientes filtrados em CSV"
+            aria-label="Exportar CSV"
+            style={{
+              gap: 6,
+              height: 32,
+              padding: "0 12px",
+              borderRadius: "var(--radius-control)",
+              border: "1px solid var(--border-strong)",
+              background: "var(--bg-surface)",
+              color: "var(--text-primary)",
+              fontSize: 13,
+              fontWeight: 500,
+              cursor: "pointer",
+            }}
+          >
+            <Download size={14} />
+            Exportar
+          </button>
 
           <button
             type="button"

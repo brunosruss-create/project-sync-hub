@@ -48,6 +48,7 @@ import {
   type Service,
   type ServiceStatus,
 } from "@/features/services/data";
+import { toCsv, downloadCsv, csvTimestamp, type CsvColumn } from "@/lib/csv-export";
 import { useContactActions } from "@/hooks/use-contact-actions";
 import { useQuery } from "@tanstack/react-query";
 import { listQuickReplies } from "@/lib/quick-replies.functions";
@@ -165,6 +166,81 @@ async function fetchMessagePage(
 }
 
 const MAX_CHARS = 4096;
+
+/**
+ * Exporta a transcrição completa da conversa em CSV. Busca do banco (não usa
+ * o `messages` já renderizado): o painel abre com paginação, então o estado
+ * só tem a última página — exportar só isso confundiria mais que ajudaria.
+ *
+ * Cap de segurança: 5000 linhas. Conversa com esse volume é raro; se
+ * acontecer, avisamos que ficou parcial.
+ */
+const EXPORT_MAX_ROWS = 5000;
+async function exportConversationTranscript(contact: Contact, _panelMessages: Message[]) {
+  try {
+    // Ordenação cronológica: a transcrição lida como um diálogo.
+    let query = supabase
+      .from("messages")
+      .select(`${MESSAGE_COLS_BASE},is_internal`)
+      .eq("contact_id", contact.id)
+      .order("created_at", { ascending: true })
+      .limit(EXPORT_MAX_ROWS);
+    let { data, error } = await query;
+    // Degradação aberta: is_internal pode ainda não existir. Só refaz sem
+    // ela — o resto da conversa é o que importa.
+    if (error && /is_internal/i.test(error.message ?? "")) {
+      const retry = await supabase
+        .from("messages")
+        .select(MESSAGE_COLS_BASE)
+        .eq("contact_id", contact.id)
+        .order("created_at", { ascending: true })
+        .limit(EXPORT_MAX_ROWS);
+      data = retry.data as any;
+      error = retry.error;
+    }
+    if (error) {
+      toast.error("Falha ao exportar: " + error.message);
+      return;
+    }
+    const rows = (data ?? []) as any[];
+    if (rows.length === 0) {
+      toast.info("Sem mensagens para exportar.");
+      return;
+    }
+
+    const cols: CsvColumn<any>[] = [
+      {
+        header: "Data",
+        value: (r) => new Date(r.created_at).toLocaleString("pt-BR"),
+      },
+      {
+        header: "Autor",
+        value: (r) => {
+          if (r.is_internal) return "Nota interna";
+          if (r.direction === "inbound") return contact.name;
+          if (r.is_ai) return "IA";
+          return "Atendente";
+        },
+      },
+      { header: "Tipo", value: (r) => r.message_type ?? "text" },
+      { header: "Conteúdo", value: (r) => r.content ?? "" },
+      { header: "Mídia", value: (r) => r.media_url ?? "" },
+      { header: "Status", value: (r) => r.status ?? "" },
+    ];
+    const csv = toCsv(rows, cols);
+    const safeName = contact.name.replace(/[^\w\-]+/g, "_").slice(0, 30) || "conversa";
+    downloadCsv(`conversa-${safeName}-${csvTimestamp()}`, csv);
+    if (rows.length >= EXPORT_MAX_ROWS) {
+      toast.success(
+        `Exportadas as primeiras ${EXPORT_MAX_ROWS} mensagens (limite de segurança).`,
+      );
+    } else {
+      toast.success(`Exportadas ${rows.length} mensagens.`);
+    }
+  } catch (e: any) {
+    toast.error(e?.message ?? "Falha ao exportar.");
+  }
+}
 
 function seedMessages(c: Contact): Message[] {
   return [
@@ -919,6 +995,15 @@ export function ConversationPanel({
                   </MenuItem>
                   <MenuItem icon={<ExternalLink size={14} />} onClick={() => { setMenuOpen(false); setTab("contact"); }}>
                     Ver perfil completo
+                  </MenuItem>
+                  <MenuItem
+                    icon={<Download size={14} />}
+                    onClick={() => {
+                      setMenuOpen(false);
+                      void exportConversationTranscript(contact, messages);
+                    }}
+                  >
+                    Exportar conversa (CSV)
                   </MenuItem>
                 </div>
               )}

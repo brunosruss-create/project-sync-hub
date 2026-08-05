@@ -16,6 +16,7 @@ import {
 } from "recharts";
 import { Card as UICard } from "@/components/ui/card";
 import { notify } from "@/lib/notify";
+import { toCsv, downloadCsv } from "@/lib/csv-export";
 import { SkeletonCard } from "@/components/skeleton";
 import { EmptyState } from "@/components/empty-state";
 import {
@@ -98,18 +99,10 @@ function ReportsPage() {
       notify.info("Nada para exportar.");
       return;
     }
-    const keys = Object.keys(rows[0]);
-    const csv = [
-      keys.join(","),
-      ...rows.map((r) => keys.map((k) => JSON.stringify(r[k] ?? "")).join(",")),
-    ].join("\n");
-    const blob = new Blob([csv], { type: "text/csv;charset=utf-8" });
-    const url = URL.createObjectURL(blob);
-    const a = document.createElement("a");
-    a.href = url;
-    a.download = `relatorio-${tab}-${period}.csv`;
-    a.click();
-    URL.revokeObjectURL(url);
+    // Usa helper compartilhado (BOM UTF-8 + escapada RFC 4180). Antes esta
+    // tela tinha uma implementação ad-hoc que quebrava acentos no Excel-BR.
+    const csv = toCsv(rows);
+    downloadCsv(`relatorio-${tab}-${period}`, csv);
     notify.success("Relatório exportado.");
   };
 
