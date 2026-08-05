@@ -2,7 +2,7 @@ import * as React from "react";
 import { createFileRoute, Link, useNavigate } from "@tanstack/react-router";
 import { zodValidator, fallback } from "@tanstack/zod-adapter";
 import { z } from "zod";
-import { Download, BarChart3, Calendar, Tag, Users } from "lucide-react";
+import { Download, BarChart3, Calendar, Tag, Users, Smile } from "lucide-react";
 import {
   BarChart,
   Bar,
@@ -32,11 +32,16 @@ import {
   type ServicesReport,
   type TeamReport,
 } from "@/features/reports/data";
+import { getCsatDashboard, type CsatDashboard as CsatDashData } from "@/features/reports/csat-data";
+import { CsatDashboard } from "@/features/reports/csat-dashboard";
 import { ManagerOnly } from "@/components/manager-only";
 
 const searchSchema = z.object({
   period: fallback(z.enum(["today", "7d", "30d"]), "7d").default("7d"),
-  tab: fallback(z.enum(["service", "appointments", "services", "team"]), "service").default("service"),
+  tab: fallback(
+    z.enum(["service", "appointments", "services", "team", "csat"]),
+    "service",
+  ).default("service"),
 });
 
 export const Route = createFileRoute("/_authenticated/reports")({
@@ -65,9 +70,15 @@ const TABS = [
   { id: "appointments", label: "Agendamentos", icon: Calendar },
   { id: "services", label: "Serviços", icon: Tag },
   { id: "team", label: "Equipe", icon: Users },
+  { id: "csat", label: "Satisfação", icon: Smile },
 ] as const;
 
-type AnyReport = ServiceReport | AppointmentsReport | ServicesReport | TeamReport;
+type AnyReport =
+  | ServiceReport
+  | AppointmentsReport
+  | ServicesReport
+  | TeamReport
+  | CsatDashData;
 
 function ReportsPage() {
   const { period, tab } = Route.useSearch();
@@ -85,6 +96,7 @@ function ReportsPage() {
       tab === "service" ? getServiceReport
       : tab === "appointments" ? getAppointmentsReport
       : tab === "services" ? getServicesReport
+      : tab === "csat" ? getCsatDashboard
       : getTeamReport;
     fetcher(period as Period)
       .then((r) => { if (!cancelled) { setReport(r as AnyReport); setReportTab(tab); } })
@@ -225,7 +237,13 @@ function ReportsPage() {
   );
 }
 
-function ReportTab({ tab, report }: { tab: "service" | "appointments" | "services" | "team"; report: AnyReport }) {
+function ReportTab({
+  tab,
+  report,
+}: {
+  tab: "service" | "appointments" | "services" | "team" | "csat";
+  report: AnyReport;
+}) {
   if (tab === "service") {
     const r = report as ServiceReport;
     if (r.totalInbound === 0 && r.ranking.length === 0) {
@@ -337,6 +355,10 @@ function ReportTab({ tab, report }: { tab: "service" | "appointments" | "service
         </ReportCard>
       </div>
     );
+  }
+
+  if (tab === "csat") {
+    return <CsatDashboard data={report as CsatDashData} />;
   }
 
   if (tab === "services") {
