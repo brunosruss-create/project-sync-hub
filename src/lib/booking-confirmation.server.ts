@@ -265,6 +265,13 @@ const TEMPLATE_COLS: Record<MessageKey, TemplateColumns> = {
     enabled: "ai_out_of_hours_enabled",
     defaultEnabled: false,
   },
+  away: {
+    text: "msg_away_text",
+    enabled: "msg_away_enabled",
+    // Nasce desligada: mensagem proativa que dispara sem o dono estar
+    // presente; ele decide explicitamente se quer que apareça.
+    defaultEnabled: false,
+  },
   transfer: {
     text: "msg_transfer_text",
     enabled: "msg_transfer_enabled",

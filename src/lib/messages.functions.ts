@@ -9,6 +9,8 @@ const TEMPLATE_COLUMNS = [
   "welcome_message_enabled",
   "ai_out_of_hours_message",
   "ai_out_of_hours_enabled",
+  "msg_away_text",
+  "msg_away_enabled",
   "msg_transfer_text",
   "msg_transfer_enabled",
   "msg_booking_confirmed_text",
@@ -44,6 +46,11 @@ function rowToTemplates(row: Row | null): Record<MessageKey, MessageTemplate> {
       key: "out_of_hours",
       enabled: getBool("ai_out_of_hours_enabled", false),
       text: get("ai_out_of_hours_message"),
+    },
+    away: {
+      key: "away",
+      enabled: getBool("msg_away_enabled", false),
+      text: get("msg_away_text"),
     },
     transfer: {
       key: "transfer",
@@ -94,6 +101,9 @@ const UpdateSchema = z.object({
   out_of_hours: z
     .object({ enabled: z.boolean(), text: z.string().max(2000) })
     .optional(),
+  away: z
+    .object({ enabled: z.boolean(), text: z.string().max(2000) })
+    .optional(),
   transfer: z
     .object({ enabled: z.boolean(), text: z.string().max(2000) })
     .optional(),
@@ -117,6 +127,7 @@ const COLUMN_MAP: Record<MessageKey, { text: string; enabled: string }> = {
     text: "ai_out_of_hours_message",
     enabled: "ai_out_of_hours_enabled",
   },
+  away: { text: "msg_away_text", enabled: "msg_away_enabled" },
   transfer: { text: "msg_transfer_text", enabled: "msg_transfer_enabled" },
   booking_confirmed: {
     text: "msg_booking_confirmed_text",
@@ -153,21 +164,33 @@ export const updateMessageTemplates = createServerFn({ method: "POST" })
 
     // Degradação aberta: a tela envia o rascunho INTEIRO a cada save, então uma
     // coluna nova ainda não aplicada no banco derrubaria o salvamento de TODAS
-    // as mensagens, não só da nova. Repete sem as colunas desconhecidas.
+    // as mensagens, não só da nova. Retenta removendo a coluna faltante — e
+    // repete até esgotar erros de coluna inexistente (pode haver mais de uma
+    // migration pendente ao mesmo tempo, ex.: csat + away).
     if (error && /Could not find the '(\w+)' column|column .* does not exist/i.test(error.message)) {
-      const faltando = error.message.match(/'(\w+)'/)?.[1];
-      console.warn(
-        `[messages] coluna ${faltando ?? "?"} não existe neste banco (migration pendente); salvando o resto.`,
-      );
-      const semNovas = Object.fromEntries(
-        Object.entries(update).filter(([col]) => !col.startsWith("msg_csat_")),
-      );
-      if (Object.keys(semNovas).length === 0) return { ok: true };
-      const retry = await supabaseAdmin
-        .from("profiles")
-        .update(semNovas)
-        .eq("id", context.userId);
-      if (retry.error) throw new Error(retry.error.message);
+      const workingUpdate: Record<string, unknown> = { ...update };
+      let workingErrMessage: string | null = error.message;
+      let attempts = 0;
+      while (
+        workingErrMessage &&
+        /Could not find the '(\w+)' column|column .* does not exist/i.test(workingErrMessage) &&
+        attempts < 8
+      ) {
+        const faltando: string | undefined = workingErrMessage.match(/'(\w+)'/)?.[1];
+        if (!faltando || !(faltando in workingUpdate)) break;
+        console.warn(
+          `[messages] coluna ${faltando} não existe neste banco (migration pendente); pulando.`,
+        );
+        delete workingUpdate[faltando];
+        if (Object.keys(workingUpdate).length === 0) return { ok: true };
+        const retryRes: { error: { message: string } | null } = await supabaseAdmin
+          .from("profiles")
+          .update(workingUpdate)
+          .eq("id", context.userId);
+        workingErrMessage = retryRes.error?.message ?? null;
+        attempts += 1;
+      }
+      if (workingErrMessage) throw new Error(workingErrMessage);
       return { ok: true };
     }
 

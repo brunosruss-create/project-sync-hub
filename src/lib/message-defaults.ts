@@ -5,6 +5,7 @@
 export type MessageKey =
   | "welcome"
   | "out_of_hours"
+  | "away"
   | "transfer"
   | "booking_confirmed"
   | "booking_rescheduled"
@@ -49,6 +50,16 @@ export const MESSAGE_DEFAULTS: Record<MessageKey, MessageMeta> = {
     preview: { negocio: "Salão Bela Vista" },
     default:
       "No momento estamos fora do horário de atendimento do {{negocio}}. Retornaremos em breve.",
+  },
+  away: {
+    key: "away",
+    label: "Mensagem de ausência",
+    description:
+      "Enviada quando a IA está desligada e o cliente escreve nos canais oficiais (WhatsApp Cloud / Instagram). Preenche o gap enquanto ninguém do time responde. Não reenvia se já houve outra mensagem sua para o mesmo contato nas últimas 6 horas.",
+    placeholders: ["{{cliente}}", "{{negocio}}"],
+    preview: { cliente: "João", negocio: "Salão Bela Vista" },
+    default:
+      "Recebemos sua mensagem em *{{negocio}}*, {{cliente}}! No momento estamos ausentes — retornaremos assim que possível. 🙏",
   },
   transfer: {
     key: "transfer",
@@ -151,6 +162,7 @@ export const MESSAGE_DEFAULTS: Record<MessageKey, MessageMeta> = {
 export const MESSAGE_ORDER: MessageKey[] = [
   "welcome",
   "out_of_hours",
+  "away",
   "transfer",
   "booking_confirmed",
   "booking_rescheduled",
