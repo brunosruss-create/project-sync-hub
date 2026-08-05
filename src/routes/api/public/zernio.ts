@@ -41,9 +41,25 @@ async function persistZernioMedia(
   ownerUserId: string,
   rawUrl: string,
   declaredMime: string | null,
-): Promise<{ url: string; mime: string | null }> {
+): Promise<{ url: string; mime: string | null; isSharedLink?: boolean }> {
   const dl = await downloadZernioMedia(rawUrl);
   if (!dl) return { url: rawUrl, mime: declaredMime };
+
+  // Compartilhamento de reel/post/story do Instagram: o attachment vem com uma
+  // URL de PÁGINA (instagram.com/reel/...), não de mídia. Baixar essa URL
+  // devolve o HTML da página — que salvávamos como se fosse vídeo, deixando o
+  // player preto. Detectamos pelo content-type real dos bytes baixados: se é
+  // HTML, não é mídia. Sinaliza pro chamador tratar como link, não como anexo.
+  const declaredIsMedia =
+    !!declaredMime &&
+    (declaredMime.startsWith("audio/") ||
+      declaredMime.startsWith("image/") ||
+      declaredMime.startsWith("video/"));
+  const downloadedHtml = dl.mime.startsWith("text/html");
+  if (downloadedHtml && !declaredIsMedia) {
+    return { url: rawUrl, mime: dl.mime, isSharedLink: true };
+  }
+
   const mime = declaredMime || dl.mime;
   const kind = mime.startsWith("audio/")
     ? "audio"
@@ -325,18 +341,32 @@ export const Route = createFileRoute("/api/public/zernio")({
 
             // Baixa+persiste a mídia só depois do dedup (evita download à toa em
             // reentregas do webhook). WhatsApp exige auth e expira em 7 dias.
+            // finalType/finalContent podem mudar se o "anexo" for na verdade um
+            // link compartilhado (reel/post do Instagram) — ver isSharedLink.
+            let finalType: "text" | "image" | "audio" | "video" | "document" = messageType;
+            let finalContent = text;
             if (rawMediaUrl) {
               const persisted = await persistZernioMedia(ownerUserId, rawMediaUrl, declaredMime);
-              mediaUrl = persisted.url;
-              mediaMime = persisted.mime;
+              if (persisted.isSharedLink) {
+                // Compartilhamento (reel/post/story): não é mídia baixável.
+                // Guarda como texto com o link — a UI renderiza clicável e o
+                // atendente abre no Instagram. Nada de player preto.
+                finalType = "text";
+                finalContent = text ? `${text}\n${rawMediaUrl}` : rawMediaUrl;
+                mediaUrl = null;
+                mediaMime = null;
+              } else {
+                mediaUrl = persisted.url;
+                mediaMime = persisted.mime;
+              }
             }
 
             const insert: Record<string, unknown> = {
               owner_user_id: ownerUserId,
               contact_id: contact.id,
               direction: "inbound",
-              content: text,
-              message_type: messageType,
+              content: finalContent,
+              message_type: finalType,
               status: "delivered",
               channel,
               external_conversation_id: conversationId,

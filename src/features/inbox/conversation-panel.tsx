@@ -91,6 +91,35 @@ interface Message {
   is_ai?: boolean;
 }
 
+/**
+ * Transforma URLs no texto em links clicáveis. Usado em mensagens de texto —
+ * inclui os compartilhamentos de reel/post do Instagram, que agora chegam como
+ * texto com o link (ver webhook zernio.ts). React key por índice é seguro aqui:
+ * a lista é derivada de um split imutável, nunca reordenada.
+ */
+const URL_RE = /(https?:\/\/[^\s]+)/g;
+function linkify(text: string): React.ReactNode {
+  const parts = text.split(URL_RE);
+  return parts.map((part, i) => {
+    if (URL_RE.test(part)) {
+      // reset lastIndex — regex global mantém estado entre .test()
+      URL_RE.lastIndex = 0;
+      return (
+        <a
+          key={i}
+          href={part}
+          target="_blank"
+          rel="noreferrer"
+          style={{ color: "var(--brand-400)", textDecoration: "underline", wordBreak: "break-all" }}
+        >
+          {part}
+        </a>
+      );
+    }
+    return <React.Fragment key={i}>{part}</React.Fragment>;
+  });
+}
+
 function sameDay(a: Date, b: Date) {
   return (
     a.getFullYear() === b.getFullYear() &&
@@ -1500,12 +1529,32 @@ function MessageBubble({
           />
         </a>
       )}
-      {m.media_url && m.message_type === "video" && (
+      {m.media_url && m.message_type === "video" && m.media_mime !== "text/html" && (
         <video
           controls
           src={m.media_url}
           style={{ display: "block", maxWidth: 260, width: "100%", borderRadius: "var(--radius-card)", marginBottom: m.content ? 6 : 0 }}
         />
+      )}
+      {/* Registros antigos de "vídeo" que na verdade eram compartilhamento de
+          reel/post do Instagram (salvos como text/html por bug já corrigido no
+          webhook). Sem isto, o player fica preto. Renderiza como link. */}
+      {m.media_url && m.message_type === "video" && m.media_mime === "text/html" && (
+        <a
+          href={m.media_url}
+          target="_blank"
+          rel="noreferrer"
+          style={{
+            display: "inline-flex", alignItems: "center", gap: 8,
+            padding: "8px 10px", borderRadius: "var(--radius-card)",
+            background: "var(--bg-surface)", border: "1px solid var(--border)",
+            color: "var(--brand-400)", textDecoration: "none",
+            marginBottom: m.content ? 6 : 0, maxWidth: 240, fontSize: 13,
+          }}
+        >
+          <ExternalLink size={16} style={{ flexShrink: 0 }} />
+          Conteúdo compartilhado
+        </a>
       )}
       {m.media_url && m.message_type === "document" && (
         <a
@@ -1536,7 +1585,7 @@ function MessageBubble({
           onSave={(t) => onSaveEdit?.(t)}
         />
       ) : (
-        m.content && <div>{m.content}</div>
+        m.content && <div style={{ whiteSpace: "pre-wrap", wordBreak: "break-word" }}>{linkify(m.content)}</div>
       )}
       <div
         style={{
