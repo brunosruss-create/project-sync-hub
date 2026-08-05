@@ -5,11 +5,13 @@ import {
   normalizeQRCodeImage,
   tryFetchProfilePicture,
   downloadInboundMedia,
+  evo,
 } from "@/lib/evolution.server";
 import type { MessageJobPayload } from "@/lib/message-processing.server";
 import { captureException } from "@/lib/sentry.server";
 import { pickAgentForWaiting } from "@/lib/rotation.server";
 import { parseCsatRating } from "@/lib/csat";
+import { checkAwayReply } from "@/lib/away-message.server";
 
 type MediaKind = "image" | "audio" | "video" | "document";
 
@@ -534,12 +536,59 @@ export const Route = createFileRoute("/api/public/evolution/$instanceId")({
                   kanbanColumn: kanbanColumn ?? null,
                   humanInControl,
                 });
+
+                // ───── Auto-reply de ausência (IA desligada) ─────
+                // Mesma config da tela Mensagens (msg_away_enabled/msg_away_text),
+                // agora válida pra qualquer canal — antes só disparava em
+                // WhatsApp Cloud/Instagram (Zernio). Pula se já resolveu CSAT
+                // (não é o momento de mandar ausência) e some do enqueue de IA
+                // se disparou (a IA está off mesmo, o job seria no-op).
+                let awayReplied = false;
+                if (!csatConsumiu && !humanInControl) {
+                  const awayCheck = await checkAwayReply({
+                    ownerUserId: row.owner_user_id as string,
+                    contactId,
+                    humanInControl,
+                    clienteName: pushName ?? null,
+                  });
+                  if (awayCheck.shouldSend) {
+                    try {
+                      const r: any = await evo.sendText(row.instance_name as string, {
+                        number: phone,
+                        text: awayCheck.text,
+                      });
+                      await supabaseAdmin.from("messages").insert({
+                        owner_user_id: row.owner_user_id,
+                        contact_id: contactId,
+                        direction: "outbound",
+                        content: awayCheck.text,
+                        message_type: "text",
+                        status: "sent",
+                        whatsapp_message_id: r?.key?.id ?? r?.messageId ?? null,
+                        is_ai: true,
+                      });
+                      await supabaseAdmin
+                        .from("contacts")
+                        .update({
+                          last_message: awayCheck.text,
+                          last_message_at: new Date().toISOString(),
+                          last_direction: "outbound",
+                        })
+                        .eq("id", contactId);
+                      awayReplied = true;
+                    } catch (e: any) {
+                      console.error("[evolution] away reply falhou:", e?.message ?? e);
+                    }
+                  }
+                }
+
                 // ───── Enfileira resposta de IA (processada assíncronamente pelo worker) ─────
                 // O webhook só valida, persiste e enfileira — não chama Gemini nem
                 // Evolution aqui, pra responder rápido e não travar sob carga
                 // (ver src/lib/job-worker.ts + src/lib/message-processing.server.ts).
                 const shouldEnqueue =
                   !csatConsumiu &&
+                  !awayReplied &&
                   ((mediaType === "text" && caption.trim().length > 0 && !humanInControl) ||
                     (mediaType === "audio" && !!mediaUrl && !humanInControl) ||
                     (mediaType === "image" && !!mediaUrl && !humanInControl));

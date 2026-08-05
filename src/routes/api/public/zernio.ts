@@ -1,8 +1,7 @@
 import { createFileRoute } from "@tanstack/react-router";
 import { createHmac, timingSafeEqual } from "node:crypto";
 import { supabaseAdmin } from "@/integrations/supabase/client.server";
-import { MESSAGE_DEFAULTS } from "@/lib/message-defaults";
-import { renderTemplate } from "@/lib/message-templates";
+import { checkAwayReply } from "@/lib/away-message.server";
 import { captureException } from "@/lib/sentry.server";
 import { downloadZernioMedia, sendZernioToContact } from "@/lib/zernio.server";
 
@@ -442,68 +441,30 @@ export const Route = createFileRoute("/api/public/zernio")({
             const humanInControl = !!contact.assignedAgentId;
 
             // ───── Auto-reply de ausência (IA desligada) ─────
-            // Preenche o gap dos canais oficiais: se a IA está off e o dono
-            // habilitou a mensagem de ausência, dispara UMA resposta automática
-            // por conversa a cada 6h. Só roda quando não há humano atribuído
-            // (senão o próprio atendente responde). Se sai daqui com sucesso,
-            // pulamos o enqueue de IA (job seria no-op, mesmo motivo).
+            // Preenche o gap: se a IA está off e o dono habilitou a mensagem de
+            // ausência (config única, vale para todos os canais — ver
+            // checkAwayReply), dispara UMA resposta automática por conversa a
+            // cada 6h. Se sai daqui com sucesso, pulamos o enqueue de IA (job
+            // seria no-op, mesmo motivo).
             let awayReplied = false;
-            if (!humanInControl) {
-              // Degradação aberta: colunas msg_away_* podem não existir ainda.
-              let prof: any = null;
-              const { data: prof1, error: prof1Err } = await supabaseAdmin
-                .from("profiles")
-                .select("ai_enabled,msg_away_enabled,msg_away_text,business_name")
-                .eq("id", ownerUserId)
-                .maybeSingle();
-              if (
-                prof1Err &&
-                /Could not find the '(\w+)' column|column .* does not exist/i.test(
-                  prof1Err.message,
-                )
-              ) {
-                const { data: prof2 } = await supabaseAdmin
-                  .from("profiles")
-                  .select("ai_enabled,business_name")
-                  .eq("id", ownerUserId)
-                  .maybeSingle();
-                prof = prof2;
-              } else {
-                prof = prof1;
-              }
-              const aiEnabled = prof?.ai_enabled === true;
-              const awayEnabled = prof?.msg_away_enabled === true;
-              if (!aiEnabled && awayEnabled) {
-                const sixHoursAgo = new Date(Date.now() - 6 * 60 * 60 * 1000).toISOString();
-                const { data: recent } = await supabaseAdmin
-                  .from("messages")
-                  .select("id")
-                  .eq("owner_user_id", ownerUserId)
-                  .eq("contact_id", contact.id)
-                  .eq("direction", "outbound")
-                  .gte("created_at", sixHoursAgo)
-                  .limit(1);
-                if (!recent || recent.length === 0) {
-                  const tpl =
-                    (typeof prof?.msg_away_text === "string" && prof.msg_away_text.trim()) ||
-                    MESSAGE_DEFAULTS.away.default;
-                  const rendered = renderTemplate(tpl, {
-                    cliente: participantName ?? "",
-                    negocio: prof?.business_name ?? "",
-                  });
-                  try {
-                    await sendZernioToContact({
-                      ownerUserId,
-                      contactId: contact.id,
-                      channel,
-                      text: rendered,
-                      sentBy: null,
-                    });
-                    awayReplied = true;
-                  } catch (e: any) {
-                    console.error("[zernio webhook] away reply falhou:", e?.message ?? e);
-                  }
-                }
+            const awayCheck = await checkAwayReply({
+              ownerUserId,
+              contactId: contact.id,
+              humanInControl,
+              clienteName: participantName,
+            });
+            if (awayCheck.shouldSend) {
+              try {
+                await sendZernioToContact({
+                  ownerUserId,
+                  contactId: contact.id,
+                  channel,
+                  text: awayCheck.text,
+                  sentBy: null,
+                });
+                awayReplied = true;
+              } catch (e: any) {
+                console.error("[zernio webhook] away reply falhou:", e?.message ?? e);
               }
             }
 

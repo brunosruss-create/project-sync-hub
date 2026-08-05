@@ -289,8 +289,8 @@ function ContactsPage() {
             style={{
               gap: 6,
               height: 32,
-              padding: "0 12px",
-              borderRadius: "var(--radius-control)",
+              padding: "0 14px",
+              borderRadius: "var(--radius-pill)",
               border: "1px solid var(--border-strong)",
               background: "var(--bg-surface)",
               color: "var(--text-primary)",

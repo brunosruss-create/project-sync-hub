@@ -55,7 +55,7 @@ export const MESSAGE_DEFAULTS: Record<MessageKey, MessageMeta> = {
     key: "away",
     label: "Mensagem de ausência",
     description:
-      "Enviada quando a IA está desligada e o cliente escreve nos canais oficiais (WhatsApp Cloud / Instagram). Preenche o gap enquanto ninguém do time responde. Não reenvia se já houve outra mensagem sua para o mesmo contato nas últimas 6 horas.",
+      "Enviada quando a IA está desligada e o cliente escreve (em qualquer canal conectado: WhatsApp QR, WhatsApp Cloud ou Instagram). Preenche o gap enquanto ninguém do time responde. Não reenvia se já houve outra mensagem sua para o mesmo contato nas últimas 6 horas.",
     placeholders: ["{{cliente}}", "{{negocio}}"],
     preview: { cliente: "João", negocio: "Salão Bela Vista" },
     default:

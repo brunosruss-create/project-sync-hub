@@ -1255,15 +1255,17 @@ export function Composer({ draft, setDraft, taRef, onSend, onClosePanel, onSendA
         </div>
 
         {/* Agendar: só faz sentido no modo resposta (nota interna nunca sai
-            do sistema — agendar uma nota é o mesmo que criar agora). Só
-            aparece quando há texto: agendar vazio confunde e o modal precisa
-            do texto pra mostrar preview. */}
-        {onSchedule && !isNote && hasText && (
+            do sistema — agendar uma nota é o mesmo que criar agora). Fica
+            sempre visível (desabilitado sem texto) — escondido só some quando
+            o usuário digita, e quem nunca escreveu nunca descobre que a
+            função existe. */}
+        {onSchedule && !isNote && (
           <button
             type="button"
-            onClick={onSchedule}
+            onClick={hasText ? onSchedule : undefined}
+            disabled={!hasText}
             aria-label="Agendar envio"
-            title="Agendar envio"
+            title={hasText ? "Agendar envio" : "Digite uma mensagem para agendar o envio"}
             style={{
               width: 32,
               height: 32,
@@ -1277,10 +1279,12 @@ export function Composer({ draft, setDraft, taRef, onSend, onClosePanel, onSendA
               flexShrink: 0,
               alignSelf: "flex-end",
               marginBottom: 4,
-              cursor: "pointer",
-              transition: "color 150ms ease, background 150ms ease",
+              cursor: hasText ? "pointer" : "not-allowed",
+              opacity: hasText ? 1 : 0.45,
+              transition: "color 150ms ease, background 150ms ease, opacity 150ms ease",
             }}
             onMouseEnter={(e) => {
+              if (!hasText) return;
               e.currentTarget.style.color = "var(--brand-400)";
               e.currentTarget.style.background = "var(--bg-overlay)";
             }}
