@@ -15,6 +15,7 @@ import {
   Zap,
   LayoutTemplate,
   Clock,
+  PackageSearch,
 } from "lucide-react";
 import Picker from "@emoji-mart/react";
 import emojiData from "@emoji-mart/data";
@@ -81,6 +82,12 @@ type Props = {
    * Ausente esconde o botão.
    */
   onSchedule?: () => void;
+  /**
+   * Abre o catálogo de serviços. Ao selecionar um item, o pai insere o texto
+   * formatado neste rascunho (chama `setDraft(atual + bloco)`). Ausente
+   * esconde o botão.
+   */
+  onOpenCatalog?: () => void;
 };
 
 export type MentionCandidate = {
@@ -96,7 +103,7 @@ export type QuickReplyOption = {
   body: string;
 };
 
-export function Composer({ draft, setDraft, taRef, onSend, onClosePanel, onSendAttachments, onSendAudio, replyingTo, onCancelReply, mode = "reply", onModeChange, quickReplies = [], templateVars, templatesEnabled = false, onOpenTemplates, mentionCandidates = [], onMentionsChange, onTyping, onSchedule }: Props) {
+export function Composer({ draft, setDraft, taRef, onSend, onClosePanel, onSendAttachments, onSendAudio, replyingTo, onCancelReply, mode = "reply", onModeChange, quickReplies = [], templateVars, templatesEnabled = false, onOpenTemplates, mentionCandidates = [], onMentionsChange, onTyping, onSchedule, onOpenCatalog }: Props) {
   const isNote = mode === "note";
   const hasQuickReplies = quickReplies.length > 0;
   const hasText = draft.trim().length > 0;
@@ -777,6 +784,36 @@ export function Composer({ draft, setDraft, taRef, onSend, onClosePanel, onSendA
               >
                 <LayoutTemplate size={14} />
                 Templates
+              </button>
+            )}
+
+            {/* Catálogo de serviços: agente escolhe um item e insere o texto
+                formatado no rascunho (ou envia foto). Só faz sentido no modo
+                resposta — nota interna não vaza pro cliente. */}
+            {onOpenCatalog && !isNote && (
+              <button
+                type="button"
+                aria-label="Catálogo de serviços"
+                title="Inserir serviço do catálogo"
+                onClick={() => {
+                  setShowEmoji(false);
+                  setShowAttachMenu(false);
+                  setShowQuick(false);
+                  setSlashToken(null);
+                  onOpenCatalog();
+                }}
+                style={quickBtn}
+                onMouseEnter={(e) => {
+                  e.currentTarget.style.background =
+                    "color-mix(in oklab, var(--brand-400) 16%, transparent)";
+                }}
+                onMouseLeave={(e) => {
+                  e.currentTarget.style.background =
+                    "color-mix(in oklab, var(--brand-400) 9%, transparent)";
+                }}
+              >
+                <PackageSearch size={14} />
+                Catálogo
               </button>
             )}
           </div>

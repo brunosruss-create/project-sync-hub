@@ -40,6 +40,7 @@ import { TransferConversationModal } from "./transfer-conversation-modal";
 import { TemplatePickerModal } from "./template-picker-modal";
 import { ScheduleSendModal } from "./schedule-send-modal";
 import { ScheduledList } from "./scheduled-list";
+import { CatalogPickerModal } from "./catalog-picker-modal";
 import { AudioPlayerWithMe } from "@/components/chat/AudioPlayer";
 import { DateSeparator } from "@/components/chat/DateSeparator";
 import { uploadChatMedia } from "@/lib/chat-media";
@@ -409,6 +410,7 @@ export function ConversationPanel({
   const [transferOpen, setTransferOpen] = React.useState(false);
   const [templatesOpen, setTemplatesOpen] = React.useState(false);
   const [scheduleSendOpen, setScheduleSendOpen] = React.useState(false);
+  const [catalogOpen, setCatalogOpen] = React.useState(false);
   const actions = useContactActions();
   
   const open = !!contact;
@@ -1161,6 +1163,9 @@ export function ConversationPanel({
                   onSchedule={
                     composerMode === "reply" ? () => setScheduleSendOpen(true) : undefined
                   }
+                  onOpenCatalog={
+                    composerMode === "reply" ? () => setCatalogOpen(true) : undefined
+                  }
                   taRef={taRef}
                   onSend={send}
                   onClosePanel={onClose}
@@ -1245,6 +1250,33 @@ export function ConversationPanel({
           }}
         />
       )}
+      <CatalogPickerModal
+        open={catalogOpen}
+        onClose={() => setCatalogOpen(false)}
+        onInsertText={(text) => {
+          // Concatena com o rascunho atual (se houver): agente pode ter
+          // escrito uma saudação antes de puxar o serviço, sem intenção de
+          // perder o que digitou.
+          const sep = draft && !draft.endsWith("\n") ? "\n\n" : "";
+          setDraft(draft + sep + text);
+          setTimeout(() => taRef.current?.focus(), 0);
+        }}
+        onSendPhoto={async (photo, caption) => {
+          if (!contact) return;
+          // Reusa o mesmo canal de envio de mídia. A URL da foto já está no
+          // Storage (é a URL cadastrada no serviço), então NÃO re-fazemos
+          // upload — passa direto pro sendMediaFn.
+          await sendMediaFn({
+            data: {
+              contactId: contact.id,
+              url: photo.url,
+              mime: photo.mime,
+              name: photo.name,
+              caption,
+            },
+          });
+        }}
+      />
     </>
   );
 }
