@@ -14,7 +14,7 @@ export const Route = createFileRoute("/_authenticated/content/assets")({
 
 const STATUSES = [
   { key: undefined, label: "Todos" },
-  { key: "pending" as const, label: "Pendentes" },
+  { key: "pending" as const, label: "Aguardando revisão" },
   { key: "approved" as const, label: "Publicados" },
   { key: "rejected" as const, label: "Rejeitados" },
 ];
@@ -26,8 +26,7 @@ function AssetsListPage() {
   );
   const q = useQuery({
     queryKey: ["content-assets", filter ?? "all"],
-    queryFn: () =>
-      listFn({ data: { limit: 60, approvalStatus: filter } }),
+    queryFn: () => listFn({ data: { limit: 60, approvalStatus: filter } }),
   });
 
   const assets = q.data?.assets ?? [];
@@ -40,14 +39,16 @@ function AssetsListPage() {
             key={s.label}
             onClick={() => setFilter(s.key)}
             style={{
-              padding: "6px 14px",
+              padding: "7px 16px",
               borderRadius: "var(--radius-pill)",
-              border: "1px solid var(--border)",
+              border: `1px solid ${filter === s.key ? "var(--brand-400)" : "var(--border-strong)"}`,
               background:
-                filter === s.key ? "var(--accent-soft, var(--surface-2))" : "var(--surface)",
-              color: "var(--text)",
+                filter === s.key
+                  ? "color-mix(in oklab, var(--brand-400) 12%, transparent)"
+                  : "var(--bg-surface)",
+              color: filter === s.key ? "var(--brand-400)" : "var(--text-primary)",
               fontSize: 12,
-              fontWeight: filter === s.key ? 600 : 400,
+              fontWeight: filter === s.key ? 600 : 500,
               cursor: "pointer",
             }}
           >
@@ -59,13 +60,13 @@ function AssetsListPage() {
       {assets.length === 0 ? (
         <EmptyState
           icon={<Images size={32} />}
-          title="Nenhum post nesta lista"
+          title="Nenhum post aqui"
           description="Vá em Criar post pra gerar um."
         />
       ) : (
         <div
           className="grid"
-          style={{ gridTemplateColumns: "repeat(auto-fill, minmax(200px, 1fr))", gap: 14 }}
+          style={{ gridTemplateColumns: "repeat(auto-fill, minmax(220px, 1fr))", gap: 14 }}
         >
           {assets.map((asset) => (
             <Link
@@ -81,12 +82,12 @@ function AssetsListPage() {
                     backgroundImage: `url(${asset.renderedImageUrl})`,
                     backgroundSize: "cover",
                     backgroundPosition: "center",
-                    background: "var(--surface-2)",
+                    background: "var(--bg-overlay)",
                   }}
                 />
-                <div style={{ padding: 10 }}>
+                <div style={{ padding: 12 }}>
                   <div className="flex items-center justify-between">
-                    <span style={{ fontSize: 11, color: "var(--text-muted)" }}>
+                    <span style={{ fontSize: 11, color: "var(--text-muted)", textTransform: "capitalize" }}>
                       {asset.targetNetwork}
                     </span>
                     <Badge
@@ -102,7 +103,7 @@ function AssetsListPage() {
                         ? "Publicado"
                         : asset.approvalStatus === "rejected"
                           ? "Rejeitado"
-                          : "Pendente"}
+                          : "Aguardando"}
                     </Badge>
                   </div>
                 </div>

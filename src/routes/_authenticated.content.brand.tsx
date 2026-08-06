@@ -3,7 +3,7 @@ import { createFileRoute } from "@tanstack/react-router";
 import { useMutation, useQuery, useQueryClient } from "@tanstack/react-query";
 import { useServerFn } from "@tanstack/react-start";
 import { toast } from "sonner";
-import { Palette, Instagram, Globe, Save, Loader2 } from "lucide-react";
+import { Instagram, Globe, Save, Loader2, Check } from "lucide-react";
 import { Card } from "@/components/ui/card";
 import {
   getBrandKit,
@@ -36,7 +36,6 @@ function BrandKitPage() {
     queryFn: () => accountsFn(),
   });
 
-  // Handle do Instagram já conectado (evita pedir @ manual).
   const connectedInstagram = React.useMemo(() => {
     const accounts = accountsQ.data?.accounts ?? [];
     return (
@@ -48,8 +47,8 @@ function BrandKitPage() {
   const instagramHandleAuto = (connectedInstagram as any)?.account_name ?? "";
 
   const [form, setForm] = React.useState({
-    primaryColor: "#0EA5E9",
-    secondaryColor: "#1E293B",
+    primaryColor: "#3654FF",
+    secondaryColor: "#141412",
     supportColor: "#F59E0B",
     logoUrl: "",
     displayFont: "Playfair Display" as string,
@@ -92,7 +91,7 @@ function BrandKitPage() {
         },
       }),
     onSuccess: () => {
-      toast.success("Brand Kit salvo");
+      toast.success("Identidade salva");
       qc.invalidateQueries({ queryKey: ["brand-kit"] });
     },
     onError: (e: any) => toast.error(e?.message ?? "Falha ao salvar"),
@@ -111,30 +110,13 @@ function BrandKitPage() {
         logoUrl: ex.logoUrl ?? f.logoUrl,
       }));
       if (ex.confidence !== "low") {
-        toast.success("Identidade da marca aplicada do seu Instagram");
+        toast.success("Cores extraídas do seu Instagram");
       }
     },
     onError: () => {
-      // Falha silenciosa — usuário pode preencher manualmente sem ser avisado
-      // que houve uma tentativa automática.
+      // silencioso
     },
   });
-
-  // Auto-extração silenciosa: quando abre a página e existe Instagram conectado,
-  // roda uma vez pra pré-preencher cores/logo. Se falhar, o usuário nem percebe.
-  React.useEffect(() => {
-    if (autoExtracted) return;
-    if (!q.data) return;
-    if (q.data.brandKit) {
-      // Já tem Brand Kit salvo — não sobrescreve.
-      setAutoExtracted(true);
-      return;
-    }
-    if (!instagramHandleAuto) return;
-    setAutoExtracted(true);
-    extractIg.mutate(instagramHandleAuto);
-    // eslint-disable-next-line react-hooks/exhaustive-deps
-  }, [q.data, instagramHandleAuto]);
 
   const extractSite = useMutation({
     mutationFn: () => extractSiteFn({ data: { url: websiteUrl } }),
@@ -148,25 +130,65 @@ function BrandKitPage() {
         supportColor: ex.supportColor ?? f.supportColor,
         logoUrl: ex.logoUrl ?? f.logoUrl,
       }));
-      toast.success("Extração aplicada — confira antes de salvar");
+      toast.success("Cores extraídas do site");
     },
     onError: () => toast.error("Falha ao extrair do site"),
   });
 
+  // Auto-extração silenciosa quando Brand Kit vazio + IG conectado.
+  React.useEffect(() => {
+    if (autoExtracted) return;
+    if (!q.data) return;
+    if (q.data.brandKit) {
+      setAutoExtracted(true);
+      return;
+    }
+    if (!instagramHandleAuto) return;
+    setAutoExtracted(true);
+    extractIg.mutate(instagramHandleAuto);
+    // eslint-disable-next-line react-hooks/exhaustive-deps
+  }, [q.data, instagramHandleAuto]);
+
   return (
-    <div className="flex flex-col" style={{ gap: 16 }}>
-      {/* Painel informativo — instagram conectado */}
+    <div className="flex flex-col" style={{ gap: 14, maxWidth: 760 }}>
+      {/* Estado: IG conectado */}
       {connectedInstagram ? (
-        <Card style={{ padding: 14 }}>
-          <div className="flex items-center" style={{ gap: 10 }}>
-            <Instagram size={18} style={{ color: "var(--accent)" }} />
-            <div style={{ flex: 1 }}>
-              <div style={{ fontSize: 13, fontWeight: 600 }}>
-                Conectado como @{instagramHandleAuto}
+        <Card style={{ padding: 16 }}>
+          <div className="flex items-center" style={{ gap: 12 }}>
+            <div
+              className="flex items-center justify-center"
+              style={{
+                width: 36,
+                height: 36,
+                borderRadius: "var(--radius-pill)",
+                background: "color-mix(in oklab, var(--brand-400) 14%, transparent)",
+                color: "var(--brand-400)",
+              }}
+            >
+              <Instagram size={18} />
+            </div>
+            <div style={{ flex: 1, minWidth: 0 }}>
+              <div className="flex items-center" style={{ gap: 6 }}>
+                <span style={{ fontSize: 14, fontWeight: 600 }}>
+                  @{instagramHandleAuto}
+                </span>
+                <span
+                  className="inline-flex items-center"
+                  style={{
+                    gap: 4,
+                    fontSize: 11,
+                    color: "var(--success, #059669)",
+                  }}
+                >
+                  <Check size={12} />
+                  conectado
+                </span>
               </div>
-              <div style={{ fontSize: 12, color: "var(--text-muted)", marginTop: 2 }}>
-                Cores e identidade são detectadas automaticamente do seu Instagram. Ajuste
-                abaixo se quiser sobrescrever.
+              <div
+                style={{ fontSize: 12, color: "var(--text-muted)", marginTop: 3 }}
+              >
+                Cores e logo detectados automaticamente do seu perfil. Ajuste
+                abaixo se quiser.
               </div>
             </div>
             <button
@@ -175,7 +197,7 @@ function BrandKitPage() {
               style={secondaryBtn}
             >
               {extractIg.isPending ? (
-                <Loader2 size={14} className="animate-spin" />
+                <Loader2 size={13} className="animate-spin" />
               ) : (
                 "Reanalisar"
               )}
@@ -183,37 +205,43 @@ function BrandKitPage() {
           </div>
         </Card>
       ) : (
-        <Card style={{ padding: 16 }}>
-          <div className="flex items-center" style={{ gap: 8, marginBottom: 8 }}>
-            <Palette size={16} style={{ color: "var(--accent)" }} />
-            <span style={{ fontSize: 14, fontWeight: 600 }}>Detectar identidade automaticamente</span>
+        <Card style={{ padding: 20 }}>
+          <div style={sectionLabel}>Detectar identidade automaticamente</div>
+          <div style={{ fontSize: 13, color: "var(--text-muted)", marginBottom: 12 }}>
+            Informe o site da sua empresa que extraímos cores e logo pra você.
           </div>
-          <p style={{ fontSize: 12, color: "var(--text-muted)", marginBottom: 12 }}>
-            Informe o site da sua empresa. Vamos extrair cores e logo pra você.
-          </p>
           <div className="flex" style={{ gap: 8 }}>
-            <Globe size={16} style={{ color: "var(--text-muted)", marginTop: 8 }} />
+            <div
+              className="flex items-center"
+              style={{ paddingLeft: 4, color: "var(--text-muted)" }}
+            >
+              <Globe size={16} />
+            </div>
             <input
               value={websiteUrl}
               onChange={(e) => setWebsiteUrl(e.target.value)}
               placeholder="https://seusite.com.br"
-              style={inputStyle}
+              style={{ ...input, flex: 1 }}
             />
             <button
               onClick={() => extractSite.mutate()}
               disabled={!websiteUrl || extractSite.isPending}
               style={secondaryBtn}
             >
-              {extractSite.isPending ? <Loader2 size={14} className="animate-spin" /> : "Detectar"}
+              {extractSite.isPending ? (
+                <Loader2 size={13} className="animate-spin" />
+              ) : (
+                "Detectar"
+              )}
             </button>
           </div>
         </Card>
       )}
 
       {/* Cores */}
-      <Card style={{ padding: 16 }}>
-        <div style={{ fontSize: 14, fontWeight: 600, marginBottom: 12 }}>Cores da marca</div>
-        <div className="grid" style={{ gridTemplateColumns: "repeat(3, 1fr)", gap: 12 }}>
+      <Card style={{ padding: 20 }}>
+        <div style={sectionLabel}>Cores da marca</div>
+        <div className="grid" style={{ gridTemplateColumns: "repeat(3, 1fr)", gap: 14 }}>
           <ColorField
             label="Primária"
             value={form.primaryColor}
@@ -233,15 +261,15 @@ function BrandKitPage() {
       </Card>
 
       {/* Tipografia */}
-      <Card style={{ padding: 16 }}>
-        <div style={{ fontSize: 14, fontWeight: 600, marginBottom: 12 }}>Tipografia</div>
-        <div className="grid" style={{ gridTemplateColumns: "1fr 1fr", gap: 12 }}>
+      <Card style={{ padding: 20 }}>
+        <div style={sectionLabel}>Tipografia</div>
+        <div className="grid" style={{ gridTemplateColumns: "1fr 1fr", gap: 14 }}>
           <div>
-            <label style={labelStyle}>Fonte de destaque</label>
+            <label style={fieldLabel}>Fonte de destaque</label>
             <select
               value={form.displayFont}
               onChange={(e) => setForm((f) => ({ ...f, displayFont: e.target.value }))}
-              style={inputStyle}
+              style={input}
             >
               {DISPLAY_FONTS.map((n) => (
                 <option key={n} value={n}>
@@ -251,11 +279,11 @@ function BrandKitPage() {
             </select>
           </div>
           <div>
-            <label style={labelStyle}>Fonte de texto</label>
+            <label style={fieldLabel}>Fonte de texto</label>
             <select
               value={form.bodyFont}
               onChange={(e) => setForm((f) => ({ ...f, bodyFont: e.target.value }))}
-              style={inputStyle}
+              style={input}
             >
               <optgroup label="Corpo">
                 {BODY_FONTS.map((n) => (
@@ -277,24 +305,24 @@ function BrandKitPage() {
       </Card>
 
       {/* Identidade verbal */}
-      <Card style={{ padding: 16 }}>
-        <div style={{ fontSize: 14, fontWeight: 600, marginBottom: 12 }}>Identidade verbal</div>
-        <div style={{ marginBottom: 12 }}>
-          <label style={labelStyle}>Tom de voz</label>
+      <Card style={{ padding: 20 }}>
+        <div style={sectionLabel}>Identidade verbal</div>
+        <div style={{ marginBottom: 14 }}>
+          <label style={fieldLabel}>Tom de voz padrão</label>
           <input
             value={form.toneOfVoice}
             onChange={(e) => setForm((f) => ({ ...f, toneOfVoice: e.target.value }))}
             placeholder="Ex: profissional e acolhedor"
-            style={inputStyle}
+            style={input}
           />
         </div>
         <div>
-          <label style={labelStyle}>Assinatura padrão</label>
+          <label style={fieldLabel}>Assinatura padrão</label>
           <input
             value={form.defaultSignature}
             onChange={(e) => setForm((f) => ({ ...f, defaultSignature: e.target.value }))}
             placeholder="Nome da sua marca"
-            style={inputStyle}
+            style={input}
           />
         </div>
       </Card>
@@ -303,9 +331,14 @@ function BrandKitPage() {
         <button
           onClick={() => save.mutate()}
           disabled={save.isPending}
-          style={primaryBtn}
+          className="btn-primary"
+          style={{ height: 38, padding: "0 22px", fontSize: 13 }}
         >
-          {save.isPending ? <Loader2 size={14} className="animate-spin" /> : <Save size={14} />}
+          {save.isPending ? (
+            <Loader2 size={13} className="animate-spin" />
+          ) : (
+            <Save size={13} />
+          )}
           Salvar
         </button>
       </div>
@@ -324,66 +357,89 @@ function ColorField({
 }) {
   return (
     <div>
-      <label style={labelStyle}>{label}</label>
+      <label style={fieldLabel}>{label}</label>
       <div className="flex items-center" style={{ gap: 8 }}>
-        <input
-          type="color"
-          value={value}
-          onChange={(e) => onChange(e.target.value)}
-          style={{ width: 40, height: 36, border: "none", padding: 0, background: "transparent" }}
-        />
+        <label
+          style={{
+            width: 40,
+            height: 40,
+            borderRadius: "var(--radius-control)",
+            border: "1px solid var(--border-strong)",
+            background: value,
+            cursor: "pointer",
+            position: "relative",
+            overflow: "hidden",
+            flexShrink: 0,
+          }}
+        >
+          <input
+            type="color"
+            value={value}
+            onChange={(e) => onChange(e.target.value)}
+            style={{
+              position: "absolute",
+              inset: 0,
+              opacity: 0,
+              cursor: "pointer",
+            }}
+          />
+        </label>
         <input
           type="text"
           value={value}
           onChange={(e) => onChange(e.target.value)}
-          style={{ ...inputStyle, flex: 1, textTransform: "uppercase", fontFamily: "monospace" }}
+          style={{
+            ...input,
+            flex: 1,
+            textTransform: "uppercase",
+            fontFamily: "ui-monospace, monospace",
+            fontSize: 12,
+          }}
         />
       </div>
     </div>
   );
 }
 
-const inputStyle: React.CSSProperties = {
+const sectionLabel: React.CSSProperties = {
+  display: "block",
+  fontSize: 12,
+  fontWeight: 600,
+  color: "var(--text-muted)",
+  textTransform: "uppercase",
+  letterSpacing: "0.04em",
+  marginBottom: 12,
+};
+
+const fieldLabel: React.CSSProperties = {
+  display: "block",
+  fontSize: 12,
+  color: "var(--text-muted)",
+  marginBottom: 6,
+};
+
+const input: React.CSSProperties = {
   width: "100%",
-  padding: "8px 12px",
+  padding: "9px 12px",
   fontSize: 13,
   borderRadius: "var(--radius-control)",
-  border: "1px solid var(--border)",
-  background: "var(--surface)",
-  color: "var(--text)",
-};
-
-const labelStyle: React.CSSProperties = {
-  display: "block",
-  fontSize: 11,
-  color: "var(--text-muted)",
-  marginBottom: 4,
-};
-
-const primaryBtn: React.CSSProperties = {
-  display: "inline-flex",
-  alignItems: "center",
-  gap: 8,
-  padding: "10px 20px",
-  borderRadius: "var(--radius-pill)",
-  background: "var(--accent)",
-  color: "white",
-  fontSize: 13,
-  fontWeight: 600,
-  border: "none",
-  cursor: "pointer",
+  border: "1px solid var(--border-strong)",
+  background: "var(--bg-base)",
+  color: "var(--text-primary)",
 };
 
 const secondaryBtn: React.CSSProperties = {
   display: "inline-flex",
   alignItems: "center",
   gap: 6,
-  padding: "8px 16px",
+  height: 34,
+  padding: "0 14px",
   borderRadius: "var(--radius-pill)",
-  background: "var(--surface-2)",
-  color: "var(--text)",
+  background: "var(--bg-surface)",
+  color: "var(--text-primary)",
   fontSize: 12,
   fontWeight: 500,
-  border: "1px solid var(--border)",
+  border: "1px solid var(--border-strong)",
   cursor: "pointer",
+  flexShrink: 0,
 };

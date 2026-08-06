@@ -31,9 +31,6 @@ function AssetDetailPage() {
 
   const asset = assetQ.data?.asset;
 
-  // Ao "aprovar", envia pro compositor de Publicações em vez de publicar direto.
-  // O compositor abre pré-preenchido com o texto + imagem gerada; o usuário
-  // revisa, ajusta e publica pelo botão normal de lá.
   const sendToComposer = () => {
     if (!asset) return;
     const network = asset.targetNetwork;
@@ -55,17 +52,17 @@ function AssetDetailPage() {
   const reject = useMutation({
     mutationFn: () => rejectFn({ data: { assetId } }),
     onSuccess: () => {
-      toast.success("Post rejeitado");
+      toast.success("Post descartado");
       nav({ to: "/content/assets" });
     },
-    onError: (e: any) => toast.error(e?.message ?? "Falha ao rejeitar"),
+    onError: (e: any) => toast.error(e?.message ?? "Falha ao descartar"),
   });
 
   const regen = useMutation({
     mutationFn: (mode: "copy_only" | "image_only" | "both") =>
       regenFn({ data: { assetId, mode } }),
     onSuccess: () => {
-      toast.success("Regeneração iniciada");
+      toast.success("Nova versão sendo gerada");
       qc.invalidateQueries({ queryKey: ["content-asset", assetId] });
     },
     onError: (e: any) => toast.error(e?.message ?? "Falha ao regenerar"),
@@ -73,9 +70,12 @@ function AssetDetailPage() {
 
   if (assetQ.isLoading || !asset) {
     return (
-      <div className="flex items-center" style={{ gap: 8, padding: 24 }}>
+      <div
+        className="flex items-center"
+        style={{ gap: 8, padding: 24, color: "var(--text-muted)" }}
+      >
         <Loader2 size={16} className="animate-spin" />
-        <span>Carregando...</span>
+        <span style={{ fontSize: 13 }}>Carregando...</span>
       </div>
     );
   }
@@ -91,7 +91,7 @@ function AssetDetailPage() {
           display: "inline-flex",
           alignItems: "center",
           gap: 6,
-          padding: "6px 12px",
+          padding: 0,
           background: "transparent",
           border: "none",
           color: "var(--text-muted)",
@@ -100,7 +100,7 @@ function AssetDetailPage() {
           alignSelf: "flex-start",
         }}
       >
-        <ArrowLeft size={14} />
+        <ArrowLeft size={13} />
         Voltar
       </button>
 
@@ -108,6 +108,7 @@ function AssetDetailPage() {
         className="grid"
         style={{ gridTemplateColumns: "minmax(0, 1fr) minmax(0, 1fr)", gap: 20 }}
       >
+        {/* Imagem */}
         <Card style={{ padding: 0, overflow: "hidden" }}>
           <img
             src={asset.renderedImageUrl}
@@ -125,7 +126,7 @@ function AssetDetailPage() {
                     width: 60,
                     height: 60,
                     objectFit: "cover",
-                    borderRadius: 6,
+                    borderRadius: "var(--radius-sm)",
                     border: "1px solid var(--border)",
                   }}
                 />
@@ -134,6 +135,7 @@ function AssetDetailPage() {
           ) : null}
         </Card>
 
+        {/* Texto + status */}
         <div className="flex flex-col" style={{ gap: 12 }}>
           <div className="flex items-center" style={{ gap: 8 }}>
             <Badge
@@ -149,48 +151,41 @@ function AssetDetailPage() {
                 ? "Publicado"
                 : asset.approvalStatus === "rejected"
                   ? "Rejeitado"
-                  : "Pendente"}
+                  : "Aguardando revisão"}
             </Badge>
-            <span style={{ fontSize: 12, color: "var(--text-muted)" }}>
+            <span style={{ fontSize: 12, color: "var(--text-muted)", textTransform: "capitalize" }}>
               {asset.targetNetwork}
             </span>
           </div>
 
           <Card style={{ padding: 14 }}>
-            <div style={{ fontSize: 11, color: "var(--text-muted)", marginBottom: 4 }}>
-              Gancho
+            <div style={{ fontSize: 11, color: "var(--text-muted)", marginBottom: 4, textTransform: "uppercase", letterSpacing: "0.04em" }}>
+              Chamada
             </div>
-            <div style={{ fontSize: 14, fontWeight: 600 }}>{copy.hook}</div>
+            <div style={{ fontSize: 15, fontWeight: 600 }}>{copy.hook}</div>
           </Card>
 
           <Card style={{ padding: 14 }}>
-            <div style={{ fontSize: 11, color: "var(--text-muted)", marginBottom: 4 }}>
+            <div style={{ fontSize: 11, color: "var(--text-muted)", marginBottom: 4, textTransform: "uppercase", letterSpacing: "0.04em" }}>
               Corpo
             </div>
-            <div style={{ fontSize: 13, lineHeight: 1.5, whiteSpace: "pre-wrap" }}>
+            <div style={{ fontSize: 13, lineHeight: 1.55, whiteSpace: "pre-wrap" }}>
               {copy.body}
             </div>
           </Card>
 
-          {copy.cliffhanger ? (
-            <Card style={{ padding: 14 }}>
-              <div style={{ fontSize: 11, color: "var(--text-muted)", marginBottom: 4 }}>
-                Cliffhanger
-              </div>
-              <div style={{ fontSize: 13 }}>{copy.cliffhanger}</div>
-            </Card>
-          ) : null}
-
           <Card style={{ padding: 14 }}>
-            <div style={{ fontSize: 11, color: "var(--text-muted)", marginBottom: 4 }}>
-              CTA
+            <div style={{ fontSize: 11, color: "var(--text-muted)", marginBottom: 4, textTransform: "uppercase", letterSpacing: "0.04em" }}>
+              Ação final
             </div>
-            <div style={{ fontSize: 13, fontWeight: 600 }}>{copy.cta}</div>
+            <div style={{ fontSize: 13, fontWeight: 600, color: "var(--brand-400)" }}>
+              {copy.cta}
+            </div>
           </Card>
 
           {copy.hashtags.length > 0 ? (
             <Card style={{ padding: 14 }}>
-              <div style={{ fontSize: 11, color: "var(--text-muted)", marginBottom: 6 }}>
+              <div style={{ fontSize: 11, color: "var(--text-muted)", marginBottom: 8, textTransform: "uppercase", letterSpacing: "0.04em" }}>
                 Hashtags
               </div>
               <div style={{ display: "flex", flexWrap: "wrap", gap: 6 }}>
@@ -199,10 +194,11 @@ function AssetDetailPage() {
                     key={h}
                     style={{
                       fontSize: 11,
-                      color: "var(--accent)",
-                      padding: "2px 8px",
-                      background: "var(--accent-soft, var(--surface-2))",
+                      color: "var(--brand-400)",
+                      padding: "3px 10px",
+                      background: "color-mix(in oklab, var(--brand-400) 12%, transparent)",
                       borderRadius: "var(--radius-pill)",
+                      fontWeight: 500,
                     }}
                   >
                     #{h.replace(/^#/, "")}
@@ -215,14 +211,14 @@ function AssetDetailPage() {
       </div>
 
       {isPending ? (
-        <div className="flex flex-wrap items-center justify-between" style={{ gap: 8 }}>
+        <div className="flex flex-wrap items-center justify-between" style={{ gap: 8, paddingTop: 4 }}>
           <div className="flex" style={{ gap: 8 }}>
             <button
               onClick={() => regen.mutate("copy_only")}
               disabled={regen.isPending}
               style={secondaryBtn}
             >
-              <RefreshCw size={14} />
+              <RefreshCw size={13} />
               Refazer texto
             </button>
             <button
@@ -230,7 +226,7 @@ function AssetDetailPage() {
               disabled={regen.isPending}
               style={secondaryBtn}
             >
-              <RefreshCw size={14} />
+              <RefreshCw size={13} />
               Refazer imagem
             </button>
           </div>
@@ -241,14 +237,14 @@ function AssetDetailPage() {
               style={{
                 ...secondaryBtn,
                 color: "var(--danger, #B91C1C)",
-                borderColor: "var(--danger, #B91C1C)",
+                borderColor: "var(--danger, #FCA5A5)",
               }}
             >
-              <X size={14} />
-              Rejeitar
+              <X size={13} />
+              Descartar
             </button>
-            <button onClick={sendToComposer} style={primaryBtn}>
-              <Check size={14} />
+            <button onClick={sendToComposer} className="btn-primary" style={{ height: 36, fontSize: 13 }}>
+              <Check size={13} />
               Revisar e publicar
             </button>
           </div>
@@ -258,30 +254,17 @@ function AssetDetailPage() {
   );
 }
 
-const primaryBtn: React.CSSProperties = {
-  display: "inline-flex",
-  alignItems: "center",
-  gap: 8,
-  padding: "10px 20px",
-  borderRadius: "var(--radius-pill)",
-  background: "var(--accent)",
-  color: "white",
-  fontSize: 13,
-  fontWeight: 600,
-  border: "none",
-  cursor: "pointer",
-};
-
 const secondaryBtn: React.CSSProperties = {
   display: "inline-flex",
   alignItems: "center",
   gap: 6,
-  padding: "8px 16px",
+  height: 34,
+  padding: "0 14px",
   borderRadius: "var(--radius-pill)",
-  background: "var(--surface)",
-  color: "var(--text)",
+  background: "var(--bg-surface)",
+  color: "var(--text-primary)",
   fontSize: 12,
   fontWeight: 500,
-  border: "1px solid var(--border)",
+  border: "1px solid var(--border-strong)",
   cursor: "pointer",
 };

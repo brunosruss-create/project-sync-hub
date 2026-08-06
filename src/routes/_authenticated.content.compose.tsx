@@ -3,7 +3,7 @@ import { createFileRoute, useNavigate } from "@tanstack/react-router";
 import { useMutation, useQuery } from "@tanstack/react-query";
 import { useServerFn } from "@tanstack/react-start";
 import { toast } from "sonner";
-import { Sparkles, Loader2 } from "lucide-react";
+import { Sparkles, Loader2, Facebook, Instagram, Youtube, Music2 } from "lucide-react";
 import { Card } from "@/components/ui/card";
 import { submitBrief } from "@/lib/content-generation.functions";
 import { listSocialAccounts } from "@/lib/social-publishing.functions";
@@ -37,6 +37,13 @@ const FORMAT_LABEL: Record<PostFormat, string> = {
   story: "Story / Reels",
 };
 
+const NETWORK_ICON: Record<TargetNetwork, React.ReactNode> = {
+  facebook: <Facebook size={14} />,
+  instagram: <Instagram size={14} />,
+  tiktok: <Music2 size={14} />,
+  youtube: <Youtube size={14} />,
+};
+
 const NETWORK_LABEL: Record<TargetNetwork, string> = {
   facebook: "Facebook",
   instagram: "Instagram",
@@ -44,12 +51,21 @@ const NETWORK_LABEL: Record<TargetNetwork, string> = {
   youtube: "YouTube",
 };
 
+// Tom de voz — chips prontos + livre. Cliente não precisa escrever prompt.
+const TONE_CHIPS = [
+  { key: "profissional", label: "Profissional" },
+  { key: "divertido", label: "Divertido e leve" },
+  { key: "motivacional", label: "Motivacional" },
+  { key: "acolhedor", label: "Acolhedor" },
+  { key: "vendedor", label: "Vendedor/persuasivo" },
+  { key: "educativo", label: "Educativo" },
+] as const;
+
 function ComposePage() {
   const nav = useNavigate();
   const submitFn = useServerFn(submitBrief);
   const accountsFn = useServerFn(listSocialAccounts);
 
-  // Só as redes com conta conectada aparecem como opção.
   const accountsQ = useQuery({
     queryKey: ["social-accounts"],
     queryFn: () => accountsFn(),
@@ -69,10 +85,8 @@ function ComposePage() {
   const [slideCount, setSlideCount] = React.useState(3);
   const [networks, setNetworks] = React.useState<TargetNetwork[]>([]);
   const [objective, setObjective] = React.useState("");
-  const [tone, setTone] = React.useState("");
+  const [tone, setTone] = React.useState<string>("profissional");
 
-  // Ao carregar contas, pré-seleciona todas as disponíveis (se só tem uma,
-  // vira o alvo default sem o usuário precisar clicar).
   React.useEffect(() => {
     if (availableNetworks.length > 0 && networks.length === 0) {
       setNetworks(availableNetworks);
@@ -94,93 +108,78 @@ function ComposePage() {
           targetNetworks: networks,
           freeTextObjective: objective || undefined,
           toneOverride: tone || undefined,
-          // Cliente NÃO decide isso — o worker escolhe automaticamente
-          // (banco de imagens primeiro; se falhar, fallback pra IA).
           aiImageOptin: false,
         },
       }),
     onSuccess: () => {
-      toast.success("Post sendo gerado. Você será notificado em instantes.");
+      toast.success("Seu post está sendo criado. Isso leva alguns segundos.");
       nav({ to: "/content/assets" });
     },
-    onError: (e: any) => toast.error(e?.message ?? "Falha ao criar brief"),
+    onError: (e: any) => toast.error(e?.message ?? "Falha ao gerar post"),
   });
 
   const toggleNetwork = (n: TargetNetwork) => {
-    setNetworks((prev) =>
-      prev.includes(n) ? prev.filter((x) => x !== n) : [...prev, n],
-    );
+    setNetworks((prev) => (prev.includes(n) ? prev.filter((x) => x !== n) : [...prev, n]));
   };
 
-  const canSubmit = networks.length > 0 && incompat.length === 0 && !submit.isPending;
+  const canSubmit =
+    networks.length > 0 &&
+    incompat.length === 0 &&
+    objective.trim().length > 0 &&
+    !submit.isPending;
 
   return (
-    <div className="flex flex-col" style={{ gap: 16, maxWidth: 720 }}>
+    <div className="flex flex-col" style={{ gap: 14, maxWidth: 760 }}>
+      {/* Objetivo — mais espaço, é o campo mais importante */}
       <Card style={{ padding: 20 }}>
-        <div style={{ fontSize: 14, fontWeight: 600, marginBottom: 12 }}>
-          O que você quer comunicar?
-        </div>
+        <label style={sectionLabel}>Sobre o que é o post?</label>
         <textarea
           value={objective}
           onChange={(e) => setObjective(e.target.value)}
-          placeholder="Ex: promoção de corte + escova por R$ 89 essa semana"
+          placeholder="Ex: promoção de corte + escova por R$ 89 nessa semana. Válido de segunda a sexta."
           rows={3}
-          style={{ ...inputStyle, resize: "vertical", fontFamily: "inherit" }}
+          style={{ ...input, resize: "vertical", fontFamily: "inherit", minHeight: 90 }}
         />
+        <div style={hint}>Escreva em linguagem natural. Quanto mais contexto, melhor o resultado.</div>
       </Card>
 
+      {/* Categoria */}
       <Card style={{ padding: 20 }}>
-        <div style={{ fontSize: 14, fontWeight: 600, marginBottom: 12 }}>Categoria do post</div>
+        <label style={sectionLabel}>Tipo do post</label>
         <div
           className="grid"
           style={{ gridTemplateColumns: "repeat(4, 1fr)", gap: 8 }}
         >
           {TEMPLATE_CATEGORIES.map((c) => (
-            <button
+            <Chip
               key={c}
+              active={category === c}
               onClick={() => setCategory(c)}
-              style={{
-                padding: "10px 12px",
-                borderRadius: "var(--radius-control)",
-                border: `1px solid ${category === c ? "var(--accent)" : "var(--border)"}`,
-                background: category === c ? "var(--accent-soft)" : "var(--surface)",
-                color: "var(--text)",
-                fontSize: 12,
-                fontWeight: category === c ? 600 : 400,
-                cursor: "pointer",
-              }}
-            >
-              {CATEGORY_LABEL[c]}
-            </button>
+              label={CATEGORY_LABEL[c]}
+            />
           ))}
         </div>
       </Card>
 
+      {/* Formato */}
       <Card style={{ padding: 20 }}>
-        <div style={{ fontSize: 14, fontWeight: 600, marginBottom: 12 }}>Formato</div>
+        <label style={sectionLabel}>Formato</label>
         <div className="grid" style={{ gridTemplateColumns: "repeat(3, 1fr)", gap: 8 }}>
           {POST_FORMATS.map((f) => (
-            <button
+            <Chip
               key={f}
+              active={format === f}
               onClick={() => setFormat(f)}
-              style={{
-                padding: "10px 12px",
-                borderRadius: "var(--radius-control)",
-                border: `1px solid ${format === f ? "var(--accent)" : "var(--border)"}`,
-                background: format === f ? "var(--accent-soft)" : "var(--surface)",
-                color: "var(--text)",
-                fontSize: 12,
-                fontWeight: format === f ? 600 : 400,
-                cursor: "pointer",
-              }}
-            >
-              {FORMAT_LABEL[f]}
-            </button>
+              label={FORMAT_LABEL[f]}
+            />
           ))}
         </div>
         {format === "carousel" ? (
-          <div style={{ marginTop: 12 }}>
-            <label style={labelStyle}>Slides ({slideCount})</label>
+          <div style={{ marginTop: 14 }}>
+            <div className="flex items-center justify-between" style={{ marginBottom: 6 }}>
+              <span style={{ fontSize: 12, color: "var(--text-muted)" }}>Slides</span>
+              <span style={{ fontSize: 12, fontWeight: 600 }}>{slideCount}</span>
+            </div>
             <input
               type="range"
               min={2}
@@ -193,74 +192,93 @@ function ComposePage() {
         ) : null}
       </Card>
 
+      {/* Redes */}
       <Card style={{ padding: 20 }}>
-        <div style={{ fontSize: 14, fontWeight: 600, marginBottom: 12 }}>Redes de destino</div>
+        <label style={sectionLabel}>Publicar em</label>
         {availableNetworks.length === 0 ? (
           <div style={{ fontSize: 13, color: "var(--text-muted)" }}>
-            Você ainda não conectou nenhuma rede social.{" "}
-            <a href="/social/accounts" style={{ color: "var(--accent)" }}>
+            Nenhuma rede conectada.{" "}
+            <a href="/social/accounts" style={{ color: "var(--brand-400)" }}>
               Conectar agora →
             </a>
           </div>
         ) : (
-          <div
-            className="grid"
-            style={{
-              gridTemplateColumns: `repeat(${Math.min(availableNetworks.length, 4)}, 1fr)`,
-              gap: 8,
-            }}
-          >
-            {availableNetworks.map((n) => (
-              <button
-                key={n}
-                onClick={() => toggleNetwork(n)}
-                style={{
-                  padding: "10px 12px",
-                  borderRadius: "var(--radius-control)",
-                  border: `1px solid ${networks.includes(n) ? "var(--accent)" : "var(--border)"}`,
-                  background: networks.includes(n) ? "var(--accent-soft)" : "var(--surface)",
-                  color: "var(--text)",
-                  fontSize: 12,
-                  fontWeight: networks.includes(n) ? 600 : 400,
-                  cursor: "pointer",
-                }}
-              >
-                {NETWORK_LABEL[n]}
-              </button>
-            ))}
+          <div className="flex flex-wrap" style={{ gap: 8 }}>
+            {availableNetworks.map((n) => {
+              const selected = networks.includes(n);
+              return (
+                <button
+                  key={n}
+                  type="button"
+                  onClick={() => toggleNetwork(n)}
+                  style={{
+                    display: "inline-flex",
+                    alignItems: "center",
+                    gap: 6,
+                    padding: "8px 14px",
+                    borderRadius: "var(--radius-pill)",
+                    border: `1px solid ${selected ? "var(--brand-400)" : "var(--border-strong)"}`,
+                    background: selected
+                      ? "color-mix(in oklab, var(--brand-400) 14%, transparent)"
+                      : "var(--bg-surface)",
+                    color: selected ? "var(--brand-400)" : "var(--text-primary)",
+                    fontSize: 13,
+                    fontWeight: selected ? 600 : 500,
+                    cursor: "pointer",
+                  }}
+                >
+                  {NETWORK_ICON[n]}
+                  {NETWORK_LABEL[n]}
+                </button>
+              );
+            })}
           </div>
         )}
         {incompat.length > 0 ? (
           <div
             style={{
               marginTop: 10,
-              padding: 8,
+              padding: 10,
               borderRadius: "var(--radius-control)",
-              background: "var(--danger-soft, #FEE2E2)",
+              background: "color-mix(in oklab, var(--danger, #EF4444) 8%, transparent)",
               color: "var(--danger, #B91C1C)",
               fontSize: 12,
             }}
           >
-            {incompat.map((i) => i.reason).join(". ")}. Remova essas redes ou troque o formato.
+            {incompat.map((i) => i.reason).join(". ")}. Escolha outro formato ou desmarque essa rede.
           </div>
         ) : null}
       </Card>
 
+      {/* Tom de voz — chips dinâmicos */}
       <Card style={{ padding: 20 }}>
-        <div style={{ fontSize: 14, fontWeight: 600, marginBottom: 12 }}>Tom de voz</div>
-        <input
-          value={tone}
-          onChange={(e) => setTone(e.target.value)}
-          placeholder="Ex: divertido e leve (opcional; usa o Brand Kit se vazio)"
-          style={inputStyle}
-        />
+        <label style={sectionLabel}>Tom da mensagem</label>
+        <div className="flex flex-wrap" style={{ gap: 6 }}>
+          {TONE_CHIPS.map((t) => (
+            <Chip
+              key={t.key}
+              active={tone === t.key}
+              onClick={() => setTone(t.key)}
+              label={t.label}
+              size="sm"
+            />
+          ))}
+        </div>
       </Card>
 
-      <div className="flex justify-end">
+      {/* Botão fixo */}
+      <div className="flex justify-end" style={{ marginTop: 4 }}>
         <button
           onClick={() => submit.mutate()}
           disabled={!canSubmit}
-          style={{ ...primaryBtn, opacity: canSubmit ? 1 : 0.5 }}
+          className="btn-primary"
+          style={{
+            opacity: canSubmit ? 1 : 0.5,
+            cursor: canSubmit ? "pointer" : "not-allowed",
+            height: 40,
+            padding: "0 22px",
+            fontSize: 14,
+          }}
         >
           {submit.isPending ? (
             <Loader2 size={14} className="animate-spin" />
@@ -274,33 +292,62 @@ function ComposePage() {
   );
 }
 
-const inputStyle: React.CSSProperties = {
+function Chip({
+  active,
+  onClick,
+  label,
+  size = "md",
+}: {
+  active: boolean;
+  onClick: () => void;
+  label: string;
+  size?: "sm" | "md";
+}) {
+  return (
+    <button
+      type="button"
+      onClick={onClick}
+      style={{
+        padding: size === "sm" ? "6px 14px" : "10px 12px",
+        borderRadius: size === "sm" ? "var(--radius-pill)" : "var(--radius-control)",
+        border: `1px solid ${active ? "var(--brand-400)" : "var(--border-strong)"}`,
+        background: active
+          ? "color-mix(in oklab, var(--brand-400) 12%, transparent)"
+          : "var(--bg-surface)",
+        color: active ? "var(--brand-400)" : "var(--text-primary)",
+        fontSize: size === "sm" ? 12 : 13,
+        fontWeight: active ? 600 : 500,
+        cursor: "pointer",
+        transition: "background 120ms ease, border-color 120ms ease",
+      }}
+    >
+      {label}
+    </button>
+  );
+}
+
+const sectionLabel: React.CSSProperties = {
+  display: "block",
+  fontSize: 12,
+  fontWeight: 600,
+  color: "var(--text-muted)",
+  textTransform: "uppercase",
+  letterSpacing: "0.04em",
+  marginBottom: 10,
+};
+
+const input: React.CSSProperties = {
   width: "100%",
-  padding: "8px 12px",
+  padding: "10px 14px",
   fontSize: 13,
   borderRadius: "var(--radius-control)",
-  border: "1px solid var(--border)",
-  background: "var(--surface)",
-  color: "var(--text)",
+  border: "1px solid var(--border-strong)",
+  background: "var(--bg-base)",
+  color: "var(--text-primary)",
 };
 
-const labelStyle: React.CSSProperties = {
-  display: "block",
+const hint: React.CSSProperties = {
   fontSize: 11,
   color: "var(--text-muted)",
-  marginBottom: 6,
-};
-
-const primaryBtn: React.CSSProperties = {
-  display: "inline-flex",
-  alignItems: "center",
-  gap: 8,
-  padding: "10px 20px",
-  borderRadius: "var(--radius-pill)",
-  background: "var(--accent)",
-  color: "white",
-  fontSize: 13,
-  fontWeight: 600,
-  border: "none",
-  cursor: "pointer",
+  marginTop: 6,
 };
