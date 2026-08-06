@@ -250,6 +250,21 @@ export const listZernioAccounts = createServerFn({ method: "GET" })
       console.warn("[zernio accounts] reconciliação silenciosa falhou:", e?.message ?? e);
     }
 
+    // Diagnóstico ampliado (temporário): pergunta TUDO que a Zernio conhece
+    // sob a nossa API_KEY — todos os profiles e todas as contas sem filtro —
+    // pra descobrir onde a conta "presa" está realmente hospedada.
+    try {
+      const allProfilesResp: any = await zernio.listProfiles();
+      const allAccountsResp: any = await zernio.listAccounts();
+      debug = {
+        ...(debug ?? {}),
+        allProfiles: allProfilesResp?.profiles ?? allProfilesResp ?? null,
+        allAccounts: allAccountsResp?.accounts ?? allAccountsResp ?? null,
+      };
+    } catch (e: any) {
+      debug = { ...(debug ?? {}), globalScanError: String(e?.message ?? e) };
+    }
+
     const { data } = await supabaseAdmin
       .from("zernio_accounts")
       .select("platform,account_id,username,display_name,status,connected_at")
