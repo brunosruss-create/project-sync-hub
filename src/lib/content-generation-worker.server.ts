@@ -237,11 +237,18 @@ async function resolveImage(
     };
   } catch (aiErr) {
     // Nano Banana também falhou (quota, credencial ausente, API caiu):
-    // erro final. Msg neutra pro cliente — nunca cita "banco de imagens"
-    // nem "IA de imagem" separadamente.
+    // logamos detalhe técnico no error_message pra debug interno, mas a
+    // camada de UI ainda deve mostrar mensagem neutra ao cliente.
+    const detail = aiErr instanceof Error ? aiErr.message : String(aiErr);
+    console.error("[content-worker] image resolution failed:", {
+      workspaceOwnerId,
+      query,
+      bankResult: bankResult ? "ok" : "null",
+      aiError: detail,
+    });
     throw new ContentJobError(
       "image_bank",
-      "Não foi possível gerar uma imagem adequada agora. Tente novamente em instantes ou ajuste a descrição.",
+      `Falha ao obter imagem. Detalhe técnico: ${detail.slice(0, 300)}`,
     );
   }
 }
