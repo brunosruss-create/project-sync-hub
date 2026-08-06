@@ -64,6 +64,17 @@ function SocialAccountsPage() {
   const [loadingPlatform, setLoadingPlatform] = React.useState<string | null>(null);
   const [confirmDisconnect, setConfirmDisconnect] = React.useState<string | null>(null);
 
+  // Reset do loading quando a página volta ao foco. Cobre o caso do usuário
+  // clicar Conectar (que dispara redirect via window.location) e cancelar o
+  // OAuth — o browser restaura a página do bfcache mantendo o estado antigo,
+  // deixando o botão eternamente em spinner. pageshow dispara tanto no load
+  // normal quanto na restauração do cache.
+  React.useEffect(() => {
+    const reset = () => setLoadingPlatform(null);
+    window.addEventListener("pageshow", reset);
+    return () => window.removeEventListener("pageshow", reset);
+  }, []);
+
   const connect = useMutation({
     mutationFn: async (platform: SocialPlatform) => {
       setLoadingPlatform(platform);
