@@ -73,7 +73,12 @@ function AssetsListPage() {
               key={asset.id}
               to="/content/assets/$assetId"
               params={{ assetId: asset.id }}
-              style={{ textDecoration: "none", color: "inherit" }}
+              style={{
+                textDecoration: "none",
+                color: "inherit",
+                display: "block",
+                cursor: "pointer",
+              }}
             >
               <Card style={{ padding: 0, overflow: "hidden" }}>
                 <div

@@ -1,6 +1,7 @@
 // Template Promo 01 — proporção 1:1 (feed 1080x1080).
-// Layout: fundo com cor primária, imagem à direita, texto e preço à esquerda,
-// CTA em faixa inferior com cor de apoio.
+// Layout moderno: imagem à direita ocupando 60% + coluna de texto à esquerda
+// com hierarquia clara (marca no topo → headline grande → preço em destaque
+// → CTA discreto no rodapé com underline animado).
 
 import type { ReactElement } from "react";
 import { registerTemplate, type TemplateProps } from "../registry";
@@ -14,6 +15,7 @@ function Promo01_1x1({ brandKit, slots }: TemplateProps): ReactElement {
   const price = slots.price ?? "";
   const cta = slots.ctaLabel ?? "Aproveitar";
   const imageUrl = slots.imageUrl;
+  const signature = brandKit.defaultSignature || "SUA MARCA";
 
   return (
     <div
@@ -21,143 +23,182 @@ function Promo01_1x1({ brandKit, slots }: TemplateProps): ReactElement {
         width: WIDTH,
         height: HEIGHT,
         display: "flex",
-        flexDirection: "column",
-        backgroundColor: brandKit.primaryColor,
+        flexDirection: "row",
+        backgroundColor: "#FFFFFF",
         fontFamily: brandKit.bodyFont,
-        color: "#FFFFFF",
       }}
     >
-      {/* Faixa superior com logo/marca */}
+      {/* Coluna texto — 45% */}
       <div
         style={{
-          height: 90,
+          width: 486,
+          height: HEIGHT,
           display: "flex",
-          alignItems: "center",
-          paddingLeft: 60,
-          paddingRight: 60,
+          flexDirection: "column",
+          padding: "60px 50px",
           backgroundColor: brandKit.secondaryColor,
-          fontFamily: brandKit.displayFont,
-          fontSize: 32,
-          fontWeight: 700,
-          letterSpacing: 2,
+          color: "#FFFFFF",
+          position: "relative",
         }}
       >
-        {brandKit.defaultSignature || "SUA MARCA"}
-      </div>
-
-      {/* Área principal: texto à esquerda + imagem à direita */}
-      <div
-        style={{
-          flex: 1,
-          display: "flex",
-          flexDirection: "row",
-        }}
-      >
-        {/* Coluna texto */}
+        {/* Assinatura no topo */}
         <div
           style={{
-            width: 540,
+            fontSize: 22,
+            fontWeight: 600,
+            letterSpacing: 4,
+            textTransform: "uppercase",
+            opacity: 0.7,
+            display: "flex",
+          }}
+        >
+          {signature}
+        </div>
+
+        {/* Meio: bloco central alinhado */}
+        <div
+          style={{
+            flex: 1,
             display: "flex",
             flexDirection: "column",
             justifyContent: "center",
-            paddingLeft: 60,
-            paddingRight: 30,
           }}
         >
+          {/* Selo colorido em cima do headline */}
+          <div
+            style={{
+              display: "flex",
+              paddingLeft: 18,
+              paddingRight: 18,
+              paddingTop: 6,
+              paddingBottom: 6,
+              backgroundColor: brandKit.primaryColor,
+              borderRadius: 999,
+              fontFamily: brandKit.displayFont,
+              fontSize: 18,
+              fontWeight: 700,
+              letterSpacing: 3,
+              textTransform: "uppercase",
+              width: "fit-content",
+              marginBottom: 22,
+            }}
+          >
+            Oferta
+          </div>
+
           <div
             style={{
               fontFamily: brandKit.displayFont,
-              fontSize: 72,
+              fontSize: 60,
               fontWeight: 700,
               lineHeight: 1.05,
-              marginBottom: 24,
+              marginBottom: 20,
+              display: "flex",
             }}
           >
             {headline}
           </div>
+
           {subheadline ? (
             <div
               style={{
-                fontSize: 28,
-                lineHeight: 1.35,
-                opacity: 0.92,
-                marginBottom: 24,
+                fontSize: 20,
+                lineHeight: 1.4,
+                opacity: 0.75,
+                marginBottom: 30,
+                display: "flex",
               }}
             >
               {subheadline}
             </div>
           ) : null}
+
           {price ? (
-            <div
-              style={{
-                fontFamily: brandKit.displayFont,
-                fontSize: 84,
-                fontWeight: 700,
-                color: brandKit.supportColor,
-                marginTop: 12,
-                display: "flex",
-              }}
-            >
-              {price}
+            <div style={{ display: "flex", flexDirection: "column", marginTop: 8 }}>
+              <div
+                style={{
+                  fontSize: 14,
+                  fontWeight: 500,
+                  opacity: 0.6,
+                  letterSpacing: 2,
+                  textTransform: "uppercase",
+                  marginBottom: 4,
+                }}
+              >
+                A partir de
+              </div>
+              <div
+                style={{
+                  fontFamily: brandKit.displayFont,
+                  fontSize: 90,
+                  fontWeight: 700,
+                  lineHeight: 1,
+                  color: brandKit.primaryColor,
+                  display: "flex",
+                }}
+              >
+                {price}
+              </div>
             </div>
           ) : null}
         </div>
 
-        {/* Coluna imagem */}
-        <div
-          style={{
-            width: 480,
-            display: "flex",
-            justifyContent: "center",
-            alignItems: "center",
-            padding: 30,
-          }}
-        >
-          {imageUrl ? (
-            <img
-              src={imageUrl}
-              width={420}
-              height={420}
-              style={{
-                width: 420,
-                height: 420,
-                objectFit: "cover",
-                borderRadius: 32,
-              }}
-            />
-          ) : (
-            <div
-              style={{
-                width: 420,
-                height: 420,
-                borderRadius: 32,
-                backgroundColor: brandKit.secondaryColor,
-                display: "flex",
-                justifyContent: "center",
-                alignItems: "center",
-                opacity: 0.4,
-              }}
-            />
-          )}
+        {/* Rodapé: CTA com sublinhado colorido */}
+        <div style={{ display: "flex", flexDirection: "column" }}>
+          <div
+            style={{
+              fontFamily: brandKit.displayFont,
+              fontSize: 26,
+              fontWeight: 700,
+              display: "flex",
+              marginBottom: 8,
+            }}
+          >
+            {cta}
+          </div>
+          <div
+            style={{
+              width: 80,
+              height: 3,
+              backgroundColor: brandKit.supportColor,
+              display: "flex",
+            }}
+          />
         </div>
       </div>
 
-      {/* Faixa CTA inferior */}
+      {/* Coluna imagem — 55% */}
       <div
         style={{
-          height: 120,
+          width: WIDTH - 486,
+          height: HEIGHT,
           display: "flex",
-          alignItems: "center",
-          justifyContent: "center",
-          backgroundColor: brandKit.supportColor,
-          color: brandKit.secondaryColor,
-          fontFamily: brandKit.displayFont,
-          fontSize: 48,
-          fontWeight: 700,
-          letterSpacing: 1,
+          position: "relative",
+          backgroundColor: brandKit.secondaryColor,
         }}
       >
-        {cta}
+        {imageUrl ? (
+          <img
+            src={imageUrl}
+            width={WIDTH - 486}
+            height={HEIGHT}
+            style={{
+              width: WIDTH - 486,
+              height: HEIGHT,
+              objectFit: "cover",
+            }}
+          />
+        ) : (
+          <div
+            style={{
+              width: WIDTH - 486,
+              height: HEIGHT,
+              display: "flex",
+              backgroundColor: brandKit.primaryColor,
+              opacity: 0.3,
+            }}
+          />
+        )}
       </div>
     </div>
   );

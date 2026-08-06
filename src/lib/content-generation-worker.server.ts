@@ -127,19 +127,21 @@ async function loadBrandKit(workspaceOwnerId: string): Promise<BrandKit> {
     .eq("owner_user_id", workspaceOwnerId)
     .maybeSingle();
   if (data) return mapBrandKitRow(data);
-  // Retorna BrandKit default. Requirement 2.2 fallback.
+  // Paleta default neutra e versátil — funciona pra qualquer categoria de post.
+  // Preto sólido como cor primária (sobreposição limpa em qualquer foto),
+  // cinza-escuro como secundária e amber vibrante como destaque.
   const now = new Date();
   return {
     id: "default",
     ownerUserId: workspaceOwnerId,
-    primaryColor: "#0EA5E9",
+    primaryColor: "#0F172A",
     secondaryColor: "#1E293B",
     supportColor: "#F59E0B",
     logoUrl: null,
     displayFont: "Playfair Display",
     bodyFont: "Inter",
     toneOfVoice: "profissional",
-    defaultSignature: "SUA MARCA",
+    defaultSignature: "Sua Marca",
     extractionSource: null,
     extractionMetadata: null,
     createdAt: now,
