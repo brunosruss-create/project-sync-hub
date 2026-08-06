@@ -9,6 +9,7 @@ import { supabaseAdmin } from "@/integrations/supabase/client.server";
 import {
   zernioPublishing,
   getSocialProfileId,
+  SOCIAL_PROFILE_PREFIX,
   type SocialPlatform,
   type ZernioCreatePostBody,
 } from "@/lib/zernio-publishing.server";
@@ -64,10 +65,22 @@ export const getSocialConnectUrl = createServerFn({ method: "POST" })
     return { authUrl: result.authUrl };
   });
 
-/** Lista as contas sociais conectadas do workspace (para publicação). */
+/** Lista as contas sociais conectadas do workspace (para publicação).
+ *  Antes de responder, roda uma reconciliação silenciosa: qualquer conta que
+ *  esteja pendurada só no lado da Zernio (sem registro local) é hard-deletada
+ *  lá pra não ocupar slot do plano. É best-effort — falha não afeta a listagem.
+ *  Detalhes internos ficam fora de qualquer texto/nome visível pro cliente.
+ */
 export const listSocialAccounts = createServerFn({ method: "POST" })
   .middleware([requireSupabaseAuth])
   .handler(async ({ context }) => {
+    // Reconciliação silenciosa — encapsulada em try/catch pra não poluir a UI.
+    try {
+      await reconcileOrphanSocialAccountsInternal(context.userId);
+    } catch (e: any) {
+      console.warn("[social accounts] reconciliação silenciosa falhou:", e?.message ?? e);
+    }
+
     const { data, error } = await supabaseAdmin
       .from("social_account_connections")
       .select("id,platform,account_id,account_name,status,connected_at")
@@ -652,59 +665,132 @@ function extractPlatform(a: any): string | null {
   return typeof p === "string" ? p : null;
 }
 
-export const reconcileSocialAccounts = createServerFn({ method: "POST" })
-  .middleware([requireSupabaseAuth])
-  .handler(async ({ context }) => {
-    const profileId = await getSocialProfileId(context.userId);
+/**
+ * Descobre todos os profileIds da Zernio que pertencem a este workspace.
+ *
+ * Um mesmo workspace pode acumular mais de um profile ao longo do tempo se o
+ * `business_name` mudou (vazio → preenchido, ou renomeado), porque
+ * `ensureSocialProfile` compõe o label como `zapflow-social:<label>` e cria um
+ * novo profile quando não encontra match exato. Ignorar isso deixa contas
+ * pendurados em profiles antigos.
+ *
+ * Fontes:
+ *   1) Profiles da Zernio cujo label começa com `zapflow-social:` E o sufixo é
+ *      um dos labels candidatos deste workspace (business_name atual + fallback
+ *      via userId.slice(0, 12)).
+ *   2) Qualquer `zernio_profile_id` já registrado em
+ *      social_account_connections deste owner (histórico).
+ */
+async function collectWorkspaceProfileIds(userId: string): Promise<Set<string>> {
+  const ids = new Set<string>();
 
-    // 1) O que a Zernio tem no nosso profile de publicação.
+  // 1) Labels candidatos.
+  const { data: profile } = await supabaseAdmin
+    .from("profiles")
+    .select("business_name")
+    .eq("id", userId)
+    .maybeSingle();
+  const businessName = (profile as any)?.business_name;
+  const candidateLabels = new Set<string>();
+  if (typeof businessName === "string" && businessName.trim()) {
+    candidateLabels.add(`${SOCIAL_PROFILE_PREFIX}${businessName.trim()}`);
+  }
+  candidateLabels.add(`${SOCIAL_PROFILE_PREFIX}${userId.slice(0, 12)}`);
+
+  // 2) Todos os profiles Zernio, filtrando pelos labels candidatos.
+  try {
+    const resp: any = await zernioPublishing.listProfiles();
+    const all: any[] = Array.isArray(resp?.profiles) ? resp.profiles : [];
+    for (const p of all) {
+      const name = typeof p?.name === "string" ? p.name : "";
+      if (candidateLabels.has(name) && typeof p?._id === "string") {
+        ids.add(p._id);
+      }
+    }
+  } catch (e: any) {
+    console.warn("[reconcile] falha ao listar profiles Zernio:", e?.message ?? e);
+  }
+
+  // 3) Profiles já usados em conexões locais (histórico).
+  const { data: localConns } = await supabaseAdmin
+    .from("social_account_connections")
+    .select("zernio_profile_id")
+    .eq("owner_user_id", userId);
+  for (const r of localConns ?? []) {
+    const pid = (r as any)?.zernio_profile_id;
+    if (typeof pid === "string" && pid.length > 0) ids.add(pid);
+  }
+
+  return ids;
+}
+
+/**
+ * Núcleo da reconciliação: itera por todos os profiles do workspace na Zernio,
+ * lista as contas em cada um e faz hard delete daquelas que não têm registro
+ * em social_account_connections deste owner. Best-effort — erros individuais
+ * não abortam o loop.
+ *
+ * Chamado tanto pela server fn pública (para logs/observabilidade quando
+ * necessário) quanto silenciosamente pelo listSocialAccounts, então não expõe
+ * nenhum vocabulário interno pra UI.
+ */
+async function reconcileOrphanSocialAccountsInternal(userId: string) {
+  const profileIds = await collectWorkspaceProfileIds(userId);
+
+  // Fonte de verdade local: qualquer accountId presente em qualquer linha
+  // (mesmo desconectada) NÃO é órfão — o usuário pode reconectar depois.
+  const { data: localRows } = await supabaseAdmin
+    .from("social_account_connections")
+    .select("account_id")
+    .eq("owner_user_id", userId);
+  const localIds = new Set(
+    (localRows ?? [])
+      .map((r: any) => r?.account_id)
+      .filter((v: unknown): v is string => typeof v === "string" && v.length > 0),
+  );
+
+  const removed: Array<{ accountId: string; platform: string | null }> = [];
+  const failed: Array<{ accountId: string; error: string }> = [];
+  let totalRemote = 0;
+
+  for (const profileId of profileIds) {
     let remote: any;
     try {
       remote = await zernioPublishing.listAccounts(profileId);
     } catch (e: any) {
-      throw new Error(`Falha ao listar contas na Zernio: ${e?.message ?? e}`);
+      console.warn(`[reconcile] listAccounts(${profileId}):`, e?.message ?? e);
+      continue;
     }
     const remoteList: any[] = Array.isArray(remote?.accounts)
       ? remote.accounts
       : Array.isArray(remote)
         ? remote
         : [];
+    totalRemote += remoteList.length;
 
-    // 2) O que temos no banco local (todas as linhas, incluindo desconectadas
-    //    — se o accountId ainda aparecer em qualquer linha, não é órfão).
-    const { data: localRows } = await supabaseAdmin
-      .from("social_account_connections")
-      .select("account_id")
-      .eq("owner_user_id", context.userId);
-    const localIds = new Set(
-      (localRows ?? [])
-        .map((r: any) => r?.account_id)
-        .filter((v: unknown): v is string => typeof v === "string" && v.length > 0),
-    );
-
-    // 3) Órfãos = na Zernio, mas não no banco local.
-    const orphans = remoteList
-      .map((a) => ({ accountId: extractAccountId(a), platform: extractPlatform(a) }))
-      .filter((a): a is { accountId: string; platform: string | null } => !!a.accountId)
-      .filter((a) => !localIds.has(a.accountId));
-
-    // 4) Hard delete de cada órfão. Erros individuais não abortam o batch.
-    const removed: Array<{ accountId: string; platform: string | null }> = [];
-    const failed: Array<{ accountId: string; error: string }> = [];
-    for (const o of orphans) {
+    for (const a of remoteList) {
+      const accountId = extractAccountId(a);
+      if (!accountId) continue;
+      if (localIds.has(accountId)) continue;
       try {
-        await zernioPublishing.disconnectAccount(o.accountId);
-        removed.push(o);
+        await zernioPublishing.disconnectAccount(accountId);
+        removed.push({ accountId, platform: extractPlatform(a) });
       } catch (e: any) {
-        failed.push({ accountId: o.accountId, error: String(e?.message ?? e) });
+        failed.push({ accountId, error: String(e?.message ?? e) });
       }
     }
+  }
 
-    return {
-      profileId,
-      totalRemote: remoteList.length,
-      totalLocal: localIds.size,
-      removed,
-      failed,
-    };
-  });
+  return {
+    profilesScanned: profileIds.size,
+    totalRemote,
+    totalLocal: localIds.size,
+    removed,
+    failed,
+  };
+}
+
+/** Server fn preservada para debugging/super-admin. UI não expõe pro cliente. */
+export const reconcileSocialAccounts = createServerFn({ method: "POST" })
+  .middleware([requireSupabaseAuth])
+  .handler(async ({ context }) => reconcileOrphanSocialAccountsInternal(context.userId));

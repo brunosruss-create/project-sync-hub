@@ -178,7 +178,7 @@ export const zernioPublishing = {
 // Profile de publicação (isolado do de mensageria)
 // ============================================================
 
-const SOCIAL_PROFILE_PREFIX = "zapflow-social:";
+export const SOCIAL_PROFILE_PREFIX = "zapflow-social:";
 
 /**
  * Garante que o workspace tenha um profile Zernio dedicado a publicação.

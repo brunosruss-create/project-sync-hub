@@ -11,7 +11,6 @@ import {
   listSocialAccounts,
   getSocialConnectUrl,
   disconnectSocialAccount,
-  reconcileSocialAccounts,
 } from "@/lib/social-publishing.functions";
 import { PLATFORM_LABELS, type SocialPlatform } from "@/lib/social-post-validation";
 import { ConfirmDialog } from "@/components/confirm-dialog";
@@ -56,7 +55,6 @@ function SocialAccountsPage() {
   const listFn = useServerFn(listSocialAccounts);
   const connectFn = useServerFn(getSocialConnectUrl);
   const disconnectFn = useServerFn(disconnectSocialAccount);
-  const reconcileFn = useServerFn(reconcileSocialAccounts);
 
   const q = useQuery({
     queryKey: ["social-accounts"],
@@ -86,25 +84,6 @@ function SocialAccountsPage() {
       qc.invalidateQueries({ queryKey: ["social-accounts"] });
     },
     onError: (e: any) => toast.error(e?.message ?? "Falha ao desconectar."),
-  });
-
-  const reconcile = useMutation({
-    mutationFn: () => reconcileFn(),
-    onSuccess: (r: any) => {
-      const removedCount = r?.removed?.length ?? 0;
-      const failedCount = r?.failed?.length ?? 0;
-      if (removedCount === 0 && failedCount === 0) {
-        toast.success("Nada para limpar. Zernio e ZapFlow estão sincronizados.");
-      } else {
-        toast.success(
-          `Reconciliação: ${removedCount} conta(s) órfã(s) removida(s) da Zernio${
-            failedCount > 0 ? ` (${failedCount} falha[s])` : ""
-          }.`,
-        );
-      }
-      qc.invalidateQueries({ queryKey: ["social-accounts"] });
-    },
-    onError: (e: any) => toast.error(e?.message ?? "Falha ao reconciliar."),
   });
 
   const accounts = q.data?.accounts ?? [];
@@ -290,9 +269,9 @@ function SocialAccountsPage() {
         </Card>
       )}
 
-      {/* Link pra permissões + botão de reconciliação (só Manager) */}
-      <div className="flex flex-wrap items-center justify-between" style={{ gap: 12, marginTop: 8 }}>
-        {hasConnected ? (
+      {/* Link pra permissões (só Manager) */}
+      {hasConnected && (
+        <div style={{ marginTop: 8 }}>
           <Link
             to="/social/permissions"
             className="inline-flex items-center"
@@ -306,29 +285,8 @@ function SocialAccountsPage() {
             <Settings2 size={14} />
             Configurar permissões da equipe
           </Link>
-        ) : <span />}
-        <button
-          type="button"
-          onClick={() => reconcile.mutate()}
-          disabled={reconcile.isPending}
-          className="inline-flex items-center"
-          style={{
-            gap: 6,
-            height: 28,
-            padding: "0 10px",
-            borderRadius: "var(--radius-pill)",
-            border: "1px solid var(--border)",
-            background: "transparent",
-            color: "var(--text-muted)",
-            fontSize: 12,
-            cursor: "pointer",
-          }}
-          title="Remove da Zernio contas que já não existem mais no ZapFlow (libera slot do plano)."
-        >
-          {reconcile.isPending ? <Loader2 size={12} className="animate-spin" /> : null}
-          Reconciliar com Zernio
-        </button>
-      </div>
+        </div>
+      )}
 
       <ConfirmDialog
         open={!!confirmDisconnect}
