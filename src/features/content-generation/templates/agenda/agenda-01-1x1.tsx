@@ -1,17 +1,21 @@
-// Template Agenda 01 — 1080x1080. Anúncio de evento/horário.
+// Template Agenda 01 — 1080x1080. Layout evento/reserva:
+//   • Data grande em card contrastante
+//   • Título + info secundária
+//   • CTA pill grande
 
 import type { ReactElement } from "react";
 import { registerTemplate, type TemplateProps } from "../registry";
-import { ctaBar } from "../shared";
+import { brandSignature, brandSig, accentLine, pillBadge } from "../primitives";
 
 const WIDTH = 1080;
 const HEIGHT = 1080;
 
 function Agenda01_1x1({ brandKit, slots }: TemplateProps): ReactElement {
   const eventDate = slots.eventDate ?? "Em breve";
-  const headline = slots.headline ?? "Marque na sua agenda";
+  const headline = slots.headline ?? "Anote na agenda";
   const subheadline = slots.subheadline ?? "";
-  const cta = slots.ctaLabel ?? "Reservar horário";
+  const cta = slots.ctaLabel ?? "Garantir vaga";
+  const signature = brandSig(brandKit);
 
   return (
     <div
@@ -22,37 +26,47 @@ function Agenda01_1x1({ brandKit, slots }: TemplateProps): ReactElement {
         flexDirection: "column",
         backgroundColor: brandKit.secondaryColor,
         fontFamily: brandKit.bodyFont,
-        color: "#FFFFFF",
+        position: "relative",
       }}
     >
-      {/* Faixa topo com marca */}
+      {/* Header */}
       <div
         style={{
           height: 90,
           display: "flex",
           alignItems: "center",
-          justifyContent: "center",
-          fontFamily: brandKit.displayFont,
-          fontSize: 32,
-          fontWeight: 700,
-          letterSpacing: 4,
+          justifyContent: "space-between",
+          paddingLeft: 60,
+          paddingRight: 60,
         }}
       >
-        {brandKit.defaultSignature || "AGENDA"}
+        {brandSignature({
+          text: signature,
+          color: "#FFFFFF",
+          fontFamily: brandKit.displayFont,
+          fontSize: 20,
+        })}
+        {pillBadge({
+          text: "Agenda",
+          bgColor: brandKit.supportColor,
+          textColor: brandKit.secondaryColor,
+          fontFamily: brandKit.displayFont,
+        })}
       </div>
 
-      {/* Data em destaque */}
+      {/* Corpo: data + info */}
       <div
         style={{
           flex: 1,
           display: "flex",
           flexDirection: "column",
-          justifyContent: "center",
           alignItems: "center",
-          paddingLeft: 60,
-          paddingRight: 60,
+          justifyContent: "center",
+          padding: "0 60px",
+          color: "#FFFFFF",
         }}
       >
+        {/* Data em card gigante */}
         <div
           style={{
             display: "flex",
@@ -60,44 +74,86 @@ function Agenda01_1x1({ brandKit, slots }: TemplateProps): ReactElement {
             paddingRight: 60,
             paddingTop: 30,
             paddingBottom: 30,
-            backgroundColor: brandKit.supportColor,
-            color: brandKit.secondaryColor,
-            fontFamily: brandKit.displayFont,
-            fontSize: 96,
-            fontWeight: 700,
-            borderRadius: 24,
+            backgroundColor: brandKit.primaryColor,
+            borderRadius: 32,
             marginBottom: 40,
           }}
         >
-          {eventDate}
+          <div
+            style={{
+              fontFamily: brandKit.displayFont,
+              fontSize: 140,
+              fontWeight: 700,
+              lineHeight: 1,
+              display: "flex",
+              letterSpacing: -2,
+            }}
+          >
+            {eventDate}
+          </div>
         </div>
+
         <div
           style={{
             fontFamily: brandKit.displayFont,
-            fontSize: 60,
+            fontSize: 62,
             fontWeight: 700,
-            lineHeight: 1.15,
+            lineHeight: 1.05,
             textAlign: "center",
+            marginBottom: 20,
+            display: "flex",
           }}
         >
           {headline}
         </div>
+
         {subheadline ? (
           <div
             style={{
-              fontSize: 30,
-              lineHeight: 1.35,
-              textAlign: "center",
+              fontSize: 24,
+              lineHeight: 1.4,
               opacity: 0.8,
-              marginTop: 20,
+              textAlign: "center",
+              maxWidth: 800,
+              display: "flex",
             }}
           >
             {subheadline}
           </div>
         ) : null}
+
+        <div style={{ marginTop: 26, display: "flex" }}>
+          {accentLine({ color: brandKit.supportColor, width: 80, height: 4 })}
+        </div>
       </div>
 
-      <div style={ctaBar(brandKit)}>{cta}</div>
+      {/* CTA */}
+      <div
+        style={{
+          padding: "0 60px 50px",
+          display: "flex",
+          justifyContent: "center",
+        }}
+      >
+        <div
+          style={{
+            display: "flex",
+            paddingLeft: 40,
+            paddingRight: 40,
+            paddingTop: 22,
+            paddingBottom: 22,
+            backgroundColor: brandKit.supportColor,
+            color: brandKit.secondaryColor,
+            fontFamily: brandKit.displayFont,
+            fontSize: 28,
+            fontWeight: 700,
+            borderRadius: 999,
+            letterSpacing: 1,
+          }}
+        >
+          {cta} →
+        </div>
+      </div>
     </div>
   );
 }

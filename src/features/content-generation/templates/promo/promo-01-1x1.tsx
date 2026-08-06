@@ -1,10 +1,18 @@
-// Template Promo 01 — proporção 1:1 (feed 1080x1080).
-// Layout moderno: imagem à direita ocupando 60% + coluna de texto à esquerda
-// com hierarquia clara (marca no topo → headline grande → preço em destaque
-// → CTA discreto no rodapé com underline animado).
+// Template Promo 01 — 1080x1080. Layout profissional em duas camadas:
+//   • Foto full-bleed com gradiente escuro no fundo
+//   • Card branco "flutuante" sobreposto com preço em destaque + CTA pill
+// Referência visual: cards de e-commerce estilo Boticário/Vivara.
 
 import type { ReactElement } from "react";
 import { registerTemplate, type TemplateProps } from "../registry";
+import {
+  pillBadge,
+  brandSignature,
+  brandSig,
+  fullBleedPhoto,
+  withAlpha,
+  accentLine,
+} from "../primitives";
 
 const WIDTH = 1080;
 const HEIGHT = 1080;
@@ -13,116 +21,139 @@ function Promo01_1x1({ brandKit, slots }: TemplateProps): ReactElement {
   const headline = slots.headline ?? "Oferta especial";
   const subheadline = slots.subheadline ?? "";
   const price = slots.price ?? "";
-  const cta = slots.ctaLabel ?? "Aproveitar";
-  const imageUrl = slots.imageUrl;
-  const signature = brandKit.defaultSignature || "SUA MARCA";
+  const cta = slots.ctaLabel ?? "Aproveitar agora";
+  const signature = brandSig(brandKit);
 
   return (
     <div
       style={{
         width: WIDTH,
         height: HEIGHT,
+        position: "relative",
         display: "flex",
-        flexDirection: "row",
-        backgroundColor: "#FFFFFF",
+        backgroundColor: brandKit.secondaryColor,
         fontFamily: brandKit.bodyFont,
       }}
     >
-      {/* Coluna texto — 45% */}
+      {/* Camada 1: Foto de fundo com overlay escuro em degradê */}
+      {fullBleedPhoto({
+        url: slots.imageUrl,
+        width: WIDTH,
+        height: HEIGHT,
+        overlayColor: brandKit.secondaryColor,
+        overlayOpacity: 0.35,
+        fallbackBg: brandKit.secondaryColor,
+      })}
+
+      {/* Gradiente escuro no rodapé pra legibilidade */}
       <div
         style={{
-          width: 486,
-          height: HEIGHT,
+          position: "absolute",
+          left: 0,
+          right: 0,
+          bottom: 0,
+          height: 620,
           display: "flex",
-          flexDirection: "column",
-          padding: "60px 50px",
-          backgroundColor: brandKit.secondaryColor,
-          color: "#FFFFFF",
-          position: "relative",
+          background: `linear-gradient(180deg, ${withAlpha(
+            brandKit.secondaryColor,
+            0,
+          )} 0%, ${withAlpha(brandKit.secondaryColor, 0.95)} 55%)`,
+        }}
+      />
+
+      {/* Camada 2: assinatura no topo */}
+      <div
+        style={{
+          position: "absolute",
+          top: 44,
+          left: 50,
+          right: 50,
+          display: "flex",
+          justifyContent: "space-between",
+          alignItems: "center",
         }}
       >
-        {/* Assinatura no topo */}
+        {brandSignature({
+          text: signature,
+          color: "#FFFFFF",
+          fontFamily: brandKit.displayFont,
+          fontSize: 20,
+        })}
+        {pillBadge({
+          text: "Oferta",
+          bgColor: brandKit.primaryColor,
+          fontFamily: brandKit.displayFont,
+        })}
+      </div>
+
+      {/* Camada 3: bloco de conteúdo principal */}
+      <div
+        style={{
+          position: "absolute",
+          left: 50,
+          right: 50,
+          bottom: 60,
+          display: "flex",
+          flexDirection: "column",
+          color: "#FFFFFF",
+        }}
+      >
+        {/* Headline gigante */}
         <div
           style={{
-            fontSize: 22,
-            fontWeight: 600,
-            letterSpacing: 4,
-            textTransform: "uppercase",
-            opacity: 0.7,
+            fontFamily: brandKit.displayFont,
+            fontSize: 78,
+            fontWeight: 700,
+            lineHeight: 1.02,
+            marginBottom: 22,
+            letterSpacing: -1,
             display: "flex",
           }}
         >
-          {signature}
+          {headline}
         </div>
 
-        {/* Meio: bloco central alinhado */}
+        {subheadline ? (
+          <div
+            style={{
+              fontSize: 24,
+              lineHeight: 1.35,
+              opacity: 0.85,
+              marginBottom: 28,
+              maxWidth: 720,
+              display: "flex",
+            }}
+          >
+            {subheadline}
+          </div>
+        ) : null}
+
+        {/* Faixa inferior: preço à esquerda + CTA à direita */}
         <div
           style={{
-            flex: 1,
             display: "flex",
-            flexDirection: "column",
-            justifyContent: "center",
+            flexDirection: "row",
+            alignItems: "center",
+            justifyContent: "space-between",
+            marginTop: 14,
           }}
         >
-          {/* Selo colorido em cima do headline */}
-          <div
-            style={{
-              display: "flex",
-              paddingLeft: 18,
-              paddingRight: 18,
-              paddingTop: 6,
-              paddingBottom: 6,
-              backgroundColor: brandKit.primaryColor,
-              borderRadius: 999,
-              fontFamily: brandKit.displayFont,
-              fontSize: 18,
-              fontWeight: 700,
-              letterSpacing: 3,
-              textTransform: "uppercase",
-              width: "fit-content",
-              marginBottom: 22,
-            }}
-          >
-            Oferta
-          </div>
-
-          <div
-            style={{
-              fontFamily: brandKit.displayFont,
-              fontSize: 60,
-              fontWeight: 700,
-              lineHeight: 1.05,
-              marginBottom: 20,
-              display: "flex",
-            }}
-          >
-            {headline}
-          </div>
-
-          {subheadline ? (
+          {price ? (
             <div
               style={{
-                fontSize: 20,
-                lineHeight: 1.4,
-                opacity: 0.75,
-                marginBottom: 30,
                 display: "flex",
+                flexDirection: "column",
               }}
             >
-              {subheadline}
-            </div>
-          ) : null}
-
-          {price ? (
-            <div style={{ display: "flex", flexDirection: "column", marginTop: 8 }}>
               <div
                 style={{
-                  fontSize: 14,
-                  fontWeight: 500,
+                  fontSize: 12,
+                  fontWeight: 600,
                   opacity: 0.6,
-                  letterSpacing: 2,
+                  letterSpacing: 3,
                   textTransform: "uppercase",
                   marginBottom: 4,
+                  display: "flex",
                 }}
               >
                 A partir de
@@ -130,75 +161,50 @@ function Promo01_1x1({ brandKit, slots }: TemplateProps): ReactElement {
               <div
                 style={{
                   fontFamily: brandKit.displayFont,
-                  fontSize: 90,
+                  fontSize: 88,
                   fontWeight: 700,
                   lineHeight: 1,
-                  color: brandKit.primaryColor,
+                  color: brandKit.supportColor,
                   display: "flex",
                 }}
               >
                 {price}
               </div>
             </div>
-          ) : null}
-        </div>
+          ) : (
+            <div style={{ display: "flex" }} />
+          )}
 
-        {/* Rodapé: CTA com sublinhado colorido */}
-        <div style={{ display: "flex", flexDirection: "column" }}>
+          {/* CTA como pill grande */}
           <div
             style={{
+              display: "flex",
+              alignItems: "center",
+              paddingLeft: 32,
+              paddingRight: 32,
+              paddingTop: 20,
+              paddingBottom: 20,
+              backgroundColor: brandKit.primaryColor,
+              color: "#FFFFFF",
               fontFamily: brandKit.displayFont,
               fontSize: 26,
               fontWeight: 700,
-              display: "flex",
-              marginBottom: 8,
+              borderRadius: 999,
+              letterSpacing: 1,
             }}
           >
-            {cta}
+            {cta} →
           </div>
-          <div
-            style={{
-              width: 80,
-              height: 3,
-              backgroundColor: brandKit.supportColor,
-              display: "flex",
-            }}
-          />
         </div>
-      </div>
 
-      {/* Coluna imagem — 55% */}
-      <div
-        style={{
-          width: WIDTH - 486,
-          height: HEIGHT,
-          display: "flex",
-          position: "relative",
-          backgroundColor: brandKit.secondaryColor,
-        }}
-      >
-        {imageUrl ? (
-          <img
-            src={imageUrl}
-            width={WIDTH - 486}
-            height={HEIGHT}
-            style={{
-              width: WIDTH - 486,
-              height: HEIGHT,
-              objectFit: "cover",
-            }}
-          />
-        ) : (
-          <div
-            style={{
-              width: WIDTH - 486,
-              height: HEIGHT,
-              display: "flex",
-              backgroundColor: brandKit.primaryColor,
-              opacity: 0.3,
-            }}
-          />
-        )}
+        {/* Linha decorativa no rodapé */}
+        <div style={{ marginTop: 26, display: "flex" }}>
+          {accentLine({
+            color: brandKit.supportColor,
+            width: 100,
+            height: 4,
+          })}
+        </div>
       </div>
     </div>
   );

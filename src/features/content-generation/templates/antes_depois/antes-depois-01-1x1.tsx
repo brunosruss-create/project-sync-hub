@@ -1,16 +1,19 @@
-// Template Antes/Depois 01 — 1080x1080.
-// Nota: como Satori não suporta múltiplas imagens numa comparação nativa,
-// mostramos "ANTES" (bloco escuro) e "DEPOIS" (bloco com imagem) lado a lado.
+// Template Antes/Depois 01 — 1080x1080. Split vertical:
+//   • Header com título e badge "Transformação"
+//   • Duas colunas: "Antes" (escuro/sem foto) e "Depois" (foto real)
+//   • Barra separadora com seta
 
 import type { ReactElement } from "react";
 import { registerTemplate, type TemplateProps } from "../registry";
-import { signatureBar } from "../shared";
+import { brandSignature, brandSig, pillBadge } from "../primitives";
 
 const WIDTH = 1080;
 const HEIGHT = 1080;
 
 function AntesDepois01_1x1({ brandKit, slots }: TemplateProps): ReactElement {
   const headline = slots.headline ?? "Veja a transformação";
+  const signature = brandSig(brandKit);
+  const imageUrl = slots.imageUrl;
 
   return (
     <div
@@ -23,27 +26,61 @@ function AntesDepois01_1x1({ brandKit, slots }: TemplateProps): ReactElement {
         fontFamily: brandKit.bodyFont,
       }}
     >
-      <div style={signatureBar(brandKit)}>{brandKit.defaultSignature || "TRANSFORMAÇÃO"}</div>
+      {/* Header */}
+      <div
+        style={{
+          padding: "44px 60px 24px",
+          display: "flex",
+          flexDirection: "row",
+          alignItems: "center",
+          justifyContent: "space-between",
+        }}
+      >
+        {brandSignature({
+          text: signature,
+          color: brandKit.secondaryColor,
+          fontFamily: brandKit.displayFont,
+          fontSize: 20,
+        })}
+        {pillBadge({
+          text: "Transformação",
+          bgColor: brandKit.primaryColor,
+          fontFamily: brandKit.displayFont,
+        })}
+      </div>
 
       {/* Título */}
       <div
         style={{
-          height: 140,
+          padding: "0 60px 30px",
           display: "flex",
-          alignItems: "center",
-          justifyContent: "center",
-          fontFamily: brandKit.displayFont,
-          fontSize: 46,
-          fontWeight: 700,
-          color: brandKit.secondaryColor,
-          textAlign: "center",
         }}
       >
-        {headline}
+        <div
+          style={{
+            fontFamily: brandKit.displayFont,
+            fontSize: 56,
+            fontWeight: 700,
+            lineHeight: 1.05,
+            color: brandKit.secondaryColor,
+            letterSpacing: -1,
+            display: "flex",
+          }}
+        >
+          {headline}
+        </div>
       </div>
 
-      {/* Blocos antes / depois */}
-      <div style={{ flex: 1, display: "flex", flexDirection: "row" }}>
+      {/* Blocos antes/depois */}
+      <div
+        style={{
+          flex: 1,
+          display: "flex",
+          flexDirection: "row",
+          padding: "0 60px 60px",
+        }}
+      >
+        {/* Bloco Antes */}
         <div
           style={{
             flex: 1,
@@ -52,66 +89,94 @@ function AntesDepois01_1x1({ brandKit, slots }: TemplateProps): ReactElement {
             justifyContent: "center",
             alignItems: "center",
             backgroundColor: brandKit.secondaryColor,
-            opacity: 0.85,
+            borderRadius: 24,
+            marginRight: 12,
             color: "#FFFFFF",
+            padding: 30,
           }}
         >
           <div
             style={{
-              fontFamily: brandKit.displayFont,
-              fontSize: 60,
+              fontSize: 12,
               fontWeight: 700,
-              letterSpacing: 6,
+              letterSpacing: 5,
               textTransform: "uppercase",
-              marginBottom: 20,
+              opacity: 0.5,
+              marginBottom: 10,
+              display: "flex",
+            }}
+          >
+            Etapa 1
+          </div>
+          <div
+            style={{
+              fontFamily: brandKit.displayFont,
+              fontSize: 100,
+              fontWeight: 700,
+              letterSpacing: -3,
+              lineHeight: 1,
+              display: "flex",
+              marginBottom: 14,
             }}
           >
             Antes
           </div>
-          <div style={{ fontSize: 30, opacity: 0.7 }}>foto ilustrativa</div>
+          <div
+            style={{
+              fontSize: 16,
+              opacity: 0.6,
+              textAlign: "center",
+              display: "flex",
+              lineHeight: 1.4,
+            }}
+          >
+            Ponto de partida antes do procedimento
+          </div>
         </div>
 
+        {/* Bloco Depois com foto real */}
         <div
           style={{
             flex: 1,
             display: "flex",
-            flexDirection: "column",
-            justifyContent: "center",
-            alignItems: "center",
+            marginLeft: 12,
+            borderRadius: 24,
             position: "relative",
+            overflow: "hidden",
             backgroundColor: brandKit.primaryColor,
           }}
         >
-          {slots.imageUrl ? (
+          {imageUrl ? (
             <img
-              src={slots.imageUrl}
-              width={540}
-              height={780}
+              src={imageUrl}
+              width={470}
+              height={640}
               style={{
-                width: 540,
-                height: 780,
+                width: "100%",
+                height: "100%",
                 objectFit: "cover",
               }}
             />
           ) : null}
+          {/* Selo "DEPOIS" flutuante */}
           <div
             style={{
               position: "absolute",
-              top: 30,
-              left: 30,
-              paddingLeft: 24,
-              paddingRight: 24,
-              paddingTop: 12,
-              paddingBottom: 12,
+              top: 20,
+              left: 20,
+              display: "flex",
+              paddingLeft: 20,
+              paddingRight: 20,
+              paddingTop: 8,
+              paddingBottom: 8,
               backgroundColor: brandKit.supportColor,
               color: brandKit.secondaryColor,
               fontFamily: brandKit.displayFont,
-              fontSize: 36,
+              fontSize: 16,
               fontWeight: 700,
               letterSpacing: 4,
               textTransform: "uppercase",
               borderRadius: 999,
-              display: "flex",
             }}
           >
             Depois

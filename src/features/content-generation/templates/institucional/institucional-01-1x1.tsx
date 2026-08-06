@@ -1,7 +1,18 @@
-// Template Institucional 01 — 1080x1080. Foto grande + mensagem da marca.
+// Template Institucional 01 — 1080x1080. Layout editorial:
+//   • Foto full-bleed + overlay escuro em degradê
+//   • Headline gigante na base
+//   • Marca discreta no topo
+//   • Barra de acento no lateral esquerdo
 
 import type { ReactElement } from "react";
 import { registerTemplate, type TemplateProps } from "../registry";
+import {
+  fullBleedPhoto,
+  brandSignature,
+  brandSig,
+  accentLine,
+  withAlpha,
+} from "../primitives";
 
 const WIDTH = 1080;
 const HEIGHT = 1080;
@@ -9,6 +20,7 @@ const HEIGHT = 1080;
 function Institucional01_1x1({ brandKit, slots }: TemplateProps): ReactElement {
   const headline = slots.headline ?? "Somos referência";
   const subheadline = slots.subheadline ?? "";
+  const signature = brandSig(brandKit);
 
   return (
     <div
@@ -19,67 +31,99 @@ function Institucional01_1x1({ brandKit, slots }: TemplateProps): ReactElement {
         position: "relative",
         backgroundColor: brandKit.secondaryColor,
         fontFamily: brandKit.bodyFont,
-        color: "#FFFFFF",
       }}
     >
-      {slots.imageUrl ? (
-        <img
-          src={slots.imageUrl}
-          width={WIDTH}
-          height={HEIGHT}
-          style={{
-            position: "absolute",
-            top: 0,
-            left: 0,
-            width: WIDTH,
-            height: HEIGHT,
-            objectFit: "cover",
-          }}
-        />
-      ) : null}
+      {fullBleedPhoto({
+        url: slots.imageUrl,
+        width: WIDTH,
+        height: HEIGHT,
+        overlayColor: brandKit.secondaryColor,
+        overlayOpacity: 0.5,
+        fallbackBg: brandKit.secondaryColor,
+      })}
 
-      {/* Overlay preto/degradê pra legibilidade */}
+      {/* Gradiente na base */}
       <div
         style={{
           position: "absolute",
-          top: 0,
           left: 0,
-          width: WIDTH,
-          height: HEIGHT,
-          backgroundColor: brandKit.secondaryColor,
-          opacity: 0.5,
+          right: 0,
+          bottom: 0,
+          height: 720,
+          display: "flex",
+          background: `linear-gradient(180deg, ${withAlpha(
+            brandKit.secondaryColor,
+            0,
+          )} 0%, ${withAlpha(brandKit.secondaryColor, 0.92)} 60%)`,
+        }}
+      />
+
+      {/* Barra vertical decorativa à esquerda */}
+      <div
+        style={{
+          position: "absolute",
+          left: 60,
+          top: 300,
+          width: 5,
+          height: 320,
+          backgroundColor: brandKit.supportColor,
           display: "flex",
         }}
       />
 
-      {/* Bloco de conteúdo */}
+      {/* Assinatura no topo */}
       <div
         style={{
-          position: "relative",
-          width: WIDTH,
-          height: HEIGHT,
+          position: "absolute",
+          top: 44,
+          left: 60,
+          right: 60,
+          display: "flex",
+        }}
+      >
+        {brandSignature({
+          text: signature,
+          color: "#FFFFFF",
+          fontFamily: brandKit.displayFont,
+          fontSize: 20,
+        })}
+      </div>
+
+      {/* Headline na base */}
+      <div
+        style={{
+          position: "absolute",
+          left: 90,
+          right: 60,
+          bottom: 80,
           display: "flex",
           flexDirection: "column",
-          justifyContent: "flex-end",
-          padding: 70,
+          color: "#FFFFFF",
         }}
       >
         <div
           style={{
-            width: 80,
-            height: 8,
-            backgroundColor: brandKit.supportColor,
-            marginBottom: 30,
+            fontSize: 12,
+            fontWeight: 700,
+            color: brandKit.supportColor,
+            letterSpacing: 5,
+            textTransform: "uppercase",
+            marginBottom: 18,
             display: "flex",
           }}
-        />
+        >
+          A gente acredita
+        </div>
         <div
           style={{
             fontFamily: brandKit.displayFont,
             fontSize: 90,
             fontWeight: 700,
-            lineHeight: 1.05,
-            marginBottom: 20,
+            lineHeight: 1,
+            letterSpacing: -1.5,
+            marginBottom: 22,
+            maxWidth: 900,
+            display: "flex",
           }}
         >
           {headline}
@@ -87,32 +131,19 @@ function Institucional01_1x1({ brandKit, slots }: TemplateProps): ReactElement {
         {subheadline ? (
           <div
             style={{
-              fontSize: 32,
-              lineHeight: 1.35,
-              opacity: 0.9,
-              maxWidth: 800,
+              fontSize: 24,
+              lineHeight: 1.45,
+              opacity: 0.88,
+              maxWidth: 780,
+              display: "flex",
             }}
           >
             {subheadline}
           </div>
         ) : null}
-      </div>
-
-      {/* Marca no canto superior */}
-      <div
-        style={{
-          position: "absolute",
-          top: 60,
-          left: 60,
-          fontFamily: brandKit.displayFont,
-          fontSize: 32,
-          fontWeight: 700,
-          letterSpacing: 4,
-          color: "#FFFFFF",
-          display: "flex",
-        }}
-      >
-        {brandKit.defaultSignature || "SUA MARCA"}
+        <div style={{ marginTop: 24, display: "flex" }}>
+          {accentLine({ color: brandKit.supportColor, width: 90, height: 4 })}
+        </div>
       </div>
     </div>
   );

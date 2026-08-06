@@ -1,15 +1,25 @@
-// Template Depoimento 01 — 1080x1080. Foto redonda + aspas grandes + quote.
+// Template Depoimento 01 — 1080x1080. Layout de review/testimonial:
+//   • Aspas decorativas gigantes no topo
+//   • Quote centralizado com destaque
+//   • Card do cliente na base: foto redonda + nome + 5 estrelas
+// Referência: cards de review de e-commerce.
 
 import type { ReactElement } from "react";
 import { registerTemplate, type TemplateProps } from "../registry";
-import { signatureBar } from "../shared";
+import {
+  brandSignature,
+  brandSig,
+  circlePhoto,
+  accentLine,
+} from "../primitives";
 
 const WIDTH = 1080;
 const HEIGHT = 1080;
 
 function Depoimento01_1x1({ brandKit, slots }: TemplateProps): ReactElement {
-  const quote = slots.headline ?? "Melhor experiência que já tive!";
+  const quote = slots.headline ?? "A melhor experiência que já tive!";
   const author = slots.authorName ?? "Cliente satisfeito";
+  const signature = brandSig(brandKit);
 
   return (
     <div
@@ -18,13 +28,42 @@ function Depoimento01_1x1({ brandKit, slots }: TemplateProps): ReactElement {
         height: HEIGHT,
         display: "flex",
         flexDirection: "column",
-        backgroundColor: brandKit.primaryColor,
+        backgroundColor: "#FFFFFF",
         fontFamily: brandKit.bodyFont,
-        color: "#FFFFFF",
+        position: "relative",
       }}
     >
-      <div style={signatureBar(brandKit)}>{brandKit.defaultSignature || "SUA MARCA"}</div>
+      {/* Header sutil */}
+      <div
+        style={{
+          display: "flex",
+          flexDirection: "row",
+          alignItems: "center",
+          justifyContent: "space-between",
+          padding: "40px 60px 0",
+        }}
+      >
+        {brandSignature({
+          text: signature,
+          color: brandKit.secondaryColor,
+          fontFamily: brandKit.displayFont,
+          fontSize: 18,
+        })}
+        <div
+          style={{
+            display: "flex",
+            fontSize: 14,
+            fontWeight: 600,
+            color: brandKit.primaryColor,
+            letterSpacing: 4,
+            textTransform: "uppercase",
+          }}
+        >
+          Depoimento
+        </div>
+      </div>
 
+      {/* Bloco de quote */}
       <div
         style={{
           flex: 1,
@@ -32,18 +71,20 @@ function Depoimento01_1x1({ brandKit, slots }: TemplateProps): ReactElement {
           flexDirection: "column",
           justifyContent: "center",
           alignItems: "center",
-          paddingLeft: 80,
-          paddingRight: 80,
+          paddingLeft: 90,
+          paddingRight: 90,
           textAlign: "center",
         }}
       >
-        {/* Aspas gigantes */}
+        {/* Aspas gigantes decorativas */}
         <div
           style={{
             fontFamily: brandKit.displayFont,
-            fontSize: 220,
-            lineHeight: 0.8,
-            color: brandKit.supportColor,
+            fontSize: 240,
+            fontWeight: 700,
+            lineHeight: 0.6,
+            color: brandKit.primaryColor,
+            display: "flex",
             marginBottom: 20,
           }}
         >
@@ -54,48 +95,85 @@ function Depoimento01_1x1({ brandKit, slots }: TemplateProps): ReactElement {
         <div
           style={{
             fontFamily: brandKit.displayFont,
-            fontSize: 56,
+            fontSize: 52,
             fontWeight: 700,
             lineHeight: 1.2,
-            marginBottom: 60,
+            color: brandKit.secondaryColor,
+            marginBottom: 24,
+            display: "flex",
           }}
         >
           {quote}
         </div>
 
-        {/* Foto do cliente + nome */}
-        <div style={{ display: "flex", alignItems: "center" }}>
-          {slots.imageUrl ? (
-            <img
-              src={slots.imageUrl}
-              width={110}
-              height={110}
-              style={{
-                width: 110,
-                height: 110,
-                objectFit: "cover",
-                borderRadius: 999,
-              }}
-            />
-          ) : (
+        {/* 5 estrelas */}
+        <div style={{ display: "flex", flexDirection: "row", gap: 6, marginBottom: 30 }}>
+          {["★", "★", "★", "★", "★"].map((s, i) => (
             <div
+              key={i}
               style={{
-                width: 110,
-                height: 110,
-                borderRadius: 999,
-                backgroundColor: brandKit.supportColor,
+                fontSize: 40,
+                color: brandKit.supportColor,
                 display: "flex",
+                lineHeight: 1,
               }}
-            />
-          )}
+            >
+              {s}
+            </div>
+          ))}
+        </div>
+      </div>
+
+      {/* Card do cliente na base */}
+      <div
+        style={{
+          display: "flex",
+          flexDirection: "row",
+          alignItems: "center",
+          justifyContent: "center",
+          padding: "30px 60px 50px",
+        }}
+      >
+        {circlePhoto({
+          url: slots.imageUrl,
+          size: 100,
+          borderColor: brandKit.primaryColor,
+          borderWidth: 4,
+          fallbackBg: brandKit.primaryColor,
+        })}
+        <div
+          style={{
+            marginLeft: 20,
+            display: "flex",
+            flexDirection: "column",
+          }}
+        >
           <div
             style={{
-              marginLeft: 24,
-              fontSize: 34,
+              fontSize: 26,
               fontWeight: 700,
+              color: brandKit.secondaryColor,
+              display: "flex",
             }}
           >
             {author}
+          </div>
+          <div style={{ marginTop: 6, display: "flex" }}>
+            {accentLine({ color: brandKit.primaryColor, width: 40, height: 3 })}
+          </div>
+          <div
+            style={{
+              fontSize: 14,
+              color: brandKit.secondaryColor,
+              opacity: 0.55,
+              letterSpacing: 2,
+              textTransform: "uppercase",
+              marginTop: 6,
+              display: "flex",
+              fontWeight: 600,
+            }}
+          >
+            Cliente verificado
           </div>
         </div>
       </div>
