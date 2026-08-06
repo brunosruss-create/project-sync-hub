@@ -126,10 +126,36 @@ async function loadBrandKit(workspaceOwnerId: string): Promise<BrandKit> {
     .select("*")
     .eq("owner_user_id", workspaceOwnerId)
     .maybeSingle();
-  if (data) return mapBrandKitRow(data);
-  // Paleta default neutra e versátil — funciona pra qualquer categoria de post.
-  // Preto sólido como cor primária (sobreposição limpa em qualquer foto),
-  // cinza-escuro como secundária e amber vibrante como destaque.
+
+  // Busca dados do workspace (profile) pra enriquecer o Brand Kit.
+  // Usa business_name, segment, ai_tone, logo — dados já cadastrados
+  // em Configurações → Negócio (zero atrito pro cliente).
+  const { data: profile } = await supabaseAdmin
+    .from("profiles")
+    .select("business_name,segment,ai_tone,logo_url")
+    .eq("id", workspaceOwnerId)
+    .maybeSingle();
+  const biz = (profile as any)?.business_name ?? "";
+  const segment = (profile as any)?.segment ?? "";
+  const aiTone = (profile as any)?.ai_tone ?? "profissional";
+  const logoUrl = (profile as any)?.logo_url ?? null;
+
+  if (data) {
+    const kit = mapBrandKitRow(data);
+    // Preenche campos que o Brand Kit não tem mas o profile sim.
+    if (!kit.defaultSignature || kit.defaultSignature === "Sua Marca") {
+      kit.defaultSignature = biz || "Sua Marca";
+    }
+    if (!kit.logoUrl && logoUrl) {
+      kit.logoUrl = logoUrl;
+    }
+    if (kit.toneOfVoice === "profissional" && aiTone && aiTone !== "profissional") {
+      kit.toneOfVoice = aiTone;
+    }
+    return kit;
+  }
+
+  // Sem Brand Kit salvo — monta um default rico a partir do profile.
   const now = new Date();
   return {
     id: "default",
@@ -137,16 +163,26 @@ async function loadBrandKit(workspaceOwnerId: string): Promise<BrandKit> {
     primaryColor: "#0F172A",
     secondaryColor: "#1E293B",
     supportColor: "#F59E0B",
-    logoUrl: null,
-    displayFont: "Playfair Display",
+    logoUrl,
+    displayFont: "Montserrat",
     bodyFont: "Inter",
-    toneOfVoice: "profissional",
-    defaultSignature: "Sua Marca",
+    toneOfVoice: aiTone || "profissional",
+    defaultSignature: biz || "Sua Marca",
     extractionSource: null,
     extractionMetadata: null,
     createdAt: now,
     updatedAt: now,
   };
+}
+
+/** Segmento do workspace — usado pra enriquecer keywords de imagem. */
+async function loadSegment(workspaceOwnerId: string): Promise<string> {
+  const { data } = await supabaseAdmin
+    .from("profiles")
+    .select("segment")
+    .eq("id", workspaceOwnerId)
+    .maybeSingle();
+  return (data as any)?.segment ?? "";
 }
 
 async function loadService(id: string, workspaceOwnerId: string) {
@@ -370,6 +406,7 @@ export async function processContentGenerationJob(
   const job = await loadJob(payload.content_job_id);
   const brief = await loadBrief(job.briefId, job.ownerUserId);
   const brandKit = await loadBrandKit(job.ownerUserId);
+  const segment = await loadSegment(job.ownerUserId);
   const service = brief.serviceId ? await loadService(brief.serviceId, job.ownerUserId) : null;
   if (brief.serviceId && !service) {
     await updateJob(job.id, {
@@ -405,6 +442,7 @@ export async function processContentGenerationJob(
           }
         : null,
       targetNetworks: brief.targetNetworks,
+      segment, // nicho do workspace — enriquece contexto pra keywords melhores
     });
     const copyBundle = copyResult.bundle;
 

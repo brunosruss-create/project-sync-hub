@@ -32,6 +32,8 @@ export interface CopyBundleInput {
     description?: string | null;
   } | null;
   targetNetworks: TargetNetwork[];
+  /** Segmento/nicho do workspace — usado pra contextualizar keywords de imagem. */
+  segment?: string;
 }
 
 export interface GenerateCopyOutput {
@@ -69,6 +71,12 @@ function buildViralPrompt(input: CopyBundleInput): string {
   parts.push(
     `Tom de voz: ${brief.toneOverride ?? brandKit.toneOfVoice}`,
   );
+  if (input.segment) {
+    parts.push(`Nicho/segmento do negócio: ${input.segment}`);
+    parts.push(
+      `Use esse segmento como CONTEXTO pra escolher imagens e vocabulário adequados.`,
+    );
+  }
   if (brief.freeTextObjective) {
     parts.push(`Objetivo do post: ${brief.freeTextObjective}`);
   }

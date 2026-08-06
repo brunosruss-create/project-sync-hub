@@ -304,26 +304,20 @@ function BrandKitPage() {
         </div>
       </Card>
 
-      {/* Identidade verbal */}
+      {/* Identidade verbal — puxada do workspace, editável aqui como override */}
       <Card style={{ padding: 20 }}>
-        <div style={sectionLabel}>Identidade verbal</div>
+        <div style={sectionLabel}>Assinatura nos posts</div>
         <div style={{ marginBottom: 14 }}>
-          <label style={fieldLabel}>Tom de voz padrão</label>
-          <input
-            value={form.toneOfVoice}
-            onChange={(e) => setForm((f) => ({ ...f, toneOfVoice: e.target.value }))}
-            placeholder="Ex: profissional e acolhedor"
-            style={input}
-          />
-        </div>
-        <div>
-          <label style={fieldLabel}>Assinatura padrão</label>
+          <label style={fieldLabel}>Nome que aparece nos posts</label>
           <input
             value={form.defaultSignature}
             onChange={(e) => setForm((f) => ({ ...f, defaultSignature: e.target.value }))}
             placeholder="Nome da sua marca"
             style={input}
           />
+          <div style={{ fontSize: 11, color: "var(--text-muted)", marginTop: 4 }}>
+            Puxado do nome do negócio nas Configurações. Edite aqui se quiser diferente.
+          </div>
         </div>
       </Card>
 
