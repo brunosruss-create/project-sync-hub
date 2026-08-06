@@ -20,33 +20,48 @@ function orientationFor(aspectRatio: SearchOpts["aspectRatio"]): string | null {
   return null;
 }
 
+/**
+ * Tenta uma busca no Pexels. Se retornar vazio, tenta de novo SEM orientation
+ * (fallback pra maximizar recall — melhor uma foto sem crop ideal do que nenhuma).
+ */
+async function searchOnce(
+  apiKey: string,
+  query: string,
+  orientation: string | null,
+  signal: AbortSignal | undefined,
+): Promise<any | null> {
+  const params = new URLSearchParams({
+    query,
+    per_page: "5",
+  });
+  if (orientation) params.set("orientation", orientation);
+  const url = `https://api.pexels.com/v1/search?${params.toString()}`;
+  const res = await fetch(url, {
+    headers: { Authorization: apiKey },
+    signal,
+  });
+  if (!res.ok) return null;
+  // eslint-disable-next-line @typescript-eslint/no-explicit-any
+  const json: any = await res.json();
+  return json.photos?.[0] ?? null;
+}
+
 export const pexelsAdapter = {
   name: NAME,
   async search(query: string, opts: SearchOpts): Promise<ImageBankResult | null> {
     const apiKey = process.env.PEXELS_API_KEY;
     if (!apiKey) return null;
+    if (!query.trim()) return null;
 
-    const params = new URLSearchParams({
-      query,
-      per_page: "1",
-      size: "large",
-    });
+    // Nota: NÃO usamos `size=large` nem `color` — ambos filtram muito o pool
+    // de resultados. Melhor pegar uma foto qualquer boa do que nenhuma.
     const orient = orientationFor(opts.aspectRatio);
-    if (orient) params.set("orientation", orient);
-    if (opts.colorHint) {
-      // Pexels aceita "color" com hex sem #
-      params.set("color", opts.colorHint.replace(/^#/, ""));
-    }
+    let photo = await searchOnce(apiKey, query, orient, opts.signal);
 
-    const url = `https://api.pexels.com/v1/search?${params.toString()}`;
-    const res = await fetch(url, {
-      headers: { Authorization: apiKey },
-      signal: opts.signal,
-    });
-    if (!res.ok) return null;
-    // eslint-disable-next-line @typescript-eslint/no-explicit-any
-    const json: any = await res.json();
-    const photo = json.photos?.[0];
+    // Fallback 1: se com orientation não achou, tenta sem
+    if (!photo && orient) {
+      photo = await searchOnce(apiKey, query, null, opts.signal);
+    }
     if (!photo) return null;
 
     return {

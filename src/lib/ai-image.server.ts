@@ -11,10 +11,10 @@ import { supabaseAdmin } from "@/integrations/supabase/client.server";
 import { loadGeminiCredentials } from "@/lib/ai-credentials.server";
 
 const BUCKET = "ai-content";
-// Modelo de geração de imagem — o mesmo Gemini API atende Imagen via ID de modelo.
-// Preferência: Super Admin pode setar `gemini_image_model` em global_settings
-// (não obrigatório — se ausente, usa este default).
-const DEFAULT_IMAGE_MODEL = process.env.NANO_BANANA_MODEL ?? "imagen-4.0-generate-001";
+// Modelo de geração de imagem — Google Imagen via Gemini API.
+// imagen-3.0-generate-002 é o modelo estável e disponível para novos usuários.
+// (imagen-4.0-generate-001 foi descontinuado em 2026 pra novos usuários.)
+const DEFAULT_IMAGE_MODEL = process.env.NANO_BANANA_MODEL ?? "imagen-3.0-generate-002";
 
 export interface GenerateImageInput {
   prompt: string;

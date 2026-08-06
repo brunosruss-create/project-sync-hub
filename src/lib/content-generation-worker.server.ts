@@ -62,17 +62,32 @@ function aspectRatioFor(format: PostFormat): "1:1" | "9:16" | "16:9" {
   return "1:1";
 }
 
+// Palavras-chave universais (EN) por categoria — o Pexels tem muito mais fotos
+// indexadas em inglês, então mesmo pra clientes BR a busca é feita em EN pra
+// maximizar recall. A cor/temática do post vem do template renderizado por cima.
+const CATEGORY_KEYWORDS_EN: Record<string, string[]> = {
+  promo: ["shopping", "sale", "store"],
+  novidade: ["new product", "launch", "showcase"],
+  depoimento: ["happy customer", "smile", "portrait"],
+  agenda: ["calendar", "meeting", "planning"],
+  dica: ["learning", "workspace", "notebook"],
+  institucional: ["team", "office", "business"],
+  antes_depois: ["transformation", "makeover"],
+  catalogo: ["product photography", "showcase"],
+};
+
 function buildImageQuery(
   brief: ContentBrief,
   service: { name?: string; description?: string | null } | null,
   brandKit: BrandKit,
 ): string {
-  const parts: string[] = [];
-  if (service?.name) parts.push(service.name);
-  if (brief.freeTextObjective) parts.push(brief.freeTextObjective);
-  if (parts.length === 0) parts.push(brief.templateCategory);
-  parts.push(brandKit.toneOfVoice);
-  return parts.join(" ").slice(0, 200);
+  // Prioridade 1: nome do serviço (o cliente sabe qual palavra funciona pro seu ramo)
+  if (service?.name) {
+    return service.name.slice(0, 60);
+  }
+  // Prioridade 2: keyword universal da categoria
+  const keywords = CATEGORY_KEYWORDS_EN[brief.templateCategory] ?? ["business"];
+  return keywords[0];
 }
 
 function buildAiImagePrompt(
