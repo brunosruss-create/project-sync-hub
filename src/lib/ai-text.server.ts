@@ -87,6 +87,24 @@ function buildViralPrompt(input: CopyBundleInput): string {
   parts.push("2200; YouTube: título até 100 + descrição até 5000).");
   parts.push("Escreva em português brasileiro. Não invente informações não fornecidas.");
   parts.push("Não use jargões pesados nem clickbait vulgar.");
+  parts.push("");
+  parts.push("MUITO IMPORTANTE — imageKeywords:");
+  parts.push(
+    "Gere 2 a 4 palavras-chave EM INGLÊS que descrevam a imagem PERFEITA pra este post.",
+  );
+  parts.push(
+    'Ex: post sobre corte e escova de cabelo → ["hair salon", "haircut", "hairdresser"].',
+  );
+  parts.push(
+    'Ex: post sobre pizzaria → ["pizza", "italian food"].',
+  );
+  parts.push(
+    'Ex: post sobre academia → ["fitness gym", "workout"].',
+  );
+  parts.push(
+    "Palavras SIMPLES e ESPECÍFICAS do nicho — vamos usar pra buscar num banco de fotos.",
+  );
+  parts.push("NUNCA use palavras genéricas como 'business', 'shopping', 'promotion'.");
 
   return parts.join("\n");
 }
@@ -101,6 +119,10 @@ const GEMINI_RESPONSE_SCHEMA = {
     cta: { type: Type.STRING },
     hashtags: { type: Type.ARRAY, items: { type: Type.STRING } },
     shortCaption: { type: Type.STRING },
+    imageKeywords: {
+      type: Type.ARRAY,
+      items: { type: Type.STRING },
+    },
     perNetwork: {
       type: Type.OBJECT,
       properties: {
@@ -126,7 +148,7 @@ const GEMINI_RESPONSE_SCHEMA = {
       },
     },
   },
-  required: ["hook", "body", "cta", "hashtags", "shortCaption", "perNetwork"],
+  required: ["hook", "body", "cta", "hashtags", "shortCaption", "perNetwork", "imageKeywords"],
 };
 
 export function moderateCopy(bundle: CopyBundle): void {

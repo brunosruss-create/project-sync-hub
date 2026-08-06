@@ -160,6 +160,9 @@ export const CopyBundleSchema = z.object({
   hashtags: z.array(z.string().max(50)).max(15),
   shortCaption: z.string().min(1).max(200),
   perNetwork: CopyBundlePerNetworkSchema,
+  /** 2 a 4 palavras-chave EM INGLÊS pra buscar imagem no banco de fotos.
+   *  Ex: post sobre corte de cabelo → ["hair salon", "haircut"]. */
+  imageKeywords: z.array(z.string().min(2).max(60)).min(1).max(4).optional(),
 });
 export type CopyBundle = z.infer<typeof CopyBundleSchema>;
 

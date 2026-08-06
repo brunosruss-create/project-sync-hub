@@ -200,6 +200,7 @@ async function resolveImage(
   brandKit: BrandKit,
   service: Awaited<ReturnType<typeof loadService>>,
   workspaceOwnerId: string,
+  imageKeywords: string[] | undefined,
 ): Promise<ResolvedImage> {
   // Prioridade 1: foto do serviço (Requirement 7.2).
   if (service && service.photos.length > 0) {
@@ -212,8 +213,12 @@ async function resolveImage(
     };
   }
 
-  // Prioridade 2: Image_Bank
-  const query = buildImageQuery(brief, service, brandKit);
+  // Prioridade 2: Image_Bank — usa keywords do Gemini (que sabe o contexto real
+  // do post) em vez de query genérica por categoria.
+  const query =
+    imageKeywords && imageKeywords.length > 0
+      ? imageKeywords.slice(0, 2).join(" ")
+      : buildImageQuery(brief, service, brandKit);
   const bankResult = await searchImage(query, {
     aspectRatio: aspectRatioFor(brief.postFormat),
     colorHint: brandKit.primaryColor,
@@ -381,19 +386,12 @@ export async function processContentGenerationJob(
 
   await updateJob(job.id, {
     status: "running",
-    stage: "image_bank",
+    stage: "ai_text",
     started_at: new Date().toISOString(),
   });
 
   try {
-    // Stage 1: imagem
-    const image = await resolveImage(brief, brandKit, service, job.ownerUserId);
-    await updateJob(job.id, {
-      stage: "ai_text",
-      image_provider_used: image.provider,
-    });
-
-    // Stage 2: copy
+    // Stage 1: copy (gera texto + imageKeywords que descrevem a imagem ideal)
     const copyResult = await generateCopyBundle({
       brief,
       brandKit,
@@ -409,8 +407,19 @@ export async function processContentGenerationJob(
     });
     const copyBundle = copyResult.bundle;
 
-    // Stage 3: render
-    await updateJob(job.id, { stage: "render", ai_text_model: copyResult.model });
+    // Stage 2: imagem — usa as keywords do Gemini (que entende o contexto real)
+    await updateJob(job.id, { stage: "image_bank", ai_text_model: copyResult.model });
+    const image = await resolveImage(
+      brief,
+      brandKit,
+      service,
+      job.ownerUserId,
+      copyBundle.imageKeywords,
+    );
+    await updateJob(job.id, {
+      stage: "render",
+      image_provider_used: image.provider,
+    });
     const template =
       pickTemplate(brief.templateCategory, brief.postFormat === "story" ? "9:16" : "1:1") ??
       null;
