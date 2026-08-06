@@ -121,7 +121,7 @@ function AssetsListPage() {
           {assets.map((asset) => (
             <Link
               key={asset.id}
-              to="/content/assets/$assetId"
+              to="/content/review/$assetId"
               params={{ assetId: asset.id }}
               style={{
                 textDecoration: "none",

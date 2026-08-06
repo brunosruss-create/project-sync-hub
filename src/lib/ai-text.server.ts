@@ -88,23 +88,54 @@ function buildViralPrompt(input: CopyBundleInput): string {
   parts.push("Escreva em português brasileiro. Não invente informações não fornecidas.");
   parts.push("Não use jargões pesados nem clickbait vulgar.");
   parts.push("");
-  parts.push("MUITO IMPORTANTE — imageKeywords:");
+  parts.push("=== IMAGE KEYWORDS (imageKeywords) — SEÇÃO CRÍTICA ===");
   parts.push(
-    "Gere 2 a 4 palavras-chave EM INGLÊS que descrevam a imagem PERFEITA pra este post.",
+    "Gere 3 a 4 palavras-chave EM INGLÊS que descrevam com PRECISÃO a foto ideal pra este post.",
+  );
+  parts.push("Regras absolutas:");
+  parts.push(
+    "1. USE MODIFICADORES DE GÊNERO/PÚBLICO quando o serviço é específico:",
   );
   parts.push(
-    'Ex: post sobre corte e escova de cabelo → ["hair salon", "haircut", "hairdresser"].',
+    '   • "corte e escova / hidratação / mechas" → ["woman hairstylist", "hair salon", "female haircut"] (NUNCA barbershop!)',
   );
   parts.push(
-    'Ex: post sobre pizzaria → ["pizza", "italian food"].',
+    '   • "barba / corte masculino / degradê" → ["barbershop", "male haircut", "barber"]',
   );
   parts.push(
-    'Ex: post sobre academia → ["fitness gym", "workout"].',
+    '   • "esmalte / unhas / manicure" → ["nail salon", "manicure", "nail art"]',
   );
   parts.push(
-    "Palavras SIMPLES e ESPECÍFICAS do nicho — vamos usar pra buscar num banco de fotos.",
+    '   • "estética facial / limpeza de pele" → ["facial treatment", "spa skincare"]',
   );
-  parts.push("NUNCA use palavras genéricas como 'business', 'shopping', 'promotion'.");
+  parts.push(
+    '   • "academia / musculação" → ["fitness gym", "workout woman" ou "workout man" conforme o público]',
+  );
+  parts.push(
+    '   • "pilates / yoga" → ["pilates studio", "yoga class"]',
+  );
+  parts.push(
+    '   • "pizzaria / restaurante italiano" → ["pizza restaurant", "italian food"]',
+  );
+  parts.push(
+    '   • "hamburgueria" → ["burger restaurant", "gourmet burger"]',
+  );
+  parts.push(
+    '   • "dentista / odontologia" → ["dentist office", "dental clinic"]',
+  );
+  parts.push(
+    '   • "clínica veterinária / pet shop" → ["veterinary clinic", "pet grooming"]',
+  );
+  parts.push("2. NUNCA use palavras genéricas: NÃO USE 'business', 'shopping', 'promotion', 'sale', 'store'.");
+  parts.push(
+    "3. Se o negócio é de nicho feminino (moda, beleza, estética) → inclua 'woman' ou 'female' em pelo menos 1 keyword.",
+  );
+  parts.push(
+    "4. Se o negócio é de nicho masculino (barbearia, oficina) → inclua 'man' ou 'male'.",
+  );
+  parts.push(
+    "5. As keywords devem descrever a CENA fotográfica, não o produto. Ex: NÃO 'hair', SIM 'woman getting haircut'.",
+  );
 
   return parts.join("\n");
 }

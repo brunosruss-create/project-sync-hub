@@ -12,7 +12,7 @@ import {
   regenerateAsset,
 } from "@/lib/content-generation.functions";
 
-export const Route = createFileRoute("/_authenticated/content/assets_/$assetId")({
+export const Route = createFileRoute("/_authenticated/content/review/$assetId")({
   component: AssetDetailPage,
 });
 
@@ -31,14 +31,30 @@ function AssetDetailPage() {
 
   const asset = assetQ.data?.asset;
 
+  // Estado editável — inicia com os valores do asset.
+  const [editHook, setEditHook] = React.useState("");
+  const [editBody, setEditBody] = React.useState("");
+  const [editCta, setEditCta] = React.useState("");
+
+  React.useEffect(() => {
+    if (asset) {
+      setEditHook(asset.copyBundle.hook);
+      setEditBody(asset.copyBundle.body);
+      setEditCta(asset.copyBundle.cta);
+    }
+  }, [asset]);
+
   const sendToComposer = () => {
     if (!asset) return;
     const network = asset.targetNetwork;
     const perNet = asset.copyBundle.perNetwork;
-    const fullText =
+    // Monta texto final usando as edições do usuário (não o original).
+    let fullText =
       network === "youtube" && perNet.youtube
         ? `${perNet.youtube.title}\n\n${perNet.youtube.description}`
-        : (perNet as any)[network]?.fullText ?? asset.copyBundle.body;
+        : (perNet as any)[network]?.fullText ?? editBody;
+    // Substitui hook/body/cta editados no fullText final.
+    fullText = `${editHook}\n\n${editBody}\n\n${editCta}`;
     const params = new URLSearchParams({
       aiAssetId: asset.id,
       network,
@@ -62,8 +78,9 @@ function AssetDetailPage() {
     mutationFn: (mode: "copy_only" | "image_only" | "both") =>
       regenFn({ data: { assetId, mode } }),
     onSuccess: () => {
-      toast.success("Nova versão sendo gerada");
+      toast.success("Nova versão sendo gerada — aparece em instantes");
       qc.invalidateQueries({ queryKey: ["content-asset", assetId] });
+      qc.invalidateQueries({ queryKey: ["content-assets"] });
     },
     onError: (e: any) => toast.error(e?.message ?? "Falha ao regenerar"),
   });
@@ -133,9 +150,22 @@ function AssetDetailPage() {
               ))}
             </div>
           ) : null}
+          {/* Botão de refazer imagem sob a foto */}
+          {isPending ? (
+            <div style={{ padding: "10px 14px", borderTop: "1px solid var(--border)" }}>
+              <button
+                onClick={() => regen.mutate("image_only")}
+                disabled={regen.isPending}
+                style={secondaryBtnSm}
+              >
+                <RefreshCw size={12} />
+                Gerar outra imagem
+              </button>
+            </div>
+          ) : null}
         </Card>
 
-        {/* Texto + status */}
+        {/* Texto editável + status */}
         <div className="flex flex-col" style={{ gap: 12 }}>
           <div className="flex items-center" style={{ gap: 8 }}>
             <Badge
@@ -158,36 +188,57 @@ function AssetDetailPage() {
             </span>
           </div>
 
+          {/* Chamada — editável */}
           <Card style={{ padding: 14 }}>
-            <div style={{ fontSize: 11, color: "var(--text-muted)", marginBottom: 4, textTransform: "uppercase", letterSpacing: "0.04em" }}>
-              Chamada
-            </div>
-            <div style={{ fontSize: 15, fontWeight: 600 }}>{copy.hook}</div>
+            <label style={fieldLabel}>Chamada</label>
+            {isPending ? (
+              <input
+                value={editHook}
+                onChange={(e) => setEditHook(e.target.value)}
+                style={editInput}
+              />
+            ) : (
+              <div style={{ fontSize: 15, fontWeight: 600 }}>{copy.hook}</div>
+            )}
           </Card>
 
+          {/* Corpo — editável */}
           <Card style={{ padding: 14 }}>
-            <div style={{ fontSize: 11, color: "var(--text-muted)", marginBottom: 4, textTransform: "uppercase", letterSpacing: "0.04em" }}>
-              Corpo
-            </div>
-            <div style={{ fontSize: 13, lineHeight: 1.55, whiteSpace: "pre-wrap" }}>
-              {copy.body}
-            </div>
+            <label style={fieldLabel}>Corpo</label>
+            {isPending ? (
+              <textarea
+                value={editBody}
+                onChange={(e) => setEditBody(e.target.value)}
+                rows={4}
+                style={{ ...editInput, resize: "vertical", fontFamily: "inherit", minHeight: 80 }}
+              />
+            ) : (
+              <div style={{ fontSize: 13, lineHeight: 1.55, whiteSpace: "pre-wrap" }}>
+                {copy.body}
+              </div>
+            )}
           </Card>
 
+          {/* CTA — editável */}
           <Card style={{ padding: 14 }}>
-            <div style={{ fontSize: 11, color: "var(--text-muted)", marginBottom: 4, textTransform: "uppercase", letterSpacing: "0.04em" }}>
-              Ação final
-            </div>
-            <div style={{ fontSize: 13, fontWeight: 600, color: "var(--brand-400)" }}>
-              {copy.cta}
-            </div>
+            <label style={fieldLabel}>Ação final</label>
+            {isPending ? (
+              <input
+                value={editCta}
+                onChange={(e) => setEditCta(e.target.value)}
+                style={{ ...editInput, color: "var(--brand-400)", fontWeight: 600 }}
+              />
+            ) : (
+              <div style={{ fontSize: 13, fontWeight: 600, color: "var(--brand-400)" }}>
+                {copy.cta}
+              </div>
+            )}
           </Card>
 
+          {/* Hashtags (não editável aqui — pode editar no compose depois) */}
           {copy.hashtags.length > 0 ? (
             <Card style={{ padding: 14 }}>
-              <div style={{ fontSize: 11, color: "var(--text-muted)", marginBottom: 8, textTransform: "uppercase", letterSpacing: "0.04em" }}>
-                Hashtags
-              </div>
+              <div style={fieldLabel}>Hashtags</div>
               <div style={{ display: "flex", flexWrap: "wrap", gap: 6 }}>
                 {copy.hashtags.map((h) => (
                   <span
@@ -207,64 +258,93 @@ function AssetDetailPage() {
               </div>
             </Card>
           ) : null}
-        </div>
-      </div>
 
-      {isPending ? (
-        <div className="flex flex-wrap items-center justify-between" style={{ gap: 8, paddingTop: 4 }}>
-          <div className="flex" style={{ gap: 8 }}>
+          {/* Ação de regenerar texto */}
+          {isPending ? (
             <button
               onClick={() => regen.mutate("copy_only")}
               disabled={regen.isPending}
-              style={secondaryBtn}
+              style={secondaryBtnSm}
             >
-              <RefreshCw size={13} />
-              Refazer texto
+              <RefreshCw size={12} />
+              Gerar outro texto
             </button>
-            <button
-              onClick={() => regen.mutate("image_only")}
-              disabled={regen.isPending}
-              style={secondaryBtn}
-            >
-              <RefreshCw size={13} />
-              Refazer imagem
-            </button>
-          </div>
-          <div className="flex" style={{ gap: 8 }}>
-            <button
-              onClick={() => reject.mutate()}
-              disabled={reject.isPending}
-              style={{
-                ...secondaryBtn,
-                color: "var(--danger, #B91C1C)",
-                borderColor: "var(--danger, #FCA5A5)",
-              }}
-            >
-              <X size={13} />
-              Descartar
-            </button>
-            <button onClick={sendToComposer} className="btn-primary" style={{ height: 36, fontSize: 13 }}>
-              <Check size={13} />
-              Revisar e publicar
-            </button>
-          </div>
+          ) : null}
+        </div>
+      </div>
+
+      {/* Ações principais */}
+      {isPending ? (
+        <div className="flex flex-wrap items-center justify-between" style={{ gap: 8, paddingTop: 4 }}>
+          <button
+            onClick={() => reject.mutate()}
+            disabled={reject.isPending}
+            style={{
+              ...secondaryBtn,
+              color: "var(--danger, #B91C1C)",
+              borderColor: "var(--danger, #FCA5A5)",
+            }}
+          >
+            <X size={13} />
+            Descartar
+          </button>
+          <button onClick={sendToComposer} className="btn-primary" style={{ height: 38, fontSize: 14 }}>
+            <Check size={14} />
+            Revisar e publicar
+          </button>
         </div>
       ) : null}
     </div>
   );
 }
 
+const fieldLabel: React.CSSProperties = {
+  display: "block",
+  fontSize: 11,
+  color: "var(--text-muted)",
+  marginBottom: 6,
+  textTransform: "uppercase",
+  letterSpacing: "0.04em",
+  fontWeight: 600,
+};
+
+const editInput: React.CSSProperties = {
+  width: "100%",
+  padding: "8px 12px",
+  fontSize: 14,
+  borderRadius: "var(--radius-control)",
+  border: "1px solid var(--border-strong)",
+  background: "var(--bg-base)",
+  color: "var(--text-primary)",
+};
+
 const secondaryBtn: React.CSSProperties = {
   display: "inline-flex",
   alignItems: "center",
   gap: 6,
-  height: 34,
-  padding: "0 14px",
+  height: 36,
+  padding: "0 16px",
   borderRadius: "var(--radius-pill)",
   background: "var(--bg-surface)",
   color: "var(--text-primary)",
-  fontSize: 12,
+  fontSize: 13,
   fontWeight: 500,
   border: "1px solid var(--border-strong)",
   cursor: "pointer",
+};
+
+const secondaryBtnSm: React.CSSProperties = {
+  display: "inline-flex",
+  alignItems: "center",
+  gap: 6,
+  height: 30,
+  padding: "0 12px",
+  borderRadius: "var(--radius-pill)",
+  background: "var(--bg-surface)",
+  color: "var(--text-muted)",
+  fontSize: 12,
+  fontWeight: 500,
+  border: "1px solid var(--border)",
+  cursor: "pointer",
+  width: "fit-content",
 };

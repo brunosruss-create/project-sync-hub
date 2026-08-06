@@ -54,7 +54,7 @@ import { Route as ApiInternalQueueHealthRouteImport } from './routes/api/interna
 import { Route as ApiPublicSocialReconcileRouteImport } from './routes/api/public/social-reconcile'
 import { Route as ApiPublicZernioRouteImport } from './routes/api/public/zernio'
 import { Route as ApiPublicZernioSocialRouteImport } from './routes/api/public/zernio-social'
-import { Route as AuthenticatedContentAssetsAssetIdRouteImport } from './routes/_authenticated.content.assets_.$assetId'
+import { Route as AuthenticatedContentReviewAssetIdRouteImport } from './routes/_authenticated.content.review.$assetId'
 import { Route as ApiPublicEvolutionInstanceIdRouteImport } from './routes/api/public/evolution.$instanceId'
 
 const IndexRoute = IndexRouteImport.update({
@@ -305,10 +305,10 @@ const ApiPublicZernioSocialRoute = ApiPublicZernioSocialRouteImport.update({
   path: '/api/public/zernio-social',
   getParentRoute: () => rootRouteImport,
 } as any)
-const AuthenticatedContentAssetsAssetIdRoute =
-  AuthenticatedContentAssetsAssetIdRouteImport.update({
-    id: '/assets_/$assetId',
-    path: '/assets/$assetId',
+const AuthenticatedContentReviewAssetIdRoute =
+  AuthenticatedContentReviewAssetIdRouteImport.update({
+    id: '/review/$assetId',
+    path: '/review/$assetId',
     getParentRoute: () => AuthenticatedContentRoute,
   } as any)
 const ApiPublicEvolutionInstanceIdRoute =
@@ -363,7 +363,7 @@ export interface FileRoutesByFullPath {
   '/api/public/social-reconcile': typeof ApiPublicSocialReconcileRoute
   '/api/public/zernio': typeof ApiPublicZernioRoute
   '/api/public/zernio-social': typeof ApiPublicZernioSocialRoute
-  '/content/assets/$assetId': typeof AuthenticatedContentAssetsAssetIdRoute
+  '/content/review/$assetId': typeof AuthenticatedContentReviewAssetIdRoute
   '/api/public/evolution/$instanceId': typeof ApiPublicEvolutionInstanceIdRoute
 }
 export interface FileRoutesByTo {
@@ -411,7 +411,7 @@ export interface FileRoutesByTo {
   '/api/public/social-reconcile': typeof ApiPublicSocialReconcileRoute
   '/api/public/zernio': typeof ApiPublicZernioRoute
   '/api/public/zernio-social': typeof ApiPublicZernioSocialRoute
-  '/content/assets/$assetId': typeof AuthenticatedContentAssetsAssetIdRoute
+  '/content/review/$assetId': typeof AuthenticatedContentReviewAssetIdRoute
   '/api/public/evolution/$instanceId': typeof ApiPublicEvolutionInstanceIdRoute
 }
 export interface FileRoutesById {
@@ -461,7 +461,7 @@ export interface FileRoutesById {
   '/api/public/social-reconcile': typeof ApiPublicSocialReconcileRoute
   '/api/public/zernio': typeof ApiPublicZernioRoute
   '/api/public/zernio-social': typeof ApiPublicZernioSocialRoute
-  '/_authenticated/content/assets_/$assetId': typeof AuthenticatedContentAssetsAssetIdRoute
+  '/_authenticated/content/review/$assetId': typeof AuthenticatedContentReviewAssetIdRoute
   '/api/public/evolution/$instanceId': typeof ApiPublicEvolutionInstanceIdRoute
 }
 export interface FileRouteTypes {
@@ -511,7 +511,7 @@ export interface FileRouteTypes {
     | '/api/public/social-reconcile'
     | '/api/public/zernio'
     | '/api/public/zernio-social'
-    | '/content/assets/$assetId'
+    | '/content/review/$assetId'
     | '/api/public/evolution/$instanceId'
   fileRoutesByTo: FileRoutesByTo
   to:
@@ -559,7 +559,7 @@ export interface FileRouteTypes {
     | '/api/public/social-reconcile'
     | '/api/public/zernio'
     | '/api/public/zernio-social'
-    | '/content/assets/$assetId'
+    | '/content/review/$assetId'
     | '/api/public/evolution/$instanceId'
   id:
     | '__root__'
@@ -608,7 +608,7 @@ export interface FileRouteTypes {
     | '/api/public/social-reconcile'
     | '/api/public/zernio'
     | '/api/public/zernio-social'
-    | '/_authenticated/content/assets_/$assetId'
+    | '/_authenticated/content/review/$assetId'
     | '/api/public/evolution/$instanceId'
   fileRoutesById: FileRoutesById
 }
@@ -946,11 +946,11 @@ declare module '@tanstack/react-router' {
       preLoaderRoute: typeof ApiPublicZernioSocialRouteImport
       parentRoute: typeof rootRouteImport
     }
-    '/_authenticated/content/assets_/$assetId': {
-      id: '/_authenticated/content/assets_/$assetId'
-      path: '/assets/$assetId'
-      fullPath: '/content/assets/$assetId'
-      preLoaderRoute: typeof AuthenticatedContentAssetsAssetIdRouteImport
+    '/_authenticated/content/review/$assetId': {
+      id: '/_authenticated/content/review/$assetId'
+      path: '/review/$assetId'
+      fullPath: '/content/review/$assetId'
+      preLoaderRoute: typeof AuthenticatedContentReviewAssetIdRouteImport
       parentRoute: typeof AuthenticatedContentRoute
     }
     '/api/public/evolution/$instanceId': {
@@ -967,15 +967,15 @@ interface AuthenticatedContentRouteChildren {
   AuthenticatedContentAssetsRoute: typeof AuthenticatedContentAssetsRoute
   AuthenticatedContentBrandRoute: typeof AuthenticatedContentBrandRoute
   AuthenticatedContentComposeRoute: typeof AuthenticatedContentComposeRoute
-  AuthenticatedContentAssetsAssetIdRoute: typeof AuthenticatedContentAssetsAssetIdRoute
+  AuthenticatedContentReviewAssetIdRoute: typeof AuthenticatedContentReviewAssetIdRoute
 }
 
 const AuthenticatedContentRouteChildren: AuthenticatedContentRouteChildren = {
   AuthenticatedContentAssetsRoute: AuthenticatedContentAssetsRoute,
   AuthenticatedContentBrandRoute: AuthenticatedContentBrandRoute,
   AuthenticatedContentComposeRoute: AuthenticatedContentComposeRoute,
-  AuthenticatedContentAssetsAssetIdRoute:
-    AuthenticatedContentAssetsAssetIdRoute,
+  AuthenticatedContentReviewAssetIdRoute:
+    AuthenticatedContentReviewAssetIdRoute,
 }
 
 const AuthenticatedContentRouteWithChildren =

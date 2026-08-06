@@ -215,9 +215,10 @@ async function resolveImage(
 
   // Prioridade 2: Image_Bank — usa keywords do Gemini (que sabe o contexto real
   // do post) em vez de query genérica por categoria.
+  // Junta até 3 keywords (Pexels trata como AND, aumenta especificidade).
   const query =
     imageKeywords && imageKeywords.length > 0
-      ? imageKeywords.slice(0, 2).join(" ")
+      ? imageKeywords.slice(0, 3).join(" ")
       : buildImageQuery(brief, service, brandKit);
   const bankResult = await searchImage(query, {
     aspectRatio: aspectRatioFor(brief.postFormat),
