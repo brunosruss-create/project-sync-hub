@@ -3,7 +3,7 @@ import { createFileRoute, Link } from "@tanstack/react-router";
 import { useQuery, useMutation, useQueryClient } from "@tanstack/react-query";
 import { useServerFn } from "@tanstack/react-start";
 import { toast } from "sonner";
-import { Plus, Loader2, Share2, FileText, Settings2, Facebook, Instagram, Youtube, Music2, Sparkles, Palette, LayoutTemplate } from "lucide-react";
+import { Plus, Loader2, Share2, FileText, Settings2, Facebook, Instagram, Youtube, Music2, Sparkles, Palette } from "lucide-react";
 import { Card } from "@/components/ui/card";
 import { Badge, type BadgeVariant } from "@/components/ui/badge";
 import { EmptyState } from "@/components/empty-state";
@@ -173,8 +173,7 @@ function SocialAccountsPage() {
         >
           <SubNavLink to="/social/accounts" icon={<Share2 size={12} />} label="Contas" active />
           <SubNavLink to="/content/assets" icon={<Sparkles size={12} />} label="Posts com IA" />
-          <SubNavLink to="/content/brand" icon={<Palette size={12} />} label="Brand Kit" />
-          <SubNavLink to="/content/templates" icon={<LayoutTemplate size={12} />} label="Templates" />
+          <SubNavLink to="/content/brand" icon={<Palette size={12} />} label="Identidade visual" />
         </div>
       )}
 

@@ -11,6 +11,7 @@ import {
   extractBrandFromInstagram,
   extractBrandFromWebsite,
 } from "@/lib/brand-kit.functions";
+import { listSocialAccounts } from "@/lib/social-publishing.functions";
 import {
   DISPLAY_FONTS,
   BODY_FONTS,
@@ -27,8 +28,24 @@ function BrandKitPage() {
   const saveFn = useServerFn(upsertBrandKit);
   const extractIgFn = useServerFn(extractBrandFromInstagram);
   const extractSiteFn = useServerFn(extractBrandFromWebsite);
+  const accountsFn = useServerFn(listSocialAccounts);
 
   const q = useQuery({ queryKey: ["brand-kit"], queryFn: () => getFn() });
+  const accountsQ = useQuery({
+    queryKey: ["social-accounts"],
+    queryFn: () => accountsFn(),
+  });
+
+  // Handle do Instagram já conectado (evita pedir @ manual).
+  const connectedInstagram = React.useMemo(() => {
+    const accounts = accountsQ.data?.accounts ?? [];
+    return (
+      accounts.find(
+        (a: any) => a.platform === "instagram" && a.status === "connected",
+      ) ?? null
+    );
+  }, [accountsQ.data]);
+  const instagramHandleAuto = (connectedInstagram as any)?.account_name ?? "";
 
   const [form, setForm] = React.useState({
     primaryColor: "#0EA5E9",
@@ -40,8 +57,8 @@ function BrandKitPage() {
     toneOfVoice: "profissional",
     defaultSignature: "",
   });
-  const [instagramHandle, setInstagramHandle] = React.useState("");
   const [websiteUrl, setWebsiteUrl] = React.useState("");
+  const [autoExtracted, setAutoExtracted] = React.useState(false);
 
   React.useEffect(() => {
     const bk = q.data?.brandKit;
@@ -82,7 +99,7 @@ function BrandKitPage() {
   });
 
   const extractIg = useMutation({
-    mutationFn: () => extractIgFn({ data: { handle: instagramHandle } }),
+    mutationFn: (handle: string) => extractIgFn({ data: { handle } }),
     onSuccess: (r: any) => {
       const ex = r?.extraction;
       if (!ex) return;
@@ -93,14 +110,31 @@ function BrandKitPage() {
         supportColor: ex.supportColor ?? f.supportColor,
         logoUrl: ex.logoUrl ?? f.logoUrl,
       }));
-      toast.success(
-        ex.confidence === "low"
-          ? "Extração parcial — revise manualmente"
-          : "Extração aplicada — confira antes de salvar",
-      );
+      if (ex.confidence !== "low") {
+        toast.success("Identidade da marca aplicada do seu Instagram");
+      }
     },
-    onError: () => toast.error("Falha ao extrair do Instagram"),
+    onError: () => {
+      // Falha silenciosa — usuário pode preencher manualmente sem ser avisado
+      // que houve uma tentativa automática.
+    },
   });
+
+  // Auto-extração silenciosa: quando abre a página e existe Instagram conectado,
+  // roda uma vez pra pré-preencher cores/logo. Se falhar, o usuário nem percebe.
+  React.useEffect(() => {
+    if (autoExtracted) return;
+    if (!q.data) return;
+    if (q.data.brandKit) {
+      // Já tem Brand Kit salvo — não sobrescreve.
+      setAutoExtracted(true);
+      return;
+    }
+    if (!instagramHandleAuto) return;
+    setAutoExtracted(true);
+    extractIg.mutate(instagramHandleAuto);
+    // eslint-disable-next-line react-hooks/exhaustive-deps
+  }, [q.data, instagramHandleAuto]);
 
   const extractSite = useMutation({
     mutationFn: () => extractSiteFn({ data: { url: websiteUrl } }),
@@ -121,33 +155,42 @@ function BrandKitPage() {
 
   return (
     <div className="flex flex-col" style={{ gap: 16 }}>
-      {/* Extração automática */}
-      <Card style={{ padding: 16 }}>
-        <div className="flex items-center" style={{ gap: 8, marginBottom: 8 }}>
-          <Palette size={16} style={{ color: "var(--accent)" }} />
-          <span style={{ fontSize: 14, fontWeight: 600 }}>Preencher automaticamente</span>
-        </div>
-        <p style={{ fontSize: 12, color: "var(--text-muted)", marginBottom: 12 }}>
-          Extraímos cores e logo do Instagram ou do site da sua empresa. Você pode revisar tudo
-          antes de salvar.
-        </p>
-        <div className="flex flex-col" style={{ gap: 10 }}>
-          <div className="flex" style={{ gap: 8 }}>
-            <Instagram size={16} style={{ color: "var(--text-muted)", marginTop: 8 }} />
-            <input
-              value={instagramHandle}
-              onChange={(e) => setInstagramHandle(e.target.value)}
-              placeholder="@handle_instagram"
-              style={inputStyle}
-            />
+      {/* Painel informativo — instagram conectado */}
+      {connectedInstagram ? (
+        <Card style={{ padding: 14 }}>
+          <div className="flex items-center" style={{ gap: 10 }}>
+            <Instagram size={18} style={{ color: "var(--accent)" }} />
+            <div style={{ flex: 1 }}>
+              <div style={{ fontSize: 13, fontWeight: 600 }}>
+                Conectado como @{instagramHandleAuto}
+              </div>
+              <div style={{ fontSize: 12, color: "var(--text-muted)", marginTop: 2 }}>
+                Cores e identidade são detectadas automaticamente do seu Instagram. Ajuste
+                abaixo se quiser sobrescrever.
+              </div>
+            </div>
             <button
-              onClick={() => extractIg.mutate()}
-              disabled={!instagramHandle || extractIg.isPending}
+              onClick={() => extractIg.mutate(instagramHandleAuto)}
+              disabled={extractIg.isPending}
               style={secondaryBtn}
             >
-              {extractIg.isPending ? <Loader2 size={14} className="animate-spin" /> : "Extrair"}
+              {extractIg.isPending ? (
+                <Loader2 size={14} className="animate-spin" />
+              ) : (
+                "Reanalisar"
+              )}
             </button>
           </div>
+        </Card>
+      ) : (
+        <Card style={{ padding: 16 }}>
+          <div className="flex items-center" style={{ gap: 8, marginBottom: 8 }}>
+            <Palette size={16} style={{ color: "var(--accent)" }} />
+            <span style={{ fontSize: 14, fontWeight: 600 }}>Detectar identidade automaticamente</span>
+          </div>
+          <p style={{ fontSize: 12, color: "var(--text-muted)", marginBottom: 12 }}>
+            Informe o site da sua empresa. Vamos extrair cores e logo pra você.
+          </p>
           <div className="flex" style={{ gap: 8 }}>
             <Globe size={16} style={{ color: "var(--text-muted)", marginTop: 8 }} />
             <input
@@ -161,11 +204,11 @@ function BrandKitPage() {
               disabled={!websiteUrl || extractSite.isPending}
               style={secondaryBtn}
             >
-              {extractSite.isPending ? <Loader2 size={14} className="animate-spin" /> : "Extrair"}
+              {extractSite.isPending ? <Loader2 size={14} className="animate-spin" /> : "Detectar"}
             </button>
           </div>
-        </div>
-      </Card>
+        </Card>
+      )}
 
       {/* Cores */}
       <Card style={{ padding: 16 }}>

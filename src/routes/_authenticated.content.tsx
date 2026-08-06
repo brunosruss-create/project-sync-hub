@@ -1,5 +1,5 @@
 import { createFileRoute, Outlet, Link } from "@tanstack/react-router";
-import { Palette, LayoutTemplate, Wand2, Images, ShieldCheck } from "lucide-react";
+import { Palette, Wand2, Images } from "lucide-react";
 
 export const Route = createFileRoute("/_authenticated/content")({
   component: ContentLayout,
@@ -35,15 +35,14 @@ function ContentLayout() {
         </p>
       </div>
 
-      {/* Sub-nav */}
+      {/* Sub-nav — Templates é interno, não aparece pro cliente */}
       <div
         className="flex flex-wrap"
         style={{ gap: 6, borderBottom: "1px solid var(--border)", paddingBottom: 8 }}
       >
         <NavPill to="/content/compose" icon={<Wand2 size={14} />} label="Criar post" />
         <NavPill to="/content/assets" icon={<Images size={14} />} label="Posts gerados" />
-        <NavPill to="/content/brand" icon={<Palette size={14} />} label="Brand Kit" />
-        <NavPill to="/content/templates" icon={<LayoutTemplate size={14} />} label="Templates" />
+        <NavPill to="/content/brand" icon={<Palette size={14} />} label="Identidade visual" />
       </div>
 
       <Outlet />

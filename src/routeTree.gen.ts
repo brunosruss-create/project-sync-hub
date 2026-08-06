@@ -32,7 +32,6 @@ import { Route as SocialCallbackRouteImport } from './routes/social.callback'
 import { Route as AuthenticatedContentAssetsRouteImport } from './routes/_authenticated.content.assets'
 import { Route as AuthenticatedContentBrandRouteImport } from './routes/_authenticated.content.brand'
 import { Route as AuthenticatedContentComposeRouteImport } from './routes/_authenticated.content.compose'
-import { Route as AuthenticatedContentTemplatesRouteImport } from './routes/_authenticated.content.templates'
 import { Route as AuthenticatedSettingsBillingRouteImport } from './routes/_authenticated.settings.billing'
 import { Route as AuthenticatedSettingsDepartmentsRouteImport } from './routes/_authenticated.settings.departments'
 import { Route as AuthenticatedSettingsMessagesRouteImport } from './routes/_authenticated.settings.messages'
@@ -175,12 +174,6 @@ const AuthenticatedContentComposeRoute =
   AuthenticatedContentComposeRouteImport.update({
     id: '/compose',
     path: '/compose',
-    getParentRoute: () => AuthenticatedContentRoute,
-  } as any)
-const AuthenticatedContentTemplatesRoute =
-  AuthenticatedContentTemplatesRouteImport.update({
-    id: '/templates',
-    path: '/templates',
     getParentRoute: () => AuthenticatedContentRoute,
   } as any)
 const AuthenticatedSettingsBillingRoute =
@@ -348,7 +341,6 @@ export interface FileRoutesByFullPath {
   '/content/assets': typeof AuthenticatedContentAssetsRouteWithChildren
   '/content/brand': typeof AuthenticatedContentBrandRoute
   '/content/compose': typeof AuthenticatedContentComposeRoute
-  '/content/templates': typeof AuthenticatedContentTemplatesRoute
   '/settings/billing': typeof AuthenticatedSettingsBillingRoute
   '/settings/departments': typeof AuthenticatedSettingsDepartmentsRoute
   '/settings/messages': typeof AuthenticatedSettingsMessagesRoute
@@ -397,7 +389,6 @@ export interface FileRoutesByTo {
   '/content/assets': typeof AuthenticatedContentAssetsRouteWithChildren
   '/content/brand': typeof AuthenticatedContentBrandRoute
   '/content/compose': typeof AuthenticatedContentComposeRoute
-  '/content/templates': typeof AuthenticatedContentTemplatesRoute
   '/settings/billing': typeof AuthenticatedSettingsBillingRoute
   '/settings/departments': typeof AuthenticatedSettingsDepartmentsRoute
   '/settings/messages': typeof AuthenticatedSettingsMessagesRoute
@@ -448,7 +439,6 @@ export interface FileRoutesById {
   '/_authenticated/content/assets': typeof AuthenticatedContentAssetsRouteWithChildren
   '/_authenticated/content/brand': typeof AuthenticatedContentBrandRoute
   '/_authenticated/content/compose': typeof AuthenticatedContentComposeRoute
-  '/_authenticated/content/templates': typeof AuthenticatedContentTemplatesRoute
   '/_authenticated/settings/billing': typeof AuthenticatedSettingsBillingRoute
   '/_authenticated/settings/departments': typeof AuthenticatedSettingsDepartmentsRoute
   '/_authenticated/settings/messages': typeof AuthenticatedSettingsMessagesRoute
@@ -499,7 +489,6 @@ export interface FileRouteTypes {
     | '/content/assets'
     | '/content/brand'
     | '/content/compose'
-    | '/content/templates'
     | '/settings/billing'
     | '/settings/departments'
     | '/settings/messages'
@@ -548,7 +537,6 @@ export interface FileRouteTypes {
     | '/content/assets'
     | '/content/brand'
     | '/content/compose'
-    | '/content/templates'
     | '/settings/billing'
     | '/settings/departments'
     | '/settings/messages'
@@ -598,7 +586,6 @@ export interface FileRouteTypes {
     | '/_authenticated/content/assets'
     | '/_authenticated/content/brand'
     | '/_authenticated/content/compose'
-    | '/_authenticated/content/templates'
     | '/_authenticated/settings/billing'
     | '/_authenticated/settings/departments'
     | '/_authenticated/settings/messages'
@@ -805,13 +792,6 @@ declare module '@tanstack/react-router' {
       preLoaderRoute: typeof AuthenticatedContentComposeRouteImport
       parentRoute: typeof AuthenticatedContentRoute
     }
-    '/_authenticated/content/templates': {
-      id: '/_authenticated/content/templates'
-      path: '/templates'
-      fullPath: '/content/templates'
-      preLoaderRoute: typeof AuthenticatedContentTemplatesRouteImport
-      parentRoute: typeof AuthenticatedContentRoute
-    }
     '/_authenticated/settings/billing': {
       id: '/_authenticated/settings/billing'
       path: '/settings/billing'
@@ -1002,14 +982,12 @@ interface AuthenticatedContentRouteChildren {
   AuthenticatedContentAssetsRoute: typeof AuthenticatedContentAssetsRouteWithChildren
   AuthenticatedContentBrandRoute: typeof AuthenticatedContentBrandRoute
   AuthenticatedContentComposeRoute: typeof AuthenticatedContentComposeRoute
-  AuthenticatedContentTemplatesRoute: typeof AuthenticatedContentTemplatesRoute
 }
 
 const AuthenticatedContentRouteChildren: AuthenticatedContentRouteChildren = {
   AuthenticatedContentAssetsRoute: AuthenticatedContentAssetsRouteWithChildren,
   AuthenticatedContentBrandRoute: AuthenticatedContentBrandRoute,
   AuthenticatedContentComposeRoute: AuthenticatedContentComposeRoute,
-  AuthenticatedContentTemplatesRoute: AuthenticatedContentTemplatesRoute,
 }
 
 const AuthenticatedContentRouteWithChildren =

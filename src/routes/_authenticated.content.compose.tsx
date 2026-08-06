@@ -6,11 +6,10 @@ import { toast } from "sonner";
 import { Sparkles, Loader2 } from "lucide-react";
 import { Card } from "@/components/ui/card";
 import { submitBrief } from "@/lib/content-generation.functions";
-import { getMyContentPermissions } from "@/lib/content-permissions.functions";
+import { listSocialAccounts } from "@/lib/social-publishing.functions";
 import {
   TEMPLATE_CATEGORIES,
   POST_FORMATS,
-  TARGET_NETWORKS,
   type TemplateCategory,
   type PostFormat,
   type TargetNetwork,
@@ -48,17 +47,37 @@ const NETWORK_LABEL: Record<TargetNetwork, string> = {
 function ComposePage() {
   const nav = useNavigate();
   const submitFn = useServerFn(submitBrief);
-  const permsFn = useServerFn(getMyContentPermissions);
-  const permsQ = useQuery({ queryKey: ["content-perms"], queryFn: () => permsFn() });
-  const canAiOptin = permsQ.data?.permissions?.ai_image_optin ?? false;
+  const accountsFn = useServerFn(listSocialAccounts);
+
+  // Só as redes com conta conectada aparecem como opção.
+  const accountsQ = useQuery({
+    queryKey: ["social-accounts"],
+    queryFn: () => accountsFn(),
+  });
+  const availableNetworks = React.useMemo<TargetNetwork[]>(() => {
+    const accounts = accountsQ.data?.accounts ?? [];
+    const connected = new Set(
+      accounts
+        .filter((a: any) => a.status === "connected")
+        .map((a: any) => a.platform as TargetNetwork),
+    );
+    return Array.from(connected);
+  }, [accountsQ.data]);
 
   const [category, setCategory] = React.useState<TemplateCategory>("promo");
   const [format, setFormat] = React.useState<PostFormat>("single");
   const [slideCount, setSlideCount] = React.useState(3);
-  const [networks, setNetworks] = React.useState<TargetNetwork[]>(["instagram"]);
+  const [networks, setNetworks] = React.useState<TargetNetwork[]>([]);
   const [objective, setObjective] = React.useState("");
   const [tone, setTone] = React.useState("");
-  const [aiOptin, setAiOptin] = React.useState(false);
+
+  // Ao carregar contas, pré-seleciona todas as disponíveis (se só tem uma,
+  // vira o alvo default sem o usuário precisar clicar).
+  React.useEffect(() => {
+    if (availableNetworks.length > 0 && networks.length === 0) {
+      setNetworks(availableNetworks);
+    }
+  }, [availableNetworks, networks.length]);
 
   const incompat = React.useMemo(
     () => checkFormatCompatibility(format, networks),
@@ -75,7 +94,9 @@ function ComposePage() {
           targetNetworks: networks,
           freeTextObjective: objective || undefined,
           toneOverride: tone || undefined,
-          aiImageOptin: aiOptin,
+          // Cliente NÃO decide isso — o worker escolhe automaticamente
+          // (banco de imagens primeiro; se falhar, fallback pra IA).
+          aiImageOptin: false,
         },
       }),
     onSuccess: () => {
@@ -174,26 +195,41 @@ function ComposePage() {
 
       <Card style={{ padding: 20 }}>
         <div style={{ fontSize: 14, fontWeight: 600, marginBottom: 12 }}>Redes de destino</div>
-        <div className="grid" style={{ gridTemplateColumns: "repeat(4, 1fr)", gap: 8 }}>
-          {TARGET_NETWORKS.map((n) => (
-            <button
-              key={n}
-              onClick={() => toggleNetwork(n)}
-              style={{
-                padding: "10px 12px",
-                borderRadius: "var(--radius-control)",
-                border: `1px solid ${networks.includes(n) ? "var(--accent)" : "var(--border)"}`,
-                background: networks.includes(n) ? "var(--accent-soft)" : "var(--surface)",
-                color: "var(--text)",
-                fontSize: 12,
-                fontWeight: networks.includes(n) ? 600 : 400,
-                cursor: "pointer",
-              }}
-            >
-              {NETWORK_LABEL[n]}
-            </button>
-          ))}
-        </div>
+        {availableNetworks.length === 0 ? (
+          <div style={{ fontSize: 13, color: "var(--text-muted)" }}>
+            Você ainda não conectou nenhuma rede social.{" "}
+            <a href="/social/accounts" style={{ color: "var(--accent)" }}>
+              Conectar agora →
+            </a>
+          </div>
+        ) : (
+          <div
+            className="grid"
+            style={{
+              gridTemplateColumns: `repeat(${Math.min(availableNetworks.length, 4)}, 1fr)`,
+              gap: 8,
+            }}
+          >
+            {availableNetworks.map((n) => (
+              <button
+                key={n}
+                onClick={() => toggleNetwork(n)}
+                style={{
+                  padding: "10px 12px",
+                  borderRadius: "var(--radius-control)",
+                  border: `1px solid ${networks.includes(n) ? "var(--accent)" : "var(--border)"}`,
+                  background: networks.includes(n) ? "var(--accent-soft)" : "var(--surface)",
+                  color: "var(--text)",
+                  fontSize: 12,
+                  fontWeight: networks.includes(n) ? 600 : 400,
+                  cursor: "pointer",
+                }}
+              >
+                {NETWORK_LABEL[n]}
+              </button>
+            ))}
+          </div>
+        )}
         {incompat.length > 0 ? (
           <div
             style={{
@@ -219,26 +255,6 @@ function ComposePage() {
           style={inputStyle}
         />
       </Card>
-
-      {canAiOptin ? (
-        <Card style={{ padding: 20 }}>
-          <label className="flex items-start" style={{ gap: 10, cursor: "pointer" }}>
-            <input
-              type="checkbox"
-              checked={aiOptin}
-              onChange={(e) => setAiOptin(e.target.checked)}
-              style={{ marginTop: 3 }}
-            />
-            <div>
-              <div style={{ fontSize: 13, fontWeight: 600 }}>Gerar imagem única por IA</div>
-              <div style={{ fontSize: 12, color: "var(--text-muted)", marginTop: 4 }}>
-                Aumenta o custo do post. Só use quando o banco de imagens padrão não trouxer
-                resultado adequado.
-              </div>
-            </div>
-          </label>
-        </Card>
-      ) : null}
 
       <div className="flex justify-end">
         <button

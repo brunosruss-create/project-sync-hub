@@ -216,30 +216,34 @@ async function resolveImage(
     };
   }
 
-  // Prioridade 3: AI_Image_Provider (Property 3 — só se aiImageOptin ou fallback duro)
-  if (!brief.aiImageOptin) {
-    // Sem opt-in e sem match no bank: falha explícita.
+  // Prioridade 3: AI_Image_Provider como fallback automático.
+  // Cliente do SaaS não vê distinção — a experiência é uniforme ("IA gera tudo").
+  // O quota hook é o único gate real de custo (por plano/mês).
+  try {
+    await enforceQuota(workspaceOwnerId, "ai_images_generated");
+    const aiPrompt = buildAiImagePrompt(brief, service, brandKit);
+    const aiImg = await generateImage({
+      prompt: aiPrompt,
+      aspectRatio: aspectRatioFor(brief.postFormat),
+      brandColorHint: brandKit.primaryColor,
+      workspaceOwnerId,
+    });
+    await incrementMeter(workspaceOwnerId, "ai_images_generated");
+    return {
+      url: aiImg.url,
+      provider: "nano_banana",
+      sourceMetadata: { provider: "nano_banana" },
+      aiImagePrompt: aiImg.promptUsed,
+    };
+  } catch (aiErr) {
+    // Nano Banana também falhou (quota, credencial ausente, API caiu):
+    // erro final. Msg neutra pro cliente — nunca cita "banco de imagens"
+    // nem "IA de imagem" separadamente.
     throw new ContentJobError(
       "image_bank",
-      "Nenhuma imagem encontrada no banco. Ative geração por IA no brief se quiser fallback.",
+      "Não foi possível gerar uma imagem adequada agora. Tente novamente em instantes ou ajuste a descrição.",
     );
   }
-  // Quota hook (Property 4)
-  await enforceQuota(workspaceOwnerId, "ai_images_generated");
-  const aiPrompt = buildAiImagePrompt(brief, service, brandKit);
-  const aiImg = await generateImage({
-    prompt: aiPrompt,
-    aspectRatio: aspectRatioFor(brief.postFormat),
-    brandColorHint: brandKit.primaryColor,
-    workspaceOwnerId,
-  });
-  await incrementMeter(workspaceOwnerId, "ai_images_generated");
-  return {
-    url: aiImg.url,
-    provider: "nano_banana",
-    sourceMetadata: { provider: "nano_banana" },
-    aiImagePrompt: aiImg.promptUsed,
-  };
 }
 
 async function renderAndUpload(
