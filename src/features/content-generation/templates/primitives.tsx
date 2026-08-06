@@ -13,7 +13,10 @@ import type { BrandKit } from "../types";
 
 // ─── BADGES ─────────────────────────────────────────────────────
 
-/** Pill colorida no topo tipo "OFERTA · SAÚDE · NOVIDADE". */
+/** Pill colorida no topo tipo "OFERTA · SAÚDE · NOVIDADE".
+ * Nota: Satori não suporta `width: fit-content` — o container tem que
+ * definir o layout (ex.: usar `alignSelf: "flex-start"` no wrapper).
+ */
 export function pillBadge(props: {
   text: string;
   bgColor: string;
@@ -24,6 +27,7 @@ export function pillBadge(props: {
     <div
       style={{
         display: "flex",
+        alignSelf: "flex-start",
         paddingLeft: 22,
         paddingRight: 22,
         paddingTop: 8,
@@ -36,7 +40,6 @@ export function pillBadge(props: {
         letterSpacing: 4,
         textTransform: "uppercase",
         borderRadius: 999,
-        width: "fit-content",
       }}
     >
       {props.text}
@@ -54,6 +57,7 @@ export function outlineBadge(props: {
     <div
       style={{
         display: "flex",
+        alignSelf: "flex-start",
         paddingLeft: 18,
         paddingRight: 18,
         paddingTop: 6,
@@ -68,7 +72,6 @@ export function outlineBadge(props: {
         letterSpacing: 3,
         textTransform: "uppercase",
         borderRadius: 999,
-        width: "fit-content",
       }}
     >
       {props.text}
