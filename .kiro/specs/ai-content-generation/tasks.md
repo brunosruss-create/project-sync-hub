@@ -91,13 +91,13 @@ Plano de 22 tarefas incrementais para entregar o AI_Content_Generation_Module po
   - `regenerateAsset` cria novo asset com `parent_asset_id` referenciando o anterior; enfileira job com mode
   - _Requirements: 8.1, 8.2, 8.3, 8.4, 8.5, 12.1, 12.2, 12.3, 12.4_
 
-- [ ] 15. Extrair variante interna do handoff no Social_Publishing_Module e implementar `approveAsset`
+- [x] 15. Extrair variante interna do handoff no Social_Publishing_Module e implementar `approveAsset`
   - Ler `src/lib/social-publishing.functions.ts` para localizar `submitSocialPost` atual; se o handoff exigir formato de UI incompatível com o AI_Content_Generation_Module, extrair função interna `handoffSocialPost` que aceite `{ ownerUserId, mediaUrl, mediaType, copyPerNetwork, targets, scheduledFor? }` retornando `{ social_post_id }`, e refatorar `submitSocialPost` pra usar a interna
   - Criar `approveAsset` em `content-generation.functions.ts` que valida `can_asset_approve` + `can_publish_immediate` (se não agendado), valida character limits por rede via `social-post-validation.ts`, chama `handoffSocialPost`, grava `social_post_id` + `approval_status=approved` + `approved_at/by`, incrementa meter
   - Aplicar Property 7 (idempotência): se `social_post_id` já preenchido, retornar o existente sem chamar de novo
   - _Requirements: 11.1, 11.2, 11.3, 11.4, 11.5, 11.6, 13.5_
 
-- [ ] 16. Implementar permissões do módulo
+- [x] 16. Implementar permissões do módulo
   - Criar `src/lib/content-permissions.server.ts` com `getContentPermissions(userId, workspaceId)` que consulta `content_publishing_permissions` procurando primeiro por `workspace_member_id`, senão fallback por `role`
   - Criar `content-permissions.functions.ts` com `listPermissions`, `updatePermission` (só Manager pode editar)
   - Aplicar defaults conforme Req 13.2 (Manager: tudo; Agent: brief-create + asset-approve dos próprios jobs)
@@ -116,21 +116,21 @@ Plano de 22 tarefas incrementais para entregar o AI_Content_Generation_Module po
   - Rodar `npx @tanstack/router-cli generate` para atualizar `routeTree.gen.ts`
   - _Requirements: 1.2, 2.1, 3.3, 8.1, 11.1_
 
-- [ ] 18. Implementar formatos single, carousel e story
+- [x] 18. Implementar formatos single, carousel e story
   - Estender `content-generation-worker.server.ts` para tratar `post_format='carousel'` gerando 1 asset com `slides_json` contendo N URLs renderizadas (cover + N-2 content + CTA), consumindo `carousel_slide_count` do brief
   - Validar em `submitBrief` que `carousel_slide_count` está entre 2 e 10 quando `post_format='carousel'`
   - Validar compatibilidade formato × rede: se `post_format='story'` mas rede alvo não suporta story/reel, ou dropar a rede com aviso ou bloquear submit conforme Req 9.5
   - Renderizar 9:16 para `story` usando as variantes de template correspondentes
   - _Requirements: 9.1, 9.2, 9.3, 9.4, 9.5_
 
-- [ ] 19. Integração com catálogo de Services (read-only)
+- [x] 19. Integração com catálogo de Services (read-only)
   - Em `content-generation-worker.server.ts`, quando `brief.service_id` está presente, carregar Service do workspace via `supabaseAdmin.from('services').select('*, service_photos(*)').eq('id', ...).eq('owner_user_id', ...)` e usar `name`/`price`/`duration`/`description` nos slots
   - Se `service_photos` tem 1+ fotos, usar a primeira como imageResult e não chamar Image_Bank
   - Se `service_id` referencia um Service inexistente ou de outro workspace, falhar o job com stage `service_lookup` e mensagem clara
   - Nunca fazer INSERT/UPDATE em `services` ou `service_photos`
   - _Requirements: 7.1, 7.2, 7.3, 7.4_
 
-- [ ] 20. Observabilidade e view de super_admin
+- [x] 20. Observabilidade e view de super_admin
   - Preencher `content_jobs.duration_ms`, `image_provider_used`, `ai_text_model`, `cost_estimate_cents` conforme o pipeline executa (estimativa: Gemini Flash ≈ 5 centavos/1000; Nano Banana ≈ 3600 centavos/1000)
   - Criar rota `src/routes/_authenticated.super-admin.content-jobs.tsx` listando jobs recentes cross-workspace com duração, provedores, custo, status — protegida por `requireSuperAdmin`
   - Adicionar logs Sentry nos catch blocks do worker com `content_job_id`, `owner_user_id`, `stage`, `provider_name` — nunca incluir corpo do Brand_Kit ou credenciais nos logs

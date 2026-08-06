@@ -7,6 +7,7 @@
 // e sempre passa pelo checkQuota antes.
 
 import { supabaseAdmin } from "@/integrations/supabase/client.server";
+import { captureException } from "@/lib/sentry.server";
 import { renderTemplate } from "@/features/content-generation/render-engine.server";
 import { pickTemplate } from "@/features/content-generation/templates";
 import { mapBriefRow } from "@/features/content-generation/brief-row";
@@ -465,6 +466,18 @@ export async function processContentGenerationJob(
       error_message: message.slice(0, 500),
       duration_ms: durationMs,
       completed_at: new Date().toISOString(),
+    });
+    // Log no Sentry sem incluir dados sensíveis (Brand_Kit, credenciais).
+    // Requirement 16.4.
+    captureException(err, {
+      tags: {
+        module: "ai-content-generation",
+        stage,
+        content_job_id: job.id,
+      },
+      extra: {
+        owner_user_id: job.ownerUserId,
+      },
     });
     throw err;
   }

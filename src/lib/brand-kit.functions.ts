@@ -14,6 +14,10 @@ import {
 } from "@/features/content-generation/fonts/whitelist";
 import { mapBrandKitRow } from "@/features/content-generation/brand-kit-row";
 import { extractFromInstagram, extractFromWebsite } from "@/lib/brand-extractor.server";
+import {
+  assertContentCan,
+  resolveWorkspaceOwner,
+} from "@/lib/content-permissions.server";
 
 const HEX = /^#[0-9A-Fa-f]{6}$/;
 
@@ -39,10 +43,11 @@ const ExtractSiteSchema = z.object({ url: z.string().min(4).max(500) });
 export const getBrandKit = createServerFn({ method: "POST" })
   .middleware([requireSupabaseAuth])
   .handler(async ({ context }) => {
+    const workspaceOwnerId = await resolveWorkspaceOwner(context.userId);
     const { data, error } = await supabaseAdmin
       .from("brand_kits")
       .select("*")
-      .eq("owner_user_id", context.userId)
+      .eq("owner_user_id", workspaceOwnerId)
       .maybeSingle();
     if (error) throw new Error(error.message);
     return { brandKit: data ? mapBrandKitRow(data) : null };
@@ -56,9 +61,11 @@ export const upsertBrandKit = createServerFn({ method: "POST" })
   .middleware([requireSupabaseAuth])
   .inputValidator((input: unknown) => UpsertSchema.parse(input))
   .handler(async ({ data, context }) => {
+    const workspaceOwnerId = await resolveWorkspaceOwner(context.userId);
+    await assertContentCan(workspaceOwnerId, context.userId, "brand_edit");
     const now = new Date().toISOString();
     const payload = {
-      owner_user_id: context.userId,
+      owner_user_id: workspaceOwnerId,
       primary_color: data.primaryColor,
       secondary_color: data.secondaryColor,
       support_color: data.supportColor,

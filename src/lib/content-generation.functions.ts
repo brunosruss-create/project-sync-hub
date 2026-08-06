@@ -15,6 +15,11 @@ import { mapJobRow } from "@/features/content-generation/job-row";
 import { mapAssetRow } from "@/features/content-generation/asset-row";
 import { enforceQuota } from "@/lib/plan-quota-hook.server";
 import { incrementMeter } from "@/lib/content-meters.server";
+import {
+  assertContentCan,
+  resolveWorkspaceOwner,
+} from "@/lib/content-permissions.server";
+import { checkFormatCompatibility } from "@/features/content-generation/format-compatibility";
 
 // ─── Submeter Brief ─────────────────────────────────────────────
 
@@ -22,14 +27,27 @@ export const submitBrief = createServerFn({ method: "POST" })
   .middleware([requireSupabaseAuth])
   .inputValidator((input: unknown) => ContentBriefInputSchema.parse(input))
   .handler(async ({ data, context }) => {
-    // Property 4 (quota hook): checa antes de qualquer escrita.
-    await enforceQuota(context.userId, "content_brief_submit");
+    // Permissão + Quota hook (Property 4)
+    const workspaceOwnerId = await resolveWorkspaceOwner(context.userId);
+    await assertContentCan(workspaceOwnerId, context.userId, "brief_create");
+    if (data.aiImageOptin) {
+      await assertContentCan(workspaceOwnerId, context.userId, "ai_image_optin");
+    }
+    await enforceQuota(workspaceOwnerId, "content_brief_submit");
+
+    // 0. Valida compatibilidade formato × redes (Requirement 9.5)
+    const incompat = checkFormatCompatibility(data.postFormat, data.targetNetworks);
+    if (incompat.length > 0) {
+      throw new Error(
+        `Formato "${data.postFormat}" incompatível com: ${incompat.map((i) => i.network).join(", ")}. Remova essas redes ou escolha outro formato.`,
+      );
+    }
 
     // 1. Cria Content_Brief
     const { data: briefRow, error: briefErr } = await supabaseAdmin
       .from("content_briefs")
       .insert({
-        owner_user_id: context.userId,
+        owner_user_id: workspaceOwnerId,
         created_by: context.userId,
         template_category: data.templateCategory,
         post_format: data.postFormat,
@@ -51,7 +69,7 @@ export const submitBrief = createServerFn({ method: "POST" })
     const { data: jobRow, error: jobErr } = await supabaseAdmin
       .from("content_jobs")
       .insert({
-        owner_user_id: context.userId,
+        owner_user_id: workspaceOwnerId,
         brief_id: brief.id,
         status: "pending",
       })
@@ -64,7 +82,7 @@ export const submitBrief = createServerFn({ method: "POST" })
 
     // 3. Enfileira em message_jobs (job_type=content_generation)
     const { error: enqErr } = await supabaseAdmin.from("message_jobs").insert({
-      workspace_owner_id: context.userId,
+      workspace_owner_id: workspaceOwnerId,
       contact_id: brief.id, // reusa o campo pra rastreio; não é FK
       instance_name: "ai-content",
       payload: { content_job_id: job.id },
@@ -79,7 +97,7 @@ export const submitBrief = createServerFn({ method: "POST" })
     }
 
     // 4. Incrementa meter de jobs iniciados
-    await incrementMeter(context.userId, "content_jobs_started");
+    await incrementMeter(workspaceOwnerId, "content_jobs_started");
 
     return { briefId: brief.id, jobId: job.id };
   });
@@ -226,4 +244,158 @@ export const rejectAsset = createServerFn({ method: "POST" })
       .eq("owner_user_id", context.userId);
     if (error) throw new Error(error.message);
     return { ok: true };
+  });
+
+
+// ─── Aprovar + Handoff ──────────────────────────────────────────
+
+import { handoffSocialPost, type HandoffTarget } from "@/lib/social-publishing-handoff.server";
+import type { SocialPlatform } from "@/lib/zernio-publishing.server";
+import { validatePostTarget } from "@/lib/social-post-validation";
+import type { CopyBundle } from "@/features/content-generation/types";
+
+const POST_TYPE_ENUM = z.enum([
+  "feed",
+  "reels",
+  "stories",
+  "carousel",
+  "story",
+  "reel",
+  "video",
+  "short",
+  "photo_carousel",
+]);
+
+const ApproveSchema = z.object({
+  assetId: z.string().uuid(),
+  scheduledFor: z.string().datetime().optional(),
+  timezone: z.string().optional(),
+  // Mapeamento explícito de rede → conta conectada
+  connections: z.record(
+    z.enum(["facebook", "instagram", "tiktok", "youtube"]),
+    z.string().uuid(),
+  ),
+  // Mapeamento explícito de rede → postType (feed/reels/story/etc)
+  postTypes: z.record(
+    z.enum(["facebook", "instagram", "tiktok", "youtube"]),
+    POST_TYPE_ENUM,
+  ),
+});
+
+function fullTextFor(
+  network: SocialPlatform,
+  copy: CopyBundle,
+): string {
+  const per = copy.perNetwork;
+  if (network === "facebook") return per.facebook?.fullText ?? copy.body;
+  if (network === "instagram") return per.instagram?.fullText ?? copy.body;
+  if (network === "tiktok") return per.tiktok?.fullText ?? copy.body;
+  if (network === "youtube") {
+    const yt = per.youtube;
+    return yt ? `${yt.title}\n\n${yt.description}` : copy.body;
+  }
+  return copy.body;
+}
+
+/**
+ * Aprova um Generated_Asset e faz handoff para o Social_Publishing_Module.
+ * Property 7 (idempotência): se o asset já tem social_post_id, retorna o
+ * existente sem chamar handoff de novo.
+ */
+export const approveAsset = createServerFn({ method: "POST" })
+  .middleware([requireSupabaseAuth])
+  .inputValidator((input: unknown) => ApproveSchema.parse(input))
+  .handler(async ({ data, context }) => {
+    const workspaceOwnerId = await resolveWorkspaceOwner(context.userId);
+    // 1. Permissões (Requirement 13.5: publish exige AND com social publishing)
+    await assertContentCan(workspaceOwnerId, context.userId, "asset_approve");
+    if (!data.scheduledFor) {
+      await assertContentCan(workspaceOwnerId, context.userId, "publish_immediate");
+    }
+
+    // 2. Carrega asset
+    const { data: assetRow, error } = await supabaseAdmin
+      .from("generated_assets")
+      .select("*")
+      .eq("id", data.assetId)
+      .eq("owner_user_id", workspaceOwnerId)
+      .single();
+    if (error || !assetRow) throw new Error("Asset não encontrado");
+    const asset = mapAssetRow(assetRow);
+
+    // Property 7: idempotência
+    if (asset.socialPostId) {
+      return { socialPostId: asset.socialPostId, targetResults: [], reused: true };
+    }
+    if (asset.approvalStatus === "rejected") {
+      throw new Error("Não é possível aprovar um asset rejeitado");
+    }
+
+    // 3. Quota hook (Property 4)
+    await enforceQuota(workspaceOwnerId, "asset_approve");
+
+    // 3. Valida character limits por rede antes do handoff (Requirement 11.2)
+    const targetNetworks = Object.keys(data.connections) as SocialPlatform[];
+    if (targetNetworks.length === 0) {
+      throw new Error("Nenhuma rede alvo informada");
+    }
+    for (const network of targetNetworks) {
+      const postType = data.postTypes[network];
+      if (!postType) {
+        throw new Error(`postType obrigatório para ${network}`);
+      }
+      const fullText = fullTextFor(network, asset.copyBundle);
+      const validation = validatePostTarget({
+        platform: network,
+        postType,
+        text: fullText,
+        mediaItems: [{ type: "image" }],
+      });
+      if (!validation.valid) {
+        throw new Error(
+          `${network}/${postType}: ${validation.violations[0].message}`,
+        );
+      }
+    }
+
+    // 4. Monta targets do handoff
+    const targets: HandoffTarget[] = targetNetworks.map((network) => ({
+      network,
+      connectionId: data.connections[network]!,
+      postType: data.postTypes[network]!,
+      fullText: fullTextFor(network, asset.copyBundle),
+    }));
+
+    // 5. Handoff
+    const mode: "now" | "scheduled" = data.scheduledFor ? "scheduled" : "now";
+    const handoff = await handoffSocialPost({
+      ownerUserId: workspaceOwnerId,
+      mediaUrl: asset.renderedImageUrl,
+      mediaType: "image",
+      targets,
+      mode,
+      scheduledFor: data.scheduledFor,
+      timezone: data.timezone,
+      baseText: asset.copyBundle.shortCaption,
+    });
+
+    // 6. Marca asset como approved
+    await supabaseAdmin
+      .from("generated_assets")
+      .update({
+        approval_status: "approved",
+        social_post_id: handoff.socialPostId,
+        approved_at: new Date().toISOString(),
+        approved_by: context.userId,
+      })
+      .eq("id", data.assetId);
+
+    // 7. Incrementa meter
+    await incrementMeter(workspaceOwnerId, "posts_generated");
+
+    return {
+      socialPostId: handoff.socialPostId,
+      targetResults: handoff.targetResults,
+      reused: false,
+    };
   });
