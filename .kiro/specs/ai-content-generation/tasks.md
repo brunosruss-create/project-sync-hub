@@ -31,23 +31,23 @@ Plano de 22 tarefas incrementais para entregar o AI_Content_Generation_Module po
   - Verificar que build passa com `npx tsc --noEmit`
   - _Requirements: 10.1_
 
-- [ ] 5. Implementar render engine com Satori + resvg
+- [x] 5. Implementar render engine com Satori + resvg
   - Criar `src/features/content-generation/render-engine.server.ts` exportando `renderTemplate(input: { templateId, brandKit, slots, slideIndex?, slideTotal? }): Promise<Buffer>` que carrega o componente do registry, chama Satori pra SVG, converte com Resvg em PNG
   - Criar `src/features/content-generation/templates/registry.ts` mapeando `templateId → { component, category, ratio, slots, width, height, retired }`
   - Criar 2 templates iniciais da categoria `promo`: `templates/promo/promo-01-1x1.tsx` (1080x1080) e `templates/promo/promo-01-9x16.tsx` (1080x1920), ambos consumindo `TemplateProps`
   - _Requirements: 3.1, 3.4, 10.1, 10.2, 10.3, 10.4_
 
-- [ ] 6. Adicionar templates para as 8 categorias restantes
+- [x] 6. Adicionar templates para as 8 categorias restantes
   - Para cada `Template_Category` do glossário (`novidade`, `depoimento`, `agenda`, `dica`, `institucional`, `antes_depois`, `catalogo`), criar 1 variante 1:1 e 1 variante 9:16, todas registradas no `registry.ts`
   - Cada template consome slots parametrizados e usa `brandKit.primary_color`/`secondary_color`/`support_color`/`display_font`/`body_font`
   - _Requirements: 3.1, 3.2, 3.4_
 
-- [ ] 7. Implementar server function de listagem de templates com preview renderizado
+- [x] 7. Implementar server function de listagem de templates com preview renderizado
   - Criar `src/lib/templates.functions.ts` exportando `listTemplates` (server fn) que retorna, por categoria, as entradas do registry filtradas por `retired=false` com uma URL de preview gerada renderizando o template contra o Brand_Kit do workspace autenticado
   - Preview é cacheado no bucket em `ai-content/{owner}/template-previews/{templateId}.png` e regerado quando o Brand_Kit atualiza (invalidação por hash do Brand_Kit)
   - _Requirements: 3.3, 3.5_
 
-- [ ] 8. Implementar CRUD do Brand_Kit e extractors
+- [x] 8. Implementar CRUD do Brand_Kit e extractors
   - Criar `src/lib/brand-kit.functions.ts` com server fns `getBrandKit`, `upsertBrandKit`, `uploadLogo`, `extractFromInstagram`, `extractFromWebsite`
   - Criar `src/lib/brand-extractor.server.ts` com `extractFromInstagram(handle)` usando fetch + regex simples da bio pública + node-vibrant sobre profile pic, e `extractFromWebsite(url)` usando fetch + cheerio pra og:image/favicon/theme-color + node-vibrant pra paleta
   - `upsertBrandKit` valida que `display_font ∈ DISPLAY_FONTS` e `body_font ∈ BODY_FONTS ∪ SCRIPT_FONTS` senão rejeita

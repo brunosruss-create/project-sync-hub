@@ -627,3 +627,84 @@ export const retrySocialPostTarget = createServerFn({ method: "POST" })
       throw new Error(e?.message ?? "Falha ao retentar publicação.");
     }
   });
+
+// ============================================================
+// Reconciliação: limpa contas órfãs na Zernio.
+//
+// Contexto: quando o callback OAuth falhou/nunca existiu, a Zernio manteve
+// contas conectadas do lado dela sem correspondência local. Isso ocupa slot
+// do plano e não aparece na UI para o usuário desconectar manualmente.
+// Esta função lista o que a Zernio tem no profile deste workspace e deleta
+// qualquer accountId que não tenha registro em social_account_connections.
+// ============================================================
+
+function extractAccountId(a: any): string | null {
+  return (
+    (typeof a?.accountId === "string" && a.accountId) ||
+    (typeof a?._id === "string" && a._id) ||
+    (typeof a?.id === "string" && a.id) ||
+    null
+  );
+}
+
+function extractPlatform(a: any): string | null {
+  const p = a?.platform ?? a?.provider ?? null;
+  return typeof p === "string" ? p : null;
+}
+
+export const reconcileSocialAccounts = createServerFn({ method: "POST" })
+  .middleware([requireSupabaseAuth])
+  .handler(async ({ context }) => {
+    const profileId = await getSocialProfileId(context.userId);
+
+    // 1) O que a Zernio tem no nosso profile de publicação.
+    let remote: any;
+    try {
+      remote = await zernioPublishing.listAccounts(profileId);
+    } catch (e: any) {
+      throw new Error(`Falha ao listar contas na Zernio: ${e?.message ?? e}`);
+    }
+    const remoteList: any[] = Array.isArray(remote?.accounts)
+      ? remote.accounts
+      : Array.isArray(remote)
+        ? remote
+        : [];
+
+    // 2) O que temos no banco local (todas as linhas, incluindo desconectadas
+    //    — se o accountId ainda aparecer em qualquer linha, não é órfão).
+    const { data: localRows } = await supabaseAdmin
+      .from("social_account_connections")
+      .select("account_id")
+      .eq("owner_user_id", context.userId);
+    const localIds = new Set(
+      (localRows ?? [])
+        .map((r: any) => r?.account_id)
+        .filter((v: unknown): v is string => typeof v === "string" && v.length > 0),
+    );
+
+    // 3) Órfãos = na Zernio, mas não no banco local.
+    const orphans = remoteList
+      .map((a) => ({ accountId: extractAccountId(a), platform: extractPlatform(a) }))
+      .filter((a): a is { accountId: string; platform: string | null } => !!a.accountId)
+      .filter((a) => !localIds.has(a.accountId));
+
+    // 4) Hard delete de cada órfão. Erros individuais não abortam o batch.
+    const removed: Array<{ accountId: string; platform: string | null }> = [];
+    const failed: Array<{ accountId: string; error: string }> = [];
+    for (const o of orphans) {
+      try {
+        await zernioPublishing.disconnectAccount(o.accountId);
+        removed.push(o);
+      } catch (e: any) {
+        failed.push({ accountId: o.accountId, error: String(e?.message ?? e) });
+      }
+    }
+
+    return {
+      profileId,
+      totalRemote: remoteList.length,
+      totalLocal: localIds.size,
+      removed,
+      failed,
+    };
+  });
