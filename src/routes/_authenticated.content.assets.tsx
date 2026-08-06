@@ -79,10 +79,10 @@ function AssetsListPage() {
                 <div
                   style={{
                     aspectRatio: "1",
+                    backgroundColor: "var(--bg-overlay)",
                     backgroundImage: `url(${asset.renderedImageUrl})`,
                     backgroundSize: "cover",
                     backgroundPosition: "center",
-                    background: "var(--bg-overlay)",
                   }}
                 />
                 <div style={{ padding: 12 }}>
