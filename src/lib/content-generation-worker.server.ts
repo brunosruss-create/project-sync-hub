@@ -469,16 +469,10 @@ export async function processContentGenerationJob(
     });
     // Log no Sentry sem incluir dados sensíveis (Brand_Kit, credenciais).
     // Requirement 16.4.
-    captureException(err, {
-      tags: {
-        module: "ai-content-generation",
-        stage,
-        content_job_id: job.id,
-      },
-      extra: {
-        owner_user_id: job.ownerUserId,
-      },
-    });
+    console.error(
+      `[ai-content] job ${job.id} falhou no stage=${stage} owner=${job.ownerUserId}: ${message}`,
+    );
+    captureException(err);
     throw err;
   }
 }

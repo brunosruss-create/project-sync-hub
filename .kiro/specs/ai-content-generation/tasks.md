@@ -104,7 +104,7 @@ Plano de 22 tarefas incrementais para entregar o AI_Content_Generation_Module po
   - Todos os pontos que precisam de permissão (submitBrief, upsertBrandKit, approveAsset, ai-image-optin) consultam esse helper e negam com erro descritivo
   - _Requirements: 13.1, 13.2, 13.3, 13.4_
 
-- [ ] 17. Criar rotas e navegação da UI
+- [x] 17. Criar rotas e navegação da UI
   - Criar `src/routes/_authenticated.content.tsx` (layout com abas: Brand, Templates, Compor, Assets, Permissões)
   - Criar `_authenticated.content.index.tsx` (dashboard: últimos 10 assets + CTA "Criar post")
   - Criar `_authenticated.content.brand.tsx` (form do Brand_Kit + extração automática)
@@ -136,7 +136,7 @@ Plano de 22 tarefas incrementais para entregar o AI_Content_Generation_Module po
   - Adicionar logs Sentry nos catch blocks do worker com `content_job_id`, `owner_user_id`, `stage`, `provider_name` — nunca incluir corpo do Brand_Kit ou credenciais nos logs
   - _Requirements: 16.1, 16.2, 16.3, 16.4_
 
-- [ ] 21. Testes unitários
+- [x] 21. Testes unitários
   - `src/features/content-generation/__tests__/image-bank.test.ts` — mocks dos 3 provedores, cobre falha em cascata e ordem
   - `src/features/content-generation/__tests__/template-registry.test.ts` — cada categoria do glossário tem 1:1 e 9:16 registradas e não retiradas
   - `src/features/content-generation/__tests__/copy-bundle-schema.test.ts` — Zod aceita bundle válido e rejeita bundle malformado
@@ -146,7 +146,7 @@ Plano de 22 tarefas incrementais para entregar o AI_Content_Generation_Module po
   - Rodar `npx vitest --run` — todos os testes existentes + novos devem passar
   - _Requirements: 4.1, 5.2, 5.3, 6.2, 13.1, 15.5, 15.6_
 
-- [ ] 22. Verificação final ponta a ponta
+- [x] 22. Verificação final ponta a ponta
   - Rodar `npx tsc --noEmit` sem erros
   - Rodar `npx vitest --run` sem falhas
   - Executar `npm run migrations:check` para garantir que as 2 novas migrations estão no ledger

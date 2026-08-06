@@ -14,6 +14,7 @@ import {
   Columns3,
   Share2,
   Plug,
+  Sparkles,
 } from "lucide-react";
 import { useAuth } from "@/hooks/use-auth";
 import { useProfile } from "@/hooks/use-profile";
@@ -56,6 +57,7 @@ const ALL_ITEMS: NavItem[] = [
   { label: "Clientes", to: "/contacts", icon: Users, agentVisible: true },
   { label: "Conexões", to: "/connections", icon: Plug, agentVisible: false },
   { label: "Publicações", to: "/social/accounts", icon: Share2, agentVisible: true },
+  { label: "Conteúdo IA", to: "/content", icon: Sparkles, agentVisible: true },
   { label: "Relatórios", to: "/reports", icon: BarChart3, agentVisible: false },
   { label: "Configurações", to: "/settings/profile", icon: Settings, agentVisible: true },
   { label: "Super Admin", to: "/super-admin/workspaces", icon: Shield, agentVisible: false },
