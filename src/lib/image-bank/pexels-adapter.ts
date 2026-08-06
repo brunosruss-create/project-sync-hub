@@ -21,18 +21,18 @@ function orientationFor(aspectRatio: SearchOpts["aspectRatio"]): string | null {
 }
 
 /**
- * Tenta uma busca no Pexels. Se retornar vazio, tenta de novo SEM orientation
- * (fallback pra maximizar recall — melhor uma foto sem crop ideal do que nenhuma).
+ * Busca vários resultados e retorna um aleatório dentre os top N.
+ * Evita repetir sempre a mesma foto (bug de sempre pegar photos[0]).
  */
-async function searchOnce(
+async function searchMany(
   apiKey: string,
   query: string,
   orientation: string | null,
   signal: AbortSignal | undefined,
-): Promise<any | null> {
+): Promise<any[]> {
   const params = new URLSearchParams({
     query,
-    per_page: "5",
+    per_page: "30", // pool grande pra ter variedade
   });
   if (orientation) params.set("orientation", orientation);
   const url = `https://api.pexels.com/v1/search?${params.toString()}`;
@@ -40,10 +40,16 @@ async function searchOnce(
     headers: { Authorization: apiKey },
     signal,
   });
-  if (!res.ok) return null;
+  if (!res.ok) return [];
   // eslint-disable-next-line @typescript-eslint/no-explicit-any
   const json: any = await res.json();
-  return json.photos?.[0] ?? null;
+  return Array.isArray(json.photos) ? json.photos : [];
+}
+
+function pickRandom<T>(arr: T[]): T | null {
+  if (arr.length === 0) return null;
+  const idx = Math.floor(Math.random() * arr.length);
+  return arr[idx];
 }
 
 export const pexelsAdapter = {
@@ -53,15 +59,20 @@ export const pexelsAdapter = {
     if (!apiKey) return null;
     if (!query.trim()) return null;
 
-    // Nota: NÃO usamos `size=large` nem `color` — ambos filtram muito o pool
-    // de resultados. Melhor pegar uma foto qualquer boa do que nenhuma.
     const orient = orientationFor(opts.aspectRatio);
-    let photo = await searchOnce(apiKey, query, orient, opts.signal);
+    let photos = await searchMany(apiKey, query, orient, opts.signal);
 
-    // Fallback 1: se com orientation não achou, tenta sem
-    if (!photo && orient) {
-      photo = await searchOnce(apiKey, query, null, opts.signal);
+    // Fallback: sem orientation se veio vazio
+    if (photos.length === 0 && orient) {
+      photos = await searchMany(apiKey, query, null, opts.signal);
     }
+    if (photos.length === 0) return null;
+
+    // Escolhe aleatório entre os melhores resultados (prioriza fotos com
+    // resolução alta — mais provável de serem profissionais). Pega top 15
+    // por relevância (ordem que o Pexels devolve) e sorteia entre eles.
+    const topPool = photos.slice(0, 15);
+    const photo = pickRandom(topPool);
     if (!photo) return null;
 
     return {
