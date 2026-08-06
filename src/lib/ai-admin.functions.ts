@@ -120,6 +120,12 @@ export const updateAiGlobalSettings = createServerFn({ method: "POST" })
           `Verifique no Supabase → Settings → API se a chave service_role bate com a secret APP_SUPABASE_SERVICE_ROLE_KEY.`,
       );
     }
+    // Invalida o cache das credenciais Gemini (compartilhado com o módulo
+    // AI Content Generation) pra que a próxima chamada leia o valor novo.
+    try {
+      const { invalidateGeminiCredentialsCache } = await import("@/lib/ai-credentials.server");
+      invalidateGeminiCredentialsCache();
+    } catch {}
     return { ok: true, saved: rows.length, verified };
   });
 

@@ -13,9 +13,7 @@ import type {
   TargetNetwork,
 } from "@/features/content-generation/types";
 import { CopyBundleSchema } from "@/features/content-generation/types";
-
-// Modelo default; pode ser sobrescrito via env.
-const DEFAULT_MODEL = process.env.GEMINI_TEXT_MODEL ?? "gemini-2.0-flash";
+import { loadGeminiCredentials } from "@/lib/ai-credentials.server";
 
 // Termos vetados na moderação básica. Lista pequena e conservadora; pode ser
 // expandida ou substituída por um provedor de moderação real em fase futura.
@@ -42,17 +40,12 @@ export interface GenerateCopyOutput {
   promptUsed: string;
 }
 
-function getClient(): GoogleGenAI {
-  const apiKey =
-    process.env.GEMINI_API_KEY ??
-    process.env.GOOGLE_GENAI_API_KEY ??
-    process.env.GOOGLE_API_KEY;
-  if (!apiKey) {
-    throw new Error(
-      "GEMINI_API_KEY não configurada — geração de texto indisponível.",
-    );
-  }
-  return new GoogleGenAI({ apiKey });
+async function getClientAndModel(): Promise<{ client: GoogleGenAI; model: string }> {
+  const creds = await loadGeminiCredentials();
+  return {
+    client: new GoogleGenAI({ apiKey: creds.apiKey }),
+    model: creds.model,
+  };
 }
 
 function buildViralPrompt(input: CopyBundleInput): string {
@@ -160,11 +153,11 @@ export function moderateCopy(bundle: CopyBundle): void {
 export async function generateCopyBundle(
   input: CopyBundleInput,
 ): Promise<GenerateCopyOutput> {
-  const client = getClient();
+  const { client, model } = await getClientAndModel();
   const prompt = buildViralPrompt(input);
 
   const response = await client.models.generateContent({
-    model: DEFAULT_MODEL,
+    model,
     contents: [{ role: "user", parts: [{ text: prompt }] }],
     config: {
       responseMimeType: "application/json",
@@ -193,7 +186,7 @@ export async function generateCopyBundle(
   moderateCopy(parsed.data);
   return {
     bundle: parsed.data,
-    model: DEFAULT_MODEL,
+    model,
     promptUsed: prompt,
   };
 }

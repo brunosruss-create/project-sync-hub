@@ -8,9 +8,13 @@
 import { GoogleGenAI } from "@google/genai";
 import { randomUUID } from "node:crypto";
 import { supabaseAdmin } from "@/integrations/supabase/client.server";
+import { loadGeminiCredentials } from "@/lib/ai-credentials.server";
 
 const BUCKET = "ai-content";
-const DEFAULT_MODEL = process.env.NANO_BANANA_MODEL ?? "imagen-4.0-generate-001";
+// Modelo de geração de imagem — o mesmo Gemini API atende Imagen via ID de modelo.
+// Preferência: Super Admin pode setar `gemini_image_model` em global_settings
+// (não obrigatório — se ausente, usa este default).
+const DEFAULT_IMAGE_MODEL = process.env.NANO_BANANA_MODEL ?? "imagen-4.0-generate-001";
 
 export interface GenerateImageInput {
   prompt: string;
@@ -25,19 +29,17 @@ export interface GenerateImageOutput {
   model: string;
 }
 
-function getClient(): GoogleGenAI {
-  const apiKey =
-    process.env.NANO_BANANA_API_KEY ??
-    process.env.GEMINI_API_KEY ??
-    process.env.GOOGLE_GENAI_API_KEY;
-  if (!apiKey) {
+async function getClient(): Promise<GoogleGenAI> {
+  try {
+    const creds = await loadGeminiCredentials();
+    return new GoogleGenAI({ apiKey: creds.apiKey });
+  } catch {
     const err = new Error(
-      "AI_IMAGE_NOT_CONFIGURED — NANO_BANANA_API_KEY não setada. Fallback de imagem por IA indisponível.",
+      "AI_IMAGE_NOT_CONFIGURED — Gemini não configurado. Super Admin deve preencher a chave em /super-admin/ia.",
     );
     (err as { code?: string }).code = "AI_IMAGE_NOT_CONFIGURED";
     throw err;
   }
-  return new GoogleGenAI({ apiKey });
 }
 
 function enrichPrompt(input: GenerateImageInput): string {
@@ -56,11 +58,11 @@ function enrichPrompt(input: GenerateImageInput): string {
 export async function generateImage(
   input: GenerateImageInput,
 ): Promise<GenerateImageOutput> {
-  const client = getClient();
+  const client = await getClient();
   const finalPrompt = enrichPrompt(input);
 
   const response = await client.models.generateImages({
-    model: DEFAULT_MODEL,
+    model: DEFAULT_IMAGE_MODEL,
     prompt: finalPrompt,
     config: {
       numberOfImages: 1,
@@ -88,6 +90,6 @@ export async function generateImage(
   return {
     url,
     promptUsed: finalPrompt,
-    model: DEFAULT_MODEL,
+    model: DEFAULT_IMAGE_MODEL,
   };
 }
