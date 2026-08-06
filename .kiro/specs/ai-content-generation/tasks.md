@@ -54,38 +54,38 @@ Plano de 22 tarefas incrementais para entregar o AI_Content_Generation_Module po
   - Extração nunca lança pra fora: em caso de erro, retorna objeto parcial com os campos que conseguiu preencher
   - _Requirements: 2.1, 2.3, 2.4, 2.5, 2.6_
 
-- [ ] 9. Implementar Image_Bank com falha em cascata
+- [x] 9. Implementar Image_Bank com falha em cascata
   - Criar `src/lib/image-bank.server.ts` com `searchImage(query, opts): Promise<ImageBankResult | null>` que percorre `[pexels, unsplash, pixabay]` em ordem, com timeout de 3s por provedor via `AbortController`
   - Criar `src/lib/image-bank/pexels-adapter.ts`, `unsplash-adapter.ts`, `pixabay-adapter.ts`, cada um exportando `search(query, opts): Promise<ImageBankResult | null>` com fetch autenticado, filtro por aspectRatio e colorHint quando o provedor suporta
   - Criar `src/lib/image-bank/cache.server.ts` com `cacheImageBankImage(result, ownerUserId): Promise<string>` que hasheia URL+provider, verifica existência no bucket e faz upload se necessário, retornando URL pública final
   - Adicionar `PEXELS_API_KEY`, `UNSPLASH_ACCESS_KEY`, `PIXABAY_API_KEY` em `.env.example`
   - _Requirements: 4.1, 4.2, 4.3, 4.4, 4.6_
 
-- [ ] 10. Implementar AI_Text_Provider com Gemini Flash e Copy_Bundle estruturado
+- [x] 10. Implementar AI_Text_Provider com Gemini Flash e Copy_Bundle estruturado
   - Criar `src/lib/ai-text.server.ts` com `generateCopyBundle(input): Promise<CopyBundle>` que monta prompt viral (gancho → retenção → cliff → CTA) usando brief + brandKit + service + targetNetworks, chama `gemini-flash-latest` via `@google/genai` já existente forçando `responseMimeType: 'application/json'` e `responseSchema`
   - Definir `COPY_BUNDLE_SCHEMA` em Zod + versão OpenAPI-like que o Gemini aceita; validar resposta com Zod e rejeitar não-conformes
   - Criar `moderateCopy(bundle)` que rejeita bundles com termos vetados (lista curta hardcoded inicialmente, pluggable depois)
   - _Requirements: 6.1, 6.2, 6.3, 6.4_
 
-- [ ] 11. Implementar Plan_Quota_Hook e Content_Usage_Meter
+- [x] 11. Implementar Plan_Quota_Hook e Content_Usage_Meter
   - Criar `src/lib/plan-quota-hook.server.ts` exportando `checkQuota(workspaceId, metric): Promise<{ allowed: boolean; reason?: string }>` que nesta fase sempre retorna `{ allowed: true }`
   - Criar `src/lib/content-meters.server.ts` com `incrementMeter(workspaceId, metric)` que faz upsert em `content_usage_meters` com `period_year_month` calculado na tz do workspace
   - _Requirements: 15.1, 15.2, 15.3, 15.4, 15.5, 15.6_
 
-- [ ] 12. Implementar AI_Image_Provider (Nano Banana) como stub controlado
+- [x] 12. Implementar AI_Image_Provider (Nano Banana) como stub controlado
   - Criar `src/lib/ai-image.server.ts` exportando `generateImage(prompt, aspectRatio, colorHint?): Promise<{ url: string; prompt_used: string }>` que chama o endpoint Google Gemini image generation (Nano Banana / Imagen 3 API — endpoint concreto e SDK a confirmar) e salva o resultado no bucket em `ai-content/{owner}/ai-generated/{uuid}.png`
   - Se as credenciais não estão configuradas (dev/staging), retornar erro claro `AI_IMAGE_NOT_CONFIGURED` — nunca gerar imagem falsa
   - Registrar variável `NANO_BANANA_API_KEY` (ou nome equivalente) em `.env.example`
   - _Requirements: 5.1, 5.4, 5.5, 5.6_
 
-- [ ] 13. Implementar Content_Generation_Worker (handler do job type)
+- [x] 13. Implementar Content_Generation_Worker (handler do job type)
   - Criar `src/lib/content-generation-worker.server.ts` com `processContentGenerationJob(payload)` conforme o pipeline do design (image → copy → render → save assets)
   - Registrar o handler em `src/lib/job-worker.ts` no switch de `job_type`, adicionando `'content_generation'`
   - Aplicar Property 3 (fallback controlado): worker só chama `generateImage` quando `imageBank == null` OU `brief.ai_image_optin === true`, e sempre passa pelo `checkQuota` antes
   - Ao completar, incrementa `content_jobs_started` no início e `posts_generated`/`ai_images_generated` conforme o caminho
   - _Requirements: 5.1, 5.2, 5.3, 8.2, 8.3, 8.5, 15.1, 15.2, 15.3, 16.1, 16.2_
 
-- [ ] 14. Implementar server functions do content generation
+- [x] 14. Implementar server functions do content generation
   - Criar `src/lib/content-generation.functions.ts` com `submitBrief`, `listJobs`, `listAssets`, `getAsset`, `regenerateAsset` (com modos `copy_only`, `image_only`, `both`), `rejectAsset`
   - `submitBrief` valida Zod, chama `checkQuota`, cria `content_briefs` + `content_jobs(status=pending)`, enfileira em `message_jobs(job_type='content_generation')`, retorna id
   - `regenerateAsset` cria novo asset com `parent_asset_id` referenciando o anterior; enfileira job com mode

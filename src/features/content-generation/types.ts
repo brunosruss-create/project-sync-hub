@@ -72,7 +72,7 @@ export interface BrandKit {
   toneOfVoice: string;
   defaultSignature: string;
   extractionSource: ExtractionSource | null;
-  extractionMetadata: Record<string, unknown> | null;
+  extractionMetadata: Record<string, string | number | boolean | null> | null;
   createdAt: Date;
   updatedAt: Date;
 }

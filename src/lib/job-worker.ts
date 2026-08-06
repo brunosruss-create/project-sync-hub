@@ -11,6 +11,10 @@ import { processMessageJob, type MessageJobPayload } from "@/lib/message-process
 import { initSentry, captureException } from "@/lib/sentry.server";
 import { sendCsatSurvey } from "@/lib/csat.server";
 import { runScheduledSend, type ScheduledSendPayload } from "@/lib/scheduled-send.server";
+import {
+  processContentGenerationJob,
+  type ContentGenerationJobPayload,
+} from "@/lib/content-generation-worker.server";
 
 initSentry("worker");
 
@@ -21,7 +25,7 @@ const PER_WORKSPACE_LIMIT_PER_MINUTE = 25; // protege 1 cliente de estourar a co
 const MAX_ATTEMPTS = 5;
 const STALE_PROCESSING_MS = 5 * 60_000; // job travado em "processing" (worker caiu no meio) volta a pending
 
-type JobType = "ai_reply" | "csat_send" | "scheduled_send";
+type JobType = "ai_reply" | "csat_send" | "scheduled_send" | "content_generation";
 
 type JobRow = {
   id: string;
@@ -148,6 +152,16 @@ async function runJob(job: JobRow) {
         instanceName: job.instance_name,
         payload: job.payload as ScheduledSendPayload,
       });
+    } else if (job.job_type === "content_generation") {
+      // Geração de conteúdo por IA. Isolado do fluxo de mensageria: consome
+      // Gemini pro texto mas em cota separada; conta contra o próprio rate
+      // limit por workspace pra evitar rajadas.
+      if (isRateLimited(job.workspace_owner_id)) {
+        await releaseBackToPending(job.id, job.attempts);
+        return;
+      }
+      recordCall(job.workspace_owner_id);
+      await processContentGenerationJob(job.payload as unknown as ContentGenerationJobPayload);
     } else {
       // Tipo desconhecido: marca done em vez de ficar reprocessando para sempre.
       console.warn("[job-worker] job_type desconhecido, ignorando:", job.job_type, job.id);

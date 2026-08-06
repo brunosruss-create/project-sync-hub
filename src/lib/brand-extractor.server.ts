@@ -3,7 +3,6 @@
 // - Usa cheerio pra parsing DOM e node-vibrant pra paleta.
 // - Timeout curto por operação de rede.
 
-// @ts-expect-error — sem tipos publicados por node-vibrant 4.x
 import { Vibrant } from "node-vibrant/node";
 import * as cheerio from "cheerio";
 

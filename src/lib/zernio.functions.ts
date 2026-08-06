@@ -122,10 +122,101 @@ export const saveZernioConnection = createServerFn({ method: "POST" })
     return { ok: true };
   });
 
+// ============================================================
+// Reconciliação silenciosa: limpa contas de mensageria órfãs na Zernio.
+//
+// Mesmo bug que existia no disconnect (antes só limpava local) pode ter
+// deixado contas conectadas do lado da Zernio sem correspondência ativa em
+// zernio_accounts (ex.: desconexões feitas antes do fix, ou falha de rede no
+// hard delete). Isso ocupa slot do plano e nunca é visível pro usuário.
+// Roda em toda listagem, best-effort, sem expor nada na UI.
+// ============================================================
+
+/** Descobre os profileIds da Zernio pertencentes a este workspace de mensageria. */
+async function collectMessagingProfileIds(ownerUserId: string): Promise<Set<string>> {
+  const ids = new Set<string>();
+  const wantedLabel = `zapflow:${ownerUserId}`;
+
+  try {
+    const { profiles } = await zernio.listProfiles();
+    for (const p of profiles ?? []) {
+      if (p?.name === wantedLabel && typeof p?._id === "string") ids.add(p._id);
+    }
+  } catch (e: any) {
+    console.warn("[reconcile zernio] falha ao listar profiles:", e?.message ?? e);
+  }
+
+  const { data: rows } = await supabaseAdmin
+    .from("zernio_accounts")
+    .select("zernio_profile_id")
+    .eq("owner_user_id", ownerUserId);
+  for (const r of rows ?? []) {
+    const pid = (r as any)?.zernio_profile_id;
+    if (typeof pid === "string" && pid.length > 0) ids.add(pid);
+  }
+
+  return ids;
+}
+
+function extractAccountId(a: any): string | null {
+  return (
+    (typeof a?.accountId === "string" && a.accountId) ||
+    (typeof a?._id === "string" && a._id) ||
+    (typeof a?.id === "string" && a.id) ||
+    null
+  );
+}
+
+async function reconcileOrphanZernioAccountsInternal(ownerUserId: string) {
+  const profileIds = await collectMessagingProfileIds(ownerUserId);
+
+  // Contas ativas localmente (account_id não nulo = conexão em uso agora).
+  const { data: localRows } = await supabaseAdmin
+    .from("zernio_accounts")
+    .select("account_id")
+    .eq("owner_user_id", ownerUserId);
+  const activeLocalIds = new Set(
+    (localRows ?? [])
+      .map((r: any) => r?.account_id)
+      .filter((v: unknown): v is string => typeof v === "string" && v.length > 0),
+  );
+
+  for (const profileId of profileIds) {
+    let remote: any;
+    try {
+      remote = await zernio.listAccounts(profileId);
+    } catch (e: any) {
+      console.warn(`[reconcile zernio] listAccounts(${profileId}):`, e?.message ?? e);
+      continue;
+    }
+    const remoteList: any[] = Array.isArray(remote?.accounts)
+      ? remote.accounts
+      : Array.isArray(remote)
+        ? remote
+        : [];
+
+    for (const a of remoteList) {
+      const accountId = extractAccountId(a);
+      if (!accountId || activeLocalIds.has(accountId)) continue;
+      try {
+        await zernio.deleteAccount(accountId);
+      } catch (e: any) {
+        console.warn(`[reconcile zernio] deleteAccount(${accountId}):`, e?.message ?? e);
+      }
+    }
+  }
+}
+
 /** Lista os canais Zernio conectados no workspace (pra UI de Ajustes). */
 export const listZernioAccounts = createServerFn({ method: "GET" })
   .middleware([requireSupabaseAuth])
   .handler(async ({ context }) => {
+    try {
+      await reconcileOrphanZernioAccountsInternal(context.userId);
+    } catch (e: any) {
+      console.warn("[zernio accounts] reconciliação silenciosa falhou:", e?.message ?? e);
+    }
+
     const { data } = await supabaseAdmin
       .from("zernio_accounts")
       .select("platform,account_id,username,display_name,status,connected_at")

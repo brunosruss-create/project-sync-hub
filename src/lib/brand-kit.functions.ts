@@ -27,7 +27,9 @@ const UpsertSchema = z.object({
   toneOfVoice: z.string().min(1).max(100),
   defaultSignature: z.string().max(80).optional(),
   extractionSource: z.enum(["instagram_handle", "website_url", "manual"]).optional(),
-  extractionMetadata: z.record(z.string(), z.unknown()).optional(),
+  extractionMetadata: z
+    .record(z.string(), z.union([z.string(), z.number(), z.boolean(), z.null()]))
+    .optional(),
 });
 
 const ExtractIgSchema = z.object({ handle: z.string().min(1).max(100) });
