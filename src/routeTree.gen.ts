@@ -27,6 +27,7 @@ import { Route as AuthenticatedScheduleRouteImport } from './routes/_authenticat
 import { Route as AuthenticatedServicesRouteImport } from './routes/_authenticated.services'
 import { Route as AuthenticatedSuperAdminRouteImport } from './routes/_authenticated.super-admin'
 import { Route as AuthCallbackRouteImport } from './routes/auth.callback'
+import { Route as SocialCallbackRouteImport } from './routes/social.callback'
 import { Route as AuthenticatedSettingsBillingRouteImport } from './routes/_authenticated.settings.billing'
 import { Route as AuthenticatedSettingsDepartmentsRouteImport } from './routes/_authenticated.settings.departments'
 import { Route as AuthenticatedSettingsMessagesRouteImport } from './routes/_authenticated.settings.messages'
@@ -140,6 +141,11 @@ const AuthenticatedSuperAdminRoute = AuthenticatedSuperAdminRouteImport.update({
 const AuthCallbackRoute = AuthCallbackRouteImport.update({
   id: '/auth/callback',
   path: '/auth/callback',
+  getParentRoute: () => rootRouteImport,
+} as any)
+const SocialCallbackRoute = SocialCallbackRouteImport.update({
+  id: '/social/callback',
+  path: '/social/callback',
   getParentRoute: () => rootRouteImport,
 } as any)
 const AuthenticatedSettingsBillingRoute =
@@ -296,6 +302,7 @@ export interface FileRoutesByFullPath {
   '/services': typeof AuthenticatedServicesRoute
   '/super-admin': typeof AuthenticatedSuperAdminRouteWithChildren
   '/auth/callback': typeof AuthCallbackRoute
+  '/social/callback': typeof SocialCallbackRoute
   '/settings/billing': typeof AuthenticatedSettingsBillingRoute
   '/settings/departments': typeof AuthenticatedSettingsDepartmentsRoute
   '/settings/messages': typeof AuthenticatedSettingsMessagesRoute
@@ -338,6 +345,7 @@ export interface FileRoutesByTo {
   '/services': typeof AuthenticatedServicesRoute
   '/super-admin': typeof AuthenticatedSuperAdminRouteWithChildren
   '/auth/callback': typeof AuthCallbackRoute
+  '/social/callback': typeof SocialCallbackRoute
   '/settings/billing': typeof AuthenticatedSettingsBillingRoute
   '/settings/departments': typeof AuthenticatedSettingsDepartmentsRoute
   '/settings/messages': typeof AuthenticatedSettingsMessagesRoute
@@ -382,6 +390,7 @@ export interface FileRoutesById {
   '/_authenticated/services': typeof AuthenticatedServicesRoute
   '/_authenticated/super-admin': typeof AuthenticatedSuperAdminRouteWithChildren
   '/auth/callback': typeof AuthCallbackRoute
+  '/social/callback': typeof SocialCallbackRoute
   '/_authenticated/settings/billing': typeof AuthenticatedSettingsBillingRoute
   '/_authenticated/settings/departments': typeof AuthenticatedSettingsDepartmentsRoute
   '/_authenticated/settings/messages': typeof AuthenticatedSettingsMessagesRoute
@@ -426,6 +435,7 @@ export interface FileRouteTypes {
     | '/services'
     | '/super-admin'
     | '/auth/callback'
+    | '/social/callback'
     | '/settings/billing'
     | '/settings/departments'
     | '/settings/messages'
@@ -468,6 +478,7 @@ export interface FileRouteTypes {
     | '/services'
     | '/super-admin'
     | '/auth/callback'
+    | '/social/callback'
     | '/settings/billing'
     | '/settings/departments'
     | '/settings/messages'
@@ -511,6 +522,7 @@ export interface FileRouteTypes {
     | '/_authenticated/services'
     | '/_authenticated/super-admin'
     | '/auth/callback'
+    | '/social/callback'
     | '/_authenticated/settings/billing'
     | '/_authenticated/settings/departments'
     | '/_authenticated/settings/messages'
@@ -545,6 +557,7 @@ export interface RootRouteChildren {
   SignupRoute: typeof SignupRoute
   ZernioCallbackRoute: typeof ZernioCallbackRoute
   AuthCallbackRoute: typeof AuthCallbackRoute
+  SocialCallbackRoute: typeof SocialCallbackRoute
   ApiInternalQueueHealthRoute: typeof ApiInternalQueueHealthRoute
   ApiPublicSocialReconcileRoute: typeof ApiPublicSocialReconcileRoute
   ApiPublicZernioRoute: typeof ApiPublicZernioRoute
@@ -678,6 +691,13 @@ declare module '@tanstack/react-router' {
       path: '/auth/callback'
       fullPath: '/auth/callback'
       preLoaderRoute: typeof AuthCallbackRouteImport
+      parentRoute: typeof rootRouteImport
+    }
+    '/social/callback': {
+      id: '/social/callback'
+      path: '/social/callback'
+      fullPath: '/social/callback'
+      preLoaderRoute: typeof SocialCallbackRouteImport
       parentRoute: typeof rootRouteImport
     }
     '/_authenticated/settings/billing': {
@@ -934,6 +954,7 @@ const rootRouteChildren: RootRouteChildren = {
   SignupRoute: SignupRoute,
   ZernioCallbackRoute: ZernioCallbackRoute,
   AuthCallbackRoute: AuthCallbackRoute,
+  SocialCallbackRoute: SocialCallbackRoute,
   ApiInternalQueueHealthRoute: ApiInternalQueueHealthRoute,
   ApiPublicSocialReconcileRoute: ApiPublicSocialReconcileRoute,
   ApiPublicZernioRoute: ApiPublicZernioRoute,

@@ -137,6 +137,32 @@ export const disconnectZernioAccount = createServerFn({ method: "POST" })
   .middleware([requireSupabaseAuth])
   .inputValidator((d) => platformInput.parse(d))
   .handler(async ({ data, context }) => {
+    // 1) Lê o account_id atual antes de zerar localmente — precisamos dele
+    //    pro hard delete remoto na Zernio.
+    const { data: row } = await supabaseAdmin
+      .from("zernio_accounts")
+      .select("account_id")
+      .eq("owner_user_id", context.userId)
+      .eq("platform", data.platform)
+      .maybeSingle();
+
+    // 2) Hard delete na Zernio para liberar o slot do plano. Falhas não
+    //    bloqueiam a limpeza local: se a conta já não existir mais na Zernio
+    //    (ex.: usuário revogou pela Meta / limpeza dupla), a nossa base ainda
+    //    precisa ficar coerente. Logamos pra observabilidade.
+    if (row?.account_id) {
+      try {
+        await zernio.deleteAccount(row.account_id as string);
+      } catch (e: any) {
+        console.error(
+          "[zernio disconnect] falha ao deletar conta remota",
+          { accountId: row.account_id, platform: data.platform },
+          e?.message ?? e,
+        );
+      }
+    }
+
+    // 3) Marca como desconectada no nosso banco.
     await supabaseAdmin
       .from("zernio_accounts")
       .update({ status: "disconnected", account_id: null })

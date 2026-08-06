@@ -2,6 +2,7 @@
 // 100% isolado do módulo de mensageria — tabelas, profiles e contas próprias.
 
 import { createServerFn } from "@tanstack/react-start";
+import { getRequest, getRequestHost } from "@tanstack/react-start/server";
 import { z } from "zod";
 import { requireSupabaseAuth } from "@/integrations/supabase/auth-middleware";
 import { supabaseAdmin } from "@/integrations/supabase/client.server";
@@ -12,6 +13,27 @@ import {
   type ZernioCreatePostBody,
 } from "@/lib/zernio-publishing.server";
 import { validatePostTarget, type PostTargetInput } from "@/lib/social-post-validation";
+
+// URL pública do app para montar o redirect do OAuth. Mesma lógica usada por
+// zernio.functions.ts e evolution.functions.ts — nunca hardcode outro projeto.
+function isPublicHost(host: string | null | undefined): host is string {
+  if (!host) return false;
+  return !/^(localhost|127\.|0\.0\.0\.0|::1|10\.|192\.168\.|172\.(1[6-9]|2\d|3[01])\.)/i.test(host);
+}
+function publicBaseUrl(): string {
+  const fromEnv =
+    process.env.PUBLIC_APP_URL || process.env.APP_PUBLIC_URL || process.env.VITE_PUBLIC_APP_URL;
+  if (fromEnv) return fromEnv.replace(/\/$/, "");
+  try {
+    const req = getRequest();
+    const fwdHost = req.headers.get("x-forwarded-host");
+    const fwdProto = req.headers.get("x-forwarded-proto") ?? "https";
+    if (isPublicHost(fwdHost)) return `${fwdProto}://${fwdHost}`;
+    const host = getRequestHost();
+    if (isPublicHost(host)) return `https://${host}`;
+  } catch {}
+  return "";
+}
 
 // ============================================================
 // Task 4: OAuth — Connect, list, disconnect
@@ -27,7 +49,13 @@ export const getSocialConnectUrl = createServerFn({ method: "POST" })
   .inputValidator((input: unknown) => ConnectSchema.parse(input))
   .handler(async ({ data, context }) => {
     const profileId = await getSocialProfileId(context.userId);
-    const redirectUrl = `${process.env.VITE_APP_URL ?? "https://hello-tenant-base.vercel.app"}/social/callback`;
+    const base = publicBaseUrl();
+    if (!base) {
+      throw new Error(
+        "URL pública do app não detectada. Defina o secret PUBLIC_APP_URL (Vercel).",
+      );
+    }
+    const redirectUrl = `${base}/social/callback`;
     const result = await zernioPublishing.getConnectUrl(
       data.platform as SocialPlatform,
       profileId,
@@ -51,11 +79,36 @@ export const listSocialAccounts = createServerFn({ method: "POST" })
 
 const DisconnectSchema = z.object({ connectionId: z.string().uuid() });
 
-/** Desconecta uma conta social (marca status=disconnected). */
+/** Desconecta uma conta social: hard delete na Zernio (libera slot do plano)
+ *  + marca localmente como disconnected. Falha remota não bloqueia a limpeza
+ *  local — mesma abordagem de `disconnectZernioAccount` em zernio.functions.ts.
+ */
 export const disconnectSocialAccount = createServerFn({ method: "POST" })
   .middleware([requireSupabaseAuth])
   .inputValidator((input: unknown) => DisconnectSchema.parse(input))
   .handler(async ({ data, context }) => {
+    // 1) Lê o account_id remoto antes de zerar localmente.
+    const { data: row } = await supabaseAdmin
+      .from("social_account_connections")
+      .select("account_id")
+      .eq("id", data.connectionId)
+      .eq("owner_user_id", context.userId)
+      .maybeSingle();
+
+    // 2) Hard delete na Zernio (idempotente do lado do banco local).
+    if (row?.account_id) {
+      try {
+        await zernioPublishing.disconnectAccount(row.account_id as string);
+      } catch (e: any) {
+        console.error(
+          "[social disconnect] falha ao deletar conta remota",
+          { accountId: row.account_id, connectionId: data.connectionId },
+          e?.message ?? e,
+        );
+      }
+    }
+
+    // 3) Marca como desconectada no banco local.
     const { error } = await supabaseAdmin
       .from("social_account_connections")
       .update({ status: "disconnected", updated_at: new Date().toISOString() })

@@ -143,6 +143,12 @@ export const zernio = {
   listAccounts: (profileId?: string) =>
     call<any>("/accounts", { method: "GET", query: { profileId } }),
 
+  // Hard delete na Zernio — libera o slot do plano e revoga o vínculo OAuth.
+  // Espelha o mesmo endpoint usado pelo cliente de publicação (ver
+  // zernio-publishing.server.ts).
+  deleteAccount: (accountId: string) =>
+    call<any>(`/accounts/${encodeURIComponent(accountId)}`, { method: "DELETE" }),
+
   // ---------- Inbox: conversations ----------
   listConversations: (params?: {
     profileId?: string;
