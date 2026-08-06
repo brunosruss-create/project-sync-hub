@@ -52,65 +52,75 @@ async function uploadToBucket(
   return supabaseAdmin.storage.from(BUCKET).getPublicUrl(key).data.publicUrl;
 }
 
-// ─── Provedor principal: Flux Schnell via fal.ai ──────────────────
+// ─── Provedor principal: Flux Schnell via Together.ai ─────────────
 
-const FAL_MODEL = "fal-ai/flux/schnell";
+const TOGETHER_MODEL = "black-forest-labs/FLUX.1-schnell";
 
-function falImageSize(aspectRatio: GenerateImageInput["aspectRatio"]): string {
-  if (aspectRatio === "9:16") return "portrait_16_9"; // fal usa nomenclatura própria
-  if (aspectRatio === "16:9") return "landscape_16_9";
-  return "square_hd";
+/** Together.ai aceita width/height em pixels diretamente (múltiplos de 8, máx 1792). */
+function togetherDimensions(
+  aspectRatio: GenerateImageInput["aspectRatio"],
+): { width: number; height: number } {
+  if (aspectRatio === "9:16") return { width: 768, height: 1344 };
+  if (aspectRatio === "16:9") return { width: 1344, height: 768 };
+  return { width: 1024, height: 1024 };
 }
 
-async function generateWithFal(input: GenerateImageInput): Promise<GenerateImageOutput> {
-  const apiKey = process.env.FAL_API_KEY;
+async function generateWithTogether(input: GenerateImageInput): Promise<GenerateImageOutput> {
+  const apiKey = process.env.TOGETHER_API_KEY;
   if (!apiKey) {
-    const err = new Error("FAL_API_KEY não configurada");
-    (err as { code?: string }).code = "FAL_NOT_CONFIGURED";
+    const err = new Error("TOGETHER_API_KEY não configurada");
+    (err as { code?: string }).code = "TOGETHER_NOT_CONFIGURED";
     throw err;
   }
 
   const finalPrompt = enrichPrompt(input);
+  const { width, height } = togetherDimensions(input.aspectRatio);
 
-  const res = await fetch(`https://fal.run/${FAL_MODEL}`, {
+  const res = await fetch("https://api.together.xyz/v1/images/generations", {
     method: "POST",
     headers: {
-      Authorization: `Key ${apiKey}`,
+      Authorization: `Bearer ${apiKey}`,
       "Content-Type": "application/json",
     },
     body: JSON.stringify({
+      model: TOGETHER_MODEL,
       prompt: finalPrompt,
-      image_size: falImageSize(input.aspectRatio),
-      num_images: 1,
-      enable_safety_checker: true,
+      width,
+      height,
+      steps: 4, // Schnell é otimizado pra poucos steps (rápido e barato)
+      n: 1,
+      response_format: "url",
     }),
   });
 
   if (!res.ok) {
     const text = await res.text().catch(() => "");
-    throw new Error(`fal.ai retornou ${res.status}: ${text.slice(0, 300)}`);
+    throw new Error(`Together.ai retornou ${res.status}: ${text.slice(0, 300)}`);
   }
 
   const json = (await res.json()) as {
-    images?: Array<{ url: string; content_type?: string }>;
+    data?: Array<{ url?: string; b64_json?: string }>;
   };
-  const image = json.images?.[0];
-  if (!image?.url) {
-    throw new Error("fal.ai retornou payload sem imagem");
+  const image = json.data?.[0];
+  if (!image?.url && !image?.b64_json) {
+    throw new Error("Together.ai retornou payload sem imagem");
   }
 
-  // fal.ai retorna uma URL temporária hospedada por eles — baixamos e
-  // re-hospedamos no nosso bucket pra manter controle total (mesmo padrão
-  // usado pro Image_Bank).
-  const imgRes = await fetch(image.url);
-  if (!imgRes.ok) {
-    throw new Error(`Falha ao baixar imagem gerada: HTTP ${imgRes.status}`);
+  let bytes: Buffer;
+  let contentType = "image/png";
+  if (image.url) {
+    const imgRes = await fetch(image.url);
+    if (!imgRes.ok) {
+      throw new Error(`Falha ao baixar imagem gerada: HTTP ${imgRes.status}`);
+    }
+    bytes = Buffer.from(await imgRes.arrayBuffer());
+    contentType = imgRes.headers.get("content-type") ?? contentType;
+  } else {
+    bytes = Buffer.from(image.b64_json!, "base64");
   }
-  const bytes = Buffer.from(await imgRes.arrayBuffer());
-  const contentType = image.content_type ?? "image/png";
+
   const url = await uploadToBucket(bytes, input.workspaceOwnerId, contentType);
-
-  return { url, promptUsed: finalPrompt, model: "flux-schnell" };
+  return { url, promptUsed: finalPrompt, model: "flux-schnell-together" };
 }
 
 // ─── Fallback secundário: Google Imagen via Gemini API ────────────
@@ -154,16 +164,16 @@ export async function generateImage(
   input: GenerateImageInput,
 ): Promise<GenerateImageOutput> {
   try {
-    return await generateWithFal(input);
-  } catch (falErr) {
+    return await generateWithTogether(input);
+  } catch (togetherErr) {
     console.warn(
-      `[ai-image] fal.ai falhou, tentando Imagen: ${(falErr as Error).message}`,
+      `[ai-image] Together.ai falhou, tentando Imagen: ${(togetherErr as Error).message}`,
     );
     try {
       return await generateWithImagen(input);
     } catch (imagenErr) {
       const err = new Error(
-        `Ambos provedores de imagem falharam. fal.ai: ${(falErr as Error).message} | Imagen: ${(imagenErr as Error).message}`,
+        `Ambos provedores de imagem falharam. Together.ai: ${(togetherErr as Error).message} | Imagen: ${(imagenErr as Error).message}`,
       );
       (err as { code?: string }).code = "AI_IMAGE_NOT_CONFIGURED";
       throw err;
