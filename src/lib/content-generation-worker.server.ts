@@ -239,6 +239,7 @@ async function resolveImage(
   imageKeywords: string[] | undefined,
 ): Promise<ResolvedImage> {
   // Prioridade 1: foto do serviço (Requirement 7.2).
+  // Se o cliente cadastrou fotos reais do seu próprio serviço, usa elas.
   if (service && service.photos.length > 0) {
     return {
       url: service.photos[0].url,
@@ -249,13 +250,41 @@ async function resolveImage(
     };
   }
 
-  // Prioridade 2: Image_Bank — usa keywords do Gemini (que sabe o contexto real
-  // do post) em vez de query genérica por categoria.
-  // Junta até 3 keywords (Pexels trata como AND, aumenta especificidade).
+  // Query pra busca (usada tanto pelo Flux quanto pelo Pexels fallback).
   const query =
     imageKeywords && imageKeywords.length > 0
       ? imageKeywords.slice(0, 3).join(" ")
       : buildImageQuery(brief, service, brandKit);
+
+  // Prioridade 2: Geração por IA (Flux Schnell via Together.ai).
+  // Escolhido como default porque banco de imagem gratuito (Pexels) tem
+  // pouca variedade e devolve fotos genéricas/repetidas. Flux gera imagem
+  // profissional contextualizada por ~R$ 0,015/post.
+  try {
+    await enforceQuota(workspaceOwnerId, "ai_images_generated");
+    const aiPrompt = buildAiImagePrompt(brief, service, brandKit);
+    const aiImg = await generateImage({
+      prompt: aiPrompt,
+      aspectRatio: aspectRatioFor(brief.postFormat),
+      brandColorHint: brandKit.primaryColor,
+      workspaceOwnerId,
+    });
+    await incrementMeter(workspaceOwnerId, "ai_images_generated");
+    return {
+      url: aiImg.url,
+      provider: "nano_banana",
+      sourceMetadata: { provider: "nano_banana" },
+      aiImagePrompt: aiImg.promptUsed,
+    };
+  } catch (aiErr) {
+    // IA falhou (quota, credencial faltando, API caiu). Cai pro Pexels como
+    // rede de segurança em vez de deixar o job morrer.
+    console.warn(
+      `[content-worker] IA de imagem falhou, tentando banco de imagem: ${(aiErr as Error).message}`,
+    );
+  }
+
+  // Prioridade 3 (fallback): Image_Bank (Pexels/Unsplash/Pixabay).
   const bankResult = await searchImage(query, {
     aspectRatio: aspectRatioFor(brief.postFormat),
     colorHint: brandKit.primaryColor,
@@ -275,39 +304,16 @@ async function resolveImage(
     };
   }
 
-  // Prioridade 3: AI_Image_Provider como fallback automático.
-  // Cliente do SaaS não vê distinção — a experiência é uniforme ("IA gera tudo").
-  // O quota hook é o único gate real de custo (por plano/mês).
-  try {
-    await enforceQuota(workspaceOwnerId, "ai_images_generated");
-    const aiPrompt = buildAiImagePrompt(brief, service, brandKit);
-    const aiImg = await generateImage({
-      prompt: aiPrompt,
-      aspectRatio: aspectRatioFor(brief.postFormat),
-      brandColorHint: brandKit.primaryColor,
-      workspaceOwnerId,
-    });
-    await incrementMeter(workspaceOwnerId, "ai_images_generated");
-    return {
-      url: aiImg.url,
-      provider: "nano_banana",
-      sourceMetadata: { provider: "nano_banana" },
-      aiImagePrompt: aiImg.promptUsed,
-    };
-  } catch (aiErr) {
-    // Nano Banana também falhou (quota, credencial ausente, API caiu):
-    // logamos detalhe técnico no error_message pra debug interno, mas a
-    // camada de UI ainda deve mostrar mensagem neutra ao cliente.
-    const detail = aiErr instanceof Error ? aiErr.message : String(aiErr);
+  // Nada funcionou.
+  {
     console.error("[content-worker] image resolution failed:", {
       workspaceOwnerId,
       query,
-      bankResult: bankResult ? "ok" : "null",
-      aiError: detail,
+      note: "Ambos AI e banco de imagem falharam",
     });
     throw new ContentJobError(
       "image_bank",
-      `Falha ao obter imagem. Detalhe técnico: ${detail.slice(0, 300)}`,
+      `Não foi possível gerar imagem para este post no momento. Tente novamente em instantes.`,
     );
   }
 }
