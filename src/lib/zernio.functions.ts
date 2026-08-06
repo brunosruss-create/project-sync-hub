@@ -83,18 +83,38 @@ const saveInput = z.object({
   platform: z.enum(["whatsapp", "instagram"]),
   accountId: z.string().min(1).max(255),
   username: z.string().max(255).optional(),
+  /** profileId que a Zernio devolveu no callback OAuth (opcional pra backward
+   *  compat). Quando presente, é validado contra o profile deste workspace
+   *  para bloquear tentativas de gravar uma account de outro workspace. */
+  profileId: z.string().max(255).optional(),
 });
 
 /**
  * Persiste a conta conectada após o retorno do OAuth. Chamado pelo route de
  * callback (browser autenticado → server fn com bearer token do usuário).
  * Nenhum token da Meta é armazenado — a Zernio guarda internamente.
+ *
+ * Isolamento multi-tenant: o profileId do callback é validado contra o profile
+ * calculado a partir do userId autenticado. Se não bater, rejeita — assim
+ * ninguém consegue "sequestrar" uma account de outro workspace mesmo que
+ * consiga fazer um usuário logado abrir uma URL de callback forjada.
  */
 export const saveZernioConnection = createServerFn({ method: "POST" })
   .middleware([requireSupabaseAuth])
   .inputValidator((d) => saveInput.parse(d))
   .handler(async ({ data, context }) => {
     const ownerUserId = context.userId;
+
+    // Resolve o profile deste workspace na Zernio — é estável (nome derivado
+    // do userId) e a chamada bate no cache local da Zernio quando já existe.
+    const expectedProfileId = await ensureZernioProfile(ownerUserId);
+
+    if (data.profileId && data.profileId !== expectedProfileId) {
+      throw new Error(
+        "Conexão rejeitada: o retorno do OAuth não pertence a este workspace.",
+      );
+    }
+
     const { data: existing } = await supabaseAdmin
       .from("zernio_accounts")
       .select("id")
@@ -107,6 +127,10 @@ export const saveZernioConnection = createServerFn({ method: "POST" })
       username: data.username ?? null,
       status: "connected",
       connected_at: new Date().toISOString(),
+      // Sempre atualiza o profileId para o valor correto, mesmo em UPDATE.
+      // Legacy: linhas antigas podem ter zernio_profile_id="" — este passo
+      // as normaliza.
+      zernio_profile_id: expectedProfileId,
     };
 
     if (existing?.id) {
@@ -115,7 +139,6 @@ export const saveZernioConnection = createServerFn({ method: "POST" })
       await supabaseAdmin.from("zernio_accounts").insert({
         owner_user_id: ownerUserId,
         platform: data.platform,
-        zernio_profile_id: "",
         ...patch,
       });
     }
@@ -167,7 +190,7 @@ function extractAccountId(a: any): string | null {
   );
 }
 
-async function reconcileOrphanZernioAccountsInternal(ownerUserId: string) {
+async function reconcileOrphanZernioAccountsInternal(ownerUserId: string): Promise<void> {
   const profileIds = await collectMessagingProfileIds(ownerUserId);
 
   // Contas ativas localmente (account_id não nulo = conexão em uso agora).
@@ -181,29 +204,12 @@ async function reconcileOrphanZernioAccountsInternal(ownerUserId: string) {
       .filter((v: unknown): v is string => typeof v === "string" && v.length > 0),
   );
 
-  // Diagnóstico: exposto temporariamente via ?debug=1 na tela de Conexões
-  // para investigar por que uma conta ficou presa na Zernio. Remover depois
-  // que o fluxo estiver validado em produção.
-  const debug = {
-    profileIds: [...profileIds],
-    activeLocalAccountIds: [...activeLocalIds],
-    perProfile: [] as Array<{
-      profileId: string;
-      remoteAccounts: Array<{ accountId: string | null; platform: string | null; raw: any }>;
-      error?: string;
-    }>,
-    removed: [] as string[],
-    failed: [] as Array<{ accountId: string; error: string }>,
-  };
-
   for (const profileId of profileIds) {
     let remote: any;
     try {
       remote = await zernio.listAccounts(profileId);
     } catch (e: any) {
-      const msg = String(e?.message ?? e);
-      console.warn(`[reconcile zernio] listAccounts(${profileId}):`, msg);
-      debug.perProfile.push({ profileId, remoteAccounts: [], error: msg });
+      console.warn(`[reconcile zernio] listAccounts(${profileId}):`, e?.message ?? e);
       continue;
     }
     const remoteList: any[] = Array.isArray(remote?.accounts)
@@ -212,64 +218,34 @@ async function reconcileOrphanZernioAccountsInternal(ownerUserId: string) {
         ? remote
         : [];
 
-    debug.perProfile.push({
-      profileId,
-      remoteAccounts: remoteList.map((a) => ({
-        accountId: extractAccountId(a),
-        platform: (typeof a?.platform === "string" ? a.platform : null),
-        raw: a,
-      })),
-    });
-
     for (const a of remoteList) {
       const accountId = extractAccountId(a);
       if (!accountId || activeLocalIds.has(accountId)) continue;
       try {
         await zernio.deleteAccount(accountId);
-        debug.removed.push(accountId);
       } catch (e: any) {
-        const msg = String(e?.message ?? e);
-        console.warn(`[reconcile zernio] deleteAccount(${accountId}):`, msg);
-        debug.failed.push({ accountId, error: msg });
+        console.warn(`[reconcile zernio] deleteAccount(${accountId}):`, e?.message ?? e);
       }
     }
   }
-
-  return debug;
 }
 
 /** Lista os canais Zernio conectados no workspace (pra UI de Ajustes). */
 export const listZernioAccounts = createServerFn({ method: "GET" })
   .middleware([requireSupabaseAuth])
   .handler(async ({ context }) => {
-    let debug: any = null;
+    // Reconciliação silenciosa antes de responder — best-effort.
     try {
-      debug = await reconcileOrphanZernioAccountsInternal(context.userId);
+      await reconcileOrphanZernioAccountsInternal(context.userId);
     } catch (e: any) {
-      debug = { error: String(e?.message ?? e) };
       console.warn("[zernio accounts] reconciliação silenciosa falhou:", e?.message ?? e);
-    }
-
-    // Diagnóstico ampliado (temporário): pergunta TUDO que a Zernio conhece
-    // sob a nossa API_KEY — todos os profiles e todas as contas sem filtro —
-    // pra descobrir onde a conta "presa" está realmente hospedada.
-    try {
-      const allProfilesResp: any = await zernio.listProfiles();
-      const allAccountsResp: any = await zernio.listAccounts();
-      debug = {
-        ...(debug ?? {}),
-        allProfiles: allProfilesResp?.profiles ?? allProfilesResp ?? null,
-        allAccounts: allAccountsResp?.accounts ?? allAccountsResp ?? null,
-      };
-    } catch (e: any) {
-      debug = { ...(debug ?? {}), globalScanError: String(e?.message ?? e) };
     }
 
     const { data } = await supabaseAdmin
       .from("zernio_accounts")
       .select("platform,account_id,username,display_name,status,connected_at")
       .eq("owner_user_id", context.userId);
-    return { accounts: data ?? [], _debug: debug };
+    return { accounts: data ?? [] };
   });
 
 export const disconnectZernioAccount = createServerFn({ method: "POST" })

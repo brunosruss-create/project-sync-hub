@@ -20,6 +20,10 @@ function ZernioCallback() {
     const platform = qs.get("connected");
     const accountId = qs.get("accountId");
     const username = qs.get("username") ?? undefined;
+    // profileId chega pra validação multi-tenant no server (ver
+    // saveZernioConnection). Se estiver ausente, o server usa apenas o
+    // workspace autenticado — retrocompatível.
+    const profileId = qs.get("profileId") ?? undefined;
 
     const done = (to: string) =>
       setTimeout(() => navigate({ to }), 1200);
@@ -32,7 +36,7 @@ function ZernioCallback() {
       return;
     }
 
-    saveZernioConnection({ data: { platform, accountId, username } })
+    saveZernioConnection({ data: { platform, accountId, username, profileId } })
       .then(() => {
         toast.success(
           platform === "whatsapp"

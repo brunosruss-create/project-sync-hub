@@ -48,12 +48,6 @@ function ConnectionsPage() {
     refetchOnWindowFocus: false,
   });
 
-  // Painel de diagnóstico temporário: só aparece com ?debug=1 na URL.
-  // Ajuda a investigar por que uma conta ficou presa na Zernio sem expor
-  // nada disso pro fluxo normal do cliente.
-  const showDebug =
-    typeof window !== "undefined" && new URLSearchParams(window.location.search).get("debug") === "1";
-
   const instance = evoData?.instance ?? null;
   const evoStatus = (instance?.status as string) ?? "disconnected";
   const zernioAccounts: any[] = zernioData?.accounts ?? [];
@@ -316,23 +310,6 @@ function ConnectionsPage() {
         confirmLabel="Desconectar"
         destructive
       />
-
-      {showDebug && (
-        <pre
-          style={{
-            marginTop: 24,
-            padding: 12,
-            fontSize: 11,
-            background: "#111",
-            color: "#0f0",
-            borderRadius: 8,
-            overflow: "auto",
-            maxHeight: 500,
-          }}
-        >
-          {JSON.stringify((zernioData as any)?._debug ?? "sem dados", null, 2)}
-        </pre>
-      )}
     </div>
   );
 }

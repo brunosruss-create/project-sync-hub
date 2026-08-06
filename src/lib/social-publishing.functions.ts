@@ -134,6 +134,11 @@ export const disconnectSocialAccount = createServerFn({ method: "POST" })
 /**
  * Callback de OAuth bem-sucedido: grava a conexão na tabela.
  * Chamado pelo route handler de callback após extrair params da URL.
+ *
+ * Isolamento multi-tenant: o profileId do callback é validado contra o profile
+ * calculado a partir do userId autenticado. Se não bater, rejeita — assim
+ * ninguém consegue "sequestrar" uma account de outro workspace mesmo que
+ * consiga fazer um usuário logado abrir uma URL de callback forjada.
  */
 export const completeSocialConnect = createServerFn({ method: "POST" })
   .middleware([requireSupabaseAuth])
@@ -148,6 +153,16 @@ export const completeSocialConnect = createServerFn({ method: "POST" })
       .parse(input),
   )
   .handler(async ({ data, context }) => {
+    // Valida que o profileId do callback bate com o profile deste workspace.
+    // getSocialProfileId é estável para o mesmo workspace ao longo do tempo
+    // (busca linha existente ou reusa profile pelo nome canônico).
+    const expectedProfileId = await getSocialProfileId(context.userId);
+    if (data.profileId !== expectedProfileId) {
+      throw new Error(
+        "Conexão rejeitada: o retorno do OAuth não pertence a este workspace.",
+      );
+    }
+
     // Upsert: se reconectar uma conta que já existia (ex: token expirado), atualiza.
     const { data: existing } = await supabaseAdmin
       .from("social_account_connections")
@@ -165,13 +180,14 @@ export const completeSocialConnect = createServerFn({ method: "POST" })
           account_name: data.username ?? null,
           connected_at: new Date().toISOString(),
           updated_at: new Date().toISOString(),
+          zernio_profile_id: expectedProfileId,
         })
         .eq("id", existing.id);
     } else {
       await supabaseAdmin.from("social_account_connections").insert({
         owner_user_id: context.userId,
         platform: data.platform,
-        zernio_profile_id: data.profileId,
+        zernio_profile_id: expectedProfileId,
         account_id: data.accountId,
         account_name: data.username ?? null,
         status: "connected",
