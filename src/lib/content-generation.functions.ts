@@ -80,10 +80,11 @@ export const submitBrief = createServerFn({ method: "POST" })
     }
     const job = mapJobRow(jobRow);
 
-    // 3. Enfileira em message_jobs (job_type=content_generation)
+    // 3. Enfileira em message_jobs (job_type=content_generation).
+    // contact_id fica NULL — jobs de conteúdo não estão atrelados a um contato.
     const { error: enqErr } = await supabaseAdmin.from("message_jobs").insert({
       workspace_owner_id: workspaceOwnerId,
-      contact_id: brief.id, // reusa o campo pra rastreio; não é FK
+      contact_id: null,
       instance_name: "ai-content",
       payload: { content_job_id: job.id },
       job_type: "content_generation",
@@ -211,7 +212,7 @@ export const regenerateAsset = createServerFn({ method: "POST" })
 
     await supabaseAdmin.from("message_jobs").insert({
       workspace_owner_id: context.userId,
-      contact_id: (oldJob as { brief_id: string }).brief_id,
+      contact_id: null,
       instance_name: "ai-content",
       payload: {
         content_job_id: (newJob as { id: string }).id,
