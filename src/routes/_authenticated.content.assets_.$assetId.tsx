@@ -12,7 +12,7 @@ import {
   regenerateAsset,
 } from "@/lib/content-generation.functions";
 
-export const Route = createFileRoute("/_authenticated/content/assets/$assetId")({
+export const Route = createFileRoute("/_authenticated/content/assets_/$assetId")({
   component: AssetDetailPage,
 });
 

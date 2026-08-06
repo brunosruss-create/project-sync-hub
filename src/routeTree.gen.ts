@@ -54,7 +54,7 @@ import { Route as ApiInternalQueueHealthRouteImport } from './routes/api/interna
 import { Route as ApiPublicSocialReconcileRouteImport } from './routes/api/public/social-reconcile'
 import { Route as ApiPublicZernioRouteImport } from './routes/api/public/zernio'
 import { Route as ApiPublicZernioSocialRouteImport } from './routes/api/public/zernio-social'
-import { Route as AuthenticatedContentAssetsAssetIdRouteImport } from './routes/_authenticated.content.assets.$assetId'
+import { Route as AuthenticatedContentAssetsAssetIdRouteImport } from './routes/_authenticated.content.assets_.$assetId'
 import { Route as ApiPublicEvolutionInstanceIdRouteImport } from './routes/api/public/evolution.$instanceId'
 
 const IndexRoute = IndexRouteImport.update({
@@ -307,9 +307,9 @@ const ApiPublicZernioSocialRoute = ApiPublicZernioSocialRouteImport.update({
 } as any)
 const AuthenticatedContentAssetsAssetIdRoute =
   AuthenticatedContentAssetsAssetIdRouteImport.update({
-    id: '/$assetId',
-    path: '/$assetId',
-    getParentRoute: () => AuthenticatedContentAssetsRoute,
+    id: '/assets_/$assetId',
+    path: '/assets/$assetId',
+    getParentRoute: () => AuthenticatedContentRoute,
   } as any)
 const ApiPublicEvolutionInstanceIdRoute =
   ApiPublicEvolutionInstanceIdRouteImport.update({
@@ -338,7 +338,7 @@ export interface FileRoutesByFullPath {
   '/super-admin': typeof AuthenticatedSuperAdminRouteWithChildren
   '/auth/callback': typeof AuthCallbackRoute
   '/social/callback': typeof SocialCallbackRoute
-  '/content/assets': typeof AuthenticatedContentAssetsRouteWithChildren
+  '/content/assets': typeof AuthenticatedContentAssetsRoute
   '/content/brand': typeof AuthenticatedContentBrandRoute
   '/content/compose': typeof AuthenticatedContentComposeRoute
   '/settings/billing': typeof AuthenticatedSettingsBillingRoute
@@ -386,7 +386,7 @@ export interface FileRoutesByTo {
   '/super-admin': typeof AuthenticatedSuperAdminRouteWithChildren
   '/auth/callback': typeof AuthCallbackRoute
   '/social/callback': typeof SocialCallbackRoute
-  '/content/assets': typeof AuthenticatedContentAssetsRouteWithChildren
+  '/content/assets': typeof AuthenticatedContentAssetsRoute
   '/content/brand': typeof AuthenticatedContentBrandRoute
   '/content/compose': typeof AuthenticatedContentComposeRoute
   '/settings/billing': typeof AuthenticatedSettingsBillingRoute
@@ -436,7 +436,7 @@ export interface FileRoutesById {
   '/_authenticated/super-admin': typeof AuthenticatedSuperAdminRouteWithChildren
   '/auth/callback': typeof AuthCallbackRoute
   '/social/callback': typeof SocialCallbackRoute
-  '/_authenticated/content/assets': typeof AuthenticatedContentAssetsRouteWithChildren
+  '/_authenticated/content/assets': typeof AuthenticatedContentAssetsRoute
   '/_authenticated/content/brand': typeof AuthenticatedContentBrandRoute
   '/_authenticated/content/compose': typeof AuthenticatedContentComposeRoute
   '/_authenticated/settings/billing': typeof AuthenticatedSettingsBillingRoute
@@ -461,7 +461,7 @@ export interface FileRoutesById {
   '/api/public/social-reconcile': typeof ApiPublicSocialReconcileRoute
   '/api/public/zernio': typeof ApiPublicZernioRoute
   '/api/public/zernio-social': typeof ApiPublicZernioSocialRoute
-  '/_authenticated/content/assets/$assetId': typeof AuthenticatedContentAssetsAssetIdRoute
+  '/_authenticated/content/assets_/$assetId': typeof AuthenticatedContentAssetsAssetIdRoute
   '/api/public/evolution/$instanceId': typeof ApiPublicEvolutionInstanceIdRoute
 }
 export interface FileRouteTypes {
@@ -608,7 +608,7 @@ export interface FileRouteTypes {
     | '/api/public/social-reconcile'
     | '/api/public/zernio'
     | '/api/public/zernio-social'
-    | '/_authenticated/content/assets/$assetId'
+    | '/_authenticated/content/assets_/$assetId'
     | '/api/public/evolution/$instanceId'
   fileRoutesById: FileRoutesById
 }
@@ -946,12 +946,12 @@ declare module '@tanstack/react-router' {
       preLoaderRoute: typeof ApiPublicZernioSocialRouteImport
       parentRoute: typeof rootRouteImport
     }
-    '/_authenticated/content/assets/$assetId': {
-      id: '/_authenticated/content/assets/$assetId'
-      path: '/$assetId'
+    '/_authenticated/content/assets_/$assetId': {
+      id: '/_authenticated/content/assets_/$assetId'
+      path: '/assets/$assetId'
       fullPath: '/content/assets/$assetId'
       preLoaderRoute: typeof AuthenticatedContentAssetsAssetIdRouteImport
-      parentRoute: typeof AuthenticatedContentAssetsRoute
+      parentRoute: typeof AuthenticatedContentRoute
     }
     '/api/public/evolution/$instanceId': {
       id: '/api/public/evolution/$instanceId'
@@ -963,31 +963,19 @@ declare module '@tanstack/react-router' {
   }
 }
 
-interface AuthenticatedContentAssetsRouteChildren {
+interface AuthenticatedContentRouteChildren {
+  AuthenticatedContentAssetsRoute: typeof AuthenticatedContentAssetsRoute
+  AuthenticatedContentBrandRoute: typeof AuthenticatedContentBrandRoute
+  AuthenticatedContentComposeRoute: typeof AuthenticatedContentComposeRoute
   AuthenticatedContentAssetsAssetIdRoute: typeof AuthenticatedContentAssetsAssetIdRoute
 }
 
-const AuthenticatedContentAssetsRouteChildren: AuthenticatedContentAssetsRouteChildren =
-  {
-    AuthenticatedContentAssetsAssetIdRoute:
-      AuthenticatedContentAssetsAssetIdRoute,
-  }
-
-const AuthenticatedContentAssetsRouteWithChildren =
-  AuthenticatedContentAssetsRoute._addFileChildren(
-    AuthenticatedContentAssetsRouteChildren,
-  )
-
-interface AuthenticatedContentRouteChildren {
-  AuthenticatedContentAssetsRoute: typeof AuthenticatedContentAssetsRouteWithChildren
-  AuthenticatedContentBrandRoute: typeof AuthenticatedContentBrandRoute
-  AuthenticatedContentComposeRoute: typeof AuthenticatedContentComposeRoute
-}
-
 const AuthenticatedContentRouteChildren: AuthenticatedContentRouteChildren = {
-  AuthenticatedContentAssetsRoute: AuthenticatedContentAssetsRouteWithChildren,
+  AuthenticatedContentAssetsRoute: AuthenticatedContentAssetsRoute,
   AuthenticatedContentBrandRoute: AuthenticatedContentBrandRoute,
   AuthenticatedContentComposeRoute: AuthenticatedContentComposeRoute,
+  AuthenticatedContentAssetsAssetIdRoute:
+    AuthenticatedContentAssetsAssetIdRoute,
 }
 
 const AuthenticatedContentRouteWithChildren =
