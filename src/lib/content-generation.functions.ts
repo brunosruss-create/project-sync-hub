@@ -404,8 +404,6 @@ export const approveAsset = createServerFn({ method: "POST" })
 
 // ─── Editor de camadas ─────────────────────────────────────────
 
-import { renderComposition } from "@/features/content-generation/editor/layer-renderer.server";
-
 const SaveLayersSchema = z.object({
   assetId: z.string().uuid(),
   composition: z.object({
@@ -417,18 +415,19 @@ const SaveLayersSchema = z.object({
 });
 
 /**
- * Salva a composição editada no asset e re-renderiza o PNG final.
- * Substitui rendered_image_url pelo novo render (com camadas editadas).
+ * Salva a composição editada no asset. NÃO renderiza server-side aqui —
+ * o preview client-side no LayerEditor já mostra tudo em tempo real. A
+ * renderização final em PNG só acontece quando o cliente publica, via
+ * job no worker do Railway (que tem satori/resvg instalados).
  */
 export const saveAssetLayers = createServerFn({ method: "POST" })
   .middleware([requireSupabaseAuth])
   .inputValidator((input: unknown) => SaveLayersSchema.parse(input))
   .handler(async ({ data, context }) => {
     const workspaceOwnerId = await resolveWorkspaceOwner(context.userId);
-    // Carrega asset
     const { data: assetRow, error } = await supabaseAdmin
       .from("generated_assets")
-      .select("*")
+      .select("id,base_image_url,rendered_image_url")
       .eq("id", data.assetId)
       .eq("owner_user_id", workspaceOwnerId)
       .single();
@@ -436,31 +435,10 @@ export const saveAssetLayers = createServerFn({ method: "POST" })
     // eslint-disable-next-line @typescript-eslint/no-explicit-any
     const asset = assetRow as any;
 
-    // Localiza a imagem BASE (a foto original, sem camadas — se já teve edição
-    // antes, precisa pegar base_image_url; senão a própria rendered_image_url
-    // ainda é a base).
-    const baseImageUrl = asset.base_image_url ?? asset.rendered_image_url;
-
-    // Re-renderiza a composição em PNG.
-    const pngBuffer = await renderComposition({
-      imageUrl: baseImageUrl,
-      // eslint-disable-next-line @typescript-eslint/no-explicit-any
-      composition: data.composition as any,
-    });
-
-    // Sobe o novo PNG e atualiza rendered_image_url.
-    const { randomUUID } = await import("node:crypto");
-    const key = `${workspaceOwnerId}/renders-edited/${data.assetId}/${randomUUID()}.png`;
-    const { error: upErr } = await supabaseAdmin.storage
-      .from("ai-content")
-      .upload(key, pngBuffer, { contentType: "image/png", upsert: false });
-    if (upErr) throw new Error(`Falha ao subir PNG editado: ${upErr.message}`);
-    const newUrl = supabaseAdmin.storage.from("ai-content").getPublicUrl(key).data.publicUrl;
-
-    // Salva base_image_url uma vez (na primeira edição) pra não perder a foto original.
+    // Guarda base_image_url uma vez (na primeira edição) pra preservar a foto
+    // original — assim reedições sempre partem da imagem sem camadas.
     const updatePayload: Record<string, unknown> = {
       layers_json: data.composition,
-      rendered_image_url: newUrl,
     };
     if (!asset.base_image_url) {
       updatePayload.base_image_url = asset.rendered_image_url;
@@ -472,5 +450,45 @@ export const saveAssetLayers = createServerFn({ method: "POST" })
       .eq("id", data.assetId);
     if (updErr) throw new Error(`Falha ao salvar: ${updErr.message}`);
 
-    return { renderedImageUrl: newUrl };
+    return { ok: true };
+  });
+
+
+const EnqueueRenderSchema = z.object({ assetId: z.string().uuid() });
+
+/**
+ * Enfileira um job de renderização final da composição (foto + camadas).
+ * O worker do Railway processa em 2-5s e atualiza rendered_image_url.
+ * Cliente deve fazer polling do asset até rendered_image_url mudar.
+ */
+export const enqueueRenderComposition = createServerFn({ method: "POST" })
+  .middleware([requireSupabaseAuth])
+  .inputValidator((input: unknown) => EnqueueRenderSchema.parse(input))
+  .handler(async ({ data, context }) => {
+    const workspaceOwnerId = await resolveWorkspaceOwner(context.userId);
+    // Valida ownership do asset
+    const { data: assetRow, error } = await supabaseAdmin
+      .from("generated_assets")
+      .select("id,layers_json,rendered_image_url")
+      .eq("id", data.assetId)
+      .eq("owner_user_id", workspaceOwnerId)
+      .single();
+    if (error || !assetRow) throw new Error("Asset não encontrado");
+    // eslint-disable-next-line @typescript-eslint/no-explicit-any
+    if (!(assetRow as any).layers_json) {
+      // Nada pra renderizar — asset ainda tem só a foto original.
+      // eslint-disable-next-line @typescript-eslint/no-explicit-any
+      return { skipped: true, renderedImageUrl: (assetRow as any).rendered_image_url };
+    }
+    // Enfileira job
+    const { error: enqErr } = await supabaseAdmin.from("message_jobs").insert({
+      workspace_owner_id: workspaceOwnerId,
+      contact_id: null,
+      instance_name: "ai-content",
+      payload: { asset_id: data.assetId },
+      job_type: "render_composition",
+      scheduled_at: new Date().toISOString(),
+    });
+    if (enqErr) throw new Error(`Falha ao enfileirar renderização: ${enqErr.message}`);
+    return { skipped: false };
   });

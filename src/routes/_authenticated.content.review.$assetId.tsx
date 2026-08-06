@@ -11,6 +11,7 @@ import {
   rejectAsset,
   regenerateAsset,
   saveAssetLayers,
+  enqueueRenderComposition,
 } from "@/lib/content-generation.functions";
 import { getBrandKit } from "@/lib/brand-kit.functions";
 import { LayerEditor } from "@/features/content-generation/editor/LayerEditor";
@@ -31,7 +32,9 @@ function AssetDetailPage() {
   const rejectFn = useServerFn(rejectAsset);
   const regenFn = useServerFn(regenerateAsset);
   const saveLayersFn = useServerFn(saveAssetLayers);
+  const enqueueRenderFn = useServerFn(enqueueRenderComposition);
   const getBrandKitFn = useServerFn(getBrandKit);
+  const [publishing, setPublishing] = React.useState(false);
 
   const assetQ = useQuery({
     queryKey: ["content-asset", assetId],
@@ -81,40 +84,68 @@ function AssetDetailPage() {
       return saveLayersFn({ data: { assetId, composition } });
     },
     onSuccess: () => {
-      toast.success("Post atualizado com suas edições");
-      qc.invalidateQueries({ queryKey: ["content-asset", assetId] });
+      toast.success("Edições salvas");
     },
     onError: (e: any) => toast.error(e?.message ?? "Falha ao salvar edições"),
   });
 
   const sendToComposer = async () => {
     if (!asset) return;
-    // Salva as edições primeiro (se houve mudanças)
-    let currentImageUrl = asset.renderedImageUrl;
-    if (composition && composition.layers.length > 0) {
-      try {
-        const result = await saveLayersFn({ data: { assetId, composition } });
-        currentImageUrl = result.renderedImageUrl;
-      } catch (e: any) {
-        toast.error("Não foi possível salvar edições antes de publicar");
-        return;
+    setPublishing(true);
+    try {
+      // 1. Salva as edições (layers_json)
+      let hasLayers = false;
+      if (composition && composition.layers.length > 0) {
+        await saveLayersFn({ data: { assetId, composition } });
+        hasLayers = true;
       }
-    }
 
-    const network = asset.targetNetwork;
-    const perNet = asset.copyBundle.perNetwork;
-    const fullText =
-      network === "youtube" && perNet.youtube
-        ? `${perNet.youtube.title}\n\n${perNet.youtube.description}`
-        : (perNet as any)[network]?.fullText ?? asset.copyBundle.body;
-    const params = new URLSearchParams({
-      aiAssetId: asset.id,
-      network,
-      text: fullText,
-      mediaUrl: currentImageUrl,
-      hashtags: asset.copyBundle.hashtags.join(","),
-    });
-    nav({ to: `/social/compose?${params.toString()}` as any });
+      // 2. Se editou, enfileira job de renderização no worker e aguarda o
+      //    PNG final ficar pronto (polling até rendered_image_url mudar).
+      let finalUrl = asset.renderedImageUrl;
+      if (hasLayers) {
+        toast.info("Aplicando edições na imagem final...");
+        const originalUrl = asset.renderedImageUrl;
+        await enqueueRenderFn({ data: { assetId } });
+
+        // Polling: aguarda até 30s pela URL nova
+        const started = Date.now();
+        while (Date.now() - started < 30_000) {
+          await new Promise((r) => setTimeout(r, 2000));
+          const fresh = await qc
+            .fetchQuery({
+              queryKey: ["content-asset", assetId, "poll"],
+              queryFn: () => getFn({ data: { assetId } }),
+              staleTime: 0,
+            })
+            .catch(() => null);
+          if (fresh?.asset && fresh.asset.renderedImageUrl !== originalUrl) {
+            finalUrl = fresh.asset.renderedImageUrl;
+            break;
+          }
+        }
+      }
+
+      // 3. Redireciona pro compose com a imagem final
+      const network = asset.targetNetwork;
+      const perNet = asset.copyBundle.perNetwork;
+      const fullText =
+        network === "youtube" && perNet.youtube
+          ? `${perNet.youtube.title}\n\n${perNet.youtube.description}`
+          : (perNet as any)[network]?.fullText ?? asset.copyBundle.body;
+      const params = new URLSearchParams({
+        aiAssetId: asset.id,
+        network,
+        text: fullText,
+        mediaUrl: finalUrl,
+        hashtags: asset.copyBundle.hashtags.join(","),
+      });
+      nav({ to: `/social/compose?${params.toString()}` as any });
+    } catch (e: any) {
+      toast.error(e?.message ?? "Falha ao preparar publicação");
+    } finally {
+      setPublishing(false);
+    }
   };
 
   const reject = useMutation({
@@ -317,11 +348,16 @@ function AssetDetailPage() {
           </button>
           <button
             onClick={sendToComposer}
+            disabled={publishing}
             className="btn-primary"
-            style={{ height: 38, fontSize: 14 }}
+            style={{ height: 38, fontSize: 14, opacity: publishing ? 0.6 : 1 }}
           >
-            <Check size={14} />
-            Publicar
+            {publishing ? (
+              <Loader2 size={14} className="animate-spin" />
+            ) : (
+              <Check size={14} />
+            )}
+            {publishing ? "Preparando..." : "Publicar"}
           </button>
         </div>
       ) : null}

@@ -15,6 +15,10 @@ import {
   processContentGenerationJob,
   type ContentGenerationJobPayload,
 } from "@/lib/content-generation-worker.server";
+import {
+  processRenderCompositionJob,
+  type RenderCompositionJobPayload,
+} from "@/lib/render-composition-worker.server";
 
 initSentry("worker");
 
@@ -25,7 +29,12 @@ const PER_WORKSPACE_LIMIT_PER_MINUTE = 25; // protege 1 cliente de estourar a co
 const MAX_ATTEMPTS = 5;
 const STALE_PROCESSING_MS = 5 * 60_000; // job travado em "processing" (worker caiu no meio) volta a pending
 
-type JobType = "ai_reply" | "csat_send" | "scheduled_send" | "content_generation";
+type JobType =
+  | "ai_reply"
+  | "csat_send"
+  | "scheduled_send"
+  | "content_generation"
+  | "render_composition";
 
 type JobRow = {
   id: string;
@@ -162,6 +171,13 @@ async function runJob(job: JobRow) {
       }
       recordCall(job.workspace_owner_id);
       await processContentGenerationJob(job.payload as unknown as ContentGenerationJobPayload);
+    } else if (job.job_type === "render_composition") {
+      // Renderização final do PNG (foto base + camadas do editor).
+      // Roda no Railway porque requer satori/resvg instalados nativamente.
+      // Não conta rate limit da IA — é só CPU/render.
+      await processRenderCompositionJob(
+        job.payload as unknown as RenderCompositionJobPayload,
+      );
     } else {
       // Tipo desconhecido: marca done em vez de ficar reprocessando para sempre.
       console.warn("[job-worker] job_type desconhecido, ignorando:", job.job_type, job.id);
