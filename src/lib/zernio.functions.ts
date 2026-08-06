@@ -181,12 +181,29 @@ async function reconcileOrphanZernioAccountsInternal(ownerUserId: string) {
       .filter((v: unknown): v is string => typeof v === "string" && v.length > 0),
   );
 
+  // Diagnóstico: exposto temporariamente via ?debug=1 na tela de Conexões
+  // para investigar por que uma conta ficou presa na Zernio. Remover depois
+  // que o fluxo estiver validado em produção.
+  const debug = {
+    profileIds: [...profileIds],
+    activeLocalAccountIds: [...activeLocalIds],
+    perProfile: [] as Array<{
+      profileId: string;
+      remoteAccounts: Array<{ accountId: string | null; platform: string | null; raw: any }>;
+      error?: string;
+    }>,
+    removed: [] as string[],
+    failed: [] as Array<{ accountId: string; error: string }>,
+  };
+
   for (const profileId of profileIds) {
     let remote: any;
     try {
       remote = await zernio.listAccounts(profileId);
     } catch (e: any) {
-      console.warn(`[reconcile zernio] listAccounts(${profileId}):`, e?.message ?? e);
+      const msg = String(e?.message ?? e);
+      console.warn(`[reconcile zernio] listAccounts(${profileId}):`, msg);
+      debug.perProfile.push({ profileId, remoteAccounts: [], error: msg });
       continue;
     }
     const remoteList: any[] = Array.isArray(remote?.accounts)
@@ -195,25 +212,41 @@ async function reconcileOrphanZernioAccountsInternal(ownerUserId: string) {
         ? remote
         : [];
 
+    debug.perProfile.push({
+      profileId,
+      remoteAccounts: remoteList.map((a) => ({
+        accountId: extractAccountId(a),
+        platform: (typeof a?.platform === "string" ? a.platform : null),
+        raw: a,
+      })),
+    });
+
     for (const a of remoteList) {
       const accountId = extractAccountId(a);
       if (!accountId || activeLocalIds.has(accountId)) continue;
       try {
         await zernio.deleteAccount(accountId);
+        debug.removed.push(accountId);
       } catch (e: any) {
-        console.warn(`[reconcile zernio] deleteAccount(${accountId}):`, e?.message ?? e);
+        const msg = String(e?.message ?? e);
+        console.warn(`[reconcile zernio] deleteAccount(${accountId}):`, msg);
+        debug.failed.push({ accountId, error: msg });
       }
     }
   }
+
+  return debug;
 }
 
 /** Lista os canais Zernio conectados no workspace (pra UI de Ajustes). */
 export const listZernioAccounts = createServerFn({ method: "GET" })
   .middleware([requireSupabaseAuth])
   .handler(async ({ context }) => {
+    let debug: any = null;
     try {
-      await reconcileOrphanZernioAccountsInternal(context.userId);
+      debug = await reconcileOrphanZernioAccountsInternal(context.userId);
     } catch (e: any) {
+      debug = { error: String(e?.message ?? e) };
       console.warn("[zernio accounts] reconciliação silenciosa falhou:", e?.message ?? e);
     }
 
@@ -221,7 +254,7 @@ export const listZernioAccounts = createServerFn({ method: "GET" })
       .from("zernio_accounts")
       .select("platform,account_id,username,display_name,status,connected_at")
       .eq("owner_user_id", context.userId);
-    return { accounts: data ?? [] };
+    return { accounts: data ?? [], _debug: debug };
   });
 
 export const disconnectZernioAccount = createServerFn({ method: "POST" })
