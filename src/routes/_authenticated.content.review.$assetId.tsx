@@ -53,7 +53,9 @@ function AssetDetailPage() {
   const [initialized, setInitialized] = React.useState(false);
 
   React.useEffect(() => {
-    if (initialized || !asset || !brandKit) return;
+    // Só depende de asset carregar. brandKit pode ser null (cliente nunca
+    // configurou) — usamos defaults nesse caso em vez de travar o editor.
+    if (initialized || !asset || brandKitQ.isLoading) return;
     // eslint-disable-next-line @typescript-eslint/no-explicit-any
     const existing = (asset as any).layersJson ?? (asset as any).layers_json;
     if (existing?.layers?.length) {
@@ -65,18 +67,18 @@ function AssetDetailPage() {
           format: isStory ? "story" : "single",
           hook: asset.copyBundle.hook,
           cta: asset.copyBundle.cta,
-          signature: brandKit.defaultSignature || "Sua Marca",
-          primaryColor: brandKit.primaryColor,
-          secondaryColor: brandKit.secondaryColor,
-          supportColor: brandKit.supportColor,
-          displayFont: brandKit.displayFont,
-          bodyFont: brandKit.bodyFont,
+          signature: brandKit?.defaultSignature || "Sua Marca",
+          primaryColor: brandKit?.primaryColor || "#0F172A",
+          secondaryColor: brandKit?.secondaryColor || "#1E293B",
+          supportColor: brandKit?.supportColor || "#F59E0B",
+          displayFont: brandKit?.displayFont || "Montserrat",
+          bodyFont: brandKit?.bodyFont || "Inter",
           category: undefined,
         }),
       );
     }
     setInitialized(true);
-  }, [asset, brandKit, initialized]);
+  }, [asset, brandKit, brandKitQ.isLoading, initialized]);
 
   const saveLayers = useMutation({
     mutationFn: () => {
@@ -168,7 +170,7 @@ function AssetDetailPage() {
     onError: (e: any) => toast.error(e?.message ?? "Falha ao regenerar"),
   });
 
-  if (assetQ.isLoading || !asset || !brandKit || !composition) {
+  if (assetQ.isLoading || !asset || brandKitQ.isLoading || !composition) {
     return (
       <div
         className="flex items-center"

@@ -114,6 +114,12 @@ function SocialComposePage() {
     setAiHydrated(true);
   }, [aiHydrated, search.aiAssetId, search.network, search.mediaUrl, accounts, initialText]);
 
+  // Vem do fluxo de Conteúdo IA mas ainda não conseguiu hidratar target
+  // (ex: rede pedida não está conectada, ou terminou o processo sem achar conta).
+  const cameFromAiFlow = Boolean(search.aiAssetId);
+  const aiFlowStuck =
+    cameFromAiFlow && !accountsQ.isLoading && targets.length === 0 && aiHydrated;
+
   const addTarget = (account: any) => {
     if (targets.some((t) => t.connectionId === account.id)) return;
     const platform = account.platform as SocialPlatform;
@@ -235,6 +241,26 @@ function SocialComposePage() {
           </span>
         ) : null}
       </div>
+
+      {aiFlowStuck ? (
+        <Card
+          style={{
+            padding: 14,
+            background: "color-mix(in oklab, var(--danger, #EF4444) 8%, transparent)",
+            borderColor: "var(--danger, #FCA5A5)",
+          }}
+        >
+          <div style={{ fontSize: 13, color: "var(--text-primary)" }}>
+            Não conseguimos selecionar automaticamente a conta pra{" "}
+            <strong style={{ textTransform: "capitalize" }}>{search.network}</strong>.
+            Verifique se você tem essa rede conectada em{" "}
+            <a href="/social/accounts" style={{ color: "var(--brand-400)" }}>
+              Publicações → Contas
+            </a>
+            , ou selecione a rede manualmente abaixo.
+          </div>
+        </Card>
+      ) : null}
 
       {/* Texto base */}
       <Card style={{ padding: 16 }}>
