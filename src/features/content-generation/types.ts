@@ -131,14 +131,23 @@ export interface ContentJob {
 
 // ─── CopyBundle (retorno estruturado do Gemini) ──────────────────
 
+// Campos internos são todos opcionais — o Gemini pode omitir uma variante
+// quando aquela rede não é foco do post. O caminho de "publish" faz fallback
+// para copy.body quando fullText não veio.
 export const CopyBundlePerNetworkSchema = z.object({
-  facebook: z.object({ fullText: z.string().max(5000) }).optional(),
-  instagram: z.object({ fullText: z.string().max(2200) }).optional(),
-  tiktok: z.object({ fullText: z.string().max(2200) }).optional(),
+  facebook: z
+    .object({ fullText: z.string().max(5000).optional() })
+    .optional(),
+  instagram: z
+    .object({ fullText: z.string().max(2200).optional() })
+    .optional(),
+  tiktok: z
+    .object({ fullText: z.string().max(2200).optional() })
+    .optional(),
   youtube: z
     .object({
-      title: z.string().max(100),
-      description: z.string().max(5000),
+      title: z.string().max(100).optional(),
+      description: z.string().max(5000).optional(),
     })
     .optional(),
 });
