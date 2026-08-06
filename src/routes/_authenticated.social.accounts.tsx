@@ -3,7 +3,7 @@ import { createFileRoute, Link } from "@tanstack/react-router";
 import { useQuery, useMutation, useQueryClient } from "@tanstack/react-query";
 import { useServerFn } from "@tanstack/react-start";
 import { toast } from "sonner";
-import { Plus, Loader2, Share2, FileText, Settings2, Facebook, Instagram, Youtube, Music2 } from "lucide-react";
+import { Plus, Loader2, Share2, FileText, Settings2, Facebook, Instagram, Youtube, Music2, Sparkles, Palette, LayoutTemplate } from "lucide-react";
 import { Card } from "@/components/ui/card";
 import { Badge, type BadgeVariant } from "@/components/ui/badge";
 import { EmptyState } from "@/components/empty-state";
@@ -116,6 +116,25 @@ function SocialAccountsPage() {
         {hasConnected && (
           <div className="flex items-center" style={{ gap: 6 }}>
             <Link
+              to="/content/compose"
+              className="inline-flex items-center"
+              style={{
+                gap: 6,
+                height: 32,
+                padding: "0 14px",
+                borderRadius: "var(--radius-pill)",
+                border: "1px solid var(--brand-400)",
+                background: "color-mix(in oklab, var(--brand-400) 10%, transparent)",
+                color: "var(--brand-400)",
+                fontSize: 13,
+                fontWeight: 600,
+                textDecoration: "none",
+              }}
+            >
+              <Sparkles size={14} />
+              Gerar com IA
+            </Link>
+            <Link
               to="/social/posts"
               className="inline-flex items-center"
               style={{
@@ -145,6 +164,19 @@ function SocialAccountsPage() {
           </div>
         )}
       </div>
+
+      {/* Sub-nav de módulo — só quando tem conta conectada */}
+      {hasConnected && (
+        <div
+          className="flex flex-wrap"
+          style={{ gap: 4, borderBottom: "1px solid var(--border)", paddingBottom: 8 }}
+        >
+          <SubNavLink to="/social/accounts" icon={<Share2 size={12} />} label="Contas" active />
+          <SubNavLink to="/content/assets" icon={<Sparkles size={12} />} label="Posts com IA" />
+          <SubNavLink to="/content/brand" icon={<Palette size={12} />} label="Brand Kit" />
+          <SubNavLink to="/content/templates" icon={<LayoutTemplate size={12} />} label="Templates" />
+        </div>
+      )}
 
       {/* Cards de integração — sempre visíveis, são a porta de entrada */}
       <div style={{ fontSize: 13, fontWeight: 600, color: "var(--text-muted)", textTransform: "uppercase", letterSpacing: "0.04em" }}>
@@ -309,5 +341,38 @@ function SocialAccountsPage() {
         destructive
       />
     </div>
+  );
+}
+
+function SubNavLink({
+  to,
+  label,
+  icon,
+  active = false,
+}: {
+  to: string;
+  label: string;
+  icon: React.ReactNode;
+  active?: boolean;
+}) {
+  return (
+    <Link
+      to={to}
+      style={{
+        display: "inline-flex",
+        alignItems: "center",
+        gap: 6,
+        padding: "6px 12px",
+        borderRadius: "var(--radius-pill)",
+        fontSize: 12,
+        color: active ? "var(--text-primary)" : "var(--text-muted)",
+        border: `1px solid ${active ? "var(--border)" : "transparent"}`,
+        background: active ? "var(--bg-overlay)" : "transparent",
+        textDecoration: "none",
+      }}
+    >
+      {icon}
+      {label}
+    </Link>
   );
 }

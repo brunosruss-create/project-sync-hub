@@ -3,7 +3,8 @@ import { createFileRoute, useNavigate } from "@tanstack/react-router";
 import { useServerFn } from "@tanstack/react-start";
 import { useQuery } from "@tanstack/react-query";
 import { toast } from "sonner";
-import { Plus, Send, Clock, Save, Image as ImageIcon, X } from "lucide-react";
+import { z } from "zod";
+import { Plus, Send, Clock, Save, Image as ImageIcon, X, Sparkles } from "lucide-react";
 import { Card } from "@/components/ui/card";
 import { Badge } from "@/components/ui/badge";
 import {
@@ -22,8 +23,19 @@ import {
 } from "@/lib/social-post-validation";
 import { supabase } from "@/integrations/supabase/client";
 
-export const Route = createFileRoute("/_authenticated/social/compose" )({
+// Query params opcionais quando o composer é aberto a partir do módulo de
+// Conteúdo IA: pré-preenchem texto, imagem e rede alvo.
+const ComposeSearchSchema = z.object({
+  aiAssetId: z.string().optional(),
+  network: z.enum(["facebook", "instagram", "tiktok", "youtube"]).optional(),
+  text: z.string().optional(),
+  mediaUrl: z.string().url().optional(),
+  hashtags: z.string().optional(),
+});
+
+export const Route = createFileRoute("/_authenticated/social/compose")({
   component: SocialComposePage,
+  validateSearch: (search) => ComposeSearchSchema.parse(search),
 });
 
 type TargetDraft = {
@@ -37,6 +49,7 @@ type TargetDraft = {
 
 function SocialComposePage() {
   const navigate = useNavigate();
+  const search = Route.useSearch();
   const createDraftFn = useServerFn(createSocialDraft);
   const addTargetFn = useServerFn(addSocialPostTarget);
   const submitFn = useServerFn(submitSocialPost);
@@ -51,12 +64,55 @@ function SocialComposePage() {
     (a: any) => a.status === "connected",
   );
 
-  const [baseText, setBaseText] = React.useState("");
+  // Se veio do fluxo do Conteúdo IA, monta o texto base já com hashtags.
+  const initialText = React.useMemo(() => {
+    if (!search.text) return "";
+    const tags = search.hashtags
+      ? search.hashtags
+          .split(",")
+          .filter(Boolean)
+          .map((t) => (t.startsWith("#") ? t : `#${t}`))
+          .join(" ")
+      : "";
+    return tags ? `${search.text}\n\n${tags}` : search.text;
+  }, [search.text, search.hashtags]);
+
+  const [baseText, setBaseText] = React.useState(initialText);
   const [targets, setTargets] = React.useState<TargetDraft[]>([]);
   const [submitting, setSubmitting] = React.useState(false);
   const [scheduleMode, setScheduleMode] = React.useState(false);
   const [scheduledFor, setScheduledFor] = React.useState("");
   const [timezone] = React.useState(Intl.DateTimeFormat().resolvedOptions().timeZone);
+  const [aiHydrated, setAiHydrated] = React.useState(false);
+
+  // Hydrata target automaticamente quando veio do Conteúdo IA e as contas carregaram.
+  React.useEffect(() => {
+    if (aiHydrated) return;
+    if (!search.aiAssetId || !search.network || !search.mediaUrl) return;
+    if (accounts.length === 0) return;
+    const conn = accounts.find(
+      (a: any) => a.platform === search.network && a.status === "connected",
+    );
+    if (!conn) {
+      toast.error(
+        `Você não tem uma conta ${search.network} conectada. Conecte antes de continuar.`,
+      );
+      setAiHydrated(true);
+      return;
+    }
+    const types = getSupportedPostTypes(search.network as SocialPlatform);
+    setTargets([
+      {
+        connectionId: conn.id,
+        platform: search.network as SocialPlatform,
+        accountName: conn.account_name ?? conn.platform,
+        postType: types[0] ?? null,
+        text: initialText,
+        mediaUrls: [search.mediaUrl],
+      },
+    ]);
+    setAiHydrated(true);
+  }, [aiHydrated, search.aiAssetId, search.network, search.mediaUrl, accounts, initialText]);
 
   const addTarget = (account: any) => {
     if (targets.some((t) => t.connectionId === account.id)) return;
@@ -157,9 +213,28 @@ function SocialComposePage() {
 
   return (
     <div className="flex flex-col" style={{ gap: 16, maxWidth: 720 }}>
-      <h1 style={{ fontSize: 22, fontWeight: 600, letterSpacing: "-0.015em" }}>
-        Novo Post
-      </h1>
+      <div className="flex items-center" style={{ gap: 10 }}>
+        <h1 style={{ fontSize: 22, fontWeight: 600, letterSpacing: "-0.015em" }}>
+          Novo Post
+        </h1>
+        {search.aiAssetId ? (
+          <span
+            className="inline-flex items-center"
+            style={{
+              gap: 4,
+              padding: "3px 10px",
+              borderRadius: "var(--radius-pill)",
+              background: "color-mix(in oklab, var(--brand-400) 14%, transparent)",
+              color: "var(--brand-400)",
+              fontSize: 11,
+              fontWeight: 600,
+            }}
+          >
+            <Sparkles size={11} />
+            Gerado com IA — revise antes de publicar
+          </span>
+        ) : null}
+      </div>
 
       {/* Texto base */}
       <Card style={{ padding: 16 }}>

@@ -8,73 +8,49 @@ import { Card } from "@/components/ui/card";
 import { Badge } from "@/components/ui/badge";
 import {
   getAsset,
-  approveAsset,
   rejectAsset,
   regenerateAsset,
 } from "@/lib/content-generation.functions";
-import { listSocialAccounts } from "@/lib/social-publishing.functions";
-import type { TargetNetwork } from "@/features/content-generation/types";
 
 export const Route = createFileRoute("/_authenticated/content/assets/$assetId")({
   component: AssetDetailPage,
 });
-
-const DEFAULT_POST_TYPE: Record<TargetNetwork, string> = {
-  facebook: "feed",
-  instagram: "feed",
-  tiktok: "video",
-  youtube: "video",
-};
 
 function AssetDetailPage() {
   const { assetId } = Route.useParams();
   const nav = useNavigate();
   const qc = useQueryClient();
   const getFn = useServerFn(getAsset);
-  const approveFn = useServerFn(approveAsset);
   const rejectFn = useServerFn(rejectAsset);
   const regenFn = useServerFn(regenerateAsset);
-  const accountsFn = useServerFn(listSocialAccounts);
 
   const assetQ = useQuery({
     queryKey: ["content-asset", assetId],
     queryFn: () => getFn({ data: { assetId } }),
   });
-  const accountsQ = useQuery({
-    queryKey: ["social-accounts"],
-    queryFn: () => accountsFn(),
-  });
 
   const asset = assetQ.data?.asset;
-  const accounts = accountsQ.data?.accounts ?? [];
 
-  const approve = useMutation({
-    mutationFn: async () => {
-      if (!asset) throw new Error("Asset ainda não carregou");
-      const network = asset.targetNetwork;
-      const conn = accounts.find(
-        (a: any) => a.platform === network && a.status === "connected",
-      );
-      if (!conn) {
-        throw new Error(
-          `Nenhuma conta ${network} conectada. Vá em Publicações → conectar.`,
-        );
-      }
-      return approveFn({
-        data: {
-          assetId,
-          connections: { [network]: (conn as any).id } as any,
-          postTypes: { [network]: DEFAULT_POST_TYPE[network] } as any,
-        },
-      });
-    },
-    onSuccess: () => {
-      toast.success("Post enviado para publicação");
-      qc.invalidateQueries({ queryKey: ["content-asset", assetId] });
-      qc.invalidateQueries({ queryKey: ["content-assets"] });
-    },
-    onError: (e: any) => toast.error(e?.message ?? "Falha ao aprovar"),
-  });
+  // Ao "aprovar", envia pro compositor de Publicações em vez de publicar direto.
+  // O compositor abre pré-preenchido com o texto + imagem gerada; o usuário
+  // revisa, ajusta e publica pelo botão normal de lá.
+  const sendToComposer = () => {
+    if (!asset) return;
+    const network = asset.targetNetwork;
+    const perNet = asset.copyBundle.perNetwork;
+    const fullText =
+      network === "youtube" && perNet.youtube
+        ? `${perNet.youtube.title}\n\n${perNet.youtube.description}`
+        : (perNet as any)[network]?.fullText ?? asset.copyBundle.body;
+    const params = new URLSearchParams({
+      aiAssetId: asset.id,
+      network,
+      text: fullText,
+      mediaUrl: asset.renderedImageUrl,
+      hashtags: asset.copyBundle.hashtags.join(","),
+    });
+    nav({ to: `/social/compose?${params.toString()}` as any });
+  };
 
   const reject = useMutation({
     mutationFn: () => rejectFn({ data: { assetId } }),
@@ -271,17 +247,9 @@ function AssetDetailPage() {
               <X size={14} />
               Rejeitar
             </button>
-            <button
-              onClick={() => approve.mutate()}
-              disabled={approve.isPending}
-              style={primaryBtn}
-            >
-              {approve.isPending ? (
-                <Loader2 size={14} className="animate-spin" />
-              ) : (
-                <Check size={14} />
-              )}
-              Aprovar e publicar
+            <button onClick={sendToComposer} style={primaryBtn}>
+              <Check size={14} />
+              Revisar e publicar
             </button>
           </div>
         </div>

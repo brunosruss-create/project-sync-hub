@@ -29,11 +29,9 @@ import { Route as AuthenticatedServicesRouteImport } from './routes/_authenticat
 import { Route as AuthenticatedSuperAdminRouteImport } from './routes/_authenticated.super-admin'
 import { Route as AuthCallbackRouteImport } from './routes/auth.callback'
 import { Route as SocialCallbackRouteImport } from './routes/social.callback'
-import { Route as AuthenticatedContentIndexRouteImport } from './routes/_authenticated.content.index'
 import { Route as AuthenticatedContentAssetsRouteImport } from './routes/_authenticated.content.assets'
 import { Route as AuthenticatedContentBrandRouteImport } from './routes/_authenticated.content.brand'
 import { Route as AuthenticatedContentComposeRouteImport } from './routes/_authenticated.content.compose'
-import { Route as AuthenticatedContentPermissionsRouteImport } from './routes/_authenticated.content.permissions'
 import { Route as AuthenticatedContentTemplatesRouteImport } from './routes/_authenticated.content.templates'
 import { Route as AuthenticatedSettingsBillingRouteImport } from './routes/_authenticated.settings.billing'
 import { Route as AuthenticatedSettingsDepartmentsRouteImport } from './routes/_authenticated.settings.departments'
@@ -161,12 +159,6 @@ const SocialCallbackRoute = SocialCallbackRouteImport.update({
   path: '/social/callback',
   getParentRoute: () => rootRouteImport,
 } as any)
-const AuthenticatedContentIndexRoute =
-  AuthenticatedContentIndexRouteImport.update({
-    id: '/',
-    path: '/',
-    getParentRoute: () => AuthenticatedContentRoute,
-  } as any)
 const AuthenticatedContentAssetsRoute =
   AuthenticatedContentAssetsRouteImport.update({
     id: '/assets',
@@ -183,12 +175,6 @@ const AuthenticatedContentComposeRoute =
   AuthenticatedContentComposeRouteImport.update({
     id: '/compose',
     path: '/compose',
-    getParentRoute: () => AuthenticatedContentRoute,
-  } as any)
-const AuthenticatedContentPermissionsRoute =
-  AuthenticatedContentPermissionsRouteImport.update({
-    id: '/permissions',
-    path: '/permissions',
     getParentRoute: () => AuthenticatedContentRoute,
   } as any)
 const AuthenticatedContentTemplatesRoute =
@@ -362,7 +348,6 @@ export interface FileRoutesByFullPath {
   '/content/assets': typeof AuthenticatedContentAssetsRouteWithChildren
   '/content/brand': typeof AuthenticatedContentBrandRoute
   '/content/compose': typeof AuthenticatedContentComposeRoute
-  '/content/permissions': typeof AuthenticatedContentPermissionsRoute
   '/content/templates': typeof AuthenticatedContentTemplatesRoute
   '/settings/billing': typeof AuthenticatedSettingsBillingRoute
   '/settings/departments': typeof AuthenticatedSettingsDepartmentsRoute
@@ -386,7 +371,6 @@ export interface FileRoutesByFullPath {
   '/api/public/social-reconcile': typeof ApiPublicSocialReconcileRoute
   '/api/public/zernio': typeof ApiPublicZernioRoute
   '/api/public/zernio-social': typeof ApiPublicZernioSocialRoute
-  '/content/': typeof AuthenticatedContentIndexRoute
   '/content/assets/$assetId': typeof AuthenticatedContentAssetsAssetIdRoute
   '/api/public/evolution/$instanceId': typeof ApiPublicEvolutionInstanceIdRoute
 }
@@ -400,6 +384,7 @@ export interface FileRoutesByTo {
   '/ai-agent': typeof AuthenticatedAiAgentRoute
   '/connections': typeof AuthenticatedConnectionsRoute
   '/contacts': typeof AuthenticatedContactsRoute
+  '/content': typeof AuthenticatedContentRouteWithChildren
   '/conversations-chat': typeof AuthenticatedConversationsChatRoute
   '/dashboard': typeof AuthenticatedDashboardRoute
   '/inbox': typeof AuthenticatedInboxRoute
@@ -412,7 +397,6 @@ export interface FileRoutesByTo {
   '/content/assets': typeof AuthenticatedContentAssetsRouteWithChildren
   '/content/brand': typeof AuthenticatedContentBrandRoute
   '/content/compose': typeof AuthenticatedContentComposeRoute
-  '/content/permissions': typeof AuthenticatedContentPermissionsRoute
   '/content/templates': typeof AuthenticatedContentTemplatesRoute
   '/settings/billing': typeof AuthenticatedSettingsBillingRoute
   '/settings/departments': typeof AuthenticatedSettingsDepartmentsRoute
@@ -436,7 +420,6 @@ export interface FileRoutesByTo {
   '/api/public/social-reconcile': typeof ApiPublicSocialReconcileRoute
   '/api/public/zernio': typeof ApiPublicZernioRoute
   '/api/public/zernio-social': typeof ApiPublicZernioSocialRoute
-  '/content': typeof AuthenticatedContentIndexRoute
   '/content/assets/$assetId': typeof AuthenticatedContentAssetsAssetIdRoute
   '/api/public/evolution/$instanceId': typeof ApiPublicEvolutionInstanceIdRoute
 }
@@ -465,7 +448,6 @@ export interface FileRoutesById {
   '/_authenticated/content/assets': typeof AuthenticatedContentAssetsRouteWithChildren
   '/_authenticated/content/brand': typeof AuthenticatedContentBrandRoute
   '/_authenticated/content/compose': typeof AuthenticatedContentComposeRoute
-  '/_authenticated/content/permissions': typeof AuthenticatedContentPermissionsRoute
   '/_authenticated/content/templates': typeof AuthenticatedContentTemplatesRoute
   '/_authenticated/settings/billing': typeof AuthenticatedSettingsBillingRoute
   '/_authenticated/settings/departments': typeof AuthenticatedSettingsDepartmentsRoute
@@ -489,7 +471,6 @@ export interface FileRoutesById {
   '/api/public/social-reconcile': typeof ApiPublicSocialReconcileRoute
   '/api/public/zernio': typeof ApiPublicZernioRoute
   '/api/public/zernio-social': typeof ApiPublicZernioSocialRoute
-  '/_authenticated/content/': typeof AuthenticatedContentIndexRoute
   '/_authenticated/content/assets/$assetId': typeof AuthenticatedContentAssetsAssetIdRoute
   '/api/public/evolution/$instanceId': typeof ApiPublicEvolutionInstanceIdRoute
 }
@@ -518,7 +499,6 @@ export interface FileRouteTypes {
     | '/content/assets'
     | '/content/brand'
     | '/content/compose'
-    | '/content/permissions'
     | '/content/templates'
     | '/settings/billing'
     | '/settings/departments'
@@ -542,7 +522,6 @@ export interface FileRouteTypes {
     | '/api/public/social-reconcile'
     | '/api/public/zernio'
     | '/api/public/zernio-social'
-    | '/content/'
     | '/content/assets/$assetId'
     | '/api/public/evolution/$instanceId'
   fileRoutesByTo: FileRoutesByTo
@@ -556,6 +535,7 @@ export interface FileRouteTypes {
     | '/ai-agent'
     | '/connections'
     | '/contacts'
+    | '/content'
     | '/conversations-chat'
     | '/dashboard'
     | '/inbox'
@@ -568,7 +548,6 @@ export interface FileRouteTypes {
     | '/content/assets'
     | '/content/brand'
     | '/content/compose'
-    | '/content/permissions'
     | '/content/templates'
     | '/settings/billing'
     | '/settings/departments'
@@ -592,7 +571,6 @@ export interface FileRouteTypes {
     | '/api/public/social-reconcile'
     | '/api/public/zernio'
     | '/api/public/zernio-social'
-    | '/content'
     | '/content/assets/$assetId'
     | '/api/public/evolution/$instanceId'
   id:
@@ -620,7 +598,6 @@ export interface FileRouteTypes {
     | '/_authenticated/content/assets'
     | '/_authenticated/content/brand'
     | '/_authenticated/content/compose'
-    | '/_authenticated/content/permissions'
     | '/_authenticated/content/templates'
     | '/_authenticated/settings/billing'
     | '/_authenticated/settings/departments'
@@ -644,7 +621,6 @@ export interface FileRouteTypes {
     | '/api/public/social-reconcile'
     | '/api/public/zernio'
     | '/api/public/zernio-social'
-    | '/_authenticated/content/'
     | '/_authenticated/content/assets/$assetId'
     | '/api/public/evolution/$instanceId'
   fileRoutesById: FileRoutesById
@@ -808,13 +784,6 @@ declare module '@tanstack/react-router' {
       preLoaderRoute: typeof SocialCallbackRouteImport
       parentRoute: typeof rootRouteImport
     }
-    '/_authenticated/content/': {
-      id: '/_authenticated/content/'
-      path: '/'
-      fullPath: '/content/'
-      preLoaderRoute: typeof AuthenticatedContentIndexRouteImport
-      parentRoute: typeof AuthenticatedContentRoute
-    }
     '/_authenticated/content/assets': {
       id: '/_authenticated/content/assets'
       path: '/assets'
@@ -834,13 +803,6 @@ declare module '@tanstack/react-router' {
       path: '/compose'
       fullPath: '/content/compose'
       preLoaderRoute: typeof AuthenticatedContentComposeRouteImport
-      parentRoute: typeof AuthenticatedContentRoute
-    }
-    '/_authenticated/content/permissions': {
-      id: '/_authenticated/content/permissions'
-      path: '/permissions'
-      fullPath: '/content/permissions'
-      preLoaderRoute: typeof AuthenticatedContentPermissionsRouteImport
       parentRoute: typeof AuthenticatedContentRoute
     }
     '/_authenticated/content/templates': {
@@ -1040,18 +1002,14 @@ interface AuthenticatedContentRouteChildren {
   AuthenticatedContentAssetsRoute: typeof AuthenticatedContentAssetsRouteWithChildren
   AuthenticatedContentBrandRoute: typeof AuthenticatedContentBrandRoute
   AuthenticatedContentComposeRoute: typeof AuthenticatedContentComposeRoute
-  AuthenticatedContentPermissionsRoute: typeof AuthenticatedContentPermissionsRoute
   AuthenticatedContentTemplatesRoute: typeof AuthenticatedContentTemplatesRoute
-  AuthenticatedContentIndexRoute: typeof AuthenticatedContentIndexRoute
 }
 
 const AuthenticatedContentRouteChildren: AuthenticatedContentRouteChildren = {
   AuthenticatedContentAssetsRoute: AuthenticatedContentAssetsRouteWithChildren,
   AuthenticatedContentBrandRoute: AuthenticatedContentBrandRoute,
   AuthenticatedContentComposeRoute: AuthenticatedContentComposeRoute,
-  AuthenticatedContentPermissionsRoute: AuthenticatedContentPermissionsRoute,
   AuthenticatedContentTemplatesRoute: AuthenticatedContentTemplatesRoute,
-  AuthenticatedContentIndexRoute: AuthenticatedContentIndexRoute,
 }
 
 const AuthenticatedContentRouteWithChildren =
