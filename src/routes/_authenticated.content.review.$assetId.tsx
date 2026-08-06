@@ -3,14 +3,21 @@ import { createFileRoute, useNavigate } from "@tanstack/react-router";
 import { useMutation, useQuery, useQueryClient } from "@tanstack/react-query";
 import { useServerFn } from "@tanstack/react-start";
 import { toast } from "sonner";
-import { Check, X, RefreshCw, ArrowLeft, Loader2 } from "lucide-react";
+import { Check, X, RefreshCw, ArrowLeft, Loader2, Save } from "lucide-react";
 import { Card } from "@/components/ui/card";
 import { Badge } from "@/components/ui/badge";
 import {
   getAsset,
   rejectAsset,
   regenerateAsset,
+  saveAssetLayers,
 } from "@/lib/content-generation.functions";
+import { getBrandKit } from "@/lib/brand-kit.functions";
+import { LayerEditor } from "@/features/content-generation/editor/LayerEditor";
+import {
+  buildInitialComposition,
+  type LayerComposition,
+} from "@/features/content-generation/editor/layer-types";
 
 export const Route = createFileRoute("/_authenticated/content/review/$assetId")({
   component: AssetDetailPage,
@@ -23,43 +30,88 @@ function AssetDetailPage() {
   const getFn = useServerFn(getAsset);
   const rejectFn = useServerFn(rejectAsset);
   const regenFn = useServerFn(regenerateAsset);
+  const saveLayersFn = useServerFn(saveAssetLayers);
+  const getBrandKitFn = useServerFn(getBrandKit);
 
   const assetQ = useQuery({
     queryKey: ["content-asset", assetId],
     queryFn: () => getFn({ data: { assetId } }),
   });
+  const brandKitQ = useQuery({
+    queryKey: ["brand-kit"],
+    queryFn: () => getBrandKitFn(),
+  });
 
   const asset = assetQ.data?.asset;
+  const brandKit = brandKitQ.data?.brandKit;
 
-  // Estado editável — inicia com os valores do asset.
-  const [editHook, setEditHook] = React.useState("");
-  const [editBody, setEditBody] = React.useState("");
-  const [editCta, setEditCta] = React.useState("");
+  // Composição de camadas: carregada do banco ou inicializada a partir da copy.
+  const [composition, setComposition] = React.useState<LayerComposition | null>(null);
+  const [initialized, setInitialized] = React.useState(false);
 
   React.useEffect(() => {
-    if (asset) {
-      setEditHook(asset.copyBundle.hook);
-      setEditBody(asset.copyBundle.body);
-      setEditCta(asset.copyBundle.cta);
+    if (initialized || !asset || !brandKit) return;
+    // eslint-disable-next-line @typescript-eslint/no-explicit-any
+    const existing = (asset as any).layersJson ?? (asset as any).layers_json;
+    if (existing?.layers?.length) {
+      setComposition(existing);
+    } else {
+      const isStory = false; // TODO: pegar do brief se for story
+      setComposition(
+        buildInitialComposition({
+          format: isStory ? "story" : "single",
+          hook: asset.copyBundle.hook,
+          cta: asset.copyBundle.cta,
+          signature: brandKit.defaultSignature || "Sua Marca",
+          primaryColor: brandKit.primaryColor,
+          secondaryColor: brandKit.secondaryColor,
+          supportColor: brandKit.supportColor,
+          displayFont: brandKit.displayFont,
+          bodyFont: brandKit.bodyFont,
+          category: undefined,
+        }),
+      );
     }
-  }, [asset]);
+    setInitialized(true);
+  }, [asset, brandKit, initialized]);
 
-  const sendToComposer = () => {
+  const saveLayers = useMutation({
+    mutationFn: () => {
+      if (!composition) throw new Error("Nada pra salvar");
+      return saveLayersFn({ data: { assetId, composition } });
+    },
+    onSuccess: () => {
+      toast.success("Post atualizado com suas edições");
+      qc.invalidateQueries({ queryKey: ["content-asset", assetId] });
+    },
+    onError: (e: any) => toast.error(e?.message ?? "Falha ao salvar edições"),
+  });
+
+  const sendToComposer = async () => {
     if (!asset) return;
+    // Salva as edições primeiro (se houve mudanças)
+    let currentImageUrl = asset.renderedImageUrl;
+    if (composition && composition.layers.length > 0) {
+      try {
+        const result = await saveLayersFn({ data: { assetId, composition } });
+        currentImageUrl = result.renderedImageUrl;
+      } catch (e: any) {
+        toast.error("Não foi possível salvar edições antes de publicar");
+        return;
+      }
+    }
+
     const network = asset.targetNetwork;
     const perNet = asset.copyBundle.perNetwork;
-    // Monta texto final usando as edições do usuário (não o original).
-    let fullText =
+    const fullText =
       network === "youtube" && perNet.youtube
         ? `${perNet.youtube.title}\n\n${perNet.youtube.description}`
-        : (perNet as any)[network]?.fullText ?? editBody;
-    // Substitui hook/body/cta editados no fullText final.
-    fullText = `${editHook}\n\n${editBody}\n\n${editCta}`;
+        : (perNet as any)[network]?.fullText ?? asset.copyBundle.body;
     const params = new URLSearchParams({
       aiAssetId: asset.id,
       network,
       text: fullText,
-      mediaUrl: asset.renderedImageUrl,
+      mediaUrl: currentImageUrl,
       hashtags: asset.copyBundle.hashtags.join(","),
     });
     nav({ to: `/social/compose?${params.toString()}` as any });
@@ -85,20 +137,21 @@ function AssetDetailPage() {
     onError: (e: any) => toast.error(e?.message ?? "Falha ao regenerar"),
   });
 
-  if (assetQ.isLoading || !asset) {
+  if (assetQ.isLoading || !asset || !brandKit || !composition) {
     return (
       <div
         className="flex items-center"
         style={{ gap: 8, padding: 24, color: "var(--text-muted)" }}
       >
         <Loader2 size={16} className="animate-spin" />
-        <span style={{ fontSize: 13 }}>Carregando...</span>
+        <span style={{ fontSize: 13 }}>Carregando editor...</span>
       </div>
     );
   }
 
   const isPending = asset.approvalStatus === "pending";
-  const copy = asset.copyBundle;
+  // eslint-disable-next-line @typescript-eslint/no-explicit-any
+  const baseImageUrl = (asset as any).baseImageUrl ?? asset.renderedImageUrl;
 
   return (
     <div className="flex flex-col" style={{ gap: 16 }}>
@@ -123,131 +176,90 @@ function AssetDetailPage() {
 
       <div
         className="grid"
-        style={{ gridTemplateColumns: "minmax(0, 1fr) minmax(0, 1fr)", gap: 20 }}
+        style={{ gridTemplateColumns: "minmax(0, 1.2fr) minmax(0, 1fr)", gap: 20 }}
       >
-        {/* Imagem */}
-        <Card style={{ padding: 0, overflow: "hidden" }}>
-          <img
-            src={asset.renderedImageUrl}
-            alt="Preview"
-            style={{ width: "100%", display: "block" }}
-          />
-          {asset.slides && asset.slides.length > 1 ? (
-            <div style={{ padding: 12, display: "flex", gap: 8, flexWrap: "wrap" }}>
-              {asset.slides.map((s) => (
-                <img
-                  key={s.index}
-                  src={s.url}
-                  alt={`Slide ${s.index}`}
-                  style={{
-                    width: 60,
-                    height: 60,
-                    objectFit: "cover",
-                    borderRadius: "var(--radius-sm)",
-                    border: "1px solid var(--border)",
-                  }}
-                />
-              ))}
+        {/* Editor de camadas */}
+        <div className="flex flex-col" style={{ gap: 12 }}>
+          <div className="flex items-center justify-between">
+            <div className="flex items-center" style={{ gap: 8 }}>
+              <Badge
+                variant={
+                  asset.approvalStatus === "approved"
+                    ? "success"
+                    : asset.approvalStatus === "rejected"
+                      ? "danger"
+                      : "warning"
+                }
+              >
+                {asset.approvalStatus === "approved"
+                  ? "Publicado"
+                  : asset.approvalStatus === "rejected"
+                    ? "Rejeitado"
+                    : "Aguardando revisão"}
+              </Badge>
+              <span
+                style={{
+                  fontSize: 12,
+                  color: "var(--text-muted)",
+                  textTransform: "capitalize",
+                }}
+              >
+                {asset.targetNetwork}
+              </span>
             </div>
-          ) : null}
-          {/* Botão de refazer imagem sob a foto */}
-          {isPending ? (
-            <div style={{ padding: "10px 14px", borderTop: "1px solid var(--border)" }}>
+            {isPending ? (
               <button
                 onClick={() => regen.mutate("image_only")}
                 disabled={regen.isPending}
                 style={secondaryBtnSm}
               >
                 <RefreshCw size={12} />
-                Gerar outra imagem
+                Nova imagem
               </button>
-            </div>
-          ) : null}
-        </Card>
-
-        {/* Texto editável + status */}
-        <div className="flex flex-col" style={{ gap: 12 }}>
-          <div className="flex items-center" style={{ gap: 8 }}>
-            <Badge
-              variant={
-                asset.approvalStatus === "approved"
-                  ? "success"
-                  : asset.approvalStatus === "rejected"
-                    ? "danger"
-                    : "warning"
-              }
-            >
-              {asset.approvalStatus === "approved"
-                ? "Publicado"
-                : asset.approvalStatus === "rejected"
-                  ? "Rejeitado"
-                  : "Aguardando revisão"}
-            </Badge>
-            <span style={{ fontSize: 12, color: "var(--text-muted)", textTransform: "capitalize" }}>
-              {asset.targetNetwork}
-            </span>
+            ) : null}
           </div>
 
-          {/* Chamada — editável */}
+          {isPending ? (
+            <LayerEditor
+              imageUrl={baseImageUrl}
+              composition={composition}
+              onChange={setComposition}
+            />
+          ) : (
+            <img
+              src={asset.renderedImageUrl}
+              alt="Preview final"
+              style={{
+                width: "100%",
+                display: "block",
+                borderRadius: "var(--radius-card)",
+              }}
+            />
+          )}
+        </div>
+
+        {/* Painel lateral: legenda + hashtags + regenerar */}
+        <div className="flex flex-col" style={{ gap: 12 }}>
           <Card style={{ padding: 14 }}>
-            <label style={fieldLabel}>Chamada</label>
-            {isPending ? (
-              <input
-                value={editHook}
-                onChange={(e) => setEditHook(e.target.value)}
-                style={editInput}
-              />
-            ) : (
-              <div style={{ fontSize: 15, fontWeight: 600 }}>{copy.hook}</div>
-            )}
+            <div style={fieldLabel}>Legenda</div>
+            <div style={{ fontSize: 13, lineHeight: 1.55, whiteSpace: "pre-wrap" }}>
+              {asset.copyBundle.body}
+            </div>
           </Card>
 
-          {/* Corpo — editável */}
-          <Card style={{ padding: 14 }}>
-            <label style={fieldLabel}>Corpo</label>
-            {isPending ? (
-              <textarea
-                value={editBody}
-                onChange={(e) => setEditBody(e.target.value)}
-                rows={4}
-                style={{ ...editInput, resize: "vertical", fontFamily: "inherit", minHeight: 80 }}
-              />
-            ) : (
-              <div style={{ fontSize: 13, lineHeight: 1.55, whiteSpace: "pre-wrap" }}>
-                {copy.body}
-              </div>
-            )}
-          </Card>
-
-          {/* CTA — editável */}
-          <Card style={{ padding: 14 }}>
-            <label style={fieldLabel}>Ação final</label>
-            {isPending ? (
-              <input
-                value={editCta}
-                onChange={(e) => setEditCta(e.target.value)}
-                style={{ ...editInput, color: "var(--brand-400)", fontWeight: 600 }}
-              />
-            ) : (
-              <div style={{ fontSize: 13, fontWeight: 600, color: "var(--brand-400)" }}>
-                {copy.cta}
-              </div>
-            )}
-          </Card>
-
-          {/* Hashtags (não editável aqui — pode editar no compose depois) */}
-          {copy.hashtags.length > 0 ? (
+          {asset.copyBundle.hashtags.length > 0 ? (
             <Card style={{ padding: 14 }}>
               <div style={fieldLabel}>Hashtags</div>
               <div style={{ display: "flex", flexWrap: "wrap", gap: 6 }}>
-                {copy.hashtags.map((h) => (
+                {asset.copyBundle.hashtags.map((h) => (
                   <span
                     key={h}
                     style={{
                       fontSize: 11,
                       color: "var(--brand-400)",
                       padding: "3px 10px",
-                      background: "color-mix(in oklab, var(--brand-400) 12%, transparent)",
+                      background:
+                        "color-mix(in oklab, var(--brand-400) 12%, transparent)",
                       borderRadius: "var(--radius-pill)",
                       fontWeight: 500,
                     }}
@@ -259,23 +271,38 @@ function AssetDetailPage() {
             </Card>
           ) : null}
 
-          {/* Ação de regenerar texto */}
           {isPending ? (
-            <button
-              onClick={() => regen.mutate("copy_only")}
-              disabled={regen.isPending}
-              style={secondaryBtnSm}
-            >
-              <RefreshCw size={12} />
-              Gerar outro texto
-            </button>
+            <>
+              <button
+                onClick={() => regen.mutate("copy_only")}
+                disabled={regen.isPending}
+                style={secondaryBtnSm}
+              >
+                <RefreshCw size={12} />
+                Gerar outro texto
+              </button>
+              <button
+                onClick={() => saveLayers.mutate()}
+                disabled={saveLayers.isPending}
+                style={secondaryBtnSm}
+              >
+                {saveLayers.isPending ? (
+                  <Loader2 size={12} className="animate-spin" />
+                ) : (
+                  <Save size={12} />
+                )}
+                Salvar edições
+              </button>
+            </>
           ) : null}
         </div>
       </div>
 
-      {/* Ações principais */}
       {isPending ? (
-        <div className="flex flex-wrap items-center justify-between" style={{ gap: 8, paddingTop: 4 }}>
+        <div
+          className="flex flex-wrap items-center justify-between"
+          style={{ gap: 8, paddingTop: 4 }}
+        >
           <button
             onClick={() => reject.mutate()}
             disabled={reject.isPending}
@@ -288,9 +315,13 @@ function AssetDetailPage() {
             <X size={13} />
             Descartar
           </button>
-          <button onClick={sendToComposer} className="btn-primary" style={{ height: 38, fontSize: 14 }}>
+          <button
+            onClick={sendToComposer}
+            className="btn-primary"
+            style={{ height: 38, fontSize: 14 }}
+          >
             <Check size={14} />
-            Revisar e publicar
+            Publicar
           </button>
         </div>
       ) : null}
@@ -306,16 +337,6 @@ const fieldLabel: React.CSSProperties = {
   textTransform: "uppercase",
   letterSpacing: "0.04em",
   fontWeight: 600,
-};
-
-const editInput: React.CSSProperties = {
-  width: "100%",
-  padding: "8px 12px",
-  fontSize: 14,
-  borderRadius: "var(--radius-control)",
-  border: "1px solid var(--border-strong)",
-  background: "var(--bg-base)",
-  color: "var(--text-primary)",
 };
 
 const secondaryBtn: React.CSSProperties = {
@@ -346,5 +367,5 @@ const secondaryBtnSm: React.CSSProperties = {
   fontWeight: 500,
   border: "1px solid var(--border)",
   cursor: "pointer",
-  width: "fit-content",
+  alignSelf: "flex-start",
 };

@@ -400,3 +400,77 @@ export const approveAsset = createServerFn({ method: "POST" })
       reused: false,
     };
   });
+
+
+// ─── Editor de camadas ─────────────────────────────────────────
+
+import { renderComposition } from "@/features/content-generation/editor/layer-renderer.server";
+
+const SaveLayersSchema = z.object({
+  assetId: z.string().uuid(),
+  composition: z.object({
+    canvasWidth: z.number(),
+    canvasHeight: z.number(),
+    // eslint-disable-next-line @typescript-eslint/no-explicit-any
+    layers: z.array(z.any()),
+  }),
+});
+
+/**
+ * Salva a composição editada no asset e re-renderiza o PNG final.
+ * Substitui rendered_image_url pelo novo render (com camadas editadas).
+ */
+export const saveAssetLayers = createServerFn({ method: "POST" })
+  .middleware([requireSupabaseAuth])
+  .inputValidator((input: unknown) => SaveLayersSchema.parse(input))
+  .handler(async ({ data, context }) => {
+    const workspaceOwnerId = await resolveWorkspaceOwner(context.userId);
+    // Carrega asset
+    const { data: assetRow, error } = await supabaseAdmin
+      .from("generated_assets")
+      .select("*")
+      .eq("id", data.assetId)
+      .eq("owner_user_id", workspaceOwnerId)
+      .single();
+    if (error || !assetRow) throw new Error("Asset não encontrado");
+    // eslint-disable-next-line @typescript-eslint/no-explicit-any
+    const asset = assetRow as any;
+
+    // Localiza a imagem BASE (a foto original, sem camadas — se já teve edição
+    // antes, precisa pegar base_image_url; senão a própria rendered_image_url
+    // ainda é a base).
+    const baseImageUrl = asset.base_image_url ?? asset.rendered_image_url;
+
+    // Re-renderiza a composição em PNG.
+    const pngBuffer = await renderComposition({
+      imageUrl: baseImageUrl,
+      // eslint-disable-next-line @typescript-eslint/no-explicit-any
+      composition: data.composition as any,
+    });
+
+    // Sobe o novo PNG e atualiza rendered_image_url.
+    const { randomUUID } = await import("node:crypto");
+    const key = `${workspaceOwnerId}/renders-edited/${data.assetId}/${randomUUID()}.png`;
+    const { error: upErr } = await supabaseAdmin.storage
+      .from("ai-content")
+      .upload(key, pngBuffer, { contentType: "image/png", upsert: false });
+    if (upErr) throw new Error(`Falha ao subir PNG editado: ${upErr.message}`);
+    const newUrl = supabaseAdmin.storage.from("ai-content").getPublicUrl(key).data.publicUrl;
+
+    // Salva base_image_url uma vez (na primeira edição) pra não perder a foto original.
+    const updatePayload: Record<string, unknown> = {
+      layers_json: data.composition,
+      rendered_image_url: newUrl,
+    };
+    if (!asset.base_image_url) {
+      updatePayload.base_image_url = asset.rendered_image_url;
+    }
+
+    const { error: updErr } = await supabaseAdmin
+      .from("generated_assets")
+      .update(updatePayload)
+      .eq("id", data.assetId);
+    if (updErr) throw new Error(`Falha ao salvar: ${updErr.message}`);
+
+    return { renderedImageUrl: newUrl };
+  });
