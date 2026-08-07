@@ -7,6 +7,21 @@
 import * as React from "react";
 import { Type, Tag, Square, Minus, Trash2 } from "lucide-react";
 import type { Layer, LayerComposition, LayerId } from "./layer-types";
+
+// Fontes disponíveis pra troca no editor (carregadas no navegador via __root).
+const EDITOR_FONTS = [
+  "Playfair Display",
+  "Montserrat",
+  "Poppins",
+  "Oswald",
+  "Bebas Neue",
+  "Inter",
+  "DM Sans",
+  "Lato",
+  "Nunito",
+  "Dancing Script",
+  "Caveat",
+];
 import {
   createTextLayer,
   createSignatureLayer,
@@ -567,9 +582,9 @@ function LayerNode(props: LayerNodeProps) {
           fontFamily: layer.fontFamily,
           fontSize: layer.fontSize * scale,
           fontWeight: 700,
-          letterSpacing: 4 * scale,
+          letterSpacing: (layer.letterSpacing ?? 4) * scale,
           textTransform: "uppercase",
-          borderRadius: 999,
+          borderRadius: (layer.radius ?? 999) * scale,
         }}
       >
         {layer.text}
@@ -654,6 +669,76 @@ function LayerNode(props: LayerNodeProps) {
     );
   }
 
+  if (layer.type === "card") {
+    const iconD = layer.height * 0.5 * scale;
+    return (
+      <div
+        {...interactionProps}
+        style={{
+          ...commonStyle,
+          width: layer.width * scale,
+          height: layer.height * scale,
+          background: layer.bg,
+          opacity: layer.opacity ?? 1,
+          borderRadius: layer.radius * scale,
+          display: "flex",
+          alignItems: "center",
+          paddingLeft: 22 * scale,
+          paddingRight: 22 * scale,
+        }}
+      >
+        {layer.iconDataUri ? (
+          <div
+            style={{
+              width: iconD,
+              height: iconD,
+              borderRadius: 999,
+              background: layer.iconBg ?? "rgba(255,255,255,0.12)",
+              display: "flex",
+              alignItems: "center",
+              justifyContent: "center",
+              marginRight: 18 * scale,
+              flexShrink: 0,
+            }}
+          >
+            <img
+              src={layer.iconDataUri}
+              alt=""
+              draggable={false}
+              style={{ width: iconD * 0.56, height: iconD * 0.56 }}
+            />
+          </div>
+        ) : null}
+        <div style={{ display: "flex", flexDirection: "column", flex: 1, minWidth: 0 }}>
+          <div
+            style={{
+              fontFamily: layer.fontFamily,
+              fontSize: layer.height * 0.26 * scale,
+              fontWeight: 700,
+              color: layer.titleColor,
+              lineHeight: 1.2,
+            }}
+          >
+            {layer.title}
+          </div>
+          {layer.text ? (
+            <div
+              style={{
+                fontFamily: layer.fontFamily,
+                fontSize: layer.height * 0.2 * scale,
+                color: layer.textColor,
+                lineHeight: 1.25,
+                marginTop: 3 * scale,
+              }}
+            >
+              {layer.text}
+            </div>
+          ) : null}
+        </div>
+      </div>
+    );
+  }
+
   return null;
 }
 
@@ -689,6 +774,23 @@ function PropertiesPanel({
       >
         Elemento selecionado · {layer.type}
       </div>
+
+      {(layer.type === "text" || layer.type === "pill" || layer.type === "button") && (
+        <div>
+          <label style={labelStyle}>Fonte</label>
+          <select
+            value={layer.fontFamily}
+            onChange={(e) => onChange({ fontFamily: e.target.value } as Partial<Layer>)}
+            style={{ ...inputStyle, cursor: "pointer" }}
+          >
+            {EDITOR_FONTS.map((f) => (
+              <option key={f} value={f} style={{ fontFamily: f }}>
+                {f}
+              </option>
+            ))}
+          </select>
+        </div>
+      )}
 
       {(layer.type === "text" || layer.type === "pill") && (
         <div>
@@ -789,6 +891,37 @@ function PropertiesPanel({
             onChange={(v) => onChange({ color: v } as Partial<Layer>)}
           />
         </div>
+      )}
+
+      {layer.type === "button" && (
+        <div>
+          <label style={labelStyle}>Texto do botão</label>
+          <input
+            value={layer.text}
+            onChange={(e) => onChange({ text: e.target.value } as Partial<Layer>)}
+            style={inputStyle}
+          />
+        </div>
+      )}
+
+      {layer.type === "card" && (
+        <>
+          <div>
+            <label style={labelStyle}>Texto do card</label>
+            <input
+              value={layer.title}
+              onChange={(e) => onChange({ title: e.target.value } as Partial<Layer>)}
+              style={inputStyle}
+            />
+          </div>
+          <div>
+            <label style={labelStyle}>Cor do ícone</label>
+            <ColorInput
+              value={layer.iconBg ?? "#F59E0B"}
+              onChange={(v) => onChange({ iconBg: v } as Partial<Layer>)}
+            />
+          </div>
+        </>
       )}
     </div>
   );

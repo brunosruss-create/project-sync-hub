@@ -14,7 +14,10 @@ import type {
 } from "@/features/content-generation/types";
 import { CopyBundleSchema } from "@/features/content-generation/types";
 import { getDesignDNA } from "@/features/content-generation/design-dna";
+import { ICON_NAMES } from "@/features/content-generation/editor/icons";
 import { loadGeminiCredentials } from "@/lib/ai-credentials.server";
+
+const AVAILABLE_ICONS = ICON_NAMES;
 
 // Termos vetados na moderação básica. Lista pequena e conservadora; pode ser
 // expandida ou substituída por um provedor de moderação real em fase futura.
@@ -100,6 +103,16 @@ function buildViralPrompt(input: CopyBundleInput): string {
   parts.push("");
   parts.push("Regras do hook: pergunta retórica, contraste, provocação ou benefício");
   parts.push("emocional. O hook NÃO precisa conter o preço — o preço vai em priceText.");
+  parts.push("");
+  parts.push("=== SUBTÍTULO + BULLETS (o que separa nível agência de amador) ===");
+  parts.push("- subheadline: UMA frase de apoio ao headline, CONCRETA (não platitude). Ex: 'Atendimento em até 40 minutos com profissional especializado'.");
+  parts.push("- bullets: 2 a 4 pontos CONCRETOS de venda (benefícios reais, diferenciais, o que o cliente ganha).");
+  parts.push("  PROIBIDO frase vazia tipo 'qualidade garantida', 'sua melhor versão', 'excelência'. Cada bullet precisa dizer algo REAL.");
+  parts.push("  Exemplos bons (salão): 'Profissionais especializados em coloração', 'Produtos premium sem formol', 'Agende pelo WhatsApp em segundos', 'Estacionamento no local'.");
+  parts.push("  Se o brief for magro (ex: só 'corte R$49,90'), gere 2 bullets plausíveis pro nicho — nunca invente fato específico falso (preço/endereço), mas pode citar benefícios comuns do ramo.");
+  parts.push("  Cada bullet tem um 'icon' escolhido DESTA LISTA (use o nome exato):");
+  parts.push("  " + AVAILABLE_ICONS.join(", "));
+  parts.push("  Combine o ícone ao sentido: agenda/horário→calendar ou clock; local→map-pin; contato→phone ou message-circle; preço/desconto→percent ou wallet; presente→gift; qualidade/garantia→shield-check ou award; destaque→star ou sparkles; aprovação→thumbs-up ou check-circle; equipe→users; corte/beleza→scissors; energia→zap; instagram→instagram.");
   parts.push("");
   parts.push("=== CAMPOS ESTRUTURADOS DA OFERTA (CRÍTICO — extraia do brief) ===");
   parts.push("- occasion: gatilho/data comemorativa se houver (ex: 'Dia da Mulher', 'Black Friday'). Senão omita.");
@@ -227,6 +240,18 @@ const GEMINI_RESPONSE_SCHEMA = {
     priceText: { type: Type.STRING },
     offerLabel: { type: Type.STRING },
     urgency: { type: Type.STRING },
+    subheadline: { type: Type.STRING },
+    bullets: {
+      type: Type.ARRAY,
+      items: {
+        type: Type.OBJECT,
+        properties: {
+          icon: { type: Type.STRING },
+          text: { type: Type.STRING },
+        },
+        required: ["icon", "text"],
+      },
+    },
     perNetwork: {
       type: Type.OBJECT,
       properties: {

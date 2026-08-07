@@ -369,6 +369,8 @@ function buildAssetComposition(
     priceText: copy.priceText,
     offerLabel: copy.offerLabel,
     urgency: copy.urgency,
+    subheadline: copy.subheadline,
+    bullets: copy.bullets,
     logoUrl: brandKit.logoUrl,
     palette: {
       // Brand Kit customizado tem prioridade; senão usa DNA.

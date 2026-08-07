@@ -179,6 +179,19 @@ export const CopyBundleSchema = z.object({
   offerLabel: z.string().max(60).optional(),
   /** Urgência/prazo. Ex: "Somente quinta-feira". */
   urgency: z.string().max(60).optional(),
+  /** Subtítulo de apoio ao headline (concreto, não platitude). */
+  subheadline: z.string().max(140).optional(),
+  /** Pontos concretos de venda, com ícone — preenchem os cards do criativo.
+   *  Cada bullet: um benefício/informação REAL, curta. Não usar frase vazia. */
+  bullets: z
+    .array(
+      z.object({
+        icon: z.string().max(30),
+        text: z.string().min(2).max(70),
+      }),
+    )
+    .max(4)
+    .optional(),
 });
 export type CopyBundle = z.infer<typeof CopyBundleSchema>;
 

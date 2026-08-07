@@ -39,6 +39,10 @@ export interface PillLayer extends BaseLayer {
   fontSize: number;
   paddingX: number;
   paddingY: number;
+  /** Raio da borda. Default 999 (pílula). Use valores baixos pra "tag" reta. */
+  radius?: number;
+  /** Espaçamento entre letras. Default 4. */
+  letterSpacing?: number;
 }
 
 export interface RectLayer extends BaseLayer {
@@ -85,13 +89,33 @@ export interface ImageLayer extends BaseLayer {
   fit?: "contain" | "cover";
 }
 
+/** Card de informação: círculo com ícone + título + texto. O "bloco tipo Canva". */
+export interface CardLayer extends BaseLayer {
+  type: "card";
+  width: number;
+  height: number;
+  bg: string;
+  radius: number;
+  opacity?: number;
+  /** Data URI do ícone (SVG). Gerado no build da composição. */
+  iconDataUri?: string;
+  /** Cor de fundo do círculo do ícone. */
+  iconBg?: string;
+  title: string;
+  text?: string;
+  titleColor: string;
+  textColor: string;
+  fontFamily: string;
+}
+
 export type Layer =
   | TextLayer
   | PillLayer
   | RectLayer
   | LineLayer
   | ButtonLayer
-  | ImageLayer;
+  | ImageLayer
+  | CardLayer;
 
 /** Composição do canvas: dimensões + camadas por cima da foto base. */
 export interface LayerComposition {

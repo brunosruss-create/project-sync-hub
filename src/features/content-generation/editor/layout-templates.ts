@@ -1,16 +1,15 @@
-// Motor de composição rica — gera criativos em camadas no estilo agência
-// (BestContent/Canva): pareamento de fontes automático, preço em destaque,
-// badges de ocasião/categoria, botão de CTA, logo e overlay com a cor da marca.
+// Motor de composição de criativos — gera layouts GENUINAMENTE distintos por
+// post, mantendo a identidade da marca (paleta, fontes, logo) consistente.
 //
-// O cliente NUNCA escolhe fonte. O sistema aplica um TRIO de fontes por nicho:
-//   - displayFont: título (impactante)
-//   - accentFont:  preço/números (condensada, alta)
-//   - bodyFont:    detalhes, badges, urgência (limpa)
+// Princípio: identidade = cores/fontes/logo consistentes. Variedade = ESTRUTURA
+// (onde o texto vive, o fundo, a composição, presença ou não de badge).
 //
-// A escolha do arranjo (overlay bottom / side / vinheta) é determinística por
-// seed, então posts do mesmo nicho variam mas reabrir é estável.
+// Cada post sorteia um ARQUÉTIPO de layout via seed determinístico. Arquétipos
+// diferem de verdade: rodapé editorial, painel lateral sólido, herói central,
+// faixas topo+base, card inferior. Alguns têm badge, outros não.
 
-import type { Layer, LayerComposition, TextLayer } from "./layer-types";
+import type { Layer, LayerComposition, CardLayer } from "./layer-types";
+import { iconDataUri } from "./icons";
 
 export interface CompositionInput {
   format: "single" | "carousel" | "story";
@@ -18,11 +17,12 @@ export interface CompositionInput {
   cta: string;
   signature: string;
   category?: string;
-  /** Campos estruturados da oferta (extraídos pela IA). */
   occasion?: string;
   priceText?: string;
   offerLabel?: string;
   urgency?: string;
+  subheadline?: string;
+  bullets?: { icon: string; text: string }[];
   logoUrl?: string | null;
   palette: {
     primary: string;
@@ -49,162 +49,157 @@ const STOPWORDS = new Set([
   "por", "em", "no", "na", "os", "as", "um", "uma", "se", "sua", "seu", "the",
 ]);
 
-/** Fonte condensada/impactante pra preços e números, por estilo do nicho. */
 function accentFontFor(style: CompositionInput["typographyStyle"]): string {
   switch (style) {
-    case "serif-elegant":
-    case "italic-refined":
-      return "Oswald";
-    case "sans-tech":
-      return "Oswald";
     case "sans-chunky":
     case "condensed-bold":
       return "Bebas Neue";
     default:
-      return "Bebas Neue";
+      return "Oswald";
   }
 }
 
 function resolveHighlight(hook: string, raw?: string): string | undefined {
   const h = (raw ?? "").trim();
   if (!h) return undefined;
-  const allStop = h.split(/\s+/).every((w) => STOPWORDS.has(w.toLowerCase()));
-  if (allStop) return undefined;
+  if (h.split(/\s+/).every((w) => STOPWORDS.has(w.toLowerCase()))) return undefined;
   if (!hook.toLowerCase().includes(h.toLowerCase())) return undefined;
   return h;
 }
 
 function hashSeed(seed: string): number {
   let h = 0;
-  for (let i = 0; i < seed.length; i++) {
-    h = (h * 31 + seed.charCodeAt(i)) & 0xffffffff;
-  }
+  for (let i = 0; i < seed.length; i++) h = (h * 31 + seed.charCodeAt(i)) & 0xffffffff;
   return Math.abs(h);
 }
 
-function adaptiveHeadlineSize(len: number, base: number): number {
-  if (len <= 22) return base;
-  if (len <= 36) return Math.round(base * 0.82);
-  if (len <= 52) return Math.round(base * 0.68);
-  return Math.round(base * 0.56);
+function isUpper(style: CompositionInput["typographyStyle"]): boolean {
+  return style === "condensed-bold" || style === "sans-chunky";
 }
 
-function estimateLines(len: number, fontSize: number, usableWidth: number): number {
-  const charsPerLine = Math.max(8, Math.floor(usableWidth / (fontSize * 0.54)));
-  return Math.min(4, Math.max(1, Math.ceil(len / charsPerLine)));
+// Largura aproximada de caractere por fonte (fração do fontSize).
+function charWidthFactor(font: string): number {
+  if (font === "Bebas Neue") return 0.4;
+  if (font === "Oswald") return 0.46;
+  return 0.55;
 }
 
-// ─── Bloco vertical empilhado (headline + oferta + preço + urgência + CTA) ──
+function estimateLines(text: string, fontSize: number, width: number, font: string): number {
+  const perLine = Math.max(6, Math.floor(width / (fontSize * charWidthFactor(font))));
+  return Math.min(5, Math.max(1, Math.ceil(text.length / perLine)));
+}
 
-interface StackBlock {
+/** Maior fontSize que faz o texto (1 linha) caber na largura. */
+function fitOneLine(text: string, width: number, font: string, max: number, min: number): number {
+  if (!text) return min;
+  const size = Math.floor(width / (Math.max(1, text.length) * charWidthFactor(font)));
+  return Math.max(min, Math.min(max, size));
+}
+
+// ─── Pilha de conteúdo (headline → oferta → preço → urgência → CTA) ─────
+
+interface Block {
   height: number;
   gapAfter: number;
   build: (y: number) => Layer[];
 }
 
-/**
- * Constrói o bloco de conteúdo empilhado, ancorado numa região. Retorna as
- * camadas + a altura total ocupada (pra dimensionar o overlay).
- */
-function buildContentStack(
-  input: CompositionInput,
-  opts: {
-    x: number;
-    usableWidth: number;
-    align: "left" | "center";
-    headlineBase: number;
-    accentFont: string;
-  },
-): StackBlock[] {
-  const { x, usableWidth, align, headlineBase, accentFont } = opts;
+interface StackOpts {
+  x: number;
+  width: number;
+  align: "left" | "center";
+  displayFont: string;
+  bodyFont: string;
+  accentFont: string;
+  headlineMax: number;
+  textColor: string;
+  highlightColor: string;
+  supportColor: string;
+  upper: boolean;
+  highlightWord?: string;
+}
+
+function contentStack(input: CompositionInput, o: StackOpts): Block[] {
   const hook = (input.hook ?? "").trim() || "Seu título aqui";
-  const hasPrice = !!(input.priceText && input.priceText.trim());
+  const hasPrice = !!input.priceText?.trim();
+  const blocks: Block[] = [];
 
-  // Headline menor quando há preço (pra dar espaço ao número gigante).
-  const hlBase = hasPrice ? Math.round(headlineBase * 0.72) : headlineBase;
-  const hlSize = adaptiveHeadlineSize(hook.length, hlBase);
+  // Headline
+  const hlMax = hasPrice ? Math.round(o.headlineMax * 0.72) : o.headlineMax;
+  const hlSize =
+    hook.length <= 24 ? hlMax : hook.length <= 44 ? Math.round(hlMax * 0.8) : Math.round(hlMax * 0.64);
   const hlLh = 1.08;
-  const hlLines = estimateLines(hook.length, hlSize, usableWidth);
-  const hlHeight = Math.round(hlLines * hlSize * hlLh);
-
-  const blocks: StackBlock[] = [];
-
-  // 1. Headline (displayFont)
+  const hlLines = estimateLines(hook, hlSize, o.width, o.displayFont);
   blocks.push({
-    height: hlHeight,
-    gapAfter: hasPrice ? 20 : 24,
+    height: Math.round(hlLines * hlSize * hlLh),
+    gapAfter: hasPrice ? 18 : 22,
     build: (y) => [
       {
         id: "headline",
         type: "text",
-        x,
+        x: o.x,
         y,
-        maxWidth: usableWidth,
+        maxWidth: o.width,
         text: hook,
-        fontFamily: input.displayFont,
+        fontFamily: o.displayFont,
         fontSize: hlSize,
         fontWeight: 700,
-        color: "#FFFFFF",
-        align,
+        color: o.textColor,
+        align: o.align,
         lineHeight: hlLh,
-        letterSpacing: input.typographyStyle === "condensed-bold" ? 0 : -1,
-        textTransform:
-          input.typographyStyle === "condensed-bold" ||
-          input.typographyStyle === "sans-chunky"
-            ? "uppercase"
-            : "none",
-        highlight: resolveHighlight(hook, input.highlightWord),
-        highlightColor: input.palette.highlight,
+        letterSpacing: -0.5,
+        highlight: resolveHighlight(hook, o.highlightWord),
+        highlightColor: o.highlightColor,
       },
     ],
   });
 
-  // 2. offerLabel (bodyFont, médio) — ex: "Corte + Escova"
+  // offerLabel
   const offer = (input.offerLabel ?? "").trim();
   if (offer) {
-    const size = 34;
+    const size = 32;
     blocks.push({
       height: Math.round(size * 1.2),
-      gapAfter: 2,
+      gapAfter: hasPrice ? 0 : 10,
       build: (y) => [
         {
-          id: "offer-label",
+          id: "offer",
           type: "text",
-          x,
+          x: o.x,
           y,
-          maxWidth: usableWidth,
+          maxWidth: o.width,
           text: offer,
-          fontFamily: input.bodyFont,
+          fontFamily: o.bodyFont,
           fontSize: size,
           fontWeight: 700,
-          color: "#FFFFFF",
-          align,
+          color: o.textColor,
+          align: o.align,
           lineHeight: 1.15,
         },
       ],
     });
   }
 
-  // 3. priceText (accentFont, GIGANTE, cor de destaque) — ex: "R$ 49,90"
+  // priceText (gigante, cabe na largura)
   if (hasPrice) {
-    const size = 120;
+    const price = input.priceText!.trim();
+    const size = fitOneLine(price, o.width, o.accentFont, 130, 60);
     blocks.push({
       height: Math.round(size * 0.92),
-      gapAfter: 14,
+      gapAfter: 12,
       build: (y) => [
         {
           id: "price",
           type: "text",
-          x,
-          // accentFont (Bebas/Oswald) tem muito espaço superior; sobe um pouco
-          y: y - Math.round(size * 0.12),
-          maxWidth: usableWidth,
-          text: input.priceText!.trim(),
-          fontFamily: accentFont,
+          x: o.x,
+          y: y - Math.round(size * 0.1),
+          maxWidth: o.width,
+          text: price,
+          fontFamily: o.accentFont,
           fontSize: size,
           fontWeight: 700,
-          color: input.palette.highlight,
-          align,
+          color: o.highlightColor,
+          align: o.align,
           lineHeight: 1,
           letterSpacing: 1,
         },
@@ -212,26 +207,26 @@ function buildContentStack(
     });
   }
 
-  // 4. urgency (bodyFont, pequeno) — ex: "Somente nesta quinta-feira"
+  // urgency OU linha de acento
   const urgency = (input.urgency ?? "").trim();
   if (urgency) {
-    const size = 24;
+    const size = 22;
     blocks.push({
       height: Math.round(size * 1.3),
-      gapAfter: 24,
+      gapAfter: 22,
       build: (y) => [
         {
           id: "urgency",
           type: "text",
-          x,
+          x: o.x,
           y,
-          maxWidth: usableWidth,
+          maxWidth: o.width,
           text: urgency.toUpperCase(),
-          fontFamily: input.bodyFont,
+          fontFamily: o.bodyFont,
           fontSize: size,
           fontWeight: 700,
-          color: "#FFFFFF",
-          align,
+          color: o.textColor,
+          align: o.align,
           lineHeight: 1.2,
           letterSpacing: 2,
           textTransform: "uppercase",
@@ -239,54 +234,56 @@ function buildContentStack(
       ],
     });
   } else {
-    // Linha de acento decorativa se não houver urgência
     blocks.push({
-      height: 5,
-      gapAfter: 26,
+      height: 4,
+      gapAfter: 22,
       build: (y) => [
         {
           id: "accent-line",
           type: "line",
-          x: align === "center" ? Math.round(x + usableWidth / 2 - 55) : x,
+          x: o.align === "center" ? Math.round(o.x + o.width / 2 - 50) : o.x,
           y,
-          width: 110,
-          height: 5,
-          color: input.palette.support,
+          width: 100,
+          height: 4,
+          color: o.supportColor,
         },
       ],
     });
   }
 
-  // 5. CTA como BOTÃO de verdade
+  // CTA botão
   const cta = (input.cta ?? "").trim() || "Saiba mais";
-  const ctaFs = 26;
-  const ctaH = ctaFs + 28;
+  const ctaFs = 24;
   blocks.push({
-    height: ctaH,
+    height: ctaFs + 26,
     gapAfter: 0,
-    build: (y) => [
-      {
+    build: (y) => {
+      const btn: Layer = {
         id: "cta",
         type: "button",
-        x,
+        x: o.align === "center" ? Math.round(o.x + o.width / 2 - (cta.length * ctaFs * 0.34)) : o.x,
         y,
         text: cta,
-        bg: input.palette.support,
+        bg: o.supportColor,
         color: "#0A0A0A",
-        fontFamily: input.bodyFont,
+        fontFamily: o.bodyFont,
         fontSize: ctaFs,
-        paddingX: 30,
-        paddingY: 14,
+        paddingX: 28,
+        paddingY: 13,
         radius: 999,
-      },
-    ],
+      };
+      return [btn];
+    },
   });
 
   return blocks;
 }
 
-/** Posiciona os blocos a partir de um topo (cursor descendente). */
-function layoutStack(blocks: StackBlock[], topY: number): Layer[] {
+function stackHeight(blocks: Block[]): number {
+  return blocks.reduce((s, b, i, a) => s + b.height + (i < a.length - 1 ? b.gapAfter : 0), 0);
+}
+
+function placeStack(blocks: Block[], topY: number): Layer[] {
   const out: Layer[] = [];
   let cursor = topY;
   for (const b of blocks) {
@@ -296,250 +293,317 @@ function layoutStack(blocks: StackBlock[], topY: number): Layer[] {
   return out;
 }
 
-// ─── Badges e logo (elementos comuns) ───────────────────────────────
+// ─── Elementos de marca (badge opcional, logo) ──────────────────────
 
-function badge(
-  id: string,
-  text: string,
-  x: number,
-  y: number,
-  bg: string,
-  font: string,
-): Layer {
+function tag(input: CompositionInput, x: number, y: number, bg: string): Layer | null {
+  const text = (input.occasion?.trim() || input.category?.trim() || "").toUpperCase();
+  if (!text) return null;
   return {
-    id,
+    id: "badge",
     type: "pill",
     x,
     y,
     text,
     bg,
     color: "#FFFFFF",
-    fontFamily: font,
-    fontSize: 18,
-    paddingX: 22,
-    paddingY: 10,
+    fontFamily: input.bodyFont,
+    fontSize: 17,
+    paddingX: 18,
+    paddingY: 9,
+    radius: 6,
+    letterSpacing: 3,
   };
 }
 
-function logoOrSignature(
-  input: CompositionInput,
-  W: number,
-  H: number,
-  align: "left" | "center",
-): Layer[] {
-  if (input.logoUrl) {
-    const size = 96;
-    return [
-      {
-        id: "logo",
-        type: "image",
-        url: input.logoUrl,
-        x: align === "center" ? Math.round(W / 2 - size / 2) : 64,
-        y: H - size - 48,
-        width: size,
-        height: size,
-        fit: "contain",
-        radius: 12,
-      },
-    ];
-  }
-  if (input.signature && input.signature !== "Sua Marca") {
-    return [
-      {
-        id: "signature",
-        type: "text",
-        x: align === "center" ? 80 : 64,
-        y: H - 84,
-        maxWidth: W - 160,
-        text: input.signature.toUpperCase(),
-        fontFamily: input.bodyFont,
-        fontSize: 24,
-        fontWeight: 700,
-        color: "#FFFFFF",
-        align,
-        lineHeight: 1.2,
-        letterSpacing: 5,
-        textTransform: "uppercase",
-      },
-    ];
-  }
-  return [];
+function logo(input: CompositionInput, x: number, y: number, size = 84): Layer | null {
+  if (!input.logoUrl) return null;
+  return {
+    id: "logo",
+    type: "image",
+    url: input.logoUrl,
+    x,
+    y,
+    width: size,
+    height: size,
+    fit: "contain",
+    radius: 10,
+  };
 }
 
-function topBadges(input: CompositionInput, W: number): Layer[] {
-  const out: Layer[] = [];
-  // Ocasião tem prioridade de destaque (cor de suporte, canto esquerdo).
-  if (input.occasion && input.occasion.trim()) {
-    out.push(
-      badge(
-        "occasion-badge",
-        input.occasion.trim().toUpperCase(),
-        64,
-        56,
-        input.palette.support,
-        input.bodyFont,
-      ),
-    );
-  }
-  if (input.category) {
-    out.push(
-      badge(
-        "category-badge",
-        input.category.toUpperCase(),
-        W - 60 - input.category.length * 13 - 44,
-        56,
-        input.palette.primary,
-        input.bodyFont,
-      ),
-    );
-  }
-  return out;
-}
-
-// ─── Templates (variam o OVERLAY, mantêm o stack rico) ──────────────
-
-type TemplateFn = (input: CompositionInput, W: number, H: number) => Layer[];
-
-function withStack(
-  input: CompositionInput,
-  W: number,
-  H: number,
-  overlay: Layer,
-  overlayTopFn: (blockTop: number) => Layer[],
-  align: "left" | "center",
-): Layer[] {
-  const accentFont = accentFontFor(input.typographyStyle);
-  const PAD = 64;
-  const usableWidth = W - PAD * 2;
-  const headlineBase = H > W ? 84 : 74;
-  const blocks = buildContentStack(input, {
-    x: PAD,
-    usableWidth,
+function signature(input: CompositionInput, x: number, y: number, align: "left" | "center", w: number): Layer | null {
+  if (!input.signature || input.signature === "Sua Marca") return null;
+  return {
+    id: "signature",
+    type: "text",
+    x,
+    y,
+    maxWidth: w,
+    text: input.signature.toUpperCase(),
+    fontFamily: input.bodyFont,
+    fontSize: 22,
+    fontWeight: 700,
+    color: "#FFFFFF",
     align,
-    headlineBase,
-    accentFont,
+    lineHeight: 1.2,
+    letterSpacing: 5,
+    textTransform: "uppercase",
+  };
+}
+
+function brandMark(input: CompositionInput, x: number, y: number, align: "left" | "center", w: number): Layer[] {
+  const l = logo(input, x, y);
+  if (l) return [l];
+  const s = signature(input, x, y + 20, align, w);
+  return s ? [s] : [];
+}
+
+// ─── Arquétipos de layout (genuinamente diferentes) ─────────────────
+
+type Archetype = (input: CompositionInput, W: number, H: number) => Layer[];
+
+const PAD = 72;
+
+// 1) Rodapé editorial — foto cheia, gradiente na base, texto embaixo à esquerda. SEM badge.
+const editorialBottom: Archetype = (input, W, H) => {
+  const width = W - PAD * 2;
+  const blocks = contentStack(input, {
+    x: PAD, width, align: "left",
+    displayFont: input.displayFont, bodyFont: input.bodyFont, accentFont: accentFontFor(input.typographyStyle),
+    headlineMax: H > W ? 92 : 76, textColor: "#FFFFFF", highlightColor: input.palette.highlight,
+    supportColor: input.palette.support, upper: isUpper(input.typographyStyle), highlightWord: input.highlightWord,
+  });
+  const sh = stackHeight(blocks);
+  const bottomReserve = 60;
+  const topY = H - bottomReserve - sh;
+  const gradTop = Math.max(0, topY - 200);
+  const layers: Layer[] = [
+    { id: "grad", type: "rect", x: 0, y: gradTop, width: W, height: H - gradTop, bg: input.palette.accent, opacity: 0.9, gradient: true, gradientDirection: "to bottom" },
+    ...placeStack(blocks, topY),
+  ];
+  const bm = brandMark(input, PAD, gradTop - 90, "left", width);
+  return [...layers, ...bm];
+};
+
+// 2) Painel lateral sólido — bloco de cor à esquerda com todo o texto, foto à direita. COM badge.
+const solidSidePanel: Archetype = (input, W, H) => {
+  const panelW = Math.round(W * (H > W ? 1 : 0.52));
+  const innerX = 56;
+  const width = panelW - innerX * 2;
+  const blocks = contentStack(input, {
+    x: innerX, width, align: "left",
+    displayFont: input.displayFont, bodyFont: input.bodyFont, accentFont: accentFontFor(input.typographyStyle),
+    headlineMax: H > W ? 88 : 64, textColor: "#FFFFFF", highlightColor: input.palette.highlight,
+    supportColor: input.palette.support, upper: isUpper(input.typographyStyle), highlightWord: input.highlightWord,
+  });
+  const sh = stackHeight(blocks);
+  const layers: Layer[] = [
+    { id: "panel", type: "rect", x: 0, y: 0, width: panelW, height: H, bg: input.palette.accent, opacity: 0.94 },
+    // leve gradiente na borda do painel pra fundir com a foto
+    { id: "panel-fade", type: "rect", x: panelW - 60, y: 0, width: 120, height: H, bg: input.palette.accent, opacity: 0.94, gradient: true, gradientDirection: "to right" },
+  ];
+  const badge = tag(input, innerX, 70, input.palette.support);
+  const topY = Math.round((H - sh) / 2) + 20;
+  if (badge) layers.push(badge);
+  layers.push(...placeStack(blocks, topY));
+  layers.push(...brandMark(input, innerX, H - 120, "left", width));
+  return layers;
+};
+
+// 3) Herói central — escurece a foto toda, tudo centralizado, tipografia grande. SEM badge.
+const centeredHero: Archetype = (input, W, H) => {
+  const width = W - PAD * 2;
+  const blocks = contentStack(input, {
+    x: PAD, width, align: "center",
+    displayFont: input.displayFont, bodyFont: input.bodyFont, accentFont: accentFontFor(input.typographyStyle),
+    headlineMax: H > W ? 100 : 82, textColor: "#FFFFFF", highlightColor: input.palette.highlight,
+    supportColor: input.palette.support, upper: isUpper(input.typographyStyle), highlightWord: input.highlightWord,
+  });
+  const sh = stackHeight(blocks);
+  const topY = Math.round((H - sh) / 2);
+  const layers: Layer[] = [
+    { id: "scrim", type: "rect", x: 0, y: 0, width: W, height: H, bg: input.palette.accent, opacity: 0.55 },
+    ...placeStack(blocks, topY),
+  ];
+  layers.push(...brandMark(input, Math.round(W / 2 - 42), H - 130, "center", width));
+  return layers;
+};
+
+// 4) Faixas topo + base — faixa de marca no topo (com badge), foto no meio, texto na base sólida.
+const bandedFrame: Archetype = (input, W, H) => {
+  const width = W - PAD * 2;
+  const accent = accentFontFor(input.typographyStyle);
+  const blocks = contentStack(input, {
+    x: PAD, width, align: "left",
+    displayFont: input.displayFont, bodyFont: input.bodyFont, accentFont: accent,
+    headlineMax: H > W ? 80 : 66, textColor: "#FFFFFF", highlightColor: input.palette.highlight,
+    supportColor: input.palette.support, upper: isUpper(input.typographyStyle), highlightWord: input.highlightWord,
+  });
+  const sh = stackHeight(blocks);
+  const topStripH = 120;
+  const bottomBandH = sh + 90;
+  const layers: Layer[] = [
+    { id: "top-strip", type: "rect", x: 0, y: 0, width: W, height: topStripH, bg: input.palette.accent, opacity: 1 },
+    { id: "bottom-band", type: "rect", x: 0, y: H - bottomBandH, width: W, height: bottomBandH, bg: input.palette.accent, opacity: 0.96 },
+  ];
+  // topo: marca à esquerda + badge à direita
+  const bm = brandMark(input, PAD, 26, "left", 400);
+  layers.push(...bm);
+  const badge = tag(input, W - PAD - 220, 42, input.palette.support);
+  if (badge) layers.push(badge);
+  layers.push(...placeStack(blocks, H - bottomBandH + 45));
+  return layers;
+};
+
+// 5) Card inferior — foto cheia em cima, card arredondado de cor na base com o conteúdo. COM badge pequeno.
+const bottomCard: Archetype = (input, W, H) => {
+  const cardMargin = 48;
+  const innerX = cardMargin + 40;
+  const width = W - innerX * 2;
+  const blocks = contentStack(input, {
+    x: innerX, width, align: "left",
+    displayFont: input.displayFont, bodyFont: input.bodyFont, accentFont: accentFontFor(input.typographyStyle),
+    headlineMax: H > W ? 78 : 62, textColor: "#FFFFFF", highlightColor: input.palette.highlight,
+    supportColor: input.palette.support, upper: isUpper(input.typographyStyle), highlightWord: input.highlightWord,
+  });
+  const sh = stackHeight(blocks);
+  const cardPad = 44;
+  const cardH = sh + cardPad * 2;
+  const cardY = H - cardMargin - cardH;
+  const layers: Layer[] = [
+    { id: "card", type: "rect", x: cardMargin, y: cardY, width: W - cardMargin * 2, height: cardH, bg: input.palette.accent, opacity: 0.95, radius: 28 },
+  ];
+  const badge = tag(input, innerX, cardY - 52, input.palette.support);
+  if (badge) layers.push(badge);
+  layers.push(...placeStack(blocks, cardY + cardPad));
+  const l = logo(input, W - cardMargin - 110, cardY + 24, 64);
+  if (l) layers.push(l);
+  return layers;
+};
+
+// 6) Premium informativo — fundo escuro, headline + subtítulo + cards com
+// ícone (os "blocos tipo Canva") + CTA + selo. É o layout mais "agência".
+// Usado quando a IA gerou bullets concretos.
+const premiumInfo: Archetype = (input, W, H) => {
+  const width = W - PAD * 2;
+  const accent = accentFontFor(input.typographyStyle);
+  const layers: Layer[] = [];
+
+  // Fundo escuro premium: tint geral + gradiente inferior pra profundidade.
+  layers.push({ id: "tint", type: "rect", x: 0, y: 0, width: W, height: H, bg: input.palette.accent, opacity: 0.74 });
+  layers.push({
+    id: "grad", type: "rect", x: 0, y: Math.round(H * 0.45), width: W, height: Math.round(H * 0.55),
+    bg: input.palette.accent, opacity: 0.9, gradient: true, gradientDirection: "to bottom",
   });
 
-  const totalHeight = blocks.reduce(
-    (s, b, i, arr) => s + b.height + (i < arr.length - 1 ? b.gapAfter : 0),
-    0,
-  );
-  const bottomReserve = input.logoUrl ? 168 : input.signature !== "Sua Marca" ? 120 : 56;
-  const blockTop = H - bottomReserve - totalHeight;
+  let y = H > W ? 150 : 96;
 
-  const layers: Layer[] = [];
-  layers.push(overlay);
-  layers.push(...overlayTopFn(blockTop));
-  layers.push(...topBadges(input, W));
-  layers.push(...layoutStack(blocks, blockTop));
-  layers.push(...logoOrSignature(input, W, H, align));
+  // Badge de ocasião/categoria (opcional)
+  const badge = tag(input, PAD, y, input.palette.support);
+  if (badge) {
+    layers.push(badge);
+    y += 62;
+  }
+
+  // Headline
+  const hook = (input.hook ?? "").trim() || "Seu título aqui";
+  const hlSize = hook.length <= 26 ? (H > W ? 78 : 64) : hook.length <= 46 ? (H > W ? 64 : 54) : 46;
+  const hlLines = estimateLines(hook, hlSize, width, input.displayFont);
+  layers.push({
+    id: "headline", type: "text", x: PAD, y, maxWidth: width, text: hook,
+    fontFamily: input.displayFont, fontSize: hlSize, fontWeight: 700, color: "#FFFFFF",
+    align: "left", lineHeight: 1.08, letterSpacing: -0.5,
+    highlight: resolveHighlight(hook, input.highlightWord), highlightColor: input.palette.highlight,
+  });
+  y += Math.round(hlLines * hlSize * 1.08) + 14;
+
+  // Subtítulo
+  const sub = (input.subheadline ?? "").trim();
+  if (sub) {
+    const subSize = 28;
+    const subLines = estimateLines(sub, subSize, width, input.bodyFont);
+    layers.push({
+      id: "subheadline", type: "text", x: PAD, y, maxWidth: width, text: sub,
+      fontFamily: input.bodyFont, fontSize: subSize, fontWeight: 400, color: "rgba(255,255,255,0.82)",
+      align: "left", lineHeight: 1.3,
+    });
+    y += Math.round(subLines * subSize * 1.3) + 26;
+  } else {
+    y += 10;
+  }
+
+  // Cards de bullets
+  const maxCards = H > W ? 4 : 3;
+  const bullets = (input.bullets ?? []).slice(0, maxCards);
+  const cardH = H > W ? 104 : 92;
+  const cardGap = 14;
+  for (let i = 0; i < bullets.length; i++) {
+    const b = bullets[i];
+    const card: CardLayer = {
+      id: `card-${i}`, type: "card", x: PAD, y, width, height: cardH,
+      bg: "rgba(255,255,255,0.10)", radius: 18, iconBg: input.palette.support,
+      iconDataUri: iconDataUri(b.icon, "#0A0A0A", 24),
+      title: b.text, text: undefined, titleColor: "#FFFFFF", textColor: "rgba(255,255,255,0.7)",
+      fontFamily: input.bodyFont,
+    };
+    layers.push(card);
+    y += cardH + cardGap;
+  }
+
+  // Preço (se houver) grande antes do CTA
+  const price = (input.priceText ?? "").trim();
+  if (price) {
+    y += 8;
+    const pSize = fitOneLine(price, width, accent, 120, 64);
+    layers.push({
+      id: "price", type: "text", x: PAD, y: y - Math.round(pSize * 0.1), maxWidth: width, text: price,
+      fontFamily: accent, fontSize: pSize, fontWeight: 700, color: input.palette.highlight,
+      align: "left", lineHeight: 1, letterSpacing: 1,
+    });
+    y += Math.round(pSize * 0.92) + 18;
+  } else {
+    y += 12;
+  }
+
+  // CTA
+  const cta = (input.cta ?? "").trim() || "Saiba mais";
+  layers.push({
+    id: "cta", type: "button", x: PAD, y, text: cta, bg: input.palette.support, color: "#0A0A0A",
+    fontFamily: input.bodyFont, fontSize: 24, paddingX: 30, paddingY: 14, radius: 999,
+  });
+
+  // Selo/marca no rodapé direito
+  const l = logo(input, W - PAD - 84, H - 84 - 40, 84);
+  if (l) layers.push(l);
+  else {
+    const s = signature(input, PAD, H - 70, "left", width);
+    if (s) layers.push(s);
+  }
+
   return layers;
-}
-
-// Editorial: gradiente inferior com a cor accent da marca.
-function editorialBottom(input: CompositionInput, W: number, H: number): Layer[] {
-  return withStack(
-    input,
-    W,
-    H,
-    // overlay placeholder (recalculado abaixo via overlayTopFn); usamos um full
-    // darken sutil pra coesão + gradiente é adicionado no topFn.
-    {
-      id: "tint",
-      type: "rect",
-      x: 0,
-      y: 0,
-      width: W,
-      height: H,
-      bg: input.palette.accent,
-      opacity: 0.18,
-    },
-    (blockTop) => {
-      const top = Math.max(0, blockTop - 200);
-      return [
-        {
-          id: "overlay",
-          type: "rect",
-          x: 0,
-          y: top,
-          width: W,
-          height: H - top,
-          bg: input.palette.accent,
-          opacity: 0.92,
-          gradient: true,
-          gradientDirection: "to bottom",
-        },
-      ];
-    },
-    "left",
-  );
-}
-
-// Painel lateral: gradiente da esquerda com cor sólida.
-function sidePanel(input: CompositionInput, W: number, H: number): Layer[] {
-  return withStack(
-    input,
-    W,
-    H,
-    {
-      id: "overlay",
-      type: "rect",
-      x: 0,
-      y: 0,
-      width: Math.round(W * 0.9),
-      height: H,
-      bg: input.palette.accent,
-      opacity: 0.92,
-      gradient: true,
-      gradientDirection: "to left",
-    },
-    () => [],
-    "left",
-  );
-}
-
-// Vinheta central: escurece a imagem toda, texto centralizado.
-function centeredVignette(input: CompositionInput, W: number, H: number): Layer[] {
-  return withStack(
-    input,
-    W,
-    H,
-    {
-      id: "overlay",
-      type: "rect",
-      x: 0,
-      y: 0,
-      width: W,
-      height: H,
-      bg: input.palette.accent,
-      opacity: 0.6,
-    },
-    () => [],
-    "center",
-  );
-}
-
-const TEMPLATES_BY_STYLE: Record<CompositionInput["typographyStyle"], TemplateFn[]> = {
-  "serif-elegant": [editorialBottom, centeredVignette],
-  "italic-refined": [editorialBottom, centeredVignette],
-  "sans-modern": [editorialBottom, sidePanel],
-  "sans-tech": [sidePanel, editorialBottom],
-  "sans-chunky": [sidePanel, centeredVignette],
-  "condensed-bold": [sidePanel, editorialBottom],
 };
+
+const ARCHETYPES: Archetype[] = [
+  editorialBottom,
+  solidSidePanel,
+  centeredHero,
+  bandedFrame,
+  bottomCard,
+];
 
 export function buildComposition(input: CompositionInput): LayerComposition {
   const isStory = input.format === "story";
   const W = 1080;
   const H = isStory ? 1920 : 1080;
 
-  const candidates = TEMPLATES_BY_STYLE[input.typographyStyle] ?? [editorialBottom];
-  const idx = input.seed ? hashSeed(input.seed) % candidates.length : 0;
-  const template = candidates[idx];
+  // Se a IA gerou bullets concretos, o layout premium (cards com ícone) é o
+  // que mais se aproxima do nível agência — priorizamos ele, alternando com
+  // um arquétipo de variedade pelo seed.
+  const hasBullets = (input.bullets?.length ?? 0) >= 2;
+  const pool: Archetype[] = hasBullets
+    ? [premiumInfo, premiumInfo, bandedFrame]
+    : ARCHETYPES;
 
-  return {
-    canvasWidth: W,
-    canvasHeight: H,
-    layers: template(input, W, H),
-  };
+  const idx = input.seed ? hashSeed(input.seed) % pool.length : 0;
+  const archetype = pool[idx];
+  return { canvasWidth: W, canvasHeight: H, layers: archetype(input, W, H) };
 }

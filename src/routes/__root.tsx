@@ -50,6 +50,12 @@ export const Route = createRootRouteWithContext<{ queryClient: QueryClient }>()(
         rel: "stylesheet",
         href: "https://fonts.googleapis.com/css2?family=Geist:wght@400;500;600&family=Geist+Mono:wght@400&display=swap",
       },
+      {
+        // Fontes de design usadas nos criativos — carregadas no navegador pra
+        // o preview do editor bater com o PNG final (Satori usa as mesmas).
+        rel: "stylesheet",
+        href: "https://fonts.googleapis.com/css2?family=Playfair+Display:wght@400;700&family=Bebas+Neue&family=Montserrat:wght@400;700&family=Poppins:wght@400;700&family=Oswald:wght@400;700&family=Inter:wght@400;700&family=DM+Sans:wght@400;700&family=Lato:wght@400;700&family=Nunito:wght@400;700&family=Dancing+Script:wght@400;700&family=Caveat:wght@400;700&display=swap",
+      },
     ],
   }),
   component: RootComponent,

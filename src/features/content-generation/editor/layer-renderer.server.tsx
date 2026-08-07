@@ -19,7 +19,12 @@ export async function renderComposition(input: RenderLayersInput): Promise<Buffe
   // Detecta fontes usadas nas camadas de texto/pill.
   const fontNames = new Set<string>();
   for (const layer of layers) {
-    if (layer.type === "text" || layer.type === "pill" || layer.type === "button") {
+    if (
+      layer.type === "text" ||
+      layer.type === "pill" ||
+      layer.type === "button" ||
+      layer.type === "card"
+    ) {
       fontNames.add(layer.fontFamily);
     }
   }
@@ -95,9 +100,9 @@ function renderLayer(layer: Layer): ReactElement {
             fontSize: layer.fontSize,
             fontWeight: layer.fontWeight,
             lineHeight: layer.lineHeight,
-            letterSpacing: layer.letterSpacing,
+            letterSpacing: layer.letterSpacing ?? 0,
             textTransform: layer.textTransform ?? "none",
-            maxWidth: layer.maxWidth,
+            maxWidth: layer.maxWidth ?? 980,
             display: "flex",
             flexWrap: "wrap",
           }}
@@ -132,10 +137,10 @@ function renderLayer(layer: Layer): ReactElement {
           fontWeight: layer.fontWeight,
           color: layer.color,
           lineHeight: layer.lineHeight,
-          letterSpacing: layer.letterSpacing,
+          letterSpacing: layer.letterSpacing ?? 0,
           textTransform: layer.textTransform ?? "none",
-          textAlign: layer.align,
-          maxWidth: layer.maxWidth,
+          textAlign: layer.align ?? "left",
+          maxWidth: layer.maxWidth ?? 980,
           display: "flex",
           whiteSpace: "pre-wrap",
         }}
@@ -164,9 +169,9 @@ function renderLayer(layer: Layer): ReactElement {
           fontFamily: layer.fontFamily,
           fontSize: layer.fontSize,
           fontWeight: 700,
-          letterSpacing: 4,
+          letterSpacing: layer.letterSpacing ?? 4,
           textTransform: "uppercase",
-          borderRadius: 999,
+          borderRadius: layer.radius ?? 999,
         }}
       >
         {layer.text}
@@ -176,7 +181,8 @@ function renderLayer(layer: Layer): ReactElement {
 
   if (layer.type === "rect") {
     const dir = layer.gradientDirection ?? "to bottom";
-    const from = layer.gradientFrom ?? "transparent";
+    // Satori não aceita a keyword "transparent" em gradiente — usa rgba 0.
+    const from = layer.gradientFrom ?? "rgba(0,0,0,0)";
     const bg = `linear-gradient(${dir}, ${from} 0%, ${layer.bg} 100%)`;
     return (
       <div
@@ -260,6 +266,79 @@ function renderLayer(layer: Layer): ReactElement {
           borderRadius: layer.radius ?? 0,
         }}
       />
+    );
+  }
+
+  if (layer.type === "card") {
+    const iconD = Math.round(layer.height * 0.5);
+    return (
+      <div
+        key={layer.id}
+        style={{
+          position: "absolute",
+          left: layer.x,
+          top: layer.y,
+          width: layer.width,
+          height: layer.height,
+          backgroundColor: layer.bg,
+          opacity: layer.opacity ?? 1,
+          borderRadius: layer.radius,
+          display: "flex",
+          alignItems: "center",
+          paddingLeft: 22,
+          paddingRight: 22,
+        }}
+      >
+        {layer.iconDataUri ? (
+          <div
+            style={{
+              width: iconD,
+              height: iconD,
+              borderRadius: 999,
+              backgroundColor: layer.iconBg ?? "rgba(255,255,255,0.12)",
+              display: "flex",
+              alignItems: "center",
+              justifyContent: "center",
+              marginRight: 18,
+              flexShrink: 0,
+            }}
+          >
+            <img
+              src={layer.iconDataUri}
+              width={Math.round(iconD * 0.56)}
+              height={Math.round(iconD * 0.56)}
+            />
+          </div>
+        ) : null}
+        <div style={{ display: "flex", flexDirection: "column", flex: 1 }}>
+          <div
+            style={{
+              fontFamily: layer.fontFamily,
+              fontSize: Math.round(layer.height * 0.26),
+              fontWeight: 700,
+              color: layer.titleColor,
+              lineHeight: 1.2,
+              display: "flex",
+            }}
+          >
+            {layer.title}
+          </div>
+          {layer.text ? (
+            <div
+              style={{
+                fontFamily: layer.fontFamily,
+                fontSize: Math.round(layer.height * 0.2),
+                color: layer.textColor,
+                lineHeight: 1.25,
+                marginTop: 3,
+                display: "flex",
+              }}
+            >
+              {layer.text}
+            </div>
+          ) : null}
+        </div>
+      </div>
     );
   }
 
