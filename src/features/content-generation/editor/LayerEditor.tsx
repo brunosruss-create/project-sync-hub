@@ -32,6 +32,11 @@ export function LayerEditor({ imageUrl, composition, onChange, brandDefaults }: 
   const canvasRef = React.useRef<HTMLDivElement>(null);
   const [selectedId, setSelectedId] = React.useState<LayerId | null>(null);
   const [editingId, setEditingId] = React.useState<LayerId | null>(null);
+  const [ctxMenu, setCtxMenu] = React.useState<{
+    x: number;
+    y: number;
+    layerId: LayerId;
+  } | null>(null);
   const [displayScale, setDisplayScale] = React.useState(1);
   const isStory = composition.canvasHeight > composition.canvasWidth;
 
@@ -66,7 +71,52 @@ export function LayerEditor({ imageUrl, composition, onChange, brandDefaults }: 
   const removeLayer = (id: LayerId) => {
     onChange({ ...composition, layers: composition.layers.filter((l) => l.id !== id) });
     setSelectedId(null);
+    setEditingId(null);
+    setCtxMenu(null);
   };
+
+  const duplicateLayer = (id: LayerId) => {
+    const original = composition.layers.find((l) => l.id === id);
+    if (!original) return;
+    const copy = {
+      ...original,
+      id: `${original.type}-${Date.now()}`,
+      x: Math.min(original.x + 32, composition.canvasWidth - 20),
+      y: Math.min(original.y + 32, composition.canvasHeight - 20),
+    } as Layer;
+    onChange({ ...composition, layers: [...composition.layers, copy] });
+    setSelectedId(copy.id);
+    setCtxMenu(null);
+  };
+
+  const reorderLayer = (id: LayerId, dir: "front" | "back") => {
+    const idx = composition.layers.findIndex((l) => l.id === id);
+    if (idx < 0) return;
+    const arr = [...composition.layers];
+    const [item] = arr.splice(idx, 1);
+    if (dir === "front") arr.push(item);
+    else arr.unshift(item);
+    onChange({ ...composition, layers: arr });
+    setCtxMenu(null);
+  };
+
+  // Tecla Delete/Backspace remove o bloco selecionado (exceto durante edição de texto).
+  React.useEffect(() => {
+    const onKey = (e: KeyboardEvent) => {
+      if (editingId || !selectedId) return;
+      const t = e.target as HTMLElement | null;
+      if (t && (t.tagName === "INPUT" || t.tagName === "TEXTAREA" || t.isContentEditable)) {
+        return;
+      }
+      if (e.key === "Delete" || e.key === "Backspace") {
+        e.preventDefault();
+        removeLayer(selectedId);
+      }
+    };
+    window.addEventListener("keydown", onKey);
+    return () => window.removeEventListener("keydown", onKey);
+    // eslint-disable-next-line react-hooks/exhaustive-deps
+  }, [selectedId, editingId, composition]);
 
   const addText = () =>
     addLayer(
@@ -147,6 +197,7 @@ export function LayerEditor({ imageUrl, composition, onChange, brandDefaults }: 
           if (e.target === e.currentTarget) {
             setSelectedId(null);
             setEditingId(null);
+            setCtxMenu(null);
           }
         }}
       >
@@ -181,6 +232,10 @@ export function LayerEditor({ imageUrl, composition, onChange, brandDefaults }: 
               setEditingId(layer.id);
             }}
             onStopEdit={() => setEditingId(null)}
+            onOpenMenu={(x, y) => {
+              setSelectedId(layer.id);
+              setCtxMenu({ x, y, layerId: layer.id });
+            }}
             onUpdate={(patch) => updateLayer(layer.id, patch)}
           />
         ))}
@@ -201,10 +256,98 @@ export function LayerEditor({ imageUrl, composition, onChange, brandDefaults }: 
             textAlign: "center",
           }}
         >
-          Clique pra selecionar · duplo-clique no texto pra editar direto
+          Clique pra selecionar · duplo-clique edita o texto · Delete remove · botão direito = mais opções
         </div>
       )}
+
+      {/* Menu de contexto (botão direito) */}
+      {ctxMenu ? (
+        <>
+          {/* Backdrop pra fechar ao clicar fora */}
+          <div
+            onClick={() => setCtxMenu(null)}
+            onContextMenu={(e) => {
+              e.preventDefault();
+              setCtxMenu(null);
+            }}
+            style={{ position: "fixed", inset: 0, zIndex: 998 }}
+          />
+          <div
+            style={{
+              position: "fixed",
+              left: ctxMenu.x,
+              top: ctxMenu.y,
+              zIndex: 999,
+              minWidth: 180,
+              background: "var(--bg-surface)",
+              border: "1px solid var(--border-strong)",
+              borderRadius: "var(--radius-card)",
+              boxShadow: "0 8px 24px rgba(0,0,0,0.25)",
+              padding: 6,
+              display: "flex",
+              flexDirection: "column",
+              gap: 2,
+            }}
+          >
+            <CtxItem
+              label="Duplicar"
+              onClick={() => duplicateLayer(ctxMenu.layerId)}
+            />
+            <CtxItem
+              label="Trazer pra frente"
+              onClick={() => reorderLayer(ctxMenu.layerId, "front")}
+            />
+            <CtxItem
+              label="Enviar pra trás"
+              onClick={() => reorderLayer(ctxMenu.layerId, "back")}
+            />
+            <div style={{ height: 1, background: "var(--border)", margin: "4px 0" }} />
+            <CtxItem
+              label="Remover elemento"
+              danger
+              onClick={() => removeLayer(ctxMenu.layerId)}
+            />
+          </div>
+        </>
+      ) : null}
     </div>
+  );
+}
+
+function CtxItem({
+  label,
+  onClick,
+  danger,
+}: {
+  label: string;
+  onClick: () => void;
+  danger?: boolean;
+}) {
+  return (
+    <button
+      onClick={onClick}
+      style={{
+        display: "flex",
+        alignItems: "center",
+        width: "100%",
+        textAlign: "left",
+        padding: "8px 10px",
+        fontSize: 13,
+        borderRadius: "var(--radius-control)",
+        background: "transparent",
+        color: danger ? "var(--danger, #B91C1C)" : "var(--text-primary)",
+        border: "none",
+        cursor: "pointer",
+      }}
+      onMouseEnter={(e) => {
+        e.currentTarget.style.background = "var(--bg-base)";
+      }}
+      onMouseLeave={(e) => {
+        e.currentTarget.style.background = "transparent";
+      }}
+    >
+      {label}
+    </button>
   );
 }
 
@@ -220,6 +363,7 @@ interface LayerNodeProps {
   onSelect: () => void;
   onStartEdit: () => void;
   onStopEdit: () => void;
+  onOpenMenu: (x: number, y: number) => void;
   onUpdate: (patch: Partial<Layer>) => void;
 }
 
@@ -234,9 +378,17 @@ function LayerNode(props: LayerNodeProps) {
     onSelect,
     onStartEdit,
     onStopEdit,
+    onOpenMenu,
     onUpdate,
   } = props;
   const dragState = React.useRef<{ startX: number; startY: number; layerX: number; layerY: number } | null>(null);
+
+  const handleContextMenu = (e: React.MouseEvent) => {
+    e.preventDefault();
+    e.stopPropagation();
+    onSelect();
+    onOpenMenu(e.clientX, e.clientY);
+  };
 
   const handleMouseDown = (e: React.MouseEvent) => {
     if (layer.locked || editing) return;
@@ -268,6 +420,12 @@ function LayerNode(props: LayerNodeProps) {
 
     window.addEventListener("mousemove", onMove);
     window.addEventListener("mouseup", onUp);
+  };
+
+  // Props de interação comuns a todos os tipos de bloco (arrastar + menu de contexto).
+  const interactionProps = {
+    onMouseDown: handleMouseDown,
+    onContextMenu: handleContextMenu,
   };
 
   const commonStyle: React.CSSProperties = {
@@ -329,7 +487,7 @@ function LayerNode(props: LayerNodeProps) {
       const words = layer.text.split(/\s+/);
       return (
         <div
-          onMouseDown={handleMouseDown}
+          {...interactionProps}
           onDoubleClick={(e) => {
             e.stopPropagation();
             onStartEdit();
@@ -367,7 +525,7 @@ function LayerNode(props: LayerNodeProps) {
     }
     return (
       <div
-        onMouseDown={handleMouseDown}
+        {...interactionProps}
         onDoubleClick={(e) => {
           e.stopPropagation();
           onStartEdit();
@@ -395,7 +553,7 @@ function LayerNode(props: LayerNodeProps) {
   if (layer.type === "pill") {
     return (
       <div
-        onMouseDown={handleMouseDown}
+        {...interactionProps}
         style={{
           ...commonStyle,
           display: "inline-flex",
@@ -422,7 +580,7 @@ function LayerNode(props: LayerNodeProps) {
   if (layer.type === "rect") {
     return (
       <div
-        onMouseDown={handleMouseDown}
+        {...interactionProps}
         style={{
           ...commonStyle,
           width: layer.width * scale,
@@ -440,7 +598,7 @@ function LayerNode(props: LayerNodeProps) {
   if (layer.type === "line") {
     return (
       <div
-        onMouseDown={handleMouseDown}
+        {...interactionProps}
         style={{
           ...commonStyle,
           width: layer.width * scale,
@@ -455,7 +613,7 @@ function LayerNode(props: LayerNodeProps) {
   if (layer.type === "button") {
     return (
       <div
-        onMouseDown={handleMouseDown}
+        {...interactionProps}
         style={{
           ...commonStyle,
           display: "inline-flex",
@@ -484,7 +642,7 @@ function LayerNode(props: LayerNodeProps) {
         src={layer.url}
         alt=""
         draggable={false}
-        onMouseDown={handleMouseDown}
+        {...interactionProps}
         style={{
           ...commonStyle,
           width: layer.width * scale,
