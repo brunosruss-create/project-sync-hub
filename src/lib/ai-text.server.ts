@@ -84,29 +84,29 @@ function buildViralPrompt(input: CopyBundleInput): string {
   parts.push("3. CLIFFHANGER (opcional): intriga antes do CTA.");
   parts.push("4. CTA: chamada curta e clara. Max 40 chars.");
   parts.push("");
-  parts.push("=== REGRA #1 (CRÍTICA) — CRIATIVIDADE OBRIGATÓRIA ===");
-  parts.push("JAMAIS copie o texto do objetivo do cliente literalmente.");
-  parts.push("O objetivo é MATÉRIA-PRIMA. Você deve TRANSFORMAR.");
+  parts.push("=== REGRA #1 — HOOK CRIATIVO, MAS FATOS NUNCA SE PERDEM ===");
+  parts.push("O HOOK deve ser criativo (não uma cópia literal do brief).");
+  parts.push("MAS os fatos concretos (preço, data, ocasião, serviço, desconto)");
+  parts.push("são o CORAÇÃO do anúncio e DEVEM aparecer nos campos estruturados.");
+  parts.push("NUNCA descarte um preço, data ou oferta que o cliente mencionou.");
   parts.push("");
-  parts.push("Exemplos de transformação correta:");
-  parts.push(
-    '  objetivo="corte e escova por R$ 49,90"',
-  );
-  parts.push('  ❌ ERRADO (copiar): "Corte e escova por R$ 49,90"');
-  parts.push('  ✅ CERTO (criar): "Cabelo perfeito por menos de R$ 50? Sim."');
-  parts.push('  ✅ CERTO (criar): "O segredo pra sair renovada por R$ 49,90"');
-  parts.push('  ✅ CERTO (criar): "Transformação em 40min. Sem gastar uma fortuna."');
+  parts.push("Exemplo — brief: 'promoção dia da mulher, corte e escova R$ 49,90, só quinta':");
+  parts.push('  hook = "Você merece se sentir poderosa" (criativo, emocional)');
+  parts.push('  occasion = "Especial Dia da Mulher"');
+  parts.push('  offerLabel = "Corte + Escova"');
+  parts.push('  priceText = "R$ 49,90"');
+  parts.push('  urgency = "Somente nesta quinta-feira"');
+  parts.push("  → O criativo mostra hook + preço GRANDE + ocasião + urgência juntos.");
   parts.push("");
-  parts.push(
-    '  objetivo="oferta de black friday 30% off"',
-  );
-  parts.push('  ❌ ERRADO: "Oferta de Black Friday 30% off"');
-  parts.push('  ✅ CERTO: "3 dias que valem por 3 meses. Prepara o carrinho."');
+  parts.push("Regras do hook: pergunta retórica, contraste, provocação ou benefício");
+  parts.push("emocional. O hook NÃO precisa conter o preço — o preço vai em priceText.");
   parts.push("");
-  parts.push(
-    "Regras do hook: use pergunta retórica OU contraste OU provocação OU benefício",
-  );
-  parts.push("emocional. NUNCA anuncie o serviço/preço direto no hook.");
+  parts.push("=== CAMPOS ESTRUTURADOS DA OFERTA (CRÍTICO — extraia do brief) ===");
+  parts.push("- occasion: gatilho/data comemorativa se houver (ex: 'Dia da Mulher', 'Black Friday'). Senão omita.");
+  parts.push("- offerLabel: o serviço/produto em destaque (ex: 'Corte + Escova', 'Combo Família'). Curto.");
+  parts.push("- priceText: o preço EXATO se mencionado (ex: 'R$ 49,90', '30% OFF', 'A partir de R$ 99'). Se não houver preço, omita.");
+  parts.push("- urgency: prazo/escassez se houver (ex: 'Só nesta quinta', 'Últimas vagas', 'Até domingo'). Senão omita.");
+  parts.push("REGRA DE OURO: se o cliente escreveu um preço, uma data ou uma ocasião, é PROIBIDO omitir. São o motivo do post existir.");
   parts.push("");
   parts.push("=== CONTEXTO DO POST ===");
   parts.push(`Categoria: ${brief.templateCategory}`);
@@ -223,6 +223,10 @@ const GEMINI_RESPONSE_SCHEMA = {
     },
     imageDescription: { type: Type.STRING },
     highlightWord: { type: Type.STRING },
+    occasion: { type: Type.STRING },
+    priceText: { type: Type.STRING },
+    offerLabel: { type: Type.STRING },
+    urgency: { type: Type.STRING },
     perNetwork: {
       type: Type.OBJECT,
       properties: {

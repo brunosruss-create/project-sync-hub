@@ -63,7 +63,35 @@ export interface LineLayer extends BaseLayer {
   color: string;
 }
 
-export type Layer = TextLayer | PillLayer | RectLayer | LineLayer;
+export interface ButtonLayer extends BaseLayer {
+  type: "button";
+  text: string;
+  bg: string;
+  color: string;
+  fontFamily: string;
+  fontSize: number;
+  paddingX: number;
+  paddingY: number;
+  radius: number;
+}
+
+export interface ImageLayer extends BaseLayer {
+  type: "image";
+  url: string;
+  width: number;
+  height: number;
+  radius?: number;
+  /** object-fit: contain (logo) ou cover (foto). */
+  fit?: "contain" | "cover";
+}
+
+export type Layer =
+  | TextLayer
+  | PillLayer
+  | RectLayer
+  | LineLayer
+  | ButtonLayer
+  | ImageLayer;
 
 /** Composição do canvas: dimensões + camadas por cima da foto base. */
 export interface LayerComposition {

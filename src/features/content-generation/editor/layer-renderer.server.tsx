@@ -19,7 +19,7 @@ export async function renderComposition(input: RenderLayersInput): Promise<Buffe
   // Detecta fontes usadas nas camadas de texto/pill.
   const fontNames = new Set<string>();
   for (const layer of layers) {
-    if (layer.type === "text" || layer.type === "pill") {
+    if (layer.type === "text" || layer.type === "pill" || layer.type === "button") {
       fontNames.add(layer.fontFamily);
     }
   }
@@ -211,6 +211,53 @@ function renderLayer(layer: Layer): ReactElement {
           backgroundColor: layer.color,
           borderRadius: 4,
           display: "flex",
+        }}
+      />
+    );
+  }
+
+  if (layer.type === "button") {
+    return (
+      <div
+        key={layer.id}
+        style={{
+          position: "absolute",
+          left: layer.x,
+          top: layer.y,
+          display: "flex",
+          alignSelf: "flex-start",
+          paddingLeft: layer.paddingX,
+          paddingRight: layer.paddingX,
+          paddingTop: layer.paddingY,
+          paddingBottom: layer.paddingY,
+          backgroundColor: layer.bg,
+          color: layer.color,
+          fontFamily: layer.fontFamily,
+          fontSize: layer.fontSize,
+          fontWeight: 700,
+          borderRadius: layer.radius,
+        }}
+      >
+        {layer.text}
+      </div>
+    );
+  }
+
+  if (layer.type === "image") {
+    return (
+      <img
+        key={layer.id}
+        src={layer.url}
+        width={layer.width}
+        height={layer.height}
+        style={{
+          position: "absolute",
+          left: layer.x,
+          top: layer.y,
+          width: layer.width,
+          height: layer.height,
+          objectFit: layer.fit ?? "contain",
+          borderRadius: layer.radius ?? 0,
         }}
       />
     );

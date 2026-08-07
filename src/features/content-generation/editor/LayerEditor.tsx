@@ -452,6 +452,50 @@ function LayerNode(props: LayerNodeProps) {
     );
   }
 
+  if (layer.type === "button") {
+    return (
+      <div
+        onMouseDown={handleMouseDown}
+        style={{
+          ...commonStyle,
+          display: "inline-flex",
+          alignItems: "center",
+          paddingLeft: layer.paddingX * scale,
+          paddingRight: layer.paddingX * scale,
+          paddingTop: layer.paddingY * scale,
+          paddingBottom: layer.paddingY * scale,
+          background: layer.bg,
+          color: layer.color,
+          fontFamily: layer.fontFamily,
+          fontSize: layer.fontSize * scale,
+          fontWeight: 700,
+          borderRadius: layer.radius * scale,
+          whiteSpace: "nowrap",
+        }}
+      >
+        {layer.text}
+      </div>
+    );
+  }
+
+  if (layer.type === "image") {
+    return (
+      <img
+        src={layer.url}
+        alt=""
+        draggable={false}
+        onMouseDown={handleMouseDown}
+        style={{
+          ...commonStyle,
+          width: layer.width * scale,
+          height: layer.height * scale,
+          objectFit: layer.fit ?? "contain",
+          borderRadius: (layer.radius ?? 0) * scale,
+        }}
+      />
+    );
+  }
+
   return null;
 }
 

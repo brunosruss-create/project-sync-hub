@@ -365,6 +365,11 @@ function buildAssetComposition(
     cta: copy.cta,
     signature: brandKit.defaultSignature || "Sua Marca",
     category: CATEGORY_LABELS[brief.templateCategory],
+    occasion: copy.occasion,
+    priceText: copy.priceText,
+    offerLabel: copy.offerLabel,
+    urgency: copy.urgency,
+    logoUrl: brandKit.logoUrl,
     palette: {
       // Brand Kit customizado tem prioridade; senão usa DNA.
       primary: brandKit.primaryColor || dna.palette.primary,
@@ -374,6 +379,7 @@ function buildAssetComposition(
       highlight: brandKit.supportColor || dna.palette.highlight,
     },
     displayFont: brandKit.displayFont || dna.displayFont,
+    bodyFont: brandKit.bodyFont || dna.bodyFont,
     typographyStyle: dna.typographyStyle,
     highlightWord: copy.highlightWord,
     seed,

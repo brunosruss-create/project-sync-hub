@@ -171,6 +171,14 @@ export const CopyBundleSchema = z.object({
   /** Palavra ou expressão curta do hook que deve ser destacada em cor de acento.
    *  Ex: hook="Cabelo perfeito por menos de R$ 50?" → highlightWord="R$ 50". */
   highlightWord: z.string().min(1).max(30).optional(),
+  /** Ocasião/gatilho do post, pra badge de destaque. Ex: "Dia da Mulher". */
+  occasion: z.string().max(40).optional(),
+  /** Preço/oferta em destaque grande no criativo. Ex: "R$ 49,90". */
+  priceText: z.string().max(30).optional(),
+  /** Nome do serviço/produto em destaque. Ex: "Corte + Escova". */
+  offerLabel: z.string().max(60).optional(),
+  /** Urgência/prazo. Ex: "Somente quinta-feira". */
+  urgency: z.string().max(60).optional(),
 });
 export type CopyBundle = z.infer<typeof CopyBundleSchema>;
 
