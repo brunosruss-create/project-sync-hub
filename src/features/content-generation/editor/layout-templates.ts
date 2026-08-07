@@ -78,7 +78,7 @@ function estimateLines(len: number, fontSize: number, usableWidth: number): numb
 function editorialBottom(input: CompositionInput, W: number, H: number): Layer[] {
   const PAD = 64;
   const layers: Layer[] = [];
-  const hook = input.hook.trim();
+  const hook = (input.hook ?? "").trim();
   const usableWidth = W - PAD * 2;
   const fs = adaptiveHeadlineSize(hook.length, H > W ? 96 : 80);
   const lh = 1.08;
@@ -129,7 +129,7 @@ function editorialBottom(input: CompositionInput, W: number, H: number): Layer[]
 function sidePanel(input: CompositionInput, W: number, H: number): Layer[] {
   const PAD = 60;
   const layers: Layer[] = [];
-  const hook = input.hook.trim();
+  const hook = (input.hook ?? "").trim();
   const panelW = Math.round(W * 0.62);
   const usableWidth = panelW - PAD * 2;
   const fs = adaptiveHeadlineSize(hook.length, 78);
@@ -174,7 +174,7 @@ function sidePanel(input: CompositionInput, W: number, H: number): Layer[] {
 function topStrip(input: CompositionInput, W: number, H: number): Layer[] {
   const PAD = 64;
   const layers: Layer[] = [];
-  const hook = input.hook.trim();
+  const hook = (input.hook ?? "").trim();
   const usableWidth = W - PAD * 2;
   const fs = adaptiveHeadlineSize(hook.length, 74);
   const lh = 1.08;
@@ -250,7 +250,7 @@ function topStrip(input: CompositionInput, W: number, H: number): Layer[] {
 function centeredVignette(input: CompositionInput, W: number, H: number): Layer[] {
   const PAD = 80;
   const layers: Layer[] = [];
-  const hook = input.hook.trim();
+  const hook = (input.hook ?? "").trim();
   const usableWidth = W - PAD * 2;
   const fs = adaptiveHeadlineSize(hook.length, 88);
   const lh = 1.05;
@@ -328,7 +328,7 @@ function headline(
     x,
     y,
     maxWidth,
-    text: input.hook.trim(),
+    text: (input.hook ?? "").trim() || "Seu título aqui",
     fontFamily: input.displayFont,
     fontSize,
     fontWeight: 700,
@@ -351,12 +351,13 @@ function ctaLayer(
   y: number,
   fontSize: number,
 ): TextLayer {
+  const cta = (input.cta ?? "").trim();
   return {
     id: "cta",
     type: "text",
     x,
     y,
-    text: `${input.cta.trim()} →`,
+    text: cta ? `${cta} →` : "Saiba mais →",
     fontFamily: input.displayFont,
     fontSize,
     fontWeight: 700,

@@ -13,7 +13,6 @@ import { mapJobRow } from "@/features/content-generation/job-row";
 import { mapBrandKitRow } from "@/features/content-generation/brand-kit-row";
 import { getDesignDNA } from "@/features/content-generation/design-dna";
 import { buildComposition } from "@/features/content-generation/editor/layout-templates";
-import { renderComposition } from "@/features/content-generation/editor/layer-renderer.server";
 import type { LayerComposition } from "@/features/content-generation/editor/layer-types";
 import type {
   BrandKit,
@@ -382,24 +381,28 @@ function buildAssetComposition(
 }
 
 /**
- * Renderiza a composição (foto crua + camadas) em PNG via Satori e sobe pro
- * bucket. O worker do Railway tem satori/resvg instalados. Retorna URL pública.
+ * Monta a composição de forma DEFENSIVA — se algo falhar (dados incompletos),
+ * devolve uma composição vazia (só a foto) em vez de derrubar o job inteiro.
  */
-async function renderCompositionAndUpload(
-  workspaceOwnerId: string,
-  rawImageUrl: string,
-  composition: LayerComposition,
-  slideIndex?: number,
-): Promise<string> {
-  const png = await renderComposition({ imageUrl: rawImageUrl, composition });
-  const assetId = randomUUID();
-  const suffix = typeof slideIndex === "number" ? `-slide-${slideIndex}` : "";
-  const key = `${workspaceOwnerId}/renders/${assetId}/1${suffix}.png`;
-  const { error } = await supabaseAdmin.storage
-    .from(BUCKET)
-    .upload(key, png, { contentType: "image/png", upsert: false });
-  if (error) throw new ContentJobError("render", `Falha ao subir imagem: ${error.message}`);
-  return supabaseAdmin.storage.from(BUCKET).getPublicUrl(key).data.publicUrl;
+function safeBuildComposition(
+  brief: ContentBrief,
+  brandKit: BrandKit,
+  segment: string,
+  copy: CopyBundle,
+  seed: string,
+): LayerComposition {
+  try {
+    return buildAssetComposition(brief, brandKit, segment, copy, seed);
+  } catch (err) {
+    console.error(
+      `[content-worker] buildComposition falhou (${(err as Error).message}) — usando composição vazia`,
+    );
+    return {
+      canvasWidth: 1080,
+      canvasHeight: brief.postFormat === "story" ? 1920 : 1080,
+      layers: [],
+    };
+  }
 }
 
 async function insertAsset(input: {
@@ -508,32 +511,31 @@ export async function processContentGenerationJob(
       image_provider_used: image.provider,
     });
 
-    // Carousel: renderiza N slides no mesmo asset (mesmo design por enquanto)
+    // IMPORTANTE: a geração NÃO renderiza PNG (não depende de satori aqui).
+    // Salvamos a foto crua + a composição JSON. O editor mostra o design ao
+    // vivo no navegador; o PNG final só é renderizado no PUBLISH (job
+    // render_composition, que roda no worker). Isso torna a geração rápida e
+    // robusta — nunca falha por causa de fontes/satori.
     if (brief.postFormat === "carousel") {
       const count = brief.carouselSlideCount ?? 3;
       const primaryNetwork = brief.targetNetworks[0];
-      const composition = buildAssetComposition(
+      const composition = safeBuildComposition(
         brief,
         brandKit,
         segment,
         copyBundle,
         `${job.id}-${primaryNetwork}`,
       );
-      const slideUrls: CarouselSlide[] = [];
-      for (let i = 0; i < count; i++) {
-        const url = await renderCompositionAndUpload(
-          job.ownerUserId,
-          image.url,
-          composition,
-          i,
-        );
-        slideUrls.push({ url, index: i });
-      }
+      // Slides apontam pra mesma foto crua por enquanto (design aplicado no editor).
+      const slideUrls: CarouselSlide[] = Array.from({ length: count }, (_, i) => ({
+        url: image.url,
+        index: i,
+      }));
       await insertAsset({
         ownerUserId: job.ownerUserId,
         jobId: job.id,
         targetNetwork: primaryNetwork,
-        renderedImageUrl: slideUrls[0].url,
+        renderedImageUrl: image.url,
         rawImageUrl: image.url,
         layersJson: composition,
         slides: slideUrls,
@@ -544,23 +546,18 @@ export async function processContentGenerationJob(
     } else {
       // Single / Story: 1 asset por rede alvo
       for (const network of brief.targetNetworks) {
-        const composition = buildAssetComposition(
+        const composition = safeBuildComposition(
           brief,
           brandKit,
           segment,
           copyBundle,
           `${job.id}-${network}`,
         );
-        const url = await renderCompositionAndUpload(
-          job.ownerUserId,
-          image.url,
-          composition,
-        );
         await insertAsset({
           ownerUserId: job.ownerUserId,
           jobId: job.id,
           targetNetwork: network,
-          renderedImageUrl: url,
+          renderedImageUrl: image.url,
           rawImageUrl: image.url,
           layersJson: composition,
           slides: null,
