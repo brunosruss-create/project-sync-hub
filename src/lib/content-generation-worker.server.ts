@@ -13,6 +13,7 @@ import { pickTemplate } from "@/features/content-generation/templates";
 import { mapBriefRow } from "@/features/content-generation/brief-row";
 import { mapJobRow } from "@/features/content-generation/job-row";
 import { mapBrandKitRow } from "@/features/content-generation/brand-kit-row";
+import { getDesignDNA } from "@/features/content-generation/design-dna";
 import type {
   BrandKit,
   ContentBrief,
@@ -94,9 +95,18 @@ function buildAiImagePrompt(
   brief: ContentBrief,
   service: { name?: string; description?: string | null } | null,
   brandKit: BrandKit,
+  imageDescription: string | undefined,
 ): string {
+  // Prioridade máxima: descrição rica gerada pelo Gemini (imageDescription).
+  // Se o Gemini gerou algo detalhado com sujeito/ambiente/mood, usa direto —
+  // é infinitamente melhor que qualquer prompt hardcoded aqui.
+  if (imageDescription && imageDescription.length > 20) {
+    return imageDescription;
+  }
+  // Fallback quando o Gemini não retornou imageDescription: monta um prompt
+  // razoável a partir do serviço + categoria.
   const query = buildImageQuery(brief, service, brandKit);
-  return `${query}. Fotografia profissional, estilo editorial, iluminação suave.`;
+  return `Professional photograph of ${query}, editorial style, cinematic lighting.`;
 }
 
 async function loadJob(id: string) {
@@ -140,6 +150,11 @@ async function loadBrandKit(workspaceOwnerId: string): Promise<BrandKit> {
   const aiTone = (profile as any)?.ai_tone ?? "profissional";
   const logoUrl = (profile as any)?.logo_url ?? null;
 
+  // DNA do nicho — usado como fallback pra paleta e fonte quando o cliente
+  // não configurou Brand Kit próprio. Isso faz cada nicho ter aparência
+  // distinta desde o primeiro post (estilo BestContent).
+  const dna = getDesignDNA(segment);
+
   if (data) {
     const kit = mapBrandKitRow(data);
     // Preenche campos que o Brand Kit não tem mas o profile sim.
@@ -155,17 +170,17 @@ async function loadBrandKit(workspaceOwnerId: string): Promise<BrandKit> {
     return kit;
   }
 
-  // Sem Brand Kit salvo — monta um default rico a partir do profile.
+  // Sem Brand Kit salvo — usa DNA do segmento como base.
   const now = new Date();
   return {
     id: "default",
     ownerUserId: workspaceOwnerId,
-    primaryColor: "#0F172A",
-    secondaryColor: "#1E293B",
-    supportColor: "#F59E0B",
+    primaryColor: dna.palette.primary,
+    secondaryColor: dna.palette.secondary,
+    supportColor: dna.palette.support,
     logoUrl,
-    displayFont: "Montserrat",
-    bodyFont: "Inter",
+    displayFont: dna.displayFont,
+    bodyFont: dna.bodyFont,
     toneOfVoice: aiTone || "profissional",
     defaultSignature: biz || "Sua Marca",
     extractionSource: null,
@@ -237,6 +252,7 @@ async function resolveImage(
   service: Awaited<ReturnType<typeof loadService>>,
   workspaceOwnerId: string,
   imageKeywords: string[] | undefined,
+  imageDescription: string | undefined,
 ): Promise<ResolvedImage> {
   // Prioridade 1: foto do serviço (Requirement 7.2).
   // Se o cliente cadastrou fotos reais do seu próprio serviço, usa elas.
@@ -262,7 +278,8 @@ async function resolveImage(
   // profissional contextualizada por ~R$ 0,015/post.
   try {
     await enforceQuota(workspaceOwnerId, "ai_images_generated");
-    const aiPrompt = buildAiImagePrompt(brief, service, brandKit);
+    const aiPrompt = buildAiImagePrompt(brief, service, brandKit, imageDescription);
+    console.info(`[content-worker] Flux prompt: ${aiPrompt.slice(0, 200)}`);
     const aiImg = await generateImage({
       prompt: aiPrompt,
       aspectRatio: aspectRatioFor(brief.postFormat),
@@ -463,6 +480,7 @@ export async function processContentGenerationJob(
       service,
       job.ownerUserId,
       copyBundle.imageKeywords,
+      copyBundle.imageDescription,
     );
     await updateJob(job.id, {
       stage: "render",

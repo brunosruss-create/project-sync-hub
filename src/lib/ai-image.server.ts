@@ -25,16 +25,28 @@ export interface GenerateImageOutput {
   model: string;
 }
 
+/** Prompt cinematográfico de alta qualidade — Flux Schnell precisa disso. */
 function enrichPrompt(input: GenerateImageInput): string {
-  const parts = [input.prompt];
-  if (input.brandColorHint) {
-    parts.push(`Color palette accent: ${input.brandColorHint}.`);
+  const parts: string[] = [input.prompt];
+  const promptLower = input.prompt.toLowerCase();
+  const hasStyle =
+    promptLower.includes("cinematic") ||
+    promptLower.includes("editorial") ||
+    promptLower.includes("photography");
+  if (!hasStyle) {
+    parts.push(
+      "Cinematic editorial photography, shallow depth of field, professional studio lighting, hyper-detailed, 8k quality, high-end commercial photo, aspirational lifestyle, magazine cover quality.",
+    );
   }
-  parts.push(
-    "Professional photography, natural lighting, high quality, realistic, commercial photo style.",
-  );
+  if (input.brandColorHint) {
+    parts.push(`Subtle color palette accent: ${input.brandColorHint}.`);
+  }
   return parts.join(" ");
 }
+
+/** Negative prompt: bloqueia lixo visual comum do Flux (texto, marca d'água, cartoon). */
+const NEGATIVE_PROMPT =
+  "text, letters, words, watermark, logo, signature, signage, caption, subtitle, typography, cartoon, illustration, drawing, painting, 3d render, cgi, low quality, blurry, distorted, deformed, ugly, amateur, oversaturated, plastic, artificial, bad anatomy, extra fingers, missing fingers, cropped, out of frame";
 
 async function uploadToBucket(
   bytes: Buffer,
@@ -85,6 +97,7 @@ async function generateWithTogether(input: GenerateImageInput): Promise<Generate
     body: JSON.stringify({
       model: TOGETHER_MODEL,
       prompt: finalPrompt,
+      negative_prompt: NEGATIVE_PROMPT,
       width,
       height,
       steps: 4, // Schnell é otimizado pra poucos steps (rápido e barato)

@@ -70,6 +70,8 @@ function AssetDetailPage() {
           primaryColor: brandKit?.primaryColor || "#0F172A",
           secondaryColor: brandKit?.secondaryColor || "#1E293B",
           supportColor: brandKit?.supportColor || "#F59E0B",
+          highlightColor: brandKit?.supportColor || "#F59E0B",
+          highlightWord: asset.copyBundle.highlightWord,
           displayFont: brandKit?.displayFont || "Montserrat",
           bodyFont: brandKit?.bodyFont || "Inter",
           category: undefined,
@@ -255,6 +257,13 @@ function AssetDetailPage() {
               imageUrl={baseImageUrl}
               composition={composition}
               onChange={setComposition}
+              brandDefaults={{
+                displayFont: brandKit?.displayFont,
+                primaryColor: brandKit?.primaryColor,
+                secondaryColor: brandKit?.secondaryColor,
+                supportColor: brandKit?.supportColor,
+                signature: brandKit?.defaultSignature,
+              }}
             />
           ) : (
             <img

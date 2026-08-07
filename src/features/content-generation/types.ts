@@ -163,6 +163,14 @@ export const CopyBundleSchema = z.object({
   /** 2 a 4 palavras-chave EM INGLÊS pra buscar imagem no banco de fotos.
    *  Ex: post sobre corte de cabelo → ["hair salon", "haircut"]. */
   imageKeywords: z.array(z.string().min(2).max(60)).min(1).max(4).optional(),
+  /** Descrição cinematográfica completa da cena em INGLÊS pra alimentar o Flux.
+   *  Deve descrever: sujeito, ambiente, iluminação, mood. Ex: "Elegant woman
+   *  getting a professional haircut in a modern hair salon, warm golden hour
+   *  lighting, editorial photography, shallow depth of field". */
+  imageDescription: z.string().min(10).max(500).optional(),
+  /** Palavra ou expressão curta do hook que deve ser destacada em cor de acento.
+   *  Ex: hook="Cabelo perfeito por menos de R$ 50?" → highlightWord="R$ 50". */
+  highlightWord: z.string().min(1).max(30).optional(),
 });
 export type CopyBundle = z.infer<typeof CopyBundleSchema>;
 

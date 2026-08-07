@@ -5,18 +5,34 @@
 // - Ao salvar, layers_json é persistido no generated_assets
 
 import * as React from "react";
+import { Type, Tag, Square, Minus, Trash2 } from "lucide-react";
 import type { Layer, LayerComposition, LayerId } from "./layer-types";
+import {
+  createTextLayer,
+  createSignatureLayer,
+  createOverlayLayer,
+  createAccentLineLayer,
+} from "./layer-types";
 
 interface Props {
   imageUrl: string;
   composition: LayerComposition;
   onChange: (composition: LayerComposition) => void;
+  /** Presets pra novas camadas (fonte, cores, marca). */
+  brandDefaults?: {
+    displayFont?: string;
+    primaryColor?: string;
+    secondaryColor?: string;
+    supportColor?: string;
+    signature?: string;
+  };
 }
 
-export function LayerEditor({ imageUrl, composition, onChange }: Props) {
+export function LayerEditor({ imageUrl, composition, onChange, brandDefaults }: Props) {
   const canvasRef = React.useRef<HTMLDivElement>(null);
   const [selectedId, setSelectedId] = React.useState<LayerId | null>(null);
   const [displayScale, setDisplayScale] = React.useState(1);
+  const isStory = composition.canvasHeight > composition.canvasWidth;
 
   // Recalcula escala quando o container é montado ou redimensionado.
   React.useEffect(() => {
@@ -41,10 +57,79 @@ export function LayerEditor({ imageUrl, composition, onChange }: Props) {
     });
   };
 
+  const addLayer = (layer: Layer) => {
+    onChange({ ...composition, layers: [...composition.layers, layer] });
+    setSelectedId(layer.id);
+  };
+
+  const removeLayer = (id: LayerId) => {
+    onChange({ ...composition, layers: composition.layers.filter((l) => l.id !== id) });
+    setSelectedId(null);
+  };
+
+  const addText = () =>
+    addLayer(
+      createTextLayer({
+        text: "Toque pra editar",
+        isStory,
+        displayFont: brandDefaults?.displayFont,
+        size: "large",
+      }),
+    );
+
+  const addSignature = () =>
+    addLayer(
+      createSignatureLayer({
+        text: brandDefaults?.signature ?? "Sua Marca",
+        displayFont: brandDefaults?.displayFont,
+      }),
+    );
+
+  const addOverlay = () =>
+    addLayer(
+      createOverlayLayer({
+        color: brandDefaults?.secondaryColor ?? "#0F172A",
+        isStory,
+      }),
+    );
+
+  const addAccentLine = () =>
+    addLayer(
+      createAccentLineLayer({
+        color: brandDefaults?.supportColor ?? "#F59E0B",
+        isStory,
+      }),
+    );
+
   const selected = composition.layers.find((l) => l.id === selectedId) ?? null;
 
   return (
     <div className="flex flex-col" style={{ gap: 12 }}>
+      {/* Toolbar */}
+      <div
+        className="flex flex-wrap"
+        style={{
+          gap: 6,
+          padding: 8,
+          background: "var(--bg-surface)",
+          border: "1px solid var(--border)",
+          borderRadius: "var(--radius-card)",
+        }}
+      >
+        <ToolbarButton onClick={addText} icon={<Type size={13} />} label="Texto" />
+        <ToolbarButton onClick={addSignature} icon={<Tag size={13} />} label="Marca" />
+        <ToolbarButton onClick={addOverlay} icon={<Square size={13} />} label="Fundo escuro" />
+        <ToolbarButton onClick={addAccentLine} icon={<Minus size={13} />} label="Linha" />
+        {selected ? (
+          <ToolbarButton
+            onClick={() => removeLayer(selected.id)}
+            icon={<Trash2 size={13} />}
+            label="Remover"
+            danger
+          />
+        ) : null}
+      </div>
+
       {/* Canvas de edição */}
       <div
         ref={canvasRef}
@@ -448,3 +533,38 @@ const inputStyle: React.CSSProperties = {
   background: "var(--bg-base)",
   color: "var(--text-primary)",
 };
+
+function ToolbarButton({
+  onClick,
+  icon,
+  label,
+  danger,
+}: {
+  onClick: () => void;
+  icon: React.ReactNode;
+  label: string;
+  danger?: boolean;
+}) {
+  return (
+    <button
+      onClick={onClick}
+      style={{
+        display: "inline-flex",
+        alignItems: "center",
+        gap: 5,
+        height: 28,
+        padding: "0 10px",
+        fontSize: 12,
+        fontWeight: 500,
+        borderRadius: "var(--radius-pill)",
+        background: danger ? "color-mix(in oklab, var(--danger, #EF4444) 12%, transparent)" : "var(--bg-base)",
+        color: danger ? "var(--danger, #B91C1C)" : "var(--text-primary)",
+        border: `1px solid ${danger ? "color-mix(in oklab, var(--danger, #EF4444) 30%, transparent)" : "var(--border-strong)"}`,
+        cursor: "pointer",
+      }}
+    >
+      {icon}
+      {label}
+    </button>
+  );
+}
