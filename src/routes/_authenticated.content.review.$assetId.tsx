@@ -56,8 +56,7 @@ function AssetDetailPage() {
     // Só depende de asset carregar. brandKit pode ser null (cliente nunca
     // configurou) — usamos defaults nesse caso em vez de travar o editor.
     if (initialized || !asset || brandKitQ.isLoading) return;
-    // eslint-disable-next-line @typescript-eslint/no-explicit-any
-    const existing = (asset as any).layersJson ?? (asset as any).layers_json;
+    const existing = asset.layersJson;
     if (existing?.layers?.length) {
       setComposition(existing);
     } else {
@@ -183,8 +182,7 @@ function AssetDetailPage() {
   }
 
   const isPending = asset.approvalStatus === "pending";
-  // eslint-disable-next-line @typescript-eslint/no-explicit-any
-  const baseImageUrl = (asset as any).baseImageUrl ?? asset.renderedImageUrl;
+  const baseImageUrl = asset.baseImageUrl ?? asset.renderedImageUrl;
 
   return (
     <div className="flex flex-col" style={{ gap: 16 }}>

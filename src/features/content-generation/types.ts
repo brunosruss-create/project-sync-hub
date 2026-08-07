@@ -203,6 +203,11 @@ export interface GeneratedAsset {
   parentAssetId: string | null;
   approvalStatus: ApprovalStatus;
   renderedImageUrl: string;
+  /** Foto crua sem texto/template — usada como fundo no editor de camadas. */
+  baseImageUrl: string | null;
+  /** Composição de camadas (JSON) — quando o cliente edita no LayerEditor. */
+  // eslint-disable-next-line @typescript-eslint/no-explicit-any
+  layersJson: any | null;
   slides: CarouselSlide[] | null;
   copyBundle: CopyBundle;
   imageSourceMetadata: ImageSourceMetadata | null;

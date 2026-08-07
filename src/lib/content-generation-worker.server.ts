@@ -372,6 +372,8 @@ async function insertAsset(input: {
   jobId: string;
   targetNetwork: TargetNetwork;
   renderedImageUrl: string;
+  /** Foto crua (sem template desenhado) — usada como fundo no editor de camadas. */
+  rawImageUrl: string;
   slides: CarouselSlide[] | null;
   copyBundle: CopyBundle;
   imageSourceMetadata: ImageSourceMetadata;
@@ -386,6 +388,7 @@ async function insertAsset(input: {
       version: 1,
       approval_status: "pending",
       rendered_image_url: input.renderedImageUrl,
+      base_image_url: input.rawImageUrl,
       slides_json: input.slides,
       copy_bundle: input.copyBundle,
       image_source_metadata: input.imageSourceMetadata,
@@ -497,6 +500,7 @@ export async function processContentGenerationJob(
         jobId: job.id,
         targetNetwork: primaryNetwork,
         renderedImageUrl: slideUrls[0].url,
+        rawImageUrl: image.url,
         slides: slideUrls,
         copyBundle,
         imageSourceMetadata: image.sourceMetadata,
@@ -518,6 +522,7 @@ export async function processContentGenerationJob(
           jobId: job.id,
           targetNetwork: network,
           renderedImageUrl: url,
+          rawImageUrl: image.url,
           slides: null,
           copyBundle,
           imageSourceMetadata: image.sourceMetadata,

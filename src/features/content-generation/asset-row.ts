@@ -60,6 +60,8 @@ export function mapAssetRow(r: any): GeneratedAsset {
     parentAssetId: r.parent_asset_id ?? null,
     approvalStatus: (r.approval_status ?? "pending") as ApprovalStatus,
     renderedImageUrl: r.rendered_image_url,
+    baseImageUrl: r.base_image_url ?? null,
+    layersJson: r.layers_json ?? null,
     slides: safeParseSlides(r.slides_json),
     copyBundle: safeParseCopy(r.copy_bundle),
     imageSourceMetadata: safeParseSourceMetadata(r.image_source_metadata),
