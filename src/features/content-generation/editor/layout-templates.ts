@@ -480,104 +480,101 @@ const bottomCard: Archetype = (input, W, H) => {
   return layers;
 };
 
-// 6) Premium informativo — fundo escuro, headline + subtítulo + cards com
-// ícone (os "blocos tipo Canva") + CTA + selo. É o layout mais "agência".
-// Usado quando a IA gerou bullets concretos.
+// 6) Premium informativo — PAINEL DIVIDIDO: foto limpa em cima, painel sólido
+// escuro embaixo com headline + cards + CTA. Nunca texto sobre o rosto, e a
+// foto não escurece (o painel é sólido, cobre só a parte de baixo).
 const premiumInfo: Archetype = (input, W, H) => {
-  const width = W - PAD * 2;
   const accent = accentFontFor(input.typographyStyle);
+  const innerPad = 56;
+  const width = W - innerPad * 2;
   const layers: Layer[] = [];
 
-  // Fundo escuro premium: tint geral + gradiente inferior pra profundidade.
-  layers.push({ id: "tint", type: "rect", x: 0, y: 0, width: W, height: H, bg: input.palette.accent, opacity: 0.74 });
+  // Fração da altura reservada pra FOTO (limpa, sem tint). O painel ocupa o resto.
+  const photoFrac = H > W ? 0.46 : 0.42;
+  const panelY = Math.round(H * photoFrac);
+  const panelH = H - panelY;
+
+  // Painel sólido escuro embaixo (a foto atrás dele não aparece — sem desperdício).
+  layers.push({ id: "panel", type: "rect", x: 0, y: panelY, width: W, height: panelH, bg: input.palette.accent, opacity: 1 });
+  // Gradiente curto fundindo foto → painel (costura suave, sem escurecer a foto).
   layers.push({
-    id: "grad", type: "rect", x: 0, y: Math.round(H * 0.45), width: W, height: Math.round(H * 0.55),
-    bg: input.palette.accent, opacity: 0.9, gradient: true, gradientDirection: "to bottom",
+    id: "seam", type: "rect", x: 0, y: panelY - 90, width: W, height: 90,
+    bg: input.palette.accent, opacity: 1, gradient: true, gradientDirection: "to bottom",
   });
 
-  let y = H > W ? 150 : 96;
+  // Badge de ocasião/categoria sobre a FOTO (área limpa, topo esquerdo).
+  const badge = tag(input, innerPad, 44, input.palette.support);
+  if (badge) layers.push(badge);
+  // Logo no topo direito, sobre a foto.
+  const topLogo = logo(input, W - innerPad - 72, 40, 72);
+  if (topLogo) layers.push(topLogo);
 
-  // Badge de ocasião/categoria (opcional)
-  const badge = tag(input, PAD, y, input.palette.support);
-  if (badge) {
-    layers.push(badge);
-    y += 62;
-  }
+  // ── Conteúdo dentro do painel ──
+  const topInner = panelY + 44;
+  const bottomLimit = H - 44;
+  const ctaH = 58;
+  const ctaTop = bottomLimit - ctaH; // CTA ancorado na base do painel
+  let y = topInner;
 
   // Headline
   const hook = (input.hook ?? "").trim() || "Seu título aqui";
-  const hlSize = hook.length <= 26 ? (H > W ? 78 : 64) : hook.length <= 46 ? (H > W ? 64 : 54) : 46;
+  const hlSize = hook.length <= 26 ? (H > W ? 66 : 54) : hook.length <= 46 ? (H > W ? 54 : 44) : 40;
   const hlLines = estimateLines(hook, hlSize, width, input.displayFont);
   layers.push({
-    id: "headline", type: "text", x: PAD, y, maxWidth: width, text: hook,
+    id: "headline", type: "text", x: innerPad, y, maxWidth: width, text: hook,
     fontFamily: input.displayFont, fontSize: hlSize, fontWeight: 700, color: "#FFFFFF",
-    align: "left", lineHeight: 1.08, letterSpacing: -0.5,
+    align: "left", lineHeight: 1.06, letterSpacing: -0.5,
     highlight: resolveHighlight(hook, input.highlightWord), highlightColor: input.palette.highlight,
   });
-  y += Math.round(hlLines * hlSize * 1.08) + 14;
+  y += Math.round(hlLines * hlSize * 1.06) + 18;
 
-  // Subtítulo
+  // Subtítulo (só se sobrar espaço confortável pra ele + 2 cards + cta)
   const sub = (input.subheadline ?? "").trim();
-  if (sub) {
-    const subSize = 28;
+  const cardH = H > W ? 96 : 84;
+  const cardGap = 12;
+  if (sub && ctaTop - y > cardH * 2 + 90) {
+    const subSize = H > W ? 27 : 24;
     const subLines = estimateLines(sub, subSize, width, input.bodyFont);
     layers.push({
-      id: "subheadline", type: "text", x: PAD, y, maxWidth: width, text: sub,
-      fontFamily: input.bodyFont, fontSize: subSize, fontWeight: 400, color: "rgba(255,255,255,0.82)",
+      id: "subheadline", type: "text", x: innerPad, y, maxWidth: width, text: sub,
+      fontFamily: input.bodyFont, fontSize: subSize, fontWeight: 400, color: "rgba(255,255,255,0.8)",
       align: "left", lineHeight: 1.3,
     });
-    y += Math.round(subLines * subSize * 1.3) + 26;
-  } else {
-    y += 10;
+    y += Math.round(subLines * subSize * 1.3) + 20;
   }
 
-  // Cards de bullets
+  // Cards de bullets — só entram os que couberem entre o headline e o CTA.
   const maxCards = H > W ? 4 : 3;
   const bullets = (input.bullets ?? []).slice(0, maxCards);
-  const cardH = H > W ? 104 : 92;
-  const cardGap = 14;
-  for (let i = 0; i < bullets.length; i++) {
-    const b = bullets[i];
-    const card: CardLayer = {
-      id: `card-${i}`, type: "card", x: PAD, y, width, height: cardH,
-      bg: "rgba(255,255,255,0.10)", radius: 18, iconBg: input.palette.support,
+  for (const b of bullets) {
+    if (y + cardH > ctaTop - 18) break; // não invade o CTA
+    layers.push({
+      id: `card-${layers.length}`, type: "card", x: innerPad, y, width, height: cardH,
+      bg: "rgba(255,255,255,0.09)", radius: 16, iconBg: input.palette.support,
       iconDataUri: iconDataUri(b.icon, "#0A0A0A", 24),
       title: b.text, text: undefined, titleColor: "#FFFFFF", textColor: "rgba(255,255,255,0.7)",
       fontFamily: input.bodyFont,
-    };
-    layers.push(card);
+    } as CardLayer);
     y += cardH + cardGap;
   }
 
-  // Preço (se houver) grande antes do CTA
+  // Preço grande (se houver) à direita do CTA, na base.
   const price = (input.priceText ?? "").trim();
   if (price) {
-    y += 8;
-    const pSize = fitOneLine(price, width, accent, 120, 64);
+    const pSize = fitOneLine(price, Math.round(width * 0.5), accent, H > W ? 88 : 72, 48);
     layers.push({
-      id: "price", type: "text", x: PAD, y: y - Math.round(pSize * 0.1), maxWidth: width, text: price,
-      fontFamily: accent, fontSize: pSize, fontWeight: 700, color: input.palette.highlight,
-      align: "left", lineHeight: 1, letterSpacing: 1,
+      id: "price", type: "text", x: W - innerPad - Math.round(width * 0.5), y: ctaTop - Math.round(pSize * 0.05),
+      maxWidth: Math.round(width * 0.5), text: price, fontFamily: accent, fontSize: pSize,
+      fontWeight: 700, color: input.palette.highlight, align: "right", lineHeight: 1, letterSpacing: 1,
     });
-    y += Math.round(pSize * 0.92) + 18;
-  } else {
-    y += 12;
   }
 
-  // CTA
+  // CTA ancorado na base
   const cta = (input.cta ?? "").trim() || "Saiba mais";
   layers.push({
-    id: "cta", type: "button", x: PAD, y, text: cta, bg: input.palette.support, color: "#0A0A0A",
+    id: "cta", type: "button", x: innerPad, y: ctaTop, text: cta, bg: input.palette.support, color: "#0A0A0A",
     fontFamily: input.bodyFont, fontSize: 24, paddingX: 30, paddingY: 14, radius: 999,
   });
-
-  // Selo/marca no rodapé direito
-  const l = logo(input, W - PAD - 84, H - 84 - 40, 84);
-  if (l) layers.push(l);
-  else {
-    const s = signature(input, PAD, H - 70, "left", width);
-    if (s) layers.push(s);
-  }
 
   return layers;
 };
@@ -599,11 +596,13 @@ export function buildComposition(input: CompositionInput): LayerComposition {
   // que mais se aproxima do nível agência — priorizamos ele, alternando com
   // um arquétipo de variedade pelo seed.
   const hasBullets = (input.bullets?.length ?? 0) >= 2;
+  // Com bullets → painel dividido premium (nunca cobre o rosto).
+  // Sem bullets → arquétipos que mantêm o texto embaixo/no card, longe do rosto.
   const pool: Archetype[] = hasBullets
-    ? [premiumInfo, premiumInfo, bandedFrame]
-    : ARCHETYPES;
+    ? [premiumInfo]
+    : [editorialBottom, bandedFrame, bottomCard];
 
   const idx = input.seed ? hashSeed(input.seed) % pool.length : 0;
-  const archetype = pool[idx];
+  const archetype = pool[idx] ?? ARCHETYPES[0];
   return { canvasWidth: W, canvasHeight: H, layers: archetype(input, W, H) };
 }
