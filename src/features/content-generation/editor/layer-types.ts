@@ -24,6 +24,10 @@ export interface TextLayer extends BaseLayer {
   letterSpacing?: number;
   textTransform?: "none" | "uppercase";
   maxWidth?: number;
+  /** Trecho do texto a destacar em cor de acento (inline, no fluxo natural). */
+  highlight?: string;
+  /** Cor do trecho destacado. */
+  highlightColor?: string;
 }
 
 export interface PillLayer extends BaseLayer {
@@ -44,6 +48,12 @@ export interface RectLayer extends BaseLayer {
   bg: string;
   radius?: number;
   opacity?: number;
+  /** Se definido, aplica gradiente de transparente → bg. */
+  gradient?: boolean;
+  /** Direção do gradiente (default: to bottom). */
+  gradientDirection?: "to bottom" | "to top" | "to right" | "to left";
+  /** Segunda cor do gradiente (default: transparent). Permite gradiente de cor→cor. */
+  gradientFrom?: string;
 }
 
 export interface LineLayer extends BaseLayer {
@@ -128,103 +138,94 @@ export function buildInitialComposition(input: {
     });
   }
 
-  // Overlay escuro na base (pra legibilidade do texto sobre a foto)
+  // ── Layout ancorado no RODAPÉ (evita colisão de texto) ──
+  const PAD = 64;
+  const hook = input.hook.trim();
+
+  // Fonte adaptativa: quanto mais longo o hook, menor a fonte.
+  const len = hook.length;
+  const headlineFontSize = len <= 22 ? 84 : len <= 36 ? 70 : len <= 52 ? 58 : 48;
+  const headlineLineHeight = 1.08;
+
+  // Estima quantas linhas o headline vai ocupar (pra reservar altura e não colidir).
+  const usableWidth = W - PAD * 2;
+  const charsPerLine = Math.max(8, Math.floor(usableWidth / (headlineFontSize * 0.54)));
+  const estimatedLines = Math.min(4, Math.max(1, Math.ceil(len / charsPerLine)));
+  const headlineHeightPx = Math.round(estimatedLines * headlineFontSize * headlineLineHeight);
+
+  // Alturas dos outros elementos
+  const ctaFontSize = 30;
+  const ctaHeightPx = Math.round(ctaFontSize * 1.2);
+  const accentGap = 26;
+  const accentHeight = 5;
+  const ctaGap = 30;
+
+  // Bloco inferior (headline + linha + cta) ancorado no rodapé.
+  const blockHeight =
+    headlineHeightPx + accentGap + accentHeight + ctaGap + ctaHeightPx;
+  const blockBottom = H - PAD;
+  const blockTop = blockBottom - blockHeight;
+
+  const headlineY = blockTop;
+  const accentY = headlineY + headlineHeightPx + accentGap;
+  const ctaY = accentY + accentHeight + ctaGap;
+
+  // Overlay em gradiente (transparente no topo → escuro na base) pra
+  // legibilidade sem "caixa" retangular dura. Começa acima do bloco.
+  const overlayTop = Math.max(0, blockTop - 160);
   layers.push({
     id: "overlay",
     type: "rect",
     x: 0,
-    y: isStory ? 1200 : 640,
+    y: overlayTop,
     width: W,
-    height: isStory ? 720 : 440,
+    height: H - overlayTop,
     bg: input.secondaryColor,
-    opacity: 0.7,
+    opacity: 0.85,
+    gradient: true,
   });
 
-  // Headline: se tem highlightWord, quebra em 2 camadas (texto + palavra colorida).
-  // Se não tem, uma camada só.
-  const headlineY = isStory ? 1360 : 730;
-  const headlineFontSize = isStory ? 92 : 78;
-  if (input.highlightWord && input.hook.toLowerCase().includes(input.highlightWord.toLowerCase())) {
-    const idx = input.hook.toLowerCase().indexOf(input.highlightWord.toLowerCase());
-    const before = input.hook.slice(0, idx).trim();
-    const highlight = input.hook.slice(idx, idx + input.highlightWord.length);
-    const after = input.hook.slice(idx + input.highlightWord.length).trim();
+  // Filtra highlightWord se for stopword (não faz sentido destacar "não", "de"...)
+  const STOPWORDS = new Set([
+    "não", "nao", "de", "da", "do", "a", "o", "e", "ou", "que", "com", "para",
+    "por", "em", "no", "na", "os", "as", "um", "uma", "se", "sua", "seu",
+  ]);
+  const rawHighlight = (input.highlightWord ?? "").trim();
+  const highlightIsStopword =
+    rawHighlight.length > 0 &&
+    rawHighlight.split(/\s+/).every((w) => STOPWORDS.has(w.toLowerCase()));
+  const effectiveHighlight =
+    rawHighlight && !highlightIsStopword && hook.toLowerCase().includes(rawHighlight.toLowerCase())
+      ? rawHighlight
+      : undefined;
 
-    if (before) {
-      layers.push({
-        id: "headline-before",
-        type: "text",
-        x: 60,
-        y: headlineY,
-        maxWidth: W - 120,
-        text: before,
-        fontFamily: input.displayFont,
-        fontSize: headlineFontSize,
-        fontWeight: 700,
-        color: "#FFFFFF",
-        align: "left",
-        lineHeight: 1.05,
-        letterSpacing: -1,
-      });
-    }
-    layers.push({
-      id: "headline-highlight",
-      type: "text",
-      x: 60,
-      y: before ? headlineY + Math.round(headlineFontSize * 1.1) : headlineY,
-      maxWidth: W - 120,
-      text: highlight,
-      fontFamily: input.displayFont,
-      fontSize: headlineFontSize,
-      fontWeight: 700,
-      color: input.highlightColor ?? input.supportColor,
-      align: "left",
-      lineHeight: 1.05,
-      letterSpacing: -1,
-    });
-    if (after) {
-      layers.push({
-        id: "headline-after",
-        type: "text",
-        x: 60,
-        y: headlineY + Math.round(headlineFontSize * 2.2),
-        maxWidth: W - 120,
-        text: after,
-        fontFamily: input.displayFont,
-        fontSize: headlineFontSize,
-        fontWeight: 700,
-        color: "#FFFFFF",
-        align: "left",
-        lineHeight: 1.05,
-        letterSpacing: -1,
-      });
-    }
-  } else {
-    layers.push({
-      id: "headline",
-      type: "text",
-      x: 60,
-      y: headlineY,
-      maxWidth: W - 120,
-      text: input.hook,
-      fontFamily: input.displayFont,
-      fontSize: headlineFontSize,
-      fontWeight: 700,
-      color: "#FFFFFF",
-      align: "left",
-      lineHeight: 1.05,
-      letterSpacing: -1,
-    });
-  }
+  // Headline — UMA camada só, com destaque inline (não quebra o fluxo).
+  layers.push({
+    id: "headline",
+    type: "text",
+    x: PAD,
+    y: headlineY,
+    maxWidth: usableWidth,
+    text: hook,
+    fontFamily: input.displayFont,
+    fontSize: headlineFontSize,
+    fontWeight: 700,
+    color: "#FFFFFF",
+    align: "left",
+    lineHeight: headlineLineHeight,
+    letterSpacing: -1,
+    highlight: effectiveHighlight,
+    highlightColor: input.highlightColor ?? input.supportColor,
+  });
 
   // Linha decorativa (acento)
   layers.push({
     id: "accent-line",
     type: "line",
-    x: 60,
-    y: isStory ? 1640 : 890,
+    x: PAD,
+    y: accentY,
     width: 90,
-    height: 4,
+    height: accentHeight,
     color: input.supportColor,
   });
 
@@ -232,11 +233,11 @@ export function buildInitialComposition(input: {
   layers.push({
     id: "cta",
     type: "text",
-    x: 60,
-    y: isStory ? 1700 : 950,
+    x: PAD,
+    y: ctaY,
     text: `${input.cta} →`,
     fontFamily: input.displayFont,
-    fontSize: 30,
+    fontSize: ctaFontSize,
     fontWeight: 700,
     color: "#FFFFFF",
     align: "left",

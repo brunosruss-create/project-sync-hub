@@ -31,6 +31,7 @@ interface Props {
 export function LayerEditor({ imageUrl, composition, onChange, brandDefaults }: Props) {
   const canvasRef = React.useRef<HTMLDivElement>(null);
   const [selectedId, setSelectedId] = React.useState<LayerId | null>(null);
+  const [editingId, setEditingId] = React.useState<LayerId | null>(null);
   const [displayScale, setDisplayScale] = React.useState(1);
   const isStory = composition.canvasHeight > composition.canvasWidth;
 
@@ -143,7 +144,10 @@ export function LayerEditor({ imageUrl, composition, onChange, brandDefaults }: 
           userSelect: "none",
         }}
         onClick={(e) => {
-          if (e.target === e.currentTarget) setSelectedId(null);
+          if (e.target === e.currentTarget) {
+            setSelectedId(null);
+            setEditingId(null);
+          }
         }}
       >
         {/* Foto base fixa */}
@@ -167,10 +171,16 @@ export function LayerEditor({ imageUrl, composition, onChange, brandDefaults }: 
             key={layer.id}
             layer={layer}
             selected={selectedId === layer.id}
+            editing={editingId === layer.id}
             scale={displayScale}
             canvasWidth={composition.canvasWidth}
             canvasHeight={composition.canvasHeight}
             onSelect={() => setSelectedId(layer.id)}
+            onStartEdit={() => {
+              setSelectedId(layer.id);
+              setEditingId(layer.id);
+            }}
+            onStopEdit={() => setEditingId(null)}
             onUpdate={(patch) => updateLayer(layer.id, patch)}
           />
         ))}
@@ -191,7 +201,7 @@ export function LayerEditor({ imageUrl, composition, onChange, brandDefaults }: 
             textAlign: "center",
           }}
         >
-          Clique em qualquer texto ou elemento pra editar
+          Clique pra selecionar · duplo-clique no texto pra editar direto
         </div>
       )}
     </div>
@@ -203,19 +213,33 @@ export function LayerEditor({ imageUrl, composition, onChange, brandDefaults }: 
 interface LayerNodeProps {
   layer: Layer;
   selected: boolean;
+  editing: boolean;
   scale: number;
   canvasWidth: number;
   canvasHeight: number;
   onSelect: () => void;
+  onStartEdit: () => void;
+  onStopEdit: () => void;
   onUpdate: (patch: Partial<Layer>) => void;
 }
 
 function LayerNode(props: LayerNodeProps) {
-  const { layer, selected, scale, canvasWidth, canvasHeight, onSelect, onUpdate } = props;
+  const {
+    layer,
+    selected,
+    editing,
+    scale,
+    canvasWidth,
+    canvasHeight,
+    onSelect,
+    onStartEdit,
+    onStopEdit,
+    onUpdate,
+  } = props;
   const dragState = React.useRef<{ startX: number; startY: number; layerX: number; layerY: number } | null>(null);
 
   const handleMouseDown = (e: React.MouseEvent) => {
-    if (layer.locked) return;
+    if (layer.locked || editing) return;
     e.stopPropagation();
     onSelect();
     dragState.current = {
@@ -256,9 +280,98 @@ function LayerNode(props: LayerNodeProps) {
   };
 
   if (layer.type === "text") {
+    // Edição inline: duplo-clique abre textarea sobreposta na mesma posição.
+    if (editing) {
+      return (
+        <textarea
+          autoFocus
+          value={layer.text}
+          onChange={(e) => onUpdate({ text: e.target.value } as Partial<Layer>)}
+          onBlur={onStopEdit}
+          onKeyDown={(e) => {
+            if (e.key === "Escape") onStopEdit();
+            if (e.key === "Enter" && !e.shiftKey) {
+              e.preventDefault();
+              onStopEdit();
+            }
+          }}
+          onClick={(e) => e.stopPropagation()}
+          style={{
+            ...commonStyle,
+            cursor: "text",
+            outline: "2px solid #3654FF",
+            fontFamily: layer.fontFamily,
+            fontSize: layer.fontSize * scale,
+            fontWeight: layer.fontWeight,
+            color: layer.color,
+            lineHeight: layer.lineHeight,
+            letterSpacing: layer.letterSpacing ? layer.letterSpacing * scale : undefined,
+            textTransform: layer.textTransform ?? "none",
+            width: (layer.maxWidth ?? canvasWidth * 0.8) * scale,
+            background: "rgba(0,0,0,0.55)",
+            border: "none",
+            resize: "none",
+            padding: 4,
+            overflow: "hidden",
+            whiteSpace: "pre-wrap",
+          }}
+        />
+      );
+    }
+    // Destaque inline: colore palavras do trecho destacado no fluxo natural.
+    if (layer.highlight) {
+      const highlightWords = new Set(
+        layer.highlight
+          .toLowerCase()
+          .split(/\s+/)
+          .map((w) => w.replace(/[^\wáàâãéèêíïóôõöúçñ$]/gi, "")),
+      );
+      const words = layer.text.split(/\s+/);
+      return (
+        <div
+          onMouseDown={handleMouseDown}
+          onDoubleClick={(e) => {
+            e.stopPropagation();
+            onStartEdit();
+          }}
+          style={{
+            ...commonStyle,
+            fontFamily: layer.fontFamily,
+            fontSize: layer.fontSize * scale,
+            fontWeight: layer.fontWeight,
+            lineHeight: layer.lineHeight,
+            letterSpacing: layer.letterSpacing ? layer.letterSpacing * scale : undefined,
+            textTransform: layer.textTransform ?? "none",
+            maxWidth: layer.maxWidth ? layer.maxWidth * scale : undefined,
+            display: "flex",
+            flexWrap: "wrap",
+          }}
+        >
+          {words.map((word, i) => {
+            const clean = word.replace(/[^\wáàâãéèêíïóôõöúçñ$]/gi, "").toLowerCase();
+            const isHi = highlightWords.has(clean);
+            return (
+              <span
+                key={i}
+                style={{
+                  color: isHi ? layer.highlightColor ?? "#F59E0B" : layer.color,
+                  marginRight: layer.fontSize * 0.26 * scale,
+                }}
+              >
+                {word}
+              </span>
+            );
+          })}
+        </div>
+      );
+    }
     return (
       <div
         onMouseDown={handleMouseDown}
+        onDoubleClick={(e) => {
+          e.stopPropagation();
+          onStartEdit();
+        }}
         style={{
           ...commonStyle,
           fontFamily: layer.fontFamily,
@@ -314,7 +427,9 @@ function LayerNode(props: LayerNodeProps) {
           ...commonStyle,
           width: layer.width * scale,
           height: layer.height * scale,
-          background: layer.bg,
+          background: layer.gradient
+            ? `linear-gradient(${layer.gradientDirection ?? "to bottom"}, ${layer.gradientFrom ?? "transparent"} 0%, ${layer.bg} 100%)`
+            : layer.bg,
           opacity: layer.opacity ?? 1,
           borderRadius: layer.radius ? layer.radius * scale : 0,
         }}

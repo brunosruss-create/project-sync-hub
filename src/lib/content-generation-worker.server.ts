@@ -8,12 +8,13 @@
 
 import { supabaseAdmin } from "@/integrations/supabase/client.server";
 import { captureException } from "@/lib/sentry.server";
-import { renderTemplate } from "@/features/content-generation/render-engine.server";
-import { pickTemplate } from "@/features/content-generation/templates";
 import { mapBriefRow } from "@/features/content-generation/brief-row";
 import { mapJobRow } from "@/features/content-generation/job-row";
 import { mapBrandKitRow } from "@/features/content-generation/brand-kit-row";
 import { getDesignDNA } from "@/features/content-generation/design-dna";
+import { buildComposition } from "@/features/content-generation/editor/layout-templates";
+import { renderComposition } from "@/features/content-generation/editor/layer-renderer.server";
+import type { LayerComposition } from "@/features/content-generation/editor/layer-types";
 import type {
   BrandKit,
   ContentBrief,
@@ -335,53 +336,70 @@ async function resolveImage(
   }
 }
 
-async function renderAndUpload(
-  workspaceOwnerId: string,
-  templateId: string,
-  brandKit: BrandKit,
-  slots: Record<string, string>,
-  slideIndex: number | undefined,
-  slideTotal: number | undefined,
-): Promise<string> {
-  const output = await renderTemplate({
-    templateId,
-    brandKit,
-    slots,
-    slideIndex,
-    slideTotal,
-  });
-  const assetId = randomUUID();
-  const version = 1;
-  const suffix =
-    typeof slideIndex === "number" ? `-slide-${slideIndex}` : "";
-  const key = `${workspaceOwnerId}/renders/${assetId}/${version}${suffix}.png`;
-  const { error } = await supabaseAdmin.storage.from(BUCKET).upload(
-    key,
-    output.buffer,
-    { contentType: "image/png", upsert: false },
-  );
-  if (error) throw new ContentJobError("render", `Falha ao subir imagem: ${error.message}`);
-  return supabaseAdmin.storage.from(BUCKET).getPublicUrl(key).data.publicUrl;
-}
+const CATEGORY_LABELS: Record<string, string> = {
+  promo: "Promoção",
+  novidade: "Novidade",
+  depoimento: "Depoimento",
+  agenda: "Agenda",
+  dica: "Dica",
+  institucional: "Institucional",
+  antes_depois: "Antes e Depois",
+  catalogo: "Catálogo",
+};
 
-function slotsFor(
+/**
+ * Monta a composição de camadas (design do post) usando o DNA do nicho +
+ * copy gerada pela IA. Cada post ganha um layout escolhido deterministicamente
+ * pelo seed — evita o "molde único".
+ */
+function buildAssetComposition(
   brief: ContentBrief,
   brandKit: BrandKit,
-  imageUrl: string,
+  segment: string,
   copy: CopyBundle,
-  service: Awaited<ReturnType<typeof loadService>>,
-): Record<string, string> {
-  return {
-    headline: copy.hook,
-    subheadline: copy.body.split(".")[0] ?? copy.body,
-    description: copy.body,
-    price: service?.price != null ? `R$ ${service.price}` : "",
-    duration: service?.duration ?? "",
-    ctaLabel: copy.cta,
-    imageUrl,
-    authorName: brandKit.defaultSignature || "Cliente",
-    eventDate: "",
-  };
+  seed: string,
+): LayerComposition {
+  const dna = getDesignDNA(segment);
+  return buildComposition({
+    format: brief.postFormat === "story" ? "story" : "single",
+    hook: copy.hook,
+    cta: copy.cta,
+    signature: brandKit.defaultSignature || "Sua Marca",
+    category: CATEGORY_LABELS[brief.templateCategory],
+    palette: {
+      // Brand Kit customizado tem prioridade; senão usa DNA.
+      primary: brandKit.primaryColor || dna.palette.primary,
+      secondary: brandKit.secondaryColor || dna.palette.secondary,
+      support: brandKit.supportColor || dna.palette.support,
+      accent: dna.palette.accent,
+      highlight: brandKit.supportColor || dna.palette.highlight,
+    },
+    displayFont: brandKit.displayFont || dna.displayFont,
+    typographyStyle: dna.typographyStyle,
+    highlightWord: copy.highlightWord,
+    seed,
+  });
+}
+
+/**
+ * Renderiza a composição (foto crua + camadas) em PNG via Satori e sobe pro
+ * bucket. O worker do Railway tem satori/resvg instalados. Retorna URL pública.
+ */
+async function renderCompositionAndUpload(
+  workspaceOwnerId: string,
+  rawImageUrl: string,
+  composition: LayerComposition,
+  slideIndex?: number,
+): Promise<string> {
+  const png = await renderComposition({ imageUrl: rawImageUrl, composition });
+  const assetId = randomUUID();
+  const suffix = typeof slideIndex === "number" ? `-slide-${slideIndex}` : "";
+  const key = `${workspaceOwnerId}/renders/${assetId}/1${suffix}.png`;
+  const { error } = await supabaseAdmin.storage
+    .from(BUCKET)
+    .upload(key, png, { contentType: "image/png", upsert: false });
+  if (error) throw new ContentJobError("render", `Falha ao subir imagem: ${error.message}`);
+  return supabaseAdmin.storage.from(BUCKET).getPublicUrl(key).data.publicUrl;
 }
 
 async function insertAsset(input: {
@@ -391,6 +409,8 @@ async function insertAsset(input: {
   renderedImageUrl: string;
   /** Foto crua (sem template desenhado) — usada como fundo no editor de camadas. */
   rawImageUrl: string;
+  /** Composição de camadas (design do post) — o editor carrega isto direto. */
+  layersJson: LayerComposition;
   slides: CarouselSlide[] | null;
   copyBundle: CopyBundle;
   imageSourceMetadata: ImageSourceMetadata;
@@ -406,6 +426,7 @@ async function insertAsset(input: {
       approval_status: "pending",
       rendered_image_url: input.renderedImageUrl,
       base_image_url: input.rawImageUrl,
+      layers_json: input.layersJson,
       slides_json: input.slides,
       copy_bundle: input.copyBundle,
       image_source_metadata: input.imageSourceMetadata,
@@ -486,39 +507,35 @@ export async function processContentGenerationJob(
       stage: "render",
       image_provider_used: image.provider,
     });
-    const template =
-      pickTemplate(brief.templateCategory, brief.postFormat === "story" ? "9:16" : "1:1") ??
-      null;
-    if (!template) {
-      throw new ContentJobError(
-        "render",
-        `Nenhum template disponível para categoria=${brief.templateCategory} ratio=${brief.postFormat}`,
-      );
-    }
-    const slots = slotsFor(brief, brandKit, image.url, copyBundle, service);
 
-    // Carousel: renderiza N slides no mesmo asset
+    // Carousel: renderiza N slides no mesmo asset (mesmo design por enquanto)
     if (brief.postFormat === "carousel") {
       const count = brief.carouselSlideCount ?? 3;
+      const primaryNetwork = brief.targetNetworks[0];
+      const composition = buildAssetComposition(
+        brief,
+        brandKit,
+        segment,
+        copyBundle,
+        `${job.id}-${primaryNetwork}`,
+      );
       const slideUrls: CarouselSlide[] = [];
       for (let i = 0; i < count; i++) {
-        const url = await renderAndUpload(
+        const url = await renderCompositionAndUpload(
           job.ownerUserId,
-          template.id,
-          brandKit,
-          slots,
+          image.url,
+          composition,
           i,
-          count,
         );
         slideUrls.push({ url, index: i });
       }
-      const primaryNetwork = brief.targetNetworks[0];
       await insertAsset({
         ownerUserId: job.ownerUserId,
         jobId: job.id,
         targetNetwork: primaryNetwork,
         renderedImageUrl: slideUrls[0].url,
         rawImageUrl: image.url,
+        layersJson: composition,
         slides: slideUrls,
         copyBundle,
         imageSourceMetadata: image.sourceMetadata,
@@ -527,13 +544,17 @@ export async function processContentGenerationJob(
     } else {
       // Single / Story: 1 asset por rede alvo
       for (const network of brief.targetNetworks) {
-        const url = await renderAndUpload(
-          job.ownerUserId,
-          template.id,
+        const composition = buildAssetComposition(
+          brief,
           brandKit,
-          slots,
-          undefined,
-          undefined,
+          segment,
+          copyBundle,
+          `${job.id}-${network}`,
+        );
+        const url = await renderCompositionAndUpload(
+          job.ownerUserId,
+          image.url,
+          composition,
         );
         await insertAsset({
           ownerUserId: job.ownerUserId,
@@ -541,6 +562,7 @@ export async function processContentGenerationJob(
           targetNetwork: network,
           renderedImageUrl: url,
           rawImageUrl: image.url,
+          layersJson: composition,
           slides: null,
           copyBundle,
           imageSourceMetadata: image.sourceMetadata,

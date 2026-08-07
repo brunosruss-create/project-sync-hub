@@ -74,6 +74,52 @@ export async function renderComposition(input: RenderLayersInput): Promise<Buffe
 
 function renderLayer(layer: Layer): ReactElement {
   if (layer.type === "text") {
+    // Destaque inline: quebra em palavras e colore as que fazem parte do
+    // trecho destacado, mantendo o fluxo natural com flexWrap.
+    if (layer.highlight) {
+      const highlightWords = new Set(
+        layer.highlight
+          .toLowerCase()
+          .split(/\s+/)
+          .map((w) => w.replace(/[^\wáàâãéèêíïóôõöúçñ$]/gi, "")),
+      );
+      const words = layer.text.split(/\s+/);
+      return (
+        <div
+          key={layer.id}
+          style={{
+            position: "absolute",
+            left: layer.x,
+            top: layer.y,
+            fontFamily: layer.fontFamily,
+            fontSize: layer.fontSize,
+            fontWeight: layer.fontWeight,
+            lineHeight: layer.lineHeight,
+            letterSpacing: layer.letterSpacing,
+            textTransform: layer.textTransform ?? "none",
+            maxWidth: layer.maxWidth,
+            display: "flex",
+            flexWrap: "wrap",
+          }}
+        >
+          {words.map((word, i) => {
+            const clean = word.replace(/[^\wáàâãéèêíïóôõöúçñ$]/gi, "").toLowerCase();
+            const isHi = highlightWords.has(clean);
+            return (
+              <span
+                key={i}
+                style={{
+                  color: isHi ? (layer.highlightColor ?? "#F59E0B") : layer.color,
+                  marginRight: layer.fontSize * 0.26,
+                }}
+              >
+                {word}
+              </span>
+            );
+          })}
+        </div>
+      );
+    }
     return (
       <div
         key={layer.id}
@@ -129,6 +175,9 @@ function renderLayer(layer: Layer): ReactElement {
   }
 
   if (layer.type === "rect") {
+    const dir = layer.gradientDirection ?? "to bottom";
+    const from = layer.gradientFrom ?? "transparent";
+    const bg = `linear-gradient(${dir}, ${from} 0%, ${layer.bg} 100%)`;
     return (
       <div
         key={layer.id}
@@ -138,7 +187,9 @@ function renderLayer(layer: Layer): ReactElement {
           top: layer.y,
           width: layer.width,
           height: layer.height,
-          backgroundColor: layer.bg,
+          ...(layer.gradient
+            ? { backgroundImage: bg }
+            : { backgroundColor: layer.bg }),
           opacity: layer.opacity ?? 1,
           borderRadius: layer.radius ?? 0,
           display: "flex",

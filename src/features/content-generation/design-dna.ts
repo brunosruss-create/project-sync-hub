@@ -207,7 +207,7 @@ export const DESIGN_DNA_BY_SEGMENT: Record<string, DesignDNA> = {
       accent: "#78350F",
       highlight: "#FBBF24",
     },
-    displayFont: "Impact",
+    displayFont: "Bebas Neue",
     bodyFont: "Inter",
     typographyStyle: "sans-chunky",
     moodPt: "energia, potência, motivação, superação, força",
