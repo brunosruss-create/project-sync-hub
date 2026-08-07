@@ -86,6 +86,7 @@ function ComposePage() {
   const [networks, setNetworks] = React.useState<TargetNetwork[]>([]);
   const [objective, setObjective] = React.useState("");
   const [tone, setTone] = React.useState<string>("profissional");
+  const [fullAiCreative, setFullAiCreative] = React.useState(false);
 
   React.useEffect(() => {
     if (availableNetworks.length > 0 && networks.length === 0) {
@@ -108,7 +109,7 @@ function ComposePage() {
           targetNetworks: networks,
           freeTextObjective: objective || undefined,
           toneOverride: tone || undefined,
-          aiImageOptin: false,
+          aiImageOptin: fullAiCreative,
         },
       }),
     onSuccess: () => {
@@ -266,6 +267,36 @@ function ComposePage() {
         </div>
       </Card>
 
+      {/* Modo de criação do visual */}
+      <Card style={{ padding: 20 }}>
+        <label style={sectionLabel}>Estilo do criativo</label>
+        <div className="flex flex-col" style={{ gap: 8 }}>
+          <button
+            type="button"
+            onClick={() => setFullAiCreative(false)}
+            style={modeOption(!fullAiCreative)}
+          >
+            <div style={{ fontSize: 13, fontWeight: 600 }}>Padrão (rápido e gratuito)</div>
+            <div style={{ fontSize: 11, color: "var(--text-muted)", marginTop: 2 }}>
+              Foto + texto montados pelo sistema. Preço e textos sempre exatos e editáveis.
+            </div>
+          </button>
+          <button
+            type="button"
+            onClick={() => setFullAiCreative(true)}
+            style={modeOption(fullAiCreative)}
+          >
+            <div style={{ fontSize: 13, fontWeight: 600 }}>
+              Criativo 100% por IA (experimental) ✨
+            </div>
+            <div style={{ fontSize: 11, color: "var(--text-muted)", marginTop: 2 }}>
+              A IA desenha o post inteiro — mais variado e visual. Custa um pouco mais e o
+              texto pode sair com pequenos erros (você revisa antes de publicar).
+            </div>
+          </button>
+        </div>
+      </Card>
+
       {/* Botão fixo */}
       <div className="flex justify-end" style={{ marginTop: 4 }}>
         <button
@@ -351,3 +382,16 @@ const hint: React.CSSProperties = {
   color: "var(--text-muted)",
   marginTop: 6,
 };
+
+function modeOption(active: boolean): React.CSSProperties {
+  return {
+    textAlign: "left",
+    padding: "12px 14px",
+    borderRadius: "var(--radius-control)",
+    border: `1px solid ${active ? "var(--brand-400)" : "var(--border-strong)"}`,
+    background: active
+      ? "color-mix(in oklab, var(--brand-400) 10%, transparent)"
+      : "var(--bg-surface)",
+    cursor: "pointer",
+  };
+}

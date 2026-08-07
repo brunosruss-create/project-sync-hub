@@ -166,6 +166,86 @@ async function generateWithImagen(input: GenerateImageInput): Promise<GenerateIm
   return { url, promptUsed: finalPrompt, model };
 }
 
+// ─── Criativo 100% por IA (Gemini 2.5 Flash Image / "Nano Banana") ──
+// Gera o POST INTEIRO (foto + texto + design) numa imagem só, a partir de um
+// prompt de pôster. Dá variedade infinita; em troca, texto/preço pode sair
+// errado às vezes e custa mais que o Flux. Modo opt-in.
+
+const GEMINI_IMAGE_MODEL = "gemini-2.5-flash-image-preview";
+
+export interface FullCreativeInput {
+  headline: string;
+  subheadline?: string;
+  priceText?: string;
+  occasion?: string;
+  ctaText: string;
+  bullets?: string[];
+  segment?: string;
+  brandName?: string;
+  brandColors: { primary: string; support: string; accent: string };
+  aspectRatio: "1:1" | "9:16" | "16:9";
+  workspaceOwnerId: string;
+}
+
+function buildPosterPrompt(input: FullCreativeInput): string {
+  const lines: string[] = [];
+  lines.push(
+    "Create a HIGH-END social media promotional creative (Instagram post), agency-quality, like a professional graphic designer made it.",
+  );
+  lines.push(
+    `Business niche: ${input.segment || "local service business"}. Sophisticated, premium, modern aesthetic.`,
+  );
+  lines.push(
+    `Color palette: primary ${input.brandColors.primary}, accent/highlight ${input.brandColors.support}, dark background tone ${input.brandColors.accent}. Use a cohesive dark premium look with the accent color for highlights.`,
+  );
+  lines.push(
+    "Include a photorealistic, cinematic photo of a relevant subject for the niche, integrated tastefully into the composition (as a background region or cutout), never covering the important text.",
+  );
+  lines.push("Layout must include, with PERFECT, clean, legible typography and correct spelling in Brazilian Portuguese:");
+  lines.push(`- HEADLINE (large, bold): "${input.headline}"`);
+  if (input.subheadline) lines.push(`- Subheadline: "${input.subheadline}"`);
+  if (input.occasion) lines.push(`- A small badge/tag with: "${input.occasion}"`);
+  if (input.bullets?.length) {
+    lines.push("- A list of feature cards, each with a small line icon in a colored circle and the text:");
+    for (const b of input.bullets) lines.push(`   • ${b}`);
+  }
+  if (input.priceText) lines.push(`- A large highlighted price: "${input.priceText}"`);
+  lines.push(`- A rounded CTA button with: "${input.ctaText}"`);
+  if (input.brandName) lines.push(`- Brand name/logo area: "${input.brandName}"`);
+  lines.push(
+    "Use professional visual hierarchy, generous spacing, rounded cards with subtle transparency, and modern sans-serif fonts. Composition balanced and premium. Absolutely no lorem ipsum, no gibberish, no misspelled words. Text must be exactly as provided.",
+  );
+  return lines.join("\n");
+}
+
+export async function generateFullCreative(
+  input: FullCreativeInput,
+): Promise<GenerateImageOutput> {
+  const { GoogleGenAI } = await import("@google/genai");
+  const creds = await loadGeminiCredentials();
+  const client = new GoogleGenAI({ apiKey: creds.apiKey });
+  const prompt = buildPosterPrompt(input);
+
+  const response = await client.models.generateContent({
+    model: GEMINI_IMAGE_MODEL,
+    contents: [{ role: "user", parts: [{ text: prompt }] }],
+    // eslint-disable-next-line @typescript-eslint/no-explicit-any
+    config: { responseModalities: ["IMAGE", "TEXT"] as any },
+  });
+
+  // Extrai a primeira parte de imagem (inlineData base64).
+  // eslint-disable-next-line @typescript-eslint/no-explicit-any
+  const parts: any[] = response.candidates?.[0]?.content?.parts ?? [];
+  const imgPart = parts.find((p) => p?.inlineData?.data);
+  if (!imgPart) {
+    throw new Error("Gemini Image não retornou imagem (sem inlineData).");
+  }
+  const bytes = Buffer.from(imgPart.inlineData.data, "base64");
+  const mime: string = imgPart.inlineData.mimeType ?? "image/png";
+  const url = await uploadToBucket(bytes, input.workspaceOwnerId, mime);
+  return { url, promptUsed: prompt, model: GEMINI_IMAGE_MODEL };
+}
+
 // ─── Entry point ───────────────────────────────────────────────────
 
 /**

@@ -58,6 +58,9 @@ export interface RectLayer extends BaseLayer {
   gradientDirection?: "to bottom" | "to top" | "to right" | "to left";
   /** Segunda cor do gradiente (default: transparent). Permite gradiente de cor→cor. */
   gradientFrom?: string;
+  /** Borda (moldura). */
+  borderColor?: string;
+  borderWidth?: number;
 }
 
 export interface LineLayer extends BaseLayer {

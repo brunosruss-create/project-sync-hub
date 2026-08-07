@@ -480,100 +480,157 @@ const bottomCard: Archetype = (input, W, H) => {
   return layers;
 };
 
-// 6) Premium informativo — PAINEL DIVIDIDO: foto limpa em cima, painel sólido
-// escuro embaixo com headline + cards + CTA. Nunca texto sobre o rosto, e a
-// foto não escurece (o painel é sólido, cobre só a parte de baixo).
+// Título dramático (tamanhos misturados, top-heavy) — o que dá cara de design.
+// Divide o hook em "antes / PALAVRA-CHAVE gigante / depois" empilhados.
+function dramaticHeadline(
+  input: CompositionInput,
+  x: number,
+  topY: number,
+  width: number,
+  heroMax: number,
+  medSize: number,
+): { layers: Layer[]; endY: number } {
+  const hook = (input.hook ?? "").trim() || "Seu título aqui";
+  const df = input.displayFont;
+  const out: Layer[] = [];
+  let y = topY;
+  const hi = resolveHighlight(hook, input.highlightWord);
+
+  const pushLine = (id: string, text: string, size: number, color: string, upper: boolean) => {
+    const lines = estimateLines(text, size, width, df);
+    out.push({
+      id, type: "text", x, y, maxWidth: width, text,
+      fontFamily: df, fontSize: size, fontWeight: 700, color,
+      align: "left", lineHeight: 1.02, letterSpacing: upper ? 1 : -1,
+      textTransform: upper ? "uppercase" : "none",
+    });
+    y += Math.round(lines * size * 1.02) + Math.round(size * 0.06);
+  };
+
+  if (hi) {
+    const idx = hook.toLowerCase().indexOf(hi.toLowerCase());
+    const before = hook.slice(0, idx).trim();
+    const after = hook.slice(idx + hi.length).trim();
+    if (before) pushLine("hl-before", before, medSize, "#FFFFFF", true);
+    const heroSize = fitOneLine(hi, width, df, heroMax, Math.round(heroMax * 0.5));
+    pushLine("hl-hero", hi, heroSize, input.palette.highlight, false);
+    if (after) pushLine("hl-after", after, medSize, "#FFFFFF", true);
+  } else {
+    // Sem palavra-chave: primeira palavra pequena, resto grande.
+    const words = hook.split(/\s+/);
+    if (words.length >= 3) {
+      pushLine("hl-a", words.slice(0, 1).join(" "), medSize, "#FFFFFF", true);
+      pushLine("hl-b", words.slice(1).join(" "), Math.round(heroMax * 0.62), input.palette.highlight, false);
+    } else {
+      pushLine("hl-b", hook, Math.round(heroMax * 0.62), "#FFFFFF", false);
+    }
+  }
+
+  // Divisória decorativa sob o título.
+  out.push({ id: "hl-divider", type: "line", x, y: y + 6, width: 120, height: 5, color: input.palette.support });
+  y += 24;
+  return { layers: out, endY: y };
+}
+
+// 6) Editorial dramático — título grande no topo, FOTO respira no meio,
+// features + preço + CTA embaixo sobre gradiente. Moldura + selo. Distribuição
+// no estilo das peças de agência (náutico/GERU), não painel chapado.
 const premiumInfo: Archetype = (input, W, H) => {
+  const isStory = H > W;
   const accent = accentFontFor(input.typographyStyle);
-  const innerPad = 56;
-  const width = W - innerPad * 2;
+  const fm = 26; // margem da moldura
+  const PADX = 62;
+  const width = W - PADX * 2;
   const layers: Layer[] = [];
 
-  // Fração da altura reservada pra FOTO (limpa, sem tint). O painel ocupa o resto.
-  const photoFrac = H > W ? 0.46 : 0.42;
-  const panelY = Math.round(H * photoFrac);
-  const panelH = H - panelY;
-
-  // Painel sólido escuro embaixo (a foto atrás dele não aparece — sem desperdício).
-  layers.push({ id: "panel", type: "rect", x: 0, y: panelY, width: W, height: panelH, bg: input.palette.accent, opacity: 1 });
-  // Gradiente curto fundindo foto → painel (costura suave, sem escurecer a foto).
+  // Gradiente no topo (escuro em cima → transparente) pra legibilidade do título.
+  const topH = Math.round(H * (isStory ? 0.44 : 0.5));
   layers.push({
-    id: "seam", type: "rect", x: 0, y: panelY - 90, width: W, height: 90,
-    bg: input.palette.accent, opacity: 1, gradient: true, gradientDirection: "to bottom",
+    id: "top-grad", type: "rect", x: 0, y: 0, width: W, height: topH,
+    bg: input.palette.accent, opacity: 0.92, gradient: true, gradientDirection: "to top",
+  });
+  // Gradiente na base (transparente → escuro) pras features/CTA.
+  const botH = isStory ? 860 : 620;
+  layers.push({
+    id: "bot-grad", type: "rect", x: 0, y: H - botH, width: W, height: botH,
+    bg: input.palette.accent, opacity: 0.94, gradient: true, gradientDirection: "to bottom",
   });
 
-  // Badge de ocasião/categoria sobre a FOTO (área limpa, topo esquerdo).
-  const badge = tag(input, innerPad, 44, input.palette.support);
-  if (badge) layers.push(badge);
-  // Logo no topo direito, sobre a foto.
-  const topLogo = logo(input, W - innerPad - 72, 40, 72);
-  if (topLogo) layers.push(topLogo);
+  // Badge de ocasião/categoria (topo).
+  const badge = tag(input, PADX, fm + 22, input.palette.support);
+  let headTop = fm + 26;
+  if (badge) {
+    layers.push(badge);
+    headTop = fm + 92;
+  }
 
-  // ── Conteúdo dentro do painel ──
-  const topInner = panelY + 44;
-  const bottomLimit = H - 44;
-  const ctaH = 58;
-  const ctaTop = bottomLimit - ctaH; // CTA ancorado na base do painel
-  let y = topInner;
+  // Título dramático (top-heavy).
+  const heroMax = isStory ? 132 : 108;
+  const medSize = isStory ? 50 : 42;
+  const dh = dramaticHeadline(input, PADX, headTop, width, heroMax, medSize);
+  layers.push(...dh.layers);
 
-  // Headline
-  const hook = (input.hook ?? "").trim() || "Seu título aqui";
-  const hlSize = hook.length <= 26 ? (H > W ? 66 : 54) : hook.length <= 46 ? (H > W ? 54 : 44) : 40;
-  const hlLines = estimateLines(hook, hlSize, width, input.displayFont);
-  layers.push({
-    id: "headline", type: "text", x: innerPad, y, maxWidth: width, text: hook,
-    fontFamily: input.displayFont, fontSize: hlSize, fontWeight: 700, color: "#FFFFFF",
-    align: "left", lineHeight: 1.06, letterSpacing: -0.5,
-    highlight: resolveHighlight(hook, input.highlightWord), highlightColor: input.palette.highlight,
-  });
-  y += Math.round(hlLines * hlSize * 1.06) + 18;
-
-  // Subtítulo (só se sobrar espaço confortável pra ele + 2 cards + cta)
+  // Subtítulo logo abaixo do título (se houver e couber no topo).
   const sub = (input.subheadline ?? "").trim();
-  const cardH = H > W ? 96 : 84;
-  const cardGap = 12;
-  if (sub && ctaTop - y > cardH * 2 + 90) {
-    const subSize = H > W ? 27 : 24;
-    const subLines = estimateLines(sub, subSize, width, input.bodyFont);
+  if (sub && dh.endY < topH - 40) {
+    const subSize = isStory ? 26 : 22;
     layers.push({
-      id: "subheadline", type: "text", x: innerPad, y, maxWidth: width, text: sub,
-      fontFamily: input.bodyFont, fontSize: subSize, fontWeight: 400, color: "rgba(255,255,255,0.8)",
+      id: "subheadline", type: "text", x: PADX, y: dh.endY, maxWidth: width, text: sub,
+      fontFamily: input.bodyFont, fontSize: subSize, fontWeight: 400, color: "rgba(255,255,255,0.85)",
       align: "left", lineHeight: 1.3,
     });
-    y += Math.round(subLines * subSize * 1.3) + 20;
   }
 
-  // Cards de bullets — só entram os que couberem entre o headline e o CTA.
-  const maxCards = H > W ? 4 : 3;
-  const bullets = (input.bullets ?? []).slice(0, maxCards);
+  // ── Base: features (ícone + texto, sem caixa) + preço + CTA ──
+  const ctaH = 56;
+  const ctaY = H - fm - 34 - ctaH;
+  const featureH = isStory ? 66 : 58;
+  const fgap = 14;
+  const maxF = isStory ? 4 : 3;
+  const bullets = (input.bullets ?? []).slice(0, maxF);
+  const price = (input.priceText ?? "").trim();
+
+  const featuresTotal = bullets.length * (featureH + fgap);
+  let fy = ctaY - 30 - featuresTotal;
+
+  // Features como card de fundo transparente (só ícone + texto, estilo agência).
   for (const b of bullets) {
-    if (y + cardH > ctaTop - 18) break; // não invade o CTA
     layers.push({
-      id: `card-${layers.length}`, type: "card", x: innerPad, y, width, height: cardH,
-      bg: "rgba(255,255,255,0.09)", radius: 16, iconBg: input.palette.support,
+      id: `feat-${layers.length}`, type: "card", x: PADX, y: fy, width, height: featureH,
+      bg: "rgba(255,255,255,0)", radius: 0, iconBg: input.palette.support,
       iconDataUri: iconDataUri(b.icon, "#0A0A0A", 24),
-      title: b.text, text: undefined, titleColor: "#FFFFFF", textColor: "rgba(255,255,255,0.7)",
+      title: b.text, text: undefined, titleColor: "#FFFFFF", textColor: "rgba(255,255,255,0.75)",
       fontFamily: input.bodyFont,
     } as CardLayer);
-    y += cardH + cardGap;
+    fy += featureH + fgap;
   }
 
-  // Preço grande (se houver) à direita do CTA, na base.
-  const price = (input.priceText ?? "").trim();
+  // CTA botão (base, esquerda).
+  const cta = (input.cta ?? "").trim() || "Saiba mais";
+  layers.push({
+    id: "cta", type: "button", x: PADX, y: ctaY, text: cta, bg: input.palette.support, color: "#0A0A0A",
+    fontFamily: input.bodyFont, fontSize: 24, paddingX: 30, paddingY: 14, radius: 999,
+  });
+
+  // Preço grande na MESMA linha do CTA, alinhado à direita (não colide).
   if (price) {
-    const pSize = fitOneLine(price, Math.round(width * 0.5), accent, H > W ? 88 : 72, 48);
+    const pW = Math.round(width * 0.46);
+    const pSize = fitOneLine(price, pW, accent, isStory ? 92 : 78, 48);
     layers.push({
-      id: "price", type: "text", x: W - innerPad - Math.round(width * 0.5), y: ctaTop - Math.round(pSize * 0.05),
-      maxWidth: Math.round(width * 0.5), text: price, fontFamily: accent, fontSize: pSize,
-      fontWeight: 700, color: input.palette.highlight, align: "right", lineHeight: 1, letterSpacing: 1,
+      id: "price", type: "text", x: W - PADX - pW, y: ctaY + Math.round((ctaH - pSize) / 2) - 6,
+      maxWidth: pW, text: price, fontFamily: accent, fontSize: pSize, fontWeight: 700,
+      color: input.palette.highlight, align: "right", lineHeight: 1, letterSpacing: 1,
     });
   }
 
-  // CTA ancorado na base
-  const cta = (input.cta ?? "").trim() || "Saiba mais";
+  // Logo/selo no topo direito (sobre a foto).
+  const l = logo(input, W - PADX - 70, fm + 20, 70);
+  if (l) layers.push(l);
+
+  // Moldura fina por cima de tudo.
   layers.push({
-    id: "cta", type: "button", x: innerPad, y: ctaTop, text: cta, bg: input.palette.support, color: "#0A0A0A",
-    fontFamily: input.bodyFont, fontSize: 24, paddingX: 30, paddingY: 14, radius: 999,
+    id: "frame", type: "rect", x: fm, y: fm, width: W - fm * 2, height: H - fm * 2,
+    bg: "rgba(0,0,0,0)", borderColor: input.palette.support, borderWidth: 3, radius: 10,
   });
 
   return layers;

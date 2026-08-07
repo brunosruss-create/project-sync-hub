@@ -28,7 +28,7 @@ import type {
 } from "@/features/content-generation/types";
 import { searchImage, cacheImageBankImage } from "@/lib/image-bank.server";
 import { generateCopyBundle } from "@/lib/ai-text.server";
-import { generateImage } from "@/lib/ai-image.server";
+import { generateImage, generateFullCreative } from "@/lib/ai-image.server";
 import { enforceQuota } from "@/lib/plan-quota-hook.server";
 import { incrementMeter } from "@/lib/content-meters.server";
 import { randomUUID } from "node:crypto";
@@ -503,6 +503,73 @@ export async function processContentGenerationJob(
       segment, // nicho do workspace — enriquece contexto pra keywords melhores
     });
     const copyBundle = copyResult.bundle;
+
+    // ── Modo CRIATIVO 100% IA (opt-in via aiImageOptin) ──
+    // Gera o post inteiro (foto + texto + design) numa imagem só via Gemini
+    // Image. Sem compositor: a imagem É o criativo final. Editor abre por cima
+    // (cliente pode adicionar camadas se quiser).
+    if (brief.aiImageOptin) {
+      await updateJob(job.id, { stage: "ai_image", ai_text_model: copyResult.model });
+      try {
+        await enforceQuota(job.ownerUserId, "ai_images_generated");
+        const creative = await generateFullCreative({
+          headline: copyBundle.hook,
+          subheadline: copyBundle.subheadline,
+          priceText: copyBundle.priceText,
+          occasion: copyBundle.occasion,
+          ctaText: copyBundle.cta,
+          bullets: (copyBundle.bullets ?? []).map((b) => b.text),
+          segment,
+          brandName:
+            brandKit.defaultSignature && brandKit.defaultSignature !== "Sua Marca"
+              ? brandKit.defaultSignature
+              : undefined,
+          brandColors: {
+            primary: brandKit.primaryColor,
+            support: brandKit.supportColor,
+            accent: getDesignDNA(segment).palette.accent,
+          },
+          aspectRatio: aspectRatioFor(brief.postFormat),
+          workspaceOwnerId: job.ownerUserId,
+        });
+        await incrementMeter(job.ownerUserId, "ai_images_generated");
+        const emptyComp: LayerComposition = {
+          canvasWidth: 1080,
+          canvasHeight: brief.postFormat === "story" ? 1920 : 1080,
+          layers: [],
+        };
+        for (const network of brief.targetNetworks) {
+          await insertAsset({
+            ownerUserId: job.ownerUserId,
+            jobId: job.id,
+            targetNetwork: network,
+            renderedImageUrl: creative.url,
+            rawImageUrl: creative.url,
+            layersJson: emptyComp,
+            slides: null,
+            copyBundle,
+            imageSourceMetadata: { provider: "nano_banana" },
+            aiImagePrompt: creative.promptUsed,
+          });
+        }
+        await updateJob(job.id, {
+          status: "completed",
+          stage: null,
+          error_message: null,
+          image_provider_used: "nano_banana",
+          duration_ms: Date.now() - started,
+          completed_at: new Date().toISOString(),
+          cost_estimate_cents: COST_GEMINI_FLASH_CENTS + COST_NANO_BANANA_CENTS,
+        });
+        return;
+      } catch (aiErr) {
+        // Se o full-IA falhar, cai pro pipeline normal (compositor) em vez de
+        // deixar o cliente sem post.
+        console.error(
+          `[content-worker] full-IA falhou, usando compositor: ${(aiErr as Error).message}`,
+        );
+      }
+    }
 
     // Stage 2: imagem — usa as keywords do Gemini (que entende o contexto real)
     await updateJob(job.id, { stage: "image_bank", ai_text_model: copyResult.model });

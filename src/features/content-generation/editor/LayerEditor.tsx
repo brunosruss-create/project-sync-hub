@@ -603,6 +603,9 @@ function LayerNode(props: LayerNodeProps) {
           background: layer.gradient
             ? `linear-gradient(${layer.gradientDirection ?? "to bottom"}, ${layer.gradientFrom ?? "transparent"} 0%, ${layer.bg} 100%)`
             : layer.bg,
+          border: layer.borderColor
+            ? `${(layer.borderWidth ?? 2) * scale}px solid ${layer.borderColor}`
+            : undefined,
           opacity: layer.opacity ?? 1,
           borderRadius: layer.radius ? layer.radius * scale : 0,
         }}

@@ -196,6 +196,9 @@ function renderLayer(layer: Layer): ReactElement {
           ...(layer.gradient
             ? { backgroundImage: bg }
             : { backgroundColor: layer.bg }),
+          ...(layer.borderColor
+            ? { border: `${layer.borderWidth ?? 2}px solid ${layer.borderColor}` }
+            : {}),
           opacity: layer.opacity ?? 1,
           borderRadius: layer.radius ?? 0,
           display: "flex",
